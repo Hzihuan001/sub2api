@@ -2536,6 +2536,9 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 		"claude-haiku-4-5-20251001":           "claude-haiku-4.5",
 		"claude-haiku-4-5-20251001-thinking":  "claude-haiku-4.5",
 		"claude-haiku-4.5":                    "claude-haiku-4.5",
+		"gpt-5.6-sol":                         "gpt-5.6-sol",
+		"gpt-5.6-terra":                       "gpt-5.6-terra",
+		"gpt-5.6-luna":                        "gpt-5.6-luna",
 	}
 
 	for input, want := range cases {
@@ -2545,6 +2548,7 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 	}
 
 	rejected := []string{
+		"gpt-5.6",
 		"claude-sonnet-4-6-chat",
 		" claude-sonnet-4-6-thinking-chat ",
 		"claude-sonnet-4-6-agentic",
@@ -2561,6 +2565,15 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 			t.Fatalf("MapModel(%q) = %q, want empty", input, got)
 		}
 	}
+}
+
+func TestKiroMaxOutputTokensForGPT56Models(t *testing.T) {
+	t.Parallel()
+
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		require.Equal(t, 128000, kiroMaxOutputTokensForModel(model), model)
+	}
+	require.Equal(t, kiroDefaultMaxOutputTokens, kiroMaxOutputTokensForModel("gpt-5.6"))
 }
 
 func TestIsOutputConfigPathModelSupportsFutureVersions(t *testing.T) {

@@ -48,6 +48,9 @@ func TestDefaultKiroModelMapping_MatchesKiroReferenceModels(t *testing.T) {
 		"claude-sonnet-4-5-20250929-thinking": "claude-sonnet-4.5",
 		"claude-haiku-4-5-20251001":           "claude-haiku-4.5",
 		"claude-haiku-4-5-20251001-thinking":  "claude-haiku-4.5",
+		"gpt-5.6-sol":                         "gpt-5.6-sol",
+		"gpt-5.6-terra":                       "gpt-5.6-terra",
+		"gpt-5.6-luna":                        "gpt-5.6-luna",
 	}
 
 	if len(DefaultKiroModelMapping) != len(expected) {
@@ -67,6 +70,7 @@ func TestDefaultKiroModelMapping_MatchesKiroReferenceModels(t *testing.T) {
 		"claude-3-5-haiku-20241022",
 		"gpt-4o",
 		"gpt-4",
+		"gpt-5.6",
 		"deepseek-3-2",
 		"minimax-m2-1",
 		"qwen3-coder-next",

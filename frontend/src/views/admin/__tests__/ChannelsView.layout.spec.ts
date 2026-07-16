@@ -78,7 +78,7 @@ const DataTableStub = defineComponent({
     },
   },
   setup(props, { slots }) {
-    return () => h('div', props.data.length === 0 ? slots.empty?.() : null)
+    return () => h('div', {}, props.data.length === 0 ? slots.empty?.() : [])
   },
 })
 
@@ -192,6 +192,15 @@ describe('ChannelsView 弹框布局', () => {
       { id: 10, name: 'kiro free', platform: 'kiro', rate_multiplier: 1, account_count: 0 },
     ])
     getModelDefaultPricing.mockImplementation(async (model: string) => {
+      if (model === 'gpt-5.6-sol') {
+        return { found: true, input_price: 0.000005, output_price: 0.00003, cache_write_price: 0.00000625, cache_read_price: 0.0000005 }
+      }
+      if (model === 'gpt-5.6-terra') {
+        return { found: true, input_price: 0.0000025, output_price: 0.000015, cache_write_price: 0.000003125, cache_read_price: 0.00000025 }
+      }
+      if (model === 'gpt-5.6-luna') {
+        return { found: true, input_price: 0.000001, output_price: 0.000006, cache_write_price: 0.00000125, cache_read_price: 0.0000001 }
+      }
       if (model === 'claude-opus-4-8') {
         return { found: true, input_price: 0.000001, output_price: 0.000005, cache_write_price: 0.00000125, cache_read_price: 0.0000001 }
       }
@@ -257,15 +266,25 @@ describe('ChannelsView 弹框布局', () => {
     await fillButton!.trigger('click')
     await flushPromises()
 
+    expect(getModelDefaultPricing).toHaveBeenCalledWith('gpt-5.6-sol')
+    expect(getModelDefaultPricing).toHaveBeenCalledWith('gpt-5.6-terra')
+    expect(getModelDefaultPricing).toHaveBeenCalledWith('gpt-5.6-luna')
     expect(getModelDefaultPricing).toHaveBeenCalledWith('claude-opus-4-8')
     expect(getModelDefaultPricing).toHaveBeenCalledWith('claude-opus-4-8-thinking')
+    expect(getModelDefaultPricing).not.toHaveBeenCalledWith('gpt-5.6')
     expect(getModelDefaultPricing).not.toHaveBeenCalledWith('claude-opus-4.8')
     expect(syncPricingModels).not.toHaveBeenCalled()
 
     const pricingCards = wrapper.findAll('.pricing-entry-card-stub')
-    expect(pricingCards[0].find('.pricing-models').text()).toBe('claude-opus-4-8')
-    expect(pricingCards[0].find('.pricing-input-price').text()).toBe('1')
-    expect(pricingCards[1].find('.pricing-models').text()).toBe('claude-opus-4-8-thinking')
-    expect(pricingCards[1].find('.pricing-input-price').text()).toBe('2')
+    expect(pricingCards[0].find('.pricing-models').text()).toBe('gpt-5.6-sol')
+    expect(pricingCards[0].find('.pricing-input-price').text()).toBe('5')
+    expect(pricingCards[1].find('.pricing-models').text()).toBe('gpt-5.6-terra')
+    expect(pricingCards[1].find('.pricing-input-price').text()).toBe('2.5')
+    expect(pricingCards[2].find('.pricing-models').text()).toBe('gpt-5.6-luna')
+    expect(pricingCards[2].find('.pricing-input-price').text()).toBe('1')
+    expect(pricingCards[3].find('.pricing-models').text()).toBe('claude-opus-4-8')
+    expect(pricingCards[3].find('.pricing-input-price').text()).toBe('1')
+    expect(pricingCards[4].find('.pricing-models').text()).toBe('claude-opus-4-8-thinking')
+    expect(pricingCards[4].find('.pricing-input-price').text()).toBe('2')
   })
 })

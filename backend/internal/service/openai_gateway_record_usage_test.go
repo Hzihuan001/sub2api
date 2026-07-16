@@ -2457,6 +2457,79 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCoun
 	require.InDelta(t, 0.5, cost.ActualCost, 1e-12)
 }
 
+func TestGatewayServiceCalculateRecordUsageCost_KiroGPT56UsesOpenAIFallbackInsteadOfConservativeClaudeFallback(t *testing.T) {
+	svc := &GatewayService{
+		billingService: NewBillingService(&config.Config{}, nil),
+	}
+
+	cost := svc.calculateRecordUsageCost(
+		context.Background(),
+		&ForwardResult{
+			Model: "gpt-5.6-terra",
+			Usage: ClaudeUsage{
+				InputTokens:              1000,
+				OutputTokens:             200,
+				CacheCreationInputTokens: 10,
+				CacheReadInputTokens:     50,
+				KiroCredits:              999,
+			},
+		},
+		&APIKey{},
+		"gpt-5.6-terra",
+		1.0,
+		1.0,
+		&recordUsageOpts{IsKiroAccount: true},
+	)
+
+	require.NotNil(t, cost)
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+	require.InDelta(t, 1000*2.5e-6, cost.InputCost, 1e-12)
+	require.InDelta(t, 200*15e-6, cost.OutputCost, 1e-12)
+	require.InDelta(t, 10*3.125e-6, cost.CacheCreationCost, 1e-12)
+	require.InDelta(t, 50*0.25e-6, cost.CacheReadCost, 1e-12)
+	require.InDelta(t, cost.TotalCost, cost.ActualCost, 1e-12)
+}
+
+func TestGatewayServiceBuildRecordUsageLog_KiroCreditsDoNotOverrideActualCost(t *testing.T) {
+	svc := &GatewayService{}
+	cost := &CostBreakdown{
+		InputCost:  0.0025,
+		OutputCost: 0.003,
+		TotalCost:  0.0055,
+		ActualCost: 0.0055,
+	}
+
+	log := svc.buildRecordUsageLog(
+		context.Background(),
+		&recordUsageCoreInput{},
+		&ForwardResult{
+			Model:    "gpt-5.6-terra",
+			Duration: time.Second,
+			Usage: ClaudeUsage{
+				InputTokens:  1000,
+				OutputTokens: 200,
+				KiroCredits:  999,
+			},
+		},
+		&APIKey{ID: 1},
+		&User{ID: 2},
+		&Account{ID: 3},
+		nil,
+		"gpt-5.6-terra",
+		1.0,
+		1.0,
+		1.0,
+		BillingTypeBalance,
+		false,
+		cost,
+		nil,
+	)
+
+	require.NotNil(t, log.KiroCredits)
+	require.InDelta(t, 999, *log.KiroCredits, 1e-12)
+	require.InDelta(t, 0.0055, log.ActualCost, 1e-12)
+}
+
 func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(t *testing.T) {
 	groupID := int64(127)
 	defaultPrice := 0.10
