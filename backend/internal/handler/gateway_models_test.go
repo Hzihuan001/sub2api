@@ -614,6 +614,42 @@ func TestGatewayModels_OpenAICustomModelsListKeepsOpenAIResponseShapeForDefaultF
 	require.Empty(t, got.Data[0].CreatedAt)
 }
 
+// TestGatewayModels_KiroCustomModelsListUsesKiroDefaultFallback 确保 kiro 自定义列表在
+// availableModels 为空时使用 kiro.DefaultModels 作为 fallback（含 GPT 系列），而非 claude 默认集。
+func TestGatewayModels_KiroCustomModelsListUsesKiroDefaultFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(31)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{
+			ID:       groupID,
+			Platform: service.PlatformKiro,
+			ModelsListConfig: service.GroupModelsListConfig{
+				Enabled: true,
+				Models:  []string{"gpt-5.6-sol", "claude-sonnet-4-6", "gpt-5.5"},
+			},
+		},
+	})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, []string{"gpt-5.6-sol", "claude-sonnet-4-6"}, modelIDsForTest(got.Data))
+	require.NotContains(t, modelIDsForTest(got.Data), "gpt-5.5")
+}
+
 // TestGatewayModels_KiroCustomModelsListRespectsAccountMappingWhitelist 复现回归：
 // kiro 的 model_mapping 是严格白名单——账号未映射的模型无法服务。即便分组在自定义列表中
 // 勾选了某个未被任何账号映射的模型（如从账号移除 haiku 后仍勾着），/v1/models 也不得返回它，

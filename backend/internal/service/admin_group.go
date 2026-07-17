@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -109,6 +110,12 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		models := antigravity.DefaultModels()
 		ids := make([]string, 0, len(models))
 		for _, model := range models {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	case PlatformKiro:
+		ids := make([]string, 0, len(kiro.DefaultModels))
+		for _, model := range kiro.DefaultModels {
 			ids = append(ids, model.ID)
 		}
 		return ids

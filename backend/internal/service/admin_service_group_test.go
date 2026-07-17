@@ -1440,3 +1440,21 @@ func TestAdminService_UpdateGroup_InvalidRequestFallbackAllowsAntigravity(t *tes
 	require.NotNil(t, repo.updated)
 	require.Equal(t, fallbackID, *repo.updated.FallbackGroupIDOnInvalidRequest)
 }
+
+func TestDefaultModelsListCandidateIDs_KiroUsesKiroDefaultModels(t *testing.T) {
+	ids := defaultModelsListCandidateIDs(PlatformKiro)
+	require.Contains(t, ids, "gpt-5.6-sol")
+	require.Contains(t, ids, "gpt-5.6-terra")
+	require.Contains(t, ids, "gpt-5.6-luna")
+	require.Contains(t, ids, "claude-sonnet-4-6")
+	// Must not fall through to claude-only defaults (e.g. missing GPT family).
+	require.NotEqual(t, defaultModelsListCandidateIDs(PlatformAnthropic), ids)
+}
+
+func TestGetGroupModelsListCandidates_KiroCreateUsesKiroDefaults(t *testing.T) {
+	svc := &adminServiceImpl{}
+	ids, err := svc.GetGroupModelsListCandidates(context.Background(), 0, PlatformKiro)
+	require.NoError(t, err)
+	require.Contains(t, ids, "gpt-5.6-sol")
+	require.Contains(t, ids, "claude-opus-4-8")
+}
