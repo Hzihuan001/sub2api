@@ -48,7 +48,7 @@ export default {
       probeProgress: 'Config validated ✓ · request sent · awaiting service response…', probeResult: 'Config ✓ · request ✓ · HTTP {http} · {status} · {latency} ms',
       name: 'Node name', id: 'Stable node ID', baseUrl: 'Base URL', apiKey: 'API Key', keepSecret: 'Leave blank to keep the saved API Key',
       secretHint: 'Plaintext exists only in this editor and is cleared immediately after a successful save.', clearSecret: 'Explicitly clear the saved API Key', timeout: 'Total timeout (ms)', inputLimit: 'Unicode characters per chunk',
-      toggleNode: 'Toggle node {name}', deleteConfirm: 'Remove “{name}” from the draft? It takes effect after saving.',
+      toggleNode: 'Toggle node {name}', deleteConfirmTitle: 'Remove node?', deleteConfirm: 'Remove “{name}” from the draft? It takes effect after saving.',
     },
     policy: {
       title: 'Audit policy', description: 'Configure group scope, nine input-risk categories, workers, and queue bounds.', scope: 'Scope', allGroups: 'All groups', selectedGroups: 'Selected groups',
