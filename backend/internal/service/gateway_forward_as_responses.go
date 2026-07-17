@@ -46,6 +46,12 @@ func (s *GatewayService) ForwardAsResponses(
 	clientStream := responsesReq.Stream
 
 	// 2. Convert Responses → Anthropic
+	effectiveTools, err := apicompat.EffectiveResponsesTools(&responsesReq)
+	if err != nil {
+		return nil, fmt.Errorf("collect responses tools: %w", err)
+	}
+	customTools := apicompat.CustomToolNames(effectiveTools)
+
 	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
 	if err != nil {
 		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
@@ -103,6 +109,7 @@ func (s *GatewayService) ForwardAsResponses(
 
 	if shouldMimicClaudeCode {
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
+		customTools = responsesCustomToolsWithRewriteAliases(customTools, toolNameRewriteFromContext(c))
 	}
 
 	// 7. Enforce cache_control block limit
@@ -209,12 +216,36 @@ func (s *GatewayService) ForwardAsResponses(
 	var result *ForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, customTools)
 	} else {
-		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, customTools)
 	}
 
 	return result, handleErr
+}
+
+func responsesCustomToolsWithRewriteAliases(customTools map[string]bool, rw *ToolNameRewrite) map[string]bool {
+	if len(customTools) == 0 || rw == nil || len(rw.Forward) == 0 {
+		return customTools
+	}
+
+	var out map[string]bool
+	for original, rewritten := range rw.Forward {
+		if !customTools[original] || strings.TrimSpace(rewritten) == "" {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]bool, len(customTools)+1)
+			for name, ok := range customTools {
+				out[name] = ok
+			}
+		}
+		out[rewritten] = true
+	}
+	if out == nil {
+		return customTools
+	}
+	return out
 }
 
 // ExtractResponsesReasoningEffortFromBody reads Responses API reasoning.effort
@@ -272,6 +303,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	mappedModel string,
 	reasoningEffort *string,
 	startTime time.Time,
+	customTools map[string]bool,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -374,7 +406,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	}
 
 	// Convert to Responses format
-	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
+	responsesResp := apicompat.AnthropicToResponsesResponseWithCustomTools(finalResp, customTools)
 	responsesResp.Model = originalModel // Use original model name
 
 	if s.responseHeaderFilter != nil {
@@ -413,6 +445,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	mappedModel string,
 	reasoningEffort *string,
 	startTime time.Time,
+	customTools map[string]bool,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -427,6 +460,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
+	state.CustomTools = customTools
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true

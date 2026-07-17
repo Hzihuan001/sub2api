@@ -1,6 +1,7 @@
 package apicompat
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -37,9 +38,15 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 		out.MaxTokens = 8192
 	}
 
-	// Convert tools
-	if len(req.Tools) > 0 {
-		out.Tools = convertResponsesToAnthropicTools(req.Tools)
+	// Convert tools. Newer Codex clients can declare runtime tools in
+	// input[].additional_tools instead of the top-level tools field, so use the
+	// shared effective tool collector here as the chat fallback path does.
+	effectiveTools, err := EffectiveResponsesTools(req)
+	if err != nil {
+		return nil, err
+	}
+	if len(effectiveTools) > 0 {
+		out.Tools = convertResponsesToAnthropicTools(effectiveTools)
 	}
 
 	// Convert tool_choice (reverse of convertAnthropicToolChoiceToResponses)
@@ -132,10 +139,13 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				systemParts = append(systemParts, text)
 			}
 
-		case item.Type == "function_call":
-			// function_call → assistant message with tool_use block
+		case item.Type == "function_call" || item.Type == "custom_tool_call":
+			// function_call/custom_tool_call → assistant message with tool_use block
 			input := json.RawMessage("{}")
-			if item.Arguments != "" {
+			if item.Type == "custom_tool_call" {
+				customInput, _ := json.Marshal(map[string]string{"input": item.Input})
+				input = customInput
+			} else if item.Arguments != "" {
 				input = json.RawMessage(item.Arguments)
 			}
 			block := AnthropicContentBlock{
@@ -150,17 +160,12 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				Content: blockJSON,
 			})
 
-		case item.Type == "function_call_output":
-			// function_call_output → user message with tool_result block
-			outputContent := item.Output
-			if outputContent == "" {
-				outputContent = "(empty)"
-			}
-			contentJSON, _ := json.Marshal(outputContent)
+		case item.Type == "function_call_output" || item.Type == "custom_tool_call_output":
+			// *_call_output → user message with tool_result block
 			block := AnthropicContentBlock{
 				Type:      "tool_result",
 				ToolUseID: fromResponsesCallIDToAnthropic(item.CallID),
-				Content:   contentJSON,
+				Content:   responsesToolOutputToAnthropicContent(item.Output),
 			}
 			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
 			messages = append(messages, AnthropicMessage{
@@ -214,6 +219,15 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 	}
 
 	return system, messages, nil
+}
+
+func responsesToolOutputToAnthropicContent(output json.RawMessage) json.RawMessage {
+	trimmed := bytes.TrimSpace(output)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) || bytes.Equal(trimmed, []byte(`""`)) {
+		content, _ := json.Marshal("(empty)")
+		return content
+	}
+	return append(json.RawMessage(nil), trimmed...)
 }
 
 // normalizeAnthropicToolPairing rebuilds the message sequence so it satisfies
@@ -537,10 +551,14 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
 			})
 		case "custom":
+			schema := t.Parameters
+			if len(strings.TrimSpace(string(schema))) == 0 {
+				schema = json.RawMessage(customToolInputSchema)
+			}
 			out = append(out, AnthropicTool{
 				Name:        t.Name,
 				Description: t.Description,
-				InputSchema: normalizeAnthropicInputSchema(t.Parameters),
+				InputSchema: normalizeAnthropicInputSchema(schema),
 			})
 		default:
 			// Pass through unknown tool types
@@ -597,6 +615,7 @@ func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
 //	"required"                                 → {"type":"any"}
 //	"none"                                     → {"type":"none"}
 //	{"type":"function","name":"X"}                 → {"type":"tool","name":"X"}
+//	{"type":"custom","name":"X"}                   → {"type":"tool","name":"X"}
 //	{"type":"function","function":{"name":"X"}}     → {"type":"tool","name":"X"} // legacy
 func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage, error) {
 	// Try as string first
@@ -614,7 +633,7 @@ func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage
 		}
 	}
 
-	// Try as object with type=function
+	// Try as object with type=function/custom
 	var tc struct {
 		Type     string `json:"type"`
 		Name     string `json:"name"`
@@ -622,7 +641,7 @@ func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage
 			Name string `json:"name"`
 		} `json:"function"`
 	}
-	if err := json.Unmarshal(raw, &tc); err == nil && tc.Type == "function" {
+	if err := json.Unmarshal(raw, &tc); err == nil && (tc.Type == "function" || tc.Type == "custom") {
 		name := strings.TrimSpace(tc.Name)
 		if name == "" {
 			name = strings.TrimSpace(tc.Function.Name)

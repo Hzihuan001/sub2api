@@ -230,14 +230,15 @@ type ResponsesInputItem struct {
 	Role    string          `json:"role,omitempty"`
 	Content json.RawMessage `json:"content,omitempty"` // string or []ResponsesContentPart
 
-	// type=function_call
+	// type=function_call / custom_tool_call
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
 	ID        string `json:"id,omitempty"`
 
-	// type=function_call_output
-	Output string `json:"output,omitempty"`
+	// type=function_call_output / custom_tool_call_output
+	Output json.RawMessage `json:"output,omitempty"`
 }
 
 // ResponsesContentPart is a typed content part in a Responses message.
