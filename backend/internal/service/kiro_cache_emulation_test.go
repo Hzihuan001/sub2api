@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/anthropictokenizer"
+	"github.com/stretchr/testify/require"
 )
 
 func TestKiroCacheEmulationGroupDefaultsAndNonKiro(t *testing.T) {
@@ -395,6 +396,129 @@ func TestKiroResponsesCacheEmulationIncludesImageFingerprint(t *testing.T) {
 	}
 }
 
+func TestKiroChatCompletionsCacheEmulationHitsStableHistoryPrefix(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(701, "refresh-chat", "access-chat")
+	group := kiroCacheGroup(1)
+
+	firstMessage := strings.Repeat("stable chat history chunk ", 700)
+	secondMessage := strings.Repeat("latest chat turn chunk one ", 180)
+	thirdMessage := strings.Repeat("latest chat turn chunk two ", 180)
+
+	mappedModel := "claude-sonnet-4-6"
+	inputTokens := 6000
+	firstBody := kiroChatCompletionsConversationBody([]string{firstMessage, secondMessage})
+	first := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, firstBody, mappedModel, inputTokens)
+	require.NotNil(t, first)
+	require.Equal(t, 0, first.CacheReadInputTokens)
+	require.Greater(t, first.CacheCreationInputTokens, 0)
+
+	secondBody := kiroChatCompletionsConversationBody([]string{firstMessage, thirdMessage})
+	second := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, secondBody, mappedModel, inputTokens)
+	require.NotNil(t, second)
+	require.Greater(t, second.CacheReadInputTokens, 0)
+	require.Greater(t, second.CacheCreationInputTokens, 0)
+	require.Less(t, second.CacheCreationInputTokens, first.CacheCreationInputTokens)
+}
+
+func TestKiroChatCompletionsCacheEmulationDoesNotReadChangedHistory(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(702, "refresh-chat", "access-chat")
+	group := kiroCacheGroup(1)
+
+	stable := strings.Repeat("stable chat history chunk ", 700)
+	latest := strings.Repeat("latest chat turn chunk ", 180)
+
+	mappedModel := "claude-sonnet-4-6"
+	inputTokens := 6000
+	firstBody := kiroChatCompletionsConversationBody([]string{stable, latest})
+	first := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, firstBody, mappedModel, inputTokens)
+	require.NotNil(t, first)
+	require.Equal(t, 0, first.CacheReadInputTokens)
+
+	changedHistory := strings.Repeat("changed chat history chunk ", 700)
+	secondBody := kiroChatCompletionsConversationBody([]string{changedHistory, latest})
+	second := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, secondBody, mappedModel, inputTokens)
+	require.NotNil(t, second)
+	require.Equal(t, 0, second.CacheReadInputTokens)
+	require.Greater(t, second.CacheCreationInputTokens, 0)
+}
+
+func TestKiroChatCompletionsCacheEmulationIncludesModelAndToolsInIdentity(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(703, "refresh-chat", "access-chat")
+	group := kiroCacheGroup(1)
+
+	stable := strings.Repeat("stable chat history chunk ", 700)
+	latest := strings.Repeat("latest chat turn chunk ", 180)
+	body := kiroChatCompletionsConversationBody([]string{stable, latest})
+
+	mappedModel := "claude-sonnet-4-6"
+	inputTokens := 6000
+	first := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, body, mappedModel, inputTokens)
+	require.NotNil(t, first)
+
+	otherModel := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, body, "claude-opus-4-1", inputTokens)
+	require.NotNil(t, otherModel)
+	require.Equal(t, 0, otherModel.CacheReadInputTokens)
+
+	changedToolsBody := []byte(strings.Replace(string(body), `"name":"lookup"`, `"name":"search"`, 1))
+	changedTools := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, changedToolsBody, mappedModel, inputTokens)
+	require.NotNil(t, changedTools)
+	require.Equal(t, 0, changedTools.CacheReadInputTokens)
+}
+
+func TestKiroChatCompletionsCacheEmulationIncludesMessageNameInIdentity(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(704, "refresh-chat", "access-chat")
+	group := kiroCacheGroup(1)
+
+	stable := strings.Repeat("stable chat history chunk ", 700)
+	latest := strings.Repeat("latest chat turn chunk ", 180)
+	mappedModel := "claude-sonnet-4-6"
+	inputTokens := 6000
+
+	firstBody := []byte(fmt.Sprintf(`{"model":"gpt-5","messages":[{"role":"user","name":"alice","content":%q},{"role":"user","content":%q}]}`, stable, latest))
+	first := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, firstBody, mappedModel, inputTokens)
+	require.NotNil(t, first)
+	require.Equal(t, 0, first.CacheReadInputTokens)
+
+	changedNameBody := []byte(fmt.Sprintf(`{"model":"gpt-5","messages":[{"role":"user","name":"bob","content":%q},{"role":"user","content":%q}]}`, stable, latest))
+	changedName := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, changedNameBody, mappedModel, inputTokens)
+	require.NotNil(t, changedName)
+	require.Equal(t, 0, changedName.CacheReadInputTokens)
+	require.Greater(t, changedName.CacheCreationInputTokens, 0)
+}
+
+func TestKiroChatCompletionsCacheEmulationDoesNotReadInstructionsOnlyPrefix(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(705, "refresh-chat", "access-chat")
+	group := kiroCacheGroup(1)
+
+	instructions := strings.Repeat("stable instruction chunk ", 700)
+	firstHistory := strings.Repeat("first chat history chunk ", 700)
+	secondHistory := strings.Repeat("second chat history chunk ", 700)
+	latest := strings.Repeat("latest chat turn chunk ", 180)
+	mappedModel := "claude-sonnet-4-6"
+	inputTokens := 9000
+
+	firstBody := []byte(fmt.Sprintf(`{"model":"gpt-5","instructions":%q,"messages":[{"role":"user","content":%q},{"role":"user","content":%q}]}`, instructions, firstHistory, latest))
+	first := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, firstBody, mappedModel, inputTokens)
+	require.NotNil(t, first)
+	require.Equal(t, 0, first.CacheReadInputTokens)
+
+	secondBody := []byte(fmt.Sprintf(`{"model":"gpt-5","instructions":%q,"messages":[{"role":"user","content":%q},{"role":"user","content":%q}]}`, instructions, secondHistory, latest))
+	second := svc.buildKiroChatCompletionsCacheEmulationUsage(context.Background(), account, group, secondBody, mappedModel, inputTokens)
+	require.NotNil(t, second)
+	require.Equal(t, 0, second.CacheReadInputTokens)
+	require.Greater(t, second.CacheCreationInputTokens, 0)
+}
+
 func resetKiroCacheTracker() {
 	globalKiroCacheTracker = &kiroCacheTracker{entries: make(map[uint64]map[[32]byte]kiroCacheEntry)}
 }
@@ -444,6 +568,15 @@ func kiroCacheMultiMessageBody(prefixLabel, tailLabel string) []byte {
 	prefix := strings.Repeat("cacheable prompt chunk "+prefixLabel+" ", 512)
 	tail := strings.Repeat("conversation growth chunk "+tailLabel+" ", 160)
 	return []byte(fmt.Sprintf(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":%q,"cache_control":{"type":"ephemeral"}}]},{"role":"user","content":[{"type":"text","text":%q}]}]}`, prefix, tail))
+}
+
+func kiroChatCompletionsConversationBody(messages []string) []byte {
+	items := make([]string, 0, len(messages)+1)
+	items = append(items, `{"role":"system","content":"You are a precise assistant."}`)
+	for _, message := range messages {
+		items = append(items, fmt.Sprintf(`{"role":"user","content":%q}`, message))
+	}
+	return []byte(fmt.Sprintf(`{"model":"gpt-5","tool_choice":"auto","tools":[{"type":"function","function":{"name":"lookup","description":"lookup data","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}}],"messages":[%s]}`, strings.Join(items, ",")))
 }
 
 func kiroResponsesCacheRequestBody(label, promptCacheKey, previousResponseID string) []byte {

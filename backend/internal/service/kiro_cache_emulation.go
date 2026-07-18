@@ -76,6 +76,22 @@ func (s *GatewayService) buildKiroResponsesCacheEmulationUsage(ctx context.Conte
 	return s.buildKiroCacheEmulationUsageFromProfile(account, group, profile, inputTokens)
 }
 
+func (s *GatewayService) buildKiroChatCompletionsCacheEmulationUsage(ctx context.Context, account *Account, group *Group, body []byte, model string, inputTokens int) *kiroCacheEmulationUsage {
+	NormalizeGroupRuntimeFields(group)
+	if group == nil || !group.EffectiveKiroCacheEmulationEnabled() || account == nil || account.ID <= 0 || len(body) == 0 {
+		return nil
+	}
+	profile, ok := buildKiroChatCompletionsCacheProfile(ctx, body, model, inputTokens)
+	if !ok {
+		return nil
+	}
+	effectiveInputTokens := inputTokens
+	if effectiveInputTokens <= 0 {
+		effectiveInputTokens = profile.totalInputTokens
+	}
+	return s.buildKiroCacheEmulationUsageFromProfile(account, group, profile, effectiveInputTokens)
+}
+
 func (s *GatewayService) buildKiroCacheEmulationUsageFromProfile(account *Account, group *Group, profile *kiroCacheProfile, inputTokens int) *kiroCacheEmulationUsage {
 	if group == nil || account == nil || account.ID <= 0 || profile == nil {
 		return nil
@@ -200,6 +216,46 @@ func buildKiroResponsesCacheProfile(ctx context.Context, body []byte, model stri
 		"previous_response_id": payload["previous_response_id"],
 		"reasoning_effort":     kiroNestedValue(payload, "reasoning", "effort"),
 		"text_format":          kiroNestedValue(payload, "text", "format"),
+	}
+	profile, ok := buildKiroCacheProfileFromBlocks(effectiveModel, totalTokens, prelude, blocks)
+	if ok {
+		profile.scaleBreakpointsToInputTokens = true
+	}
+	return profile, ok
+}
+
+func buildKiroChatCompletionsCacheProfile(ctx context.Context, body []byte, model string, inputTokens int) (*kiroCacheProfile, bool) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, false
+	}
+	blocks := flattenKiroChatCompletionsCacheBlocks(ctx, payload)
+	if len(blocks) == 0 {
+		return nil, false
+	}
+	applyKiroResponsesDefaultBreakpoints(blocks, kiroCacheDefaultTTL)
+
+	effectiveModel := strings.TrimSpace(model)
+	if effectiveModel == "" {
+		effectiveModel, _ = payload["model"].(string)
+	}
+	tools, _ := payload["tools"].([]any)
+	functions, _ := payload["functions"].([]any)
+	totalTokens := inputTokens
+	if totalTokens <= 0 {
+		totalTokens = countKiroChatCompletionsInputTokens(payload, blocks, len(tools)+len(functions))
+	}
+	prelude := map[string]any{
+		"protocol":            "chat_completions",
+		"model":               effectiveModel,
+		"instructions":        payload["instructions"],
+		"tool_choice":         payload["tool_choice"],
+		"function_call":       payload["function_call"],
+		"tools":               kiroJSONCompatibleValue(payload["tools"]),
+		"functions":           kiroJSONCompatibleValue(payload["functions"]),
+		"parallel_tool_calls": payload["parallel_tool_calls"],
+		"reasoning_effort":    payload["reasoning_effort"],
+		"response_format":     kiroJSONCompatibleValue(payload["response_format"]),
 	}
 	profile, ok := buildKiroCacheProfileFromBlocks(effectiveModel, totalTokens, prelude, blocks)
 	if ok {
@@ -338,6 +394,104 @@ func flattenKiroResponsesCacheBlocks(ctx context.Context, payload map[string]any
 	return blocks
 }
 
+func flattenKiroChatCompletionsCacheBlocks(ctx context.Context, payload map[string]any) []kiroPendingBlock {
+	var blocks []kiroPendingBlock
+	if instructions, ok := payload["instructions"].(string); ok && strings.TrimSpace(instructions) != "" {
+		block := map[string]any{"type": "input_text", "text": strings.TrimSpace(instructions)}
+		blocks = append(blocks, kiroPendingBlock{
+			value:  map[string]any{"kind": "instructions", "block": block},
+			tokens: countKiroMessageContentTokens(ctx, block),
+		})
+	}
+
+	messages, _ := payload["messages"].([]any)
+	for messageIndex, rawMessage := range messages {
+		markMessageEnd := isKiroChatCompletionsCacheableMessage(rawMessage)
+		blocks = appendKiroChatCompletionsMessageBlocks(ctx, blocks, messageIndex, rawMessage, markMessageEnd)
+	}
+	return blocks
+}
+
+func isKiroChatCompletionsCacheableMessage(rawMessage any) bool {
+	message, ok := rawMessage.(map[string]any)
+	if !ok {
+		return false
+	}
+	role, _ := message["role"].(string)
+	return strings.TrimSpace(role) != ""
+}
+
+func appendKiroChatCompletionsMessageBlocks(ctx context.Context, blocks []kiroPendingBlock, messageIndex int, rawMessage any, markMessageEnd bool) []kiroPendingBlock {
+	start := len(blocks)
+	message, ok := rawMessage.(map[string]any)
+	if !ok {
+		return blocks
+	}
+	role, _ := message["role"].(string)
+	name, _ := message["name"].(string)
+
+	if content, ok := message["content"]; ok {
+		blocks = appendKiroChatCompletionsContentBlocks(ctx, blocks, messageIndex, role, name, content)
+	}
+	if reasoning, ok := message["reasoning_content"].(string); ok && reasoning != "" {
+		block := map[string]any{"type": "reasoning", "thinking": reasoning}
+		blocks = append(blocks, kiroPendingBlock{
+			value:  map[string]any{"kind": "message_reasoning", "message_index": messageIndex, "role": role, "name": name, "block": block},
+			tokens: countKiroMessageContentTokens(ctx, block),
+		})
+	}
+	if toolCalls, ok := message["tool_calls"]; ok {
+		value := kiroJSONCompatibleValue(toolCalls)
+		blocks = append(blocks, kiroPendingBlock{
+			value:  map[string]any{"kind": "message_tool_calls", "message_index": messageIndex, "role": role, "name": name, "block": value},
+			tokens: countKiroSerializedValueTokens(value),
+		})
+	}
+	if toolCallID, ok := message["tool_call_id"].(string); ok && toolCallID != "" {
+		value := map[string]any{"tool_call_id": toolCallID}
+		blocks = append(blocks, kiroPendingBlock{
+			value:  map[string]any{"kind": "message_tool_call_id", "message_index": messageIndex, "role": role, "name": name, "block": value},
+			tokens: countKiroSerializedValueTokens(value),
+		})
+	}
+	if functionCall, ok := message["function_call"]; ok {
+		value := kiroJSONCompatibleValue(functionCall)
+		blocks = append(blocks, kiroPendingBlock{
+			value:  map[string]any{"kind": "message_function_call", "message_index": messageIndex, "role": role, "name": name, "block": value},
+			tokens: countKiroSerializedValueTokens(value),
+		})
+	}
+	return markKiroResponsesInputItemEnd(blocks, start, messageIndex, markMessageEnd)
+}
+
+func appendKiroChatCompletionsContentBlocks(ctx context.Context, blocks []kiroPendingBlock, messageIndex int, role string, name string, content any) []kiroPendingBlock {
+	switch typed := content.(type) {
+	case string:
+		block := map[string]any{"type": "text", "text": typed}
+		return append(blocks, kiroPendingBlock{
+			value:  map[string]any{"kind": "message", "message_index": messageIndex, "role": role, "name": name, "block_index": 0, "block": block},
+			tokens: countKiroMessageContentTokens(ctx, block),
+		})
+	case []any:
+		for blockIndex, rawBlock := range typed {
+			block := rawBlock
+			if text, ok := rawBlock.(string); ok {
+				block = map[string]any{"type": "text", "text": text}
+			}
+			blocks = append(blocks, kiroPendingBlock{
+				value:  map[string]any{"kind": "message", "message_index": messageIndex, "role": role, "name": name, "block_index": blockIndex, "block": kiroJSONCompatibleValue(block)},
+				tokens: countKiroMessageContentTokens(ctx, block),
+			})
+		}
+	case map[string]any:
+		blocks = append(blocks, kiroPendingBlock{
+			value:  map[string]any{"kind": "message", "message_index": messageIndex, "role": role, "name": name, "block_index": 0, "block": kiroJSONCompatibleValue(typed)},
+			tokens: countKiroMessageContentTokens(ctx, typed),
+		})
+	}
+	return blocks
+}
+
 func applyKiroResponsesDefaultBreakpoints(blocks []kiroPendingBlock, ttl time.Duration) {
 	if len(blocks) == 0 {
 		return
@@ -452,6 +606,17 @@ func countKiroResponsesInputTokens(payload map[string]any, blocks []kiroPendingB
 	}
 	if input, ok := payload["input"].([]any); ok {
 		tokens += len(input) * kiroTokensPerMessage
+	}
+	return max(tokens, 1)
+}
+
+func countKiroChatCompletionsInputTokens(payload map[string]any, blocks []kiroPendingBlock, toolCount int) int {
+	tokens := toolCount * kiroTokensPerTool
+	for _, block := range blocks {
+		tokens += max(block.tokens, 0)
+	}
+	if messages, ok := payload["messages"].([]any); ok {
+		tokens += len(messages) * kiroTokensPerMessage
 	}
 	return max(tokens, 1)
 }
