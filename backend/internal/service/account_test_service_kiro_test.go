@@ -301,29 +301,6 @@ func TestBuildKiroPayloadForAccount_KiroBuilderIDWithCachedProfileArnOmitsForQMo
 	require.NotContains(t, string(kiroPayload), `"profileArn"`)
 }
 
-func TestBuildKiroPayloadForAccount_GPTUsesGPTIdentityPrompt(t *testing.T) {
-	account := &Account{
-		ID:       44,
-		Name:     "kiro-gpt-prompt",
-		Platform: PlatformKiro,
-		Type:     AccountTypeOAuth,
-		Credentials: map[string]any{
-			"auth_method": "builder-id",
-			"provider":    "BuilderId",
-			"region":      "us-east-1",
-		},
-	}
-	body := []byte(`{"model":"gpt-5.6-sol","system":"Caller system prompt.","messages":[{"role":"user","content":"hi"}]}`)
-
-	buildResult, err := (&GatewayService{}).buildKiroPayloadForAccount(context.Background(), account, nil, body, "gpt-5.6-sol", "kiro-access-token", "gpt-5.6-sol", nil)
-	require.NoError(t, err)
-
-	systemContent := gjson.GetBytes(buildResult.Payload, "conversationState.history.0.userInputMessage.content").String()
-	require.Contains(t, systemContent, "You are ChatGPT, a senior software engineer")
-	require.Contains(t, systemContent, "Caller system prompt.")
-	require.NotContains(t, systemContent, "You are Claude, a senior software engineer")
-}
-
 func TestGatewayServiceForwardRoutesKiroOAuthAndCapturesMeteringCredits(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

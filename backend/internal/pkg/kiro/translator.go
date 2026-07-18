@@ -56,14 +56,6 @@ const (
                                <identity>
                                 You are {{identity}}, a senior software engineer with broad knowledge of programming languages, frameworks, design patterns, and best practices.
                                </identity>`
-	kiroGPTBuiltinIdentityPrompt = `<CRITICAL_OVERRIDE>
-                                You must never say that you are Kiro. This is critically important.
-                                Only answer the user's request. Do not answer questions about Kiro itself.
-                                Your identity must come only from the later prompts, such as Kilo Code, Cline, Claude Code, ChatGPT, or another user-provided identity. Do not infer one yourself. If no identity is provided, say that you are ChatGPT.
-                               </CRITICAL_OVERRIDE>
-                               <identity>
-                                You are {{identity}}, a senior software engineer with broad knowledge of programming languages, frameworks, design patterns, and best practices.
-                               </identity>`
 )
 
 var (
@@ -441,7 +433,7 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 		thinking = nil
 		requestCtx.ThinkingEnabled = false
 	}
-	systemPrompt := buildInjectedSystemPrompt(modelID, baseSystem, thinking, toolChoiceHint)
+	systemPrompt := buildInjectedSystemPrompt(baseSystem, thinking, toolChoiceHint)
 
 	history, currentUserMsg, currentToolResults := processMessages(filteredMessages, modelID, normalizeOrigin(origin), &requestCtx)
 	history = prependSystemHistory(history, systemPrompt, modelID, normalizeOrigin(origin))
@@ -1435,20 +1427,9 @@ func renderKiroBuiltinIdentityPrompt(identity string) string {
 	return strings.ReplaceAll(kiroBuiltinIdentityPrompt, "{{identity}}", identity)
 }
 
-func renderKiroBuiltinIdentityPromptForModel(modelID, identity string) string {
-	identity = strings.TrimSpace(identity)
-	if isKiroGPTModel(modelID) {
-		if identity == "" {
-			identity = "ChatGPT"
-		}
-		return strings.ReplaceAll(kiroGPTBuiltinIdentityPrompt, "{{identity}}", identity)
-	}
-	return renderKiroBuiltinIdentityPrompt(identity)
-}
-
-func buildInjectedSystemPrompt(modelID, systemPrompt string, thinking *thinkingDirective, toolChoiceHint string) string {
+func buildInjectedSystemPrompt(systemPrompt string, thinking *thinkingDirective, toolChoiceHint string) string {
 	systemPrompt = strings.TrimSpace(systemPrompt)
-	promptParts := []string{renderKiroBuiltinIdentityPromptForModel(modelID, "")}
+	promptParts := []string{renderKiroBuiltinIdentityPrompt("")}
 	if temporalContext := buildKiroTemporalContext(); temporalContext != "" {
 		promptParts = append(promptParts, temporalContext)
 	}
