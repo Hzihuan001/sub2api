@@ -263,6 +263,138 @@ func TestKiroCacheEmulationIncludesImageTokensAndKeepsImageFingerprint(t *testin
 	}
 }
 
+func TestKiroResponsesCacheEmulationUsesFullInputPrefix(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(101, "refresh-responses", "access-responses")
+	group := kiroCacheGroup(1)
+	body := kiroResponsesCacheRequestBody("stable", "workspace-a", "resp-a")
+
+	first := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, body, "gpt-5", 2400)
+	if first == nil || first.CacheCreationInputTokens != 2400 || first.CacheReadInputTokens != 0 || first.InputTokens != 0 {
+		t.Fatalf("unexpected first responses usage: %+v", first)
+	}
+
+	second := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, body, "gpt-5", 2400)
+	if second == nil || second.CacheReadInputTokens != 2400 || second.CacheCreationInputTokens != 0 || second.InputTokens != 0 {
+		t.Fatalf("unexpected second responses usage: %+v", second)
+	}
+}
+
+func TestKiroResponsesCacheEmulationHitsStableHistoryPrefix(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(106, "refresh-responses-history", "access-responses-history")
+	group := kiroCacheGroup(1)
+	prefixText := strings.Repeat("stable codex history prefix ", 640)
+	firstBody := kiroResponsesConversationRequestBody("workspace-history", []string{prefixText})
+	secondBody := kiroResponsesConversationRequestBody("workspace-history", []string{prefixText, strings.Repeat("new codex tail ", 160)})
+
+	first := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, firstBody, "gpt-5", 2600)
+	if first == nil || first.CacheReadInputTokens != 0 || first.CacheCreationInputTokens <= 0 {
+		t.Fatalf("first request should create cache: %+v", first)
+	}
+
+	second := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, secondBody, "gpt-5", 3200)
+	if second == nil || second.CacheReadInputTokens <= 0 || second.CacheCreationInputTokens <= 0 {
+		t.Fatalf("grown conversation should read stable prefix and create tail: %+v", second)
+	}
+	if second.CacheReadInputTokens >= 3200 {
+		t.Fatalf("grown conversation should not treat the whole request as cache read: %+v", second)
+	}
+}
+
+func TestKiroResponsesCacheEmulationDoesNotReadChangedLatestItem(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(107, "refresh-responses-tail", "access-responses-tail")
+	group := kiroCacheGroup(1)
+	stablePrefix := strings.Repeat("stable codex history prefix ", 640)
+	firstBody := kiroResponsesConversationRequestBody("workspace-tail", []string{stablePrefix, strings.Repeat("first latest item ", 180)})
+	secondBody := kiroResponsesConversationRequestBody("workspace-tail", []string{stablePrefix, strings.Repeat("changed latest item ", 180)})
+
+	first := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, firstBody, "gpt-5", 3200)
+	if first == nil || first.CacheCreationInputTokens <= 0 || first.CacheReadInputTokens != 0 {
+		t.Fatalf("first request should create cache: %+v", first)
+	}
+
+	second := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, secondBody, "gpt-5", 3200)
+	if second == nil || second.CacheReadInputTokens <= 0 || second.CacheCreationInputTokens <= 0 {
+		t.Fatalf("changed latest item should read stable prefix and create changed tail: %+v", second)
+	}
+	if second.CacheReadInputTokens >= first.CacheCreationInputTokens {
+		t.Fatalf("changed latest item should not be treated as a full cache read: first=%+v second=%+v", first, second)
+	}
+}
+
+func TestKiroResponsesCacheEmulationPromptCacheKeyIsolatesNamespaces(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(102, "refresh-responses-key", "access-responses-key")
+	group := kiroCacheGroup(1)
+	bodyA := kiroResponsesCacheRequestBody("same", "workspace-a", "resp-a")
+	bodyB := kiroResponsesCacheRequestBody("same", "workspace-b", "resp-a")
+
+	_ = svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, bodyA, "gpt-5", 2400)
+	otherNamespace := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, bodyB, "gpt-5", 2400)
+	if otherNamespace == nil || otherNamespace.CacheReadInputTokens != 0 || otherNamespace.CacheCreationInputTokens != 2400 {
+		t.Fatalf("different prompt_cache_key should miss: %+v", otherNamespace)
+	}
+}
+
+func TestKiroResponsesCacheEmulationPreviousResponseIDIsolatesNamespaces(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(103, "refresh-responses-prev", "access-responses-prev")
+	group := kiroCacheGroup(1)
+	bodyA := kiroResponsesCacheRequestBody("same", "workspace-a", "resp-a")
+	bodyB := kiroResponsesCacheRequestBody("same", "workspace-a", "resp-b")
+
+	_ = svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, bodyA, "gpt-5", 2400)
+	otherPrevious := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, bodyB, "gpt-5", 2400)
+	if otherPrevious == nil || otherPrevious.CacheReadInputTokens != 0 || otherPrevious.CacheCreationInputTokens != 2400 {
+		t.Fatalf("different previous_response_id should miss: %+v", otherPrevious)
+	}
+}
+
+func TestKiroResponsesCacheEmulationPreludeFieldsAffectFingerprint(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(104, "refresh-responses-prelude", "access-responses-prelude")
+	group := kiroCacheGroup(1)
+	base := kiroResponsesCacheRequestBodyWithOptions("same", "workspace-a", "resp-a", "gpt-5", "auto", "medium", `{"type":"json_object"}`, "lookup")
+	changed := kiroResponsesCacheRequestBodyWithOptions("same", "workspace-a", "resp-a", "gpt-5-mini", "required", "high", `{"type":"text"}`, "search")
+
+	_ = svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, base, "gpt-5", 2400)
+	miss := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, changed, "gpt-5-mini", 2400)
+	if miss == nil || miss.CacheReadInputTokens != 0 || miss.CacheCreationInputTokens != 2400 {
+		t.Fatalf("model/tools/tool_choice/reasoning/text changes should miss: %+v", miss)
+	}
+}
+
+func TestKiroResponsesCacheEmulationIncludesImageFingerprint(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := kiroCacheAccount(105, "refresh-responses-image", "access-responses-image")
+	group := kiroCacheGroup(1)
+	body := kiroResponsesImageCacheRequestBody(t, "same", color.RGBA{R: 1, A: 255})
+
+	first := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, body, "gpt-5", 2400)
+	if first == nil || first.CacheCreationInputTokens != 2400 || first.CacheReadInputTokens != 0 {
+		t.Fatalf("unexpected first responses image usage: %+v", first)
+	}
+	second := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, body, "gpt-5", 2400)
+	if second == nil || second.CacheReadInputTokens != 2400 || second.CacheCreationInputTokens != 0 {
+		t.Fatalf("same responses image should hit: %+v", second)
+	}
+
+	changed := kiroResponsesImageCacheRequestBody(t, "same", color.RGBA{G: 1, A: 255})
+	miss := svc.buildKiroResponsesCacheEmulationUsage(context.Background(), account, group, changed, "gpt-5", 2400)
+	if miss == nil || miss.CacheReadInputTokens != 0 || miss.CacheCreationInputTokens != 2400 {
+		t.Fatalf("different responses image should miss: %+v", miss)
+	}
+}
+
 func resetKiroCacheTracker() {
 	globalKiroCacheTracker = &kiroCacheTracker{entries: make(map[uint64]map[[32]byte]kiroCacheEntry)}
 }
@@ -312,4 +444,27 @@ func kiroCacheMultiMessageBody(prefixLabel, tailLabel string) []byte {
 	prefix := strings.Repeat("cacheable prompt chunk "+prefixLabel+" ", 512)
 	tail := strings.Repeat("conversation growth chunk "+tailLabel+" ", 160)
 	return []byte(fmt.Sprintf(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":%q,"cache_control":{"type":"ephemeral"}}]},{"role":"user","content":[{"type":"text","text":%q}]}]}`, prefix, tail))
+}
+
+func kiroResponsesCacheRequestBody(label, promptCacheKey, previousResponseID string) []byte {
+	return kiroResponsesCacheRequestBodyWithOptions(label, promptCacheKey, previousResponseID, "gpt-5", "auto", "medium", `{"type":"json_object"}`, "lookup")
+}
+
+func kiroResponsesCacheRequestBodyWithOptions(label, promptCacheKey, previousResponseID, model, toolChoice, effort, textFormat, toolName string) []byte {
+	prompt := strings.Repeat("cacheable responses prompt chunk "+label+" ", 512)
+	return []byte(fmt.Sprintf(`{"model":%q,"instructions":"You are a precise assistant.","prompt_cache_key":%q,"previous_response_id":%q,"tool_choice":%q,"reasoning":{"effort":%q},"text":{"format":%s},"tools":[{"type":"function","name":%q,"description":"lookup data","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}],"input":[{"role":"user","content":[{"type":"input_text","text":%q}]}]}`, model, promptCacheKey, previousResponseID, toolChoice, effort, textFormat, toolName, prompt))
+}
+
+func kiroResponsesConversationRequestBody(promptCacheKey string, messages []string) []byte {
+	items := make([]string, 0, len(messages))
+	for _, message := range messages {
+		items = append(items, fmt.Sprintf(`{"type":"message","role":"user","content":[{"type":"input_text","text":%q}]}`, message))
+	}
+	return []byte(fmt.Sprintf(`{"model":"gpt-5","instructions":"You are a precise assistant.","prompt_cache_key":%q,"tool_choice":"auto","tools":[{"type":"function","name":"lookup","description":"lookup data","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}],"input":[%s]}`, promptCacheKey, strings.Join(items, ",")))
+}
+
+func kiroResponsesImageCacheRequestBody(t *testing.T, label string, fill color.RGBA) []byte {
+	prompt := strings.Repeat("cacheable responses visual prompt "+label+" ", 512)
+	imageURL := kiroPNGDataURL(t, 384, 256, fill)
+	return []byte(fmt.Sprintf(`{"model":"gpt-5","instructions":"Describe visual changes precisely.","prompt_cache_key":"workspace-image","previous_response_id":"resp-image","input":[{"role":"user","content":[{"type":"input_text","text":%q},{"type":"input_image","image_url":%q}]}]}`, prompt, imageURL))
 }

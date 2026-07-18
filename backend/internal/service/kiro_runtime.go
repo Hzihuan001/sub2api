@@ -97,7 +97,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	}
 
 	if parsed.Stream {
-		resp, _, err := s.openKiroAnthropicStreamResponse(ctx, account, parsed, body, mappedModel, originalModel, c.Request.Header, parsed.Group)
+		resp, _, err := s.openKiroAnthropicStreamResponse(ctx, account, parsed, body, mappedModel, originalModel, c.Request.Header, parsed.Group, nil)
 		if err != nil {
 			var failoverErr *UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
@@ -273,7 +273,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 	}, nil
 }
 
-func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, mappedModel, requestModel string, headers http.Header, group *Group) (*http.Response, int, error) {
+func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, account *Account, parsed *ParsedRequest, anthropicBody []byte, mappedModel, requestModel string, headers http.Header, group *Group, cacheUsageOverride *kiroCacheEmulationUsage) (*http.Response, int, error) {
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, 0, err
@@ -286,7 +286,10 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 
 	inputTokens := estimateKiroInputTokens(ctx, anthropicBody)
 	if isOnlyWebSearchToolInBody(anthropicBody) {
-		cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+		cacheUsage := cacheUsageOverride
+		if cacheUsage == nil {
+			cacheUsage = s.buildKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+		}
 		pr, pw := io.Pipe()
 		headers := make(http.Header)
 		headers.Set("Content-Type", "text/event-stream")
@@ -316,7 +319,10 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp, inputTokens, nil
 	}
-	cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+	cacheUsage := cacheUsageOverride
+	if cacheUsage == nil {
+		cacheUsage = s.buildKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
+	}
 	requestCtx.CacheEmulationUsage = cacheUsage.toKiroUsage()
 
 	pr, pw := io.Pipe()
