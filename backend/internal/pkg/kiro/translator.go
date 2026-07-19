@@ -2313,7 +2313,9 @@ func buildUserMessageStruct(msg gjson.Result, modelID, origin string, keepImages
 				if resultContent.IsArray() {
 					textContents = textContents[:0]
 					for _, item := range resultContent.Array() {
-						if item.Get("type").String() == "text" {
+						// codex 经 responses->anthropic 后, tool_result.content 用 Responses 的
+						// "input_text" 而非 Anthropic 的 "text"; 两者都需提取, 否则工具结果被丢成空。
+						if t := item.Get("type").String(); t == "text" || t == "input_text" {
 							textContents = append(textContents, KiroTextContent{Text: compactKiroToolResultText(item.Get("text").String(), status == "error")})
 						} else if item.Type == gjson.String {
 							textContents = append(textContents, KiroTextContent{Text: compactKiroToolResultText(item.String(), status == "error")})
