@@ -776,20 +776,34 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		return closeStreamingTool(toolUseID)
 	}
 	writeTextDelta := func(text string, allowWhitespace bool) error {
-		if text == "" || (!allowWhitespace && strings.TrimSpace(text) == "") {
+		if text == "" {
 			return nil
 		}
-		if err := closeOpenStreamingTool(); err != nil {
-			return err
-		}
-		if !textBlockOpen && !allowWhitespace {
-			if pendingLeadingWhitespace != "" {
-				text = strings.TrimLeftFunc(pendingLeadingWhitespace+text, unicode.IsSpace)
+		if !allowWhitespace {
+			if strings.TrimSpace(text) == "" {
+				// 纯空白片段: 文本块未开启时视为前导噪音直接丢弃;
+				// 已开启时先缓冲, 仅当后续出现真实文本才补回(中段空行);
+				// 若流结束时仍在缓冲则视为尾部空白, 自然不吐出。
+				if textBlockOpen {
+					pendingLeadingWhitespace += text
+				}
+				return nil
+			}
+			if !textBlockOpen {
+				// 首段真实文本: 裁掉其前导空白
+				text = strings.TrimLeftFunc(text, unicode.IsSpace)
 				pendingLeadingWhitespace = ""
 				if text == "" {
 					return nil
 				}
+			} else if pendingLeadingWhitespace != "" {
+				// 中段: 把缓冲的空行补回本段文本之前
+				text = pendingLeadingWhitespace + text
+				pendingLeadingWhitespace = ""
 			}
+		}
+		if err := closeOpenStreamingTool(); err != nil {
+			return err
 		}
 		if err := ensureMessageStart(); err != nil {
 			return err
@@ -829,7 +843,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		if stopSequenceMatched != "" {
 			return nil
 		}
-		if text == "" || (!allowWhitespace && strings.TrimSpace(text) == "") {
+		if text == "" {
 			return nil
 		}
 		if len(requestCtx.StopSequences) == 0 {
@@ -4064,7 +4078,10 @@ func toolUseContentKey(tool KiroToolUse) string {
 func drainEmbeddedToolText(text string) (cleanText string, toolUses []KiroToolUse, pending string) {
 	complete, pending := splitCompleteEmbeddedToolText(text)
 	if strings.TrimSpace(complete) == "" {
-		return "", nil, pending
+		// complete 为纯空白(无内嵌工具调用): 作为普通文本原样返回,
+		// 交由下游 writeTextDelta 的缓冲逻辑决定保留(中段空行)还是丢弃(首尾)。
+		// 不能在此直接吞掉, 否则标题后的独立 \n\n chunk 会丢失, 破坏 markdown 结构。
+		return complete, nil, pending
 	}
 	cleanText, toolUses = parseEmbeddedToolCalls(complete)
 	return cleanText, deduplicateToolUses(toolUses), pending
