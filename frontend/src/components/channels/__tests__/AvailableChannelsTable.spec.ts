@@ -1,39 +1,21 @@
-import { createPinia } from 'pinia'
-import { shallowMount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import AvailableChannelsTable from '../AvailableChannelsTable.vue'
+import { describe, expect, it } from 'vitest'
 
-vi.mock('vue-i18n', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('vue-i18n')>()
-  return {
-    ...actual,
-    useI18n: () => ({ t: (key: string) => key })
-  }
-})
+const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AvailableChannelsTable.vue')
+const componentSource = readFileSync(componentPath, 'utf8')
 
-describe('AvailableChannelsTable', () => {
-  it('exposes the table-wrapper class required by TablePageLayout scrolling', () => {
-    const wrapper = shallowMount(AvailableChannelsTable, {
-      global: { plugins: [createPinia()] },
-      props: {
-        columns: {
-          name: 'Name',
-          description: 'Description',
-          platform: 'Platform',
-          groups: 'Groups',
-          supportedModels: 'Supported models'
-        },
-        rows: [],
-        loading: false,
-        pricingKeyPrefix: 'pricing',
-        noPricingLabel: 'No pricing',
-        noModelsLabel: 'No models',
-        emptyLabel: 'Empty',
-        userGroupRates: {}
-      }
-    })
+describe('AvailableChannelsTable scroll integration', () => {
+  // #4555：根元素必须是 TablePageLayout 滚动链约定的 .table-wrapper，
+  // 否则内容超出视口高度时被外层 overflow-hidden 裁剪且没有滚动条。
+  it('mounts the table on the .table-wrapper scroll hook', () => {
+    expect(componentSource).toMatch(/<div class="table-wrapper">\s*<table/)
+  })
 
-    expect(wrapper.classes()).toContain('table-wrapper')
+  it('does not clip content with its own overflow-hidden card wrapper', () => {
+    expect(componentSource).not.toMatch(/class="table-wrapper card overflow-hidden"/)
+    expect(componentSource).not.toMatch(/<div class="card overflow-hidden">/)
   })
 })
