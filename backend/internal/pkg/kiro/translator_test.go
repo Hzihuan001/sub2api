@@ -2497,7 +2497,14 @@ func TestNormalizeStreamingToolInput(t *testing.T) {
 		{name: "rejects array", toolName: "custom_tool", raw: `[]`, wantOK: false},
 		{name: "rejects scalar", toolName: "custom_tool", raw: `"value"`, wantOK: false},
 		{name: "rejects null", toolName: "custom_tool", raw: `null`, wantOK: false},
-		{name: "rejects empty input", toolName: "custom_tool", raw: ` `, wantOK: false},
+		// 空/空白输入归一化为 {}，与无参工具调用语义一致（见 fix(translator): 修复输入为空时的处理逻辑）
+		{
+			name:     "accepts empty input as empty object",
+			toolName: "custom_tool",
+			raw:      ` `,
+			want:     map[string]any{},
+			wantOK:   true,
+		},
 		{name: "rejects malformed syntax", toolName: "custom_tool", raw: `{"x":}`, wantOK: false},
 	}
 
