@@ -131,6 +131,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if compatReplayGuardEnabled && account.Type != AccountTypeOAuth {
 		appendOpenAICompatClaudeCodeTodoGuard(responsesReq)
 	}
+	// Grok + Claude Code：补全 citation fence / 避免裸 LaTeX（幂等 developer 块）。
+	// 必须在 patchGrokResponsesBody 之前，保证上游 body 与 cache 前缀稳定。
+	// 独立于 todo-guard：Grok 通常不走 compatReplayGuardEnabled。
+	if shouldInjectGrokClaudeCodeStyleGuard(account, c, body) {
+		_ = appendGrokClaudeCodeStyleGuard(responsesReq)
+	}
 
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
