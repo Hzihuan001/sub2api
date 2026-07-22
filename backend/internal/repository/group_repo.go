@@ -97,6 +97,8 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
 		SetRpmLimit(groupIn.RPMLimit).
+SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
+		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
 		SetKiroCacheEmulationEnabled(groupIn.KiroCacheEmulationEnabled).
 		SetKiroAutoStickyEnabled(groupIn.KiroAutoStickyEnabled).
 		SetKiroStickySessionTTLSeconds(groupIn.KiroStickySessionTTLSeconds).
@@ -266,6 +268,8 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
 		SetRpmLimit(groupIn.RPMLimit).
+SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
+		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
 		SetKiroCacheEmulationEnabled(groupIn.KiroCacheEmulationEnabled).
 		SetKiroAutoStickyEnabled(groupIn.KiroAutoStickyEnabled).
 		SetKiroStickySessionTTLSeconds(groupIn.KiroStickySessionTTLSeconds).

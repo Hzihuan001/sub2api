@@ -256,6 +256,10 @@ type CreateGroupInput struct {
 	ModelsListConfig            GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
+// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
+	MaxReasoningEffort string
+	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
+	ReasoningEffortMappings []ReasoningEffortMapping
 	// Kiro 模拟缓存配置（仅 kiro 分组生效）
 	KiroCacheEmulationEnabled   bool
 	KiroAutoStickyEnabled       *bool
@@ -318,6 +322,10 @@ type UpdateGroupInput struct {
 	ModelsListConfig            *GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
+// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。
+	MaxReasoningEffort *string
+	// ReasoningEffortMappings nil 表示不修改，空数组表示清空，非空数组表示替换。
+	ReasoningEffortMappings *[]ReasoningEffortMapping
 	// Kiro 模拟缓存配置（仅 kiro 分组生效）
 	KiroCacheEmulationEnabled   *bool
 	KiroAutoStickyEnabled       *bool

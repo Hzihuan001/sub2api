@@ -882,6 +882,8 @@ var (
 		{Name: "messages_dispatch_model_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "models_list_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
+		{Name: "max_reasoning_effort", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "reasoning_effort_mappings", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "kiro_cache_emulation_enabled", Type: field.TypeBool, Default: false},
 		{Name: "kiro_auto_sticky_enabled", Type: field.TypeBool, Default: true},
 		{Name: "kiro_sticky_session_ttl_seconds", Type: field.TypeInt, Default: 3600},

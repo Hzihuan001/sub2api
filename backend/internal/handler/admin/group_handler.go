@@ -132,6 +132,10 @@ type CreateGroupRequest struct {
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
+// OpenAI/Codex 请求推理强度上限，空字符串表示不限制。
+	MaxReasoningEffort string `json:"max_reasoning_effort"`
+	// OpenAI/Codex 推理强度精确映射。
+	ReasoningEffortMappings []service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 	// Kiro 模拟缓存配置（仅 kiro 分组生效）
 	KiroCacheEmulationEnabled   bool     `json:"kiro_cache_emulation_enabled"`
 	KiroAutoStickyEnabled       *bool    `json:"kiro_auto_sticky_enabled"`
@@ -192,6 +196,10 @@ type UpdateGroupRequest struct {
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
+// OpenAI/Codex 请求推理强度上限；空字符串清除，nil 不修改。
+	MaxReasoningEffort *string `json:"max_reasoning_effort"`
+	// nil 不修改，空数组清空，非空数组替换。
+	ReasoningEffortMappings *[]service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 	// Kiro 模拟缓存配置（仅 kiro 分组生效）
 	KiroCacheEmulationEnabled   *bool    `json:"kiro_cache_emulation_enabled"`
 	KiroAutoStickyEnabled       *bool    `json:"kiro_auto_sticky_enabled"`
@@ -366,6 +374,8 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+MaxReasoningEffort:              req.MaxReasoningEffort,
+		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		KiroCacheEmulationEnabled:       req.KiroCacheEmulationEnabled,
 		KiroAutoStickyEnabled:           req.KiroAutoStickyEnabled,
 		KiroStickySessionTTLSeconds:     req.KiroStickySessionTTLSeconds,
@@ -487,6 +497,8 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+MaxReasoningEffort:              req.MaxReasoningEffort,
+		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		KiroCacheEmulationEnabled:       req.KiroCacheEmulationEnabled,
 		KiroAutoStickyEnabled:           req.KiroAutoStickyEnabled,
 		KiroStickySessionTTLSeconds:     req.KiroStickySessionTTLSeconds,

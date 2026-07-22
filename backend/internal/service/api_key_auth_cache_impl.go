@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 17 // v17: include batch image/video pricing, Kiro endpoint/cache, group peak rate, and group web search per-call pricing
+const apiKeyAuthSnapshotVersion = 18 // v18: Kiro endpoint/cache + group peak/web-search + reasoning effort ceiling/mappings
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -384,7 +384,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 	}
 	if groupForSnapshot != nil {
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
-			ID:                              groupForSnapshot.ID,
+ID:                              groupForSnapshot.ID,
 			Name:                            groupForSnapshot.Name,
 			Platform:                        groupForSnapshot.Platform,
 			IsExclusive:                     groupForSnapshot.IsExclusive,
@@ -419,6 +419,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			MessagesDispatchModelConfig:     groupForSnapshot.MessagesDispatchModelConfig,
 			ModelsListConfig:                groupForSnapshot.ModelsListConfig,
 			RPMLimit:                        groupForSnapshot.RPMLimit,
+			MaxReasoningEffort:              groupForSnapshot.MaxReasoningEffort,
+			ReasoningEffortMappings:         groupForSnapshot.ReasoningEffortMappings,
 			KiroCacheEmulationEnabled:       groupForSnapshot.EffectiveKiroCacheEmulationEnabled(),
 			KiroAutoStickyEnabled:           groupForSnapshot.EffectiveKiroAutoStickyEnabled(),
 			KiroStickySessionTTLSeconds:     groupForSnapshot.EffectiveKiroStickySessionTTLSeconds(),
@@ -508,6 +510,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			ModelsListConfig:                snapshot.Group.ModelsListConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
+MaxReasoningEffort:              snapshot.Group.MaxReasoningEffort,
+			ReasoningEffortMappings:         snapshot.Group.ReasoningEffortMappings,
 			KiroCacheEmulationEnabled:       snapshot.Group.KiroCacheEmulationEnabled,
 			KiroAutoStickyEnabled:           snapshot.Group.KiroAutoStickyEnabled,
 			KiroStickySessionTTLSeconds:     snapshot.Group.KiroStickySessionTTLSeconds,
