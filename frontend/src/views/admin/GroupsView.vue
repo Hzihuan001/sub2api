@@ -3599,6 +3599,18 @@
       @cancel="showDeleteDialog = false"
     />
 
+    <!-- Composite Route Delete Confirmation -->
+    <ConfirmDialog
+      :show="showCompositeRouteDeleteDialog"
+      :title="t('common.delete')"
+      :message="t('admin.groups.compositeRoutes.deleteConfirm')"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmDeleteCompositeRoute"
+      @cancel="cancelDeleteCompositeRoute"
+    />
+
     <!-- Sort Order Modal -->
     <BaseDialog
       :show="showSortModal"
@@ -4553,11 +4565,13 @@ let abortController: AbortController | null = null;
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
 const showDeleteDialog = ref(false);
+const showCompositeRouteDeleteDialog = ref(false);
 const showSortModal = ref(false);
 const submitting = ref(false);
 const sortSubmitting = ref(false);
 const editingGroup = ref<AdminGroup | null>(null);
 const deletingGroup = ref<AdminGroup | null>(null);
+const deletingCompositeRoute = ref<CompositeModelRoute | null>(null);
 const duplicatingGroupIds = reactive(new Set<number>());
 const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
@@ -6004,9 +6018,20 @@ const saveCompositeRoute = async () => {
   }
 };
 
-const deleteCompositeRoute = async (route: CompositeModelRoute) => {
+const deleteCompositeRoute = (route: CompositeModelRoute) => {
   if (!compositeRoutesGroup.value) return;
-  if (!window.confirm(t("admin.groups.compositeRoutes.deleteConfirm"))) return;
+  deletingCompositeRoute.value = route;
+  showCompositeRouteDeleteDialog.value = true;
+};
+
+const cancelDeleteCompositeRoute = () => {
+  showCompositeRouteDeleteDialog.value = false;
+  deletingCompositeRoute.value = null;
+};
+
+const confirmDeleteCompositeRoute = async () => {
+  if (!compositeRoutesGroup.value || !deletingCompositeRoute.value) return;
+  const route = deletingCompositeRoute.value;
   try {
     await adminAPI.groups.deleteCompositeRoute(
       compositeRoutesGroup.value.id,
@@ -6016,6 +6041,8 @@ const deleteCompositeRoute = async (route: CompositeModelRoute) => {
       resetCompositeRouteForm();
     }
     appStore.showSuccess(t("admin.groups.compositeRoutes.routeDeleted"));
+    showCompositeRouteDeleteDialog.value = false;
+    deletingCompositeRoute.value = null;
     await loadCompositeRoutes();
   } catch (error: any) {
     appStore.showError(
