@@ -38,6 +38,8 @@ func TestDefaultKiroModelMapping_MatchesKiroReferenceModels(t *testing.T) {
 		"claude-opus-4-7-thinking":            "claude-opus-4.7",
 		"claude-opus-4-6":                     "claude-opus-4.6",
 		"claude-opus-4-6-thinking":            "claude-opus-4.6",
+		"claude-opus-5":                       "claude-opus-5",
+		"claude-opus-5-thinking":              "claude-opus-5",
 		"claude-sonnet-5":                     "claude-sonnet-5",
 		"claude-sonnet-5-thinking":            "claude-sonnet-5",
 		"claude-sonnet-4-6":                   "claude-sonnet-4.6",

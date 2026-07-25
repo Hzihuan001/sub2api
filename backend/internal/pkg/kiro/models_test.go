@@ -22,6 +22,8 @@ func TestDefaultModels_MatchesKiroReferenceModels(t *testing.T) {
 		"claude-opus-4-7-thinking",
 		"claude-opus-4-6",
 		"claude-opus-4-6-thinking",
+		"claude-opus-5",
+		"claude-opus-5-thinking",
 		"claude-sonnet-5",
 		"claude-sonnet-5-thinking",
 		"claude-sonnet-4-6",
@@ -40,6 +42,8 @@ func TestDefaultModels_MatchesKiroReferenceModels(t *testing.T) {
 	require.Contains(t, ids, "claude-sonnet-4-6")
 	require.Contains(t, ids, "claude-opus-4-7")
 	require.Contains(t, ids, "claude-opus-4-8")
+	require.Contains(t, ids, "claude-opus-5")
+	require.Contains(t, ids, "claude-opus-5-thinking")
 	require.Contains(t, ids, "claude-haiku-4-5-20251001-thinking")
 	require.NotContains(t, ids, "gpt-5.6")
 	require.NotContains(t, ids, "auto")

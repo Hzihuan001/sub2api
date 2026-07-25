@@ -371,6 +371,23 @@ func TestBuildKiroPayloadInjectsAdaptiveThinkingForOpus46ThinkingModel(t *testin
 	require.NotContains(t, systemContent, "[Context: Current time is ")
 }
 
+func TestBuildKiroPayloadInjectsAdaptiveThinkingForOpus5ThinkingModel(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-opus-5-thinking",
+		"messages":[{"role":"user","content":"hello kiro"}]
+	}`)
+
+	kiroBuildResult, err := BuildKiroPayloadWithContext(body, "claude-opus-5", "", "AI_EDITOR", nil)
+	require.NoError(t, err)
+	payload := kiroBuildResult.Payload
+
+	systemContent := gjson.GetBytes(payload, "conversationState.history.0.userInputMessage.content").String()
+	require.Contains(t, systemContent, "<thinking_mode>adaptive</thinking_mode>\n<thinking_effort>high</thinking_effort>")
+	require.Equal(t, "adaptive", gjson.GetBytes(payload, "additionalModelRequestFields.thinking.type").String())
+	require.Equal(t, "high", gjson.GetBytes(payload, "additionalModelRequestFields.output_config.effort").String())
+	require.True(t, kiroBuildResult.Context.ThinkingEnabled)
+}
+
 func TestBuildKiroPayloadAddsAdditionalModelRequestFieldsForOutputConfigModels(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -437,6 +454,7 @@ func TestBuildKiroPayloadEnablesImplicitThinkingTagStrippingForOpus47And48(t *te
 	}{
 		{name: "opus-4.7 plain", model: "claude-opus-4-7", mapped: "claude-opus-4.7", wantStr: true},
 		{name: "opus-4.8 plain", model: "claude-opus-4-8", mapped: "claude-opus-4.8", wantStr: true},
+		{name: "opus-5 plain", model: "claude-opus-5", mapped: "claude-opus-5", wantStr: true},
 		{name: "sonnet-4.5 plain stays disabled", model: "claude-sonnet-4-5", mapped: "claude-sonnet-4.5", wantStr: false},
 	}
 	for _, tc := range cases {
@@ -2546,6 +2564,8 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 		"claude-opus-4-7":                     "claude-opus-4.7",
 		"claude-opus-4-7-thinking":            "claude-opus-4.7",
 		"claude-opus-4.7":                     "claude-opus-4.7",
+		"claude-opus-5":                       "claude-opus-5",
+		"claude-opus-5-thinking":              "claude-opus-5",
 		"claude-sonnet-4-6":                   "claude-sonnet-4.6",
 		"claude-sonnet-4-6-thinking":          "claude-sonnet-4.6",
 		"claude-sonnet-4.6":                   "claude-sonnet-4.6",
@@ -2606,6 +2626,13 @@ func TestKiroMaxOutputTokensForGPT56Models(t *testing.T) {
 	require.Equal(t, kiroDefaultMaxOutputTokens, kiroMaxOutputTokensForModel("gpt-5.6"))
 }
 
+func TestKiroMaxOutputTokensForOpus5(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 128000, kiroMaxOutputTokensForModel("claude-opus-5"))
+	require.Equal(t, 128000, kiroMaxOutputTokensForModel("claude-opus-5-thinking"))
+}
+
 func TestIsOutputConfigPathModelSupportsFutureVersions(t *testing.T) {
 	t.Parallel()
 
@@ -2613,6 +2640,8 @@ func TestIsOutputConfigPathModelSupportsFutureVersions(t *testing.T) {
 		"claude-opus-4.6":            true,
 		"claude-opus-4-9-thinking":   true,
 		"claude-sonnet-5-0-thinking": true,
+		"claude-opus-5":              true,
+		"claude-opus-5-thinking":     true,
 		"claude-haiku-4.5":           false,
 		"claude-opus-4-5":            false,
 		"gpt-4o":                     false,
