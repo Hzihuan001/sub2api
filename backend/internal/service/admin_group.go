@@ -482,6 +482,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MCPXMLInject:                    mcpXMLInject,
 		SupportedModelScopes:            input.SupportedModelScopes,
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
+		AllowLive:                       input.AllowLive,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
@@ -503,6 +504,9 @@ MaxReasoningEffort:              maxReasoningEffort,
 		group.KiroEndpointMode = *input.KiroEndpointMode
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	if group.Platform != PlatformOpenAI {
+		group.AllowLive = false
+	}
 	sanitizeGroupReasoningEffortPolicy(group)
 	NormalizeGroupRuntimeFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -801,6 +805,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.AllowMessagesDispatch != nil {
 		group.AllowMessagesDispatch = *input.AllowMessagesDispatch
 	}
+	if input.AllowLive != nil {
+		group.AllowLive = *input.AllowLive
+	}
 	if input.RequireOAuthOnly != nil {
 		group.RequireOAuthOnly = *input.RequireOAuthOnly
 	}
@@ -849,6 +856,9 @@ if input.MaxReasoningEffort != nil {
 		group.KiroEndpointMode = *input.KiroEndpointMode
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	if group.Platform != PlatformOpenAI {
+		group.AllowLive = false
+	}
 	sanitizeGroupReasoningEffortPolicy(group)
 	NormalizeGroupRuntimeFields(group)
 
