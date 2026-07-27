@@ -4,6 +4,7 @@ package service
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,9 +13,9 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestForwardAsResponsesKiroDirectUsesResponsesCacheProfile(t *testing.T) {
@@ -73,6 +74,124 @@ func TestForwardAsResponsesKiroDirectUsesResponsesCacheProfile(t *testing.T) {
 	require.Len(t, upstream.requests, 2)
 }
 
+func TestAdaptResponsesClientToolsForAnthropic_FlattensNamespace(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"claude-fable-5",
+		"input":[{"type":"function_call","call_id":"call_1","namespace":"codex_app","name":"read_thread","arguments":"{}"}],
+		"tools":[{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"read_thread","description":"Read a task","parameters":{"type":"object","properties":{}}}]}]
+	}`)
+
+	adapted, mapping, err := adaptResponsesClientToolsForAnthropic(body)
+	require.NoError(t, err)
+	require.Equal(t, apicompat.ResponsesNamespaceName{Namespace: "codex_app", Name: "read_thread"}, mapping.NamespaceTools["codex_app__read_thread"])
+
+	var request map[string]any
+	require.NoError(t, json.Unmarshal(adapted, &request))
+	tools := request["tools"].([]any)
+	require.Len(t, tools, 1)
+	tool := tools[0].(map[string]any)
+	require.Equal(t, "function", tool["type"])
+	require.Equal(t, "codex_app__read_thread", tool["name"])
+
+	input := request["input"].([]any)
+	call := input[0].(map[string]any)
+	require.Equal(t, "codex_app__read_thread", call["name"])
+	require.NotContains(t, call, "namespace")
+}
+
+func TestAdaptResponsesClientToolsForAnthropic_LiftsAdditionalTools(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-fable-5",
+		"input":[
+			{"type":"additional_tools","tools":[
+				{"type":"custom","name":"exec","description":"Run a command"},
+				{"type":"namespace","name":"codex_app","tools":[
+					{"type":"function","name":"read_thread","parameters":{"type":"object"}}
+				]}
+			]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"inspect"}]}
+		]
+	}`)
+
+	adapted, mapping, err := adaptResponsesClientToolsForAnthropic(body)
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["exec"])
+	require.Equal(t, apicompat.ResponsesNamespaceName{Namespace: "codex_app", Name: "read_thread"}, mapping.NamespaceTools["codex_app__read_thread"])
+
+	var request map[string]any
+	require.NoError(t, json.Unmarshal(adapted, &request))
+	tools := request["tools"].([]any)
+	require.Len(t, tools, 2)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "codex_app__read_thread", tools[1].(map[string]any)["name"])
+
+	input := request["input"].([]any)
+	require.Len(t, input, 1)
+	require.Equal(t, "message", input[0].(map[string]any)["type"])
+}
+
+func namespaceToolAnthropicStream() string {
+	return strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"id":"msg_namespace","type":"message","role":"assistant","content":[],"model":"claude-fable-5","stop_reason":"","usage":{"input_tokens":10}}}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_namespace","name":"codex_app__read_thread","input":{"thread_id":"123"}}}`,
+		``,
+		`event: content_block_stop`,
+		`data: {"type":"content_block_stop","index":0}`,
+		``,
+		`event: message_delta`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}`,
+		``,
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n")
+}
+
+func namespaceToolMapping() apicompat.ResponsesClientToolMapping {
+	return apicompat.ResponsesClientToolMapping{NamespaceTools: map[string]apicompat.ResponsesNamespaceName{
+		"codex_app__read_thread": {Namespace: "codex_app", Name: "read_thread"},
+	}}
+}
+
+func TestHandleResponsesBufferedStreamingResponse_RestoresNamespaceTool(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(namespaceToolAnthropicStream()))}
+
+	svc := &GatewayService{}
+	_, err := svc.handleResponsesBufferedStreamingResponse(resp, c, "claude-fable-5", "claude-fable-5", nil, time.Now(), namespaceToolMapping())
+	require.NoError(t, err)
+	require.Contains(t, rec.Body.String(), `"type":"function_call"`)
+	require.Contains(t, rec.Body.String(), `"name":"read_thread"`)
+	require.Contains(t, rec.Body.String(), `"namespace":"codex_app"`)
+	require.NotContains(t, rec.Body.String(), `"name":"codex_app__read_thread"`)
+}
+
+func TestHandleResponsesStreamingResponse_RestoresNamespaceTool(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	resp := &http.Response{Body: io.NopCloser(strings.NewReader(namespaceToolAnthropicStream()))}
+
+	svc := &GatewayService{}
+	_, err := svc.handleResponsesStreamingResponse(resp, c, "claude-fable-5", "claude-fable-5", nil, time.Now(), namespaceToolMapping())
+	require.NoError(t, err)
+	require.Contains(t, rec.Body.String(), `response.output_item.added`)
+	require.Contains(t, rec.Body.String(), `"name":"read_thread"`)
+	require.Contains(t, rec.Body.String(), `"namespace":"codex_app"`)
+	require.NotContains(t, rec.Body.String(), `"name":"codex_app__read_thread"`)
+}
+
 func TestExtractResponsesReasoningEffortFromBody(t *testing.T) {
 	t.Parallel()
 
@@ -85,34 +204,6 @@ func TestExtractResponsesReasoningEffortFromBody(t *testing.T) {
 	require.Equal(t, "xhigh", *maxGot)
 
 	require.Nil(t, ExtractResponsesReasoningEffortFromBody([]byte(`{"model":"claude-sonnet-4.5"}`)))
-}
-
-func newResponsesGatewayTestContext() (*gin.Context, *httptest.ResponseRecorder) {
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	return c, rec
-}
-
-func kiroResponsesCacheUpstreamResponse(t *testing.T, outputTokens int) *http.Response {
-	t.Helper()
-	var upstreamBody bytes.Buffer
-	_, _ = upstreamBody.Write(buildKiroEventStreamFrame(t, "assistantResponseEvent", map[string]any{
-		"assistantResponseEvent": map[string]any{"content": "hello"},
-	}))
-	_, _ = upstreamBody.Write(buildKiroEventStreamFrame(t, "messageMetadataEvent", map[string]any{
-		"messageMetadataEvent": map[string]any{
-			"tokenUsage": map[string]any{
-				"uncachedInputTokens": 99,
-				"outputTokens":        outputTokens,
-			},
-		},
-	}))
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/vnd.amazon.eventstream"}},
-		Body:       io.NopCloser(&upstreamBody),
-	}
 }
 
 func TestHandleResponsesBufferedStreamingResponse_PreservesMessageStartCacheUsage(t *testing.T) {
@@ -132,22 +223,20 @@ func TestHandleResponsesBufferedStreamingResponse_PreservesMessageStartCacheUsag
 			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
 			``,
 			`event: message_delta`,
-			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7,"_sub2api_kiro_credits":0.17}}`,
+			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}`,
 			``,
 		}, "\n"))),
 	}
 
 	svc := &GatewayService{}
-	result, err := svc.handleResponsesBufferedStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), nil)
+	result, err := svc.handleResponsesBufferedStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 12, result.Usage.InputTokens)
 	require.Equal(t, 7, result.Usage.OutputTokens)
 	require.Equal(t, 9, result.Usage.CacheReadInputTokens)
 	require.Equal(t, 3, result.Usage.CacheCreationInputTokens)
-	require.InDelta(t, 0.17, result.Usage.KiroCredits, 0.000001)
 	require.Contains(t, rec.Body.String(), `"cached_tokens":9`)
-	require.NotContains(t, rec.Body.String(), "_sub2api_kiro_credits")
 }
 
 func TestHandleResponsesStreamingResponse_PreservesMessageStartCacheUsage(t *testing.T) {
@@ -167,7 +256,7 @@ func TestHandleResponsesStreamingResponse_PreservesMessageStartCacheUsage(t *tes
 			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
 			``,
 			`event: message_delta`,
-			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":8,"_sub2api_kiro_credits":0.23}}`,
+			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":8}}`,
 			``,
 			`event: message_stop`,
 			`data: {"type":"message_stop"}`,
@@ -176,16 +265,14 @@ func TestHandleResponsesStreamingResponse_PreservesMessageStartCacheUsage(t *tes
 	}
 
 	svc := &GatewayService{}
-	result, err := svc.handleResponsesStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), nil)
+	result, err := svc.handleResponsesStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 20, result.Usage.InputTokens)
 	require.Equal(t, 8, result.Usage.OutputTokens)
 	require.Equal(t, 11, result.Usage.CacheReadInputTokens)
 	require.Equal(t, 4, result.Usage.CacheCreationInputTokens)
-	require.InDelta(t, 0.23, result.Usage.KiroCredits, 0.000001)
 	require.Contains(t, rec.Body.String(), `response.completed`)
-	require.NotContains(t, rec.Body.String(), "_sub2api_kiro_credits")
 }
 
 func TestParseAnthropicSSEField(t *testing.T) {
@@ -289,7 +376,7 @@ func TestHandleResponsesBufferedStreamingResponse_CompactSSEFormat(t *testing.T)
 	}
 
 	svc := &GatewayService{}
-	result, err := svc.handleResponsesBufferedStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now())
+	result, err := svc.handleResponsesBufferedStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 10, result.Usage.InputTokens)
@@ -323,7 +410,7 @@ func TestHandleResponsesStreamingResponse_CompactSSEFormat(t *testing.T) {
 	}
 
 	svc := &GatewayService{}
-	result, err := svc.handleResponsesStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now())
+	result, err := svc.handleResponsesStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 15, result.Usage.InputTokens)
