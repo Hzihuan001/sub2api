@@ -442,22 +442,6 @@ func estimateOpenAIInputTokensForInputItems(codec tokenizer.Codec, items []apico
 		return nil
 	}
 
-	countRawJSONText := func(raw json.RawMessage) error {
-		trimmed := bytes.TrimSpace(raw)
-		if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-			return nil
-		}
-		var text string
-		if err := json.Unmarshal(trimmed, &text); err == nil {
-			return countText(text)
-		}
-		compacted, err := compactOpenAIInputTokensJSON(trimmed)
-		if err != nil {
-			return err
-		}
-		return countText(compacted)
-	}
-
 	for _, item := range items {
 		total += openAIResponsesInputItemTokenOverhead
 		if err := countText(item.Role); err != nil {
@@ -474,7 +458,7 @@ func estimateOpenAIInputTokensForInputItems(codec tokenizer.Codec, items []apico
 		if err := countText(item.Arguments); err != nil {
 			return 0, err
 		}
-		if err := countRawJSONText(item.Output); err != nil {
+		if err := countText(item.Output); err != nil {
 			return 0, err
 		}
 		if err := countText(item.CallID); err != nil {

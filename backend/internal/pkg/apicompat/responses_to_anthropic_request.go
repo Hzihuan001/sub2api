@@ -1,7 +1,6 @@
 package apicompat
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
