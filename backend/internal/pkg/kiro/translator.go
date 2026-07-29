@@ -250,12 +250,16 @@ type kiroSemanticEvent struct {
 
 func MapModel(model string) string {
 	switch strings.TrimSpace(strings.ToLower(model)) {
+	case "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
+		return strings.TrimSpace(strings.ToLower(model))
 	case "claude-opus-4-8", "claude-opus-4-8-thinking", "claude-opus-4.8":
 		return "claude-opus-4.8"
 	case "claude-opus-4-7", "claude-opus-4-7-thinking", "claude-opus-4.7":
 		return "claude-opus-4.7"
 	case "claude-opus-4-6", "claude-opus-4-6-thinking", "claude-opus-4.6":
 		return "claude-opus-4.6"
+	case "claude-opus-5", "claude-opus-5-thinking":
+		return "claude-opus-5"
 	case "claude-sonnet-5", "claude-sonnet-5-thinking":
 		return "claude-sonnet-5"
 	case "claude-sonnet-4-6", "claude-sonnet-4-6-thinking", "claude-sonnet-4.6":
@@ -309,7 +313,7 @@ func normalizeClaudeVersionNumber(model string) string {
 // requiresImplicitThinkingTagStripping 判断是否需要在客户端未显式请求 thinking 时
 // 仍开启流式/非流式解析器的 <thinking> tag 抽取。
 //
-// Opus 4.7/4.8 的内部 CoT 在 Kiro 上游以 <thinking>...</thinking> 文本形式流出,
+// Opus 4.7/4.8/5 的内部 CoT 在 Kiro 上游以 <thinking>...</thinking> 文本形式流出,
 // 不开启抽取会让标签和思考内容直接落到 assistant 正文,客户端看到形如
 // "<thinking>...</thinking>final" 的乱码。
 //
@@ -318,7 +322,8 @@ func normalizeClaudeVersionNumber(model string) string {
 func requiresImplicitThinkingTagStripping(modelID string) bool {
 	switch strings.TrimSpace(strings.ToLower(modelID)) {
 	case "claude-opus-4.7", "claude-opus-4-7", "claude-opus-4-7-thinking",
-		"claude-opus-4.8", "claude-opus-4-8", "claude-opus-4-8-thinking":
+		"claude-opus-4.8", "claude-opus-4-8", "claude-opus-4-8-thinking",
+		"claude-opus-5", "claude-opus-5-thinking":
 		return true
 	}
 	return false
@@ -335,11 +340,22 @@ func normalizeModelAlias(model string) string {
 	}
 }
 
+func isKiroGPTModel(modelID string) bool {
+	switch normalizeModelAlias(modelID) {
+	case "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
+		return true
+	default:
+		return false
+	}
+}
+
 func kiroMaxOutputTokensForModel(model string) int {
 	normalized := normalizeModelAlias(model)
 	switch normalized {
-	// 仅 Opus 4.7 / 4.8 上限 128000（对齐 Kiro 官方规格）。
-	case "claude-opus-4-8", "claude-opus-4.8", "claude-opus-4-7", "claude-opus-4.7":
+	// Opus 4.7 / 4.8 / 5 与 Kiro GPT-5.6 精确模型上限 128000（对齐 Kiro 官方规格）。
+	case "claude-opus-4-8", "claude-opus-4.8", "claude-opus-4-7", "claude-opus-4.7",
+		"claude-opus-5",
+		"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
 		return 128000
 	default:
 		// 其余 Kiro 模型（opus-4.6 / sonnet-5 / sonnet-4.6 / 各 4.5 及未知兜底）统一 64000。
@@ -416,6 +432,10 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 		} else {
 			baseSystem = inlineSystem
 		}
+	}
+	if isKiroGPTModel(modelID) {
+		thinking = nil
+		requestCtx.ThinkingEnabled = false
 	}
 	systemPrompt := buildInjectedSystemPrompt(baseSystem, thinking, toolChoiceHint)
 
@@ -760,20 +780,34 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		return closeStreamingTool(toolUseID)
 	}
 	writeTextDelta := func(text string, allowWhitespace bool) error {
-		if text == "" || (!allowWhitespace && strings.TrimSpace(text) == "") {
+		if text == "" {
 			return nil
 		}
-		if err := closeOpenStreamingTool(); err != nil {
-			return err
-		}
-		if !textBlockOpen && !allowWhitespace {
-			if pendingLeadingWhitespace != "" {
-				text = strings.TrimLeftFunc(pendingLeadingWhitespace+text, unicode.IsSpace)
+		if !allowWhitespace {
+			if strings.TrimSpace(text) == "" {
+				// 纯空白片段: 文本块未开启时视为前导噪音直接丢弃;
+				// 已开启时先缓冲, 仅当后续出现真实文本才补回(中段空行);
+				// 若流结束时仍在缓冲则视为尾部空白, 自然不吐出。
+				if textBlockOpen {
+					pendingLeadingWhitespace += text
+				}
+				return nil
+			}
+			if !textBlockOpen {
+				// 首段真实文本: 裁掉其前导空白
+				text = strings.TrimLeftFunc(text, unicode.IsSpace)
 				pendingLeadingWhitespace = ""
 				if text == "" {
 					return nil
 				}
+			} else if pendingLeadingWhitespace != "" {
+				// 中段: 把缓冲的空行补回本段文本之前
+				text = pendingLeadingWhitespace + text
+				pendingLeadingWhitespace = ""
 			}
+		}
+		if err := closeOpenStreamingTool(); err != nil {
+			return err
 		}
 		if err := ensureMessageStart(); err != nil {
 			return err
@@ -813,7 +847,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		if stopSequenceMatched != "" {
 			return nil
 		}
-		if text == "" || (!allowWhitespace && strings.TrimSpace(text) == "") {
+		if text == "" {
 			return nil
 		}
 		if len(requestCtx.StopSequences) == 0 {
@@ -1378,10 +1412,11 @@ func thinkingDirectiveFromModel(model string) *thinkingDirective {
 			BudgetTokens: 20000,
 			Effort:       "high",
 		}
-	// opus 4.7/4.8 走 adaptive 高预算,budget 对齐 Antigravity 的 ClaudeAdaptiveHighThinkingBudgetTokens
+	// opus 4.7/4.8/5 走 adaptive 高预算,budget 对齐 Antigravity 的 ClaudeAdaptiveHighThinkingBudgetTokens
 	// 避免 thinking 提前耗尽导致流式中途断开
 	case "claude-opus-4-7", "claude-opus-4.7",
-		"claude-opus-4-8", "claude-opus-4.8":
+		"claude-opus-4-8", "claude-opus-4.8",
+		"claude-opus-5":
 		return &thinkingDirective{
 			Mode:         "adaptive",
 			BudgetTokens: 24576,
@@ -1505,8 +1540,7 @@ func isOutputConfigPathModel(modelID string) bool {
 	normalized := normalizeClaudeVersionNumber(strings.ToLower(strings.TrimSpace(modelID)))
 	// Claude 4.6+ 所有模型使用 output_config 路径
 	for _, prefix := range []string{"claude-opus-4.6", "claude-opus-4.7", "claude-opus-4.8",
-		"claude-sonnet-5", "claude-sonnet-4.6", "claude-sonnet-4.7", "claude-sonnet-4.8",
-		"claude-haiku-4.6", "claude-haiku-4.7", "claude-haiku-4.8"} {
+		"claude-opus-5", "claude-sonnet-5", "claude-sonnet-4.6"} {
 		if normalized == prefix || strings.HasPrefix(normalized, prefix+"-") || strings.HasPrefix(normalized, prefix+".") {
 			return true
 		}
@@ -2283,7 +2317,9 @@ func buildUserMessageStruct(msg gjson.Result, modelID, origin string, keepImages
 				if resultContent.IsArray() {
 					textContents = textContents[:0]
 					for _, item := range resultContent.Array() {
-						if item.Get("type").String() == "text" {
+						// codex 经 responses->anthropic 后, tool_result.content 用 Responses 的
+						// "input_text" 而非 Anthropic 的 "text"; 两者都需提取, 否则工具结果被丢成空。
+						if t := item.Get("type").String(); t == "text" || t == "input_text" {
 							textContents = append(textContents, KiroTextContent{Text: compactKiroToolResultText(item.Get("text").String(), status == "error")})
 						} else if item.Type == gjson.String {
 							textContents = append(textContents, KiroTextContent{Text: compactKiroToolResultText(item.String(), status == "error")})
@@ -4048,7 +4084,10 @@ func toolUseContentKey(tool KiroToolUse) string {
 func drainEmbeddedToolText(text string) (cleanText string, toolUses []KiroToolUse, pending string) {
 	complete, pending := splitCompleteEmbeddedToolText(text)
 	if strings.TrimSpace(complete) == "" {
-		return "", nil, pending
+		// complete 为纯空白(无内嵌工具调用): 作为普通文本原样返回,
+		// 交由下游 writeTextDelta 的缓冲逻辑决定保留(中段空行)还是丢弃(首尾)。
+		// 不能在此直接吞掉, 否则标题后的独立 \n\n chunk 会丢失, 破坏 markdown 结构。
+		return complete, nil, pending
 	}
 	cleanText, toolUses = parseEmbeddedToolCalls(complete)
 	return cleanText, deduplicateToolUses(toolUses), pending

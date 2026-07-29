@@ -146,7 +146,7 @@ func TestAnthropicToResponses_ToolUse(t *testing.T) {
 	assert.Equal(t, "Sunny, 72°F", items[3].Output)
 }
 
-func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
+func TestAnthropicToResponses_ThinkingWithoutSignatureIgnored(t *testing.T) {
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
 		MaxTokens: 1024,
@@ -162,7 +162,7 @@ func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	// user + assistant(text only, thinking ignored) + user = 3
+	// user + assistant(text only, thinking without signature ignored) + user = 3
 	require.Len(t, items, 3)
 	assert.Equal(t, "assistant", items[1].Role)
 	// Assistant content should only have text, not thinking.
@@ -171,6 +171,30 @@ func TestAnthropicToResponses_ThinkingIgnored(t *testing.T) {
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
 	assert.Equal(t, "Hi!", parts[0].Text)
+}
+
+func TestAnthropicToResponses_ThinkingSignatureBecomesReasoning(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "grok-4.5",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"plan","signature":"enc-rs-1"},{"type":"text","text":"Hi!"},{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]`)},
+			{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]`)},
+		},
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	// user + reasoning + assistant text + function_call + function_call_output
+	require.GreaterOrEqual(t, len(items), 4)
+	assert.Equal(t, "reasoning", items[1].Type)
+	assert.Equal(t, "enc-rs-1", items[1].EncryptedContent)
+	assert.Equal(t, "assistant", items[2].Role)
+	assert.Equal(t, "function_call", items[3].Type)
 }
 
 func TestAnthropicToResponses_MaxTokensFloor(t *testing.T) {
@@ -208,7 +232,7 @@ func TestResponsesToAnthropic_TextOnly(t *testing.T) {
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
 	assert.Equal(t, "resp_123", anth.ID)
 	assert.Equal(t, "claude-opus-4-6", anth.Model)
-	assert.Equal(t, "end_turn", anth.StopReason)
+	assert.Equal(t, "end_turn", AnthropicStopReasonString(anth.StopReason))
 	require.Len(t, anth.Content, 1)
 	assert.Equal(t, "text", anth.Content[0].Type)
 	assert.Equal(t, "Hello there!", anth.Content[0].Text)
@@ -287,7 +311,7 @@ func TestResponsesToAnthropic_ToolUse(t *testing.T) {
 	}
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
-	assert.Equal(t, "tool_use", anth.StopReason)
+	assert.Equal(t, "tool_use", AnthropicStopReasonString(anth.StopReason))
 	require.Len(t, anth.Content, 2)
 	assert.Equal(t, "text", anth.Content[0].Type)
 	assert.Equal(t, "tool_use", anth.Content[1].Type)
@@ -318,7 +342,7 @@ func TestResponsesToAnthropic_ToolUseStopReasonDoesNotDependOnLastBlock(t *testi
 	}
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
-	assert.Equal(t, "tool_use", anth.StopReason)
+	assert.Equal(t, "tool_use", AnthropicStopReasonString(anth.StopReason))
 	require.Len(t, anth.Content, 2)
 	assert.Equal(t, "tool_use", anth.Content[0].Type)
 	assert.Equal(t, "text", anth.Content[1].Type)
@@ -372,7 +396,8 @@ func TestResponsesToAnthropic_Reasoning(t *testing.T) {
 		Status: "completed",
 		Output: []ResponsesOutput{
 			{
-				Type: "reasoning",
+				Type:             "reasoning",
+				EncryptedContent: "enc-rs-roundtrip",
 				Summary: []ResponsesSummary{
 					{Type: "summary_text", Text: "Thinking about the answer..."},
 				},
@@ -390,8 +415,55 @@ func TestResponsesToAnthropic_Reasoning(t *testing.T) {
 	require.Len(t, anth.Content, 2)
 	assert.Equal(t, "thinking", anth.Content[0].Type)
 	assert.Equal(t, "Thinking about the answer...", anth.Content[0].Thinking)
+	assert.Equal(t, "enc-rs-roundtrip", anth.Content[0].Signature)
 	assert.Equal(t, "text", anth.Content[1].Type)
 	assert.Equal(t, "42", anth.Content[1].Text)
+}
+
+func TestResponsesToAnthropic_StreamEmitsThinkingSignature(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	var all []AnthropicStreamEvent
+
+	appendAll := func(events []AnthropicStreamEvent) {
+		all = append(all, events...)
+	}
+
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "reasoning", ID: "rs_1"},
+	}, state))
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:         "response.reasoning_summary_text.delta",
+		OutputIndex:  0,
+		Delta:        "thinking...",
+		SummaryIndex: 0,
+	}, state))
+	// summary.done must not close the thinking block before encrypted_content arrives
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:         "response.reasoning_summary_text.done",
+		OutputIndex:  0,
+		SummaryIndex: 0,
+	}, state))
+	appendAll(ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:             "reasoning",
+			ID:               "rs_1",
+			EncryptedContent: "enc-stream-1",
+			Status:           "completed",
+		},
+	}, state))
+
+	var sawSignature bool
+	for _, ev := range all {
+		if ev.Type == "content_block_delta" && ev.Delta != nil && ev.Delta.Type == "signature_delta" {
+			assert.Equal(t, "enc-stream-1", ev.Delta.Signature)
+			sawSignature = true
+		}
+	}
+	require.True(t, sawSignature, "expected signature_delta with encrypted_content")
 }
 
 func TestResponsesToAnthropic_Incomplete(t *testing.T) {
@@ -411,7 +483,7 @@ func TestResponsesToAnthropic_Incomplete(t *testing.T) {
 	}
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
-	assert.Equal(t, "max_tokens", anth.StopReason)
+	assert.Equal(t, "max_tokens", AnthropicStopReasonString(anth.StopReason))
 }
 
 func TestResponsesToAnthropic_EmptyOutput(t *testing.T) {
@@ -785,12 +857,26 @@ func TestStreamingReasoning(t *testing.T) {
 	assert.Equal(t, "thinking_delta", events[0].Delta.Type)
 	assert.Equal(t, "Let me think...", events[0].Delta.Thinking)
 
-	// reasoning done
+	// summary.done keeps thinking open until output_item.done (for signature)
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type: "response.reasoning_summary_text.done",
 	}, state)
-	require.Len(t, events, 1)
-	assert.Equal(t, "content_block_stop", events[0].Type)
+	require.Len(t, events, 0)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:             "reasoning",
+			EncryptedContent: "enc-rs-stream",
+			Status:           "completed",
+		},
+	}, state)
+	require.Len(t, events, 2)
+	assert.Equal(t, "content_block_delta", events[0].Type)
+	assert.Equal(t, "signature_delta", events[0].Delta.Type)
+	assert.Equal(t, "enc-rs-stream", events[0].Delta.Signature)
+	assert.Equal(t, "content_block_stop", events[1].Type)
 }
 
 func TestStreamingIncomplete(t *testing.T) {
@@ -995,7 +1081,7 @@ func TestResponsesToAnthropic_Failed(t *testing.T) {
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
 	// Failed status defaults to "end_turn" stop reason
-	assert.Equal(t, "end_turn", anth.StopReason)
+	assert.Equal(t, "end_turn", AnthropicStopReasonString(anth.StopReason))
 	// Should have at least an empty text block
 	require.Len(t, anth.Content, 1)
 	assert.Equal(t, "text", anth.Content[0].Type)
@@ -1609,7 +1695,7 @@ func TestAnthropicToResponsesResponse_CacheTokensUseOpenAIInputSemantics(t *test
 		Content: []AnthropicContentBlock{
 			{Type: "text", Text: "ok"},
 		},
-		StopReason: "end_turn",
+		StopReason: AnthropicStopReasonPtr("end_turn"),
 		Usage: AnthropicUsage{
 			InputTokens:              3318,
 			OutputTokens:             123,
@@ -1635,7 +1721,7 @@ func TestAnthropicToResponsesResponse_NoCacheTokens(t *testing.T) {
 		Content: []AnthropicContentBlock{
 			{Type: "text", Text: "ok"},
 		},
-		StopReason: "end_turn",
+		StopReason: AnthropicStopReasonPtr("end_turn"),
 		Usage: AnthropicUsage{
 			InputTokens:  100,
 			OutputTokens: 50,
@@ -1731,4 +1817,207 @@ func TestAnthropicEventToResponses_CacheTokensFromMessageDelta(t *testing.T) {
 	assert.Equal(t, 8, completed.Response.Usage.OutputTokens)
 	require.NotNil(t, completed.Response.Usage.InputTokensDetails)
 	assert.Equal(t, 11, completed.Response.Usage.InputTokensDetails.CachedTokens)
+}
+
+// collectAnthToResEvents drives the Anthropic→Responses streaming converter over
+// a sequence of Anthropic SSE events and returns every emitted Responses event.
+func collectAnthToResEvents(events []AnthropicStreamEvent) []ResponsesStreamEvent {
+	return collectAnthToResEventsWithState(events, NewAnthropicEventToResponsesState())
+}
+
+func collectAnthToResEventsWithState(events []AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
+	var out []ResponsesStreamEvent
+	for i := range events {
+		out = append(out, AnthropicEventToResponsesEvents(&events[i], state)...)
+	}
+	return out
+}
+
+// TestAnthropicToResponses_ToolCallLifecycleCarriesArguments guards that a
+// tool_use streamed from an Anthropic upstream (e.g. Kiro) is converted into a
+// fully-formed Responses function_call: both function_call_arguments.done and
+// output_item.done must carry the complete arguments/name/call_id, which Codex
+// needs to execute the call. Missing them is why Kiro GPT "only chats".
+func TestAnthropicToResponses_ToolCallLifecycleCarriesArguments(t *testing.T) {
+	events := collectAnthToResEvents([]AnthropicStreamEvent{
+		{Type: "message_start", Message: &AnthropicResponse{ID: "msg_1", Model: "gpt-5.6-sol", Role: "assistant"}},
+		{Type: "content_block_start", Index: intPtr(0), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_abc", Name: "get_weather"}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"city":`}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `"NYC"}`}},
+		{Type: "content_block_stop", Index: intPtr(0)},
+		{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "tool_use"}},
+		{Type: "message_stop"},
+	})
+
+	var argsDelta string
+	var sawAdded, sawArgsDone, sawItemDone bool
+	for i := range events {
+		e := events[i]
+		switch e.Type {
+		case "response.output_item.added":
+			if e.Item != nil && e.Item.Type == "function_call" {
+				sawAdded = true
+				assert.Equal(t, "get_weather", e.Item.Name)
+				assert.NotEmpty(t, e.Item.CallID)
+			}
+		case "response.function_call_arguments.delta":
+			argsDelta += e.Delta
+		case "response.function_call_arguments.done":
+			sawArgsDone = true
+			assert.Equal(t, `{"city":"NYC"}`, e.Arguments)
+		case "response.output_item.done":
+			if e.Item != nil && e.Item.Type == "function_call" {
+				sawItemDone = true
+				assert.Equal(t, `{"city":"NYC"}`, e.Item.Arguments)
+				assert.Equal(t, "get_weather", e.Item.Name)
+				assert.NotEmpty(t, e.Item.CallID)
+			}
+		}
+	}
+	require.True(t, sawAdded, "function_call output_item.added missing")
+	require.True(t, sawArgsDone, "function_call_arguments.done missing")
+	require.True(t, sawItemDone, "function_call output_item.done missing")
+	// Accumulated deltas must equal the final arguments exactly (no duplication).
+	assert.Equal(t, `{"city":"NYC"}`, argsDelta)
+}
+
+// TestAnthropicToResponses_EmptyToolArgsDefaultToObject guards that a tool_use
+// with no input deltas still emits "{}" (not "") so strict clients can
+// deserialize the call.
+func TestAnthropicToResponses_EmptyToolArgsDefaultToObject(t *testing.T) {
+	events := collectAnthToResEvents([]AnthropicStreamEvent{
+		{Type: "message_start", Message: &AnthropicResponse{ID: "msg_2", Model: "gpt-5.6-sol", Role: "assistant"}},
+		{Type: "content_block_start", Index: intPtr(0), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_noargs", Name: "ping"}},
+		{Type: "content_block_stop", Index: intPtr(0)},
+		{Type: "message_stop"},
+	})
+
+	for i := range events {
+		e := events[i]
+		if e.Type == "response.function_call_arguments.done" {
+			assert.Equal(t, "{}", e.Arguments)
+		}
+		if e.Type == "response.output_item.done" && e.Item != nil && e.Item.Type == "function_call" {
+			assert.Equal(t, "{}", e.Item.Arguments)
+			assert.Equal(t, "ping", e.Item.Name)
+		}
+	}
+}
+
+// TestAnthropicToResponses_MultipleToolCallsDoNotBleedArgs guards that back-to-back
+// tool_use blocks each carry only their own arguments (CurrentArgs is reset per
+// tool), so parallel/sequential tool calls stay independent.
+func TestAnthropicToResponses_MultipleToolCallsDoNotBleedArgs(t *testing.T) {
+	events := collectAnthToResEvents([]AnthropicStreamEvent{
+		{Type: "message_start", Message: &AnthropicResponse{ID: "msg_3", Model: "gpt-5.6-sol", Role: "assistant"}},
+		{Type: "content_block_start", Index: intPtr(0), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_1", Name: "first"}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"a":1}`}},
+		{Type: "content_block_stop", Index: intPtr(0)},
+		{Type: "content_block_start", Index: intPtr(1), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_2", Name: "second"}},
+		{Type: "content_block_delta", Index: intPtr(1), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"b":2}`}},
+		{Type: "content_block_stop", Index: intPtr(1)},
+		{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "tool_use"}},
+		{Type: "message_stop"},
+	})
+
+	got := map[string]string{}
+	for i := range events {
+		e := events[i]
+		if e.Type == "response.output_item.done" && e.Item != nil && e.Item.Type == "function_call" {
+			got[e.Item.Name] = e.Item.Arguments
+		}
+	}
+	assert.Equal(t, `{"a":1}`, got["first"])
+	assert.Equal(t, `{"b":2}`, got["second"])
+}
+
+func TestAnthropicToResponses_CustomToolCallStream(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+	state.CustomTools = map[string]bool{"exec": true}
+
+	events := collectAnthToResEventsWithState([]AnthropicStreamEvent{
+		{Type: "message_start", Message: &AnthropicResponse{ID: "msg_custom", Model: "gpt-5.6-sol", Role: "assistant"}},
+		{Type: "content_block_start", Index: intPtr(0), ContentBlock: &AnthropicContentBlock{Type: "tool_use", ID: "toolu_exec", Name: "exec"}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `{"input":`}},
+		{Type: "content_block_delta", Index: intPtr(0), Delta: &AnthropicDelta{Type: "input_json_delta", PartialJSON: `"touch main.go"}`}},
+		{Type: "content_block_stop", Index: intPtr(0)},
+		{Type: "message_delta", Delta: &AnthropicDelta{StopReason: "tool_use"}},
+		{Type: "message_stop"},
+	}, state)
+
+	var added, inputDone, itemDone *ResponsesStreamEvent
+	for i := range events {
+		e := &events[i]
+		switch e.Type {
+		case "response.output_item.added":
+			if e.Item != nil && e.Item.Type == "custom_tool_call" {
+				added = e
+			}
+		case "response.custom_tool_call_input.done":
+			inputDone = e
+		case "response.output_item.done":
+			if e.Item != nil && e.Item.Type == "custom_tool_call" {
+				itemDone = e
+			}
+		case "response.function_call_arguments.delta", "response.function_call_arguments.done":
+			t.Fatalf("custom 工具调用不应产出 function_call 参数事件: %s", e.Type)
+		}
+	}
+
+	require.NotNil(t, added, "缺少 custom_tool_call output_item.added")
+	assert.Equal(t, "exec", added.Item.Name)
+	assert.Equal(t, "toolu_exec", added.Item.CallID)
+
+	require.NotNil(t, inputDone, "缺少 custom_tool_call_input.done")
+	assert.Equal(t, "touch main.go", inputDone.Input)
+	assert.Equal(t, "toolu_exec", inputDone.CallID)
+
+	require.NotNil(t, itemDone, "缺少 custom_tool_call output_item.done")
+	assert.Equal(t, "exec", itemDone.Item.Name)
+	assert.Equal(t, "touch main.go", itemDone.Item.Input)
+	assert.Empty(t, itemDone.Item.Arguments)
+}
+
+func TestAnthropicToResponses_NonStreamingCustomToolCall(t *testing.T) {
+	resp := &AnthropicResponse{
+		ID:    "msg_custom_sync",
+		Model: "gpt-5.6-sol",
+		Role:  "assistant",
+		Content: []AnthropicContentBlock{{
+			Type:  "tool_use",
+			ID:    "toolu_exec",
+			Name:  "exec",
+			Input: json.RawMessage(`{"input":"touch main.go"}`),
+		}},
+	}
+
+	out := AnthropicToResponsesResponseWithCustomTools(resp, map[string]bool{"exec": true})
+	require.Len(t, out.Output, 1)
+	assert.Equal(t, "custom_tool_call", out.Output[0].Type)
+	assert.Equal(t, "toolu_exec", out.Output[0].CallID)
+	assert.Equal(t, "exec", out.Output[0].Name)
+	assert.Equal(t, "touch main.go", out.Output[0].Input)
+	assert.Empty(t, out.Output[0].Arguments)
+}
+
+func TestMessageStartSSE_StopReasonIsJSONNull(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	state.Model = "grok-4.5"
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.created",
+		Response: &ResponsesResponse{
+			ID:    "resp_test",
+			Model: "grok-4.5",
+		},
+	}, state)
+	require.Len(t, events, 1)
+	require.Equal(t, "message_start", events[0].Type)
+	require.NotNil(t, events[0].Message)
+	require.Nil(t, events[0].Message.StopReason, "message_start must use null stop_reason, not empty string")
+
+	sse, err := ResponsesAnthropicEventToSSE(events[0])
+	require.NoError(t, err)
+	// Official Anthropic wire: "stop_reason":null
+	require.Contains(t, sse, `"stop_reason":null`)
+	require.NotContains(t, sse, `"stop_reason":""`)
 }

@@ -24,6 +24,7 @@ const (
 	PlatformAntigravity = "antigravity"
 	PlatformKiro        = "kiro"
 	PlatformGrok        = "grok"
+	PlatformComposite   = "composite"
 )
 
 // Account type constants
@@ -128,12 +129,17 @@ var DefaultAntigravityModelMapping = map[string]string{
 // DefaultKiroModelMapping 是 Kiro 平台的默认模型映射。
 // 键为对外暴露/允许请求的模型名，值为实际发送到 Kiro 上游的模型名。
 var DefaultKiroModelMapping = map[string]string{
+	"gpt-5.6-sol":                         "gpt-5.6-sol",
+	"gpt-5.6-terra":                       "gpt-5.6-terra",
+	"gpt-5.6-luna":                        "gpt-5.6-luna",
 	"claude-opus-4-8":                     "claude-opus-4.8",
 	"claude-opus-4-8-thinking":            "claude-opus-4.8",
 	"claude-opus-4-7":                     "claude-opus-4.7",
 	"claude-opus-4-7-thinking":            "claude-opus-4.7",
 	"claude-opus-4-6":                     "claude-opus-4.6",
 	"claude-opus-4-6-thinking":            "claude-opus-4.6",
+	"claude-opus-5":                       "claude-opus-5",
+	"claude-opus-5-thinking":              "claude-opus-5",
 	"claude-sonnet-5":                     "claude-sonnet-5",
 	"claude-sonnet-5-thinking":            "claude-sonnet-5",
 	"claude-sonnet-4-6":                   "claude-sonnet-4.6",
@@ -154,6 +160,7 @@ var DefaultBedrockModelMapping = map[string]string{
 	// Claude Fable
 	"claude-fable-5": "anthropic.claude-fable-5",
 	// Claude Opus
+	"claude-opus-5":            "us.anthropic.claude-opus-5-v1",
 	"claude-opus-4-8":          "us.anthropic.claude-opus-4-8-v1",
 	"claude-opus-4-7":          "us.anthropic.claude-opus-4-7-v1",
 	"claude-opus-4-6-thinking": "us.anthropic.claude-opus-4-6-v1",
