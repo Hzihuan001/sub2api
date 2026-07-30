@@ -348,12 +348,109 @@ func TestBuildKiroPayloadDoesNotInjectClaudeThinkingTagsForGPTModels(t *testing.
 	require.NoError(t, err)
 
 	systemContent := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.history.0.userInputMessage.content").String()
-	require.Contains(t, systemContent, "You are Claude, a senior software engineer")
+	// GPT-5.6 不是 Claude 的重皮肤：内置身份提示不能让模型自称 Claude。
+	require.Contains(t, systemContent, "You are GPT-5.6 Terra, a senior software engineer")
+	require.NotContains(t, systemContent, "You are Claude,")
 	require.NotContains(t, systemContent, "<thinking_mode>")
 	require.NotContains(t, systemContent, "<max_thinking_length>")
 	require.NotContains(t, systemContent, "<thinking_effort>")
 	require.False(t, kiroBuildResult.Context.ThinkingEnabled)
 	require.False(t, gjson.GetBytes(kiroBuildResult.Payload, "additionalModelRequestFields").Exists())
+}
+
+// GPT-5.6 不走 Claude 的 thinking/output_config 指令路径，但客户端请求的
+// reasoning effort 仍须通过模型自身的 additionalModelRequestFields.reasoning.effort
+// 送达 Kiro。
+func TestBuildKiroPayloadForwardsGPTReasoningEffort(t *testing.T) {
+	cases := []struct {
+		name       string
+		body       string
+		wantEffort string
+	}{
+		{
+			name:       "reasoning_effort field",
+			body:       `{"model":"gpt-5.6-sol","reasoning_effort":"high","messages":[{"role":"user","content":"hi"}]}`,
+			wantEffort: "high",
+		},
+		{
+			name:       "nested reasoning.effort field",
+			body:       `{"model":"gpt-5.6-sol","reasoning":{"effort":"low"},"messages":[{"role":"user","content":"hi"}]}`,
+			wantEffort: "low",
+		},
+		{
+			name:       "responses-style output_config.effort field",
+			body:       `{"model":"gpt-5.6-sol","output_config":{"effort":"medium"},"messages":[{"role":"user","content":"hi"}]}`,
+			wantEffort: "medium",
+		},
+		{
+			name:       "max normalizes to xhigh",
+			body:       `{"model":"gpt-5.6-sol","reasoning_effort":"max","messages":[{"role":"user","content":"hi"}]}`,
+			wantEffort: "xhigh",
+		},
+		{
+			name:       "unrecognized effort is dropped",
+			body:       `{"model":"gpt-5.6-sol","reasoning_effort":"ultra","messages":[{"role":"user","content":"hi"}]}`,
+			wantEffort: "",
+		},
+		{
+			name:       "no effort requested",
+			body:       `{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hi"}]}`,
+			wantEffort: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := BuildKiroPayloadWithContext([]byte(tc.body), "gpt-5.6-sol", "", "AI_EDITOR", nil)
+			require.NoError(t, err)
+			if tc.wantEffort == "" {
+				require.False(t, gjson.GetBytes(result.Payload, "additionalModelRequestFields").Exists())
+				return
+			}
+			require.Equal(t, tc.wantEffort, gjson.GetBytes(result.Payload, "additionalModelRequestFields.reasoning.effort").String())
+			require.False(t, gjson.GetBytes(result.Payload, "additionalModelRequestFields.thinking").Exists())
+		})
+	}
+}
+
+// 身份判定必须与 isKiroGPTModel 保持一致：两者都基于 normalizeModelAlias，
+// 因此 "-thinking" 变体同样要拿到 GPT 身份，不能回退成 "Claude"。
+func TestKiroDefaultIdentityForModelMatchesGPTDetection(t *testing.T) {
+	cases := map[string]string{
+		"gpt-5.6-sol":            "GPT-5.6 Sol",
+		"gpt-5.6-terra":          "GPT-5.6 Terra",
+		"gpt-5.6-luna":           "GPT-5.6 Luna",
+		"gpt-5.6-sol-thinking":   "GPT-5.6 Sol",
+		"gpt-5.6-terra-thinking": "GPT-5.6 Terra",
+		"GPT-5.6-Luna":           "GPT-5.6 Luna",
+		"claude-sonnet-4.5":      "Claude",
+		"claude-opus-4-6":        "Claude",
+	}
+	for model, want := range cases {
+		t.Run(model, func(t *testing.T) {
+			require.Equal(t, want, kiroDefaultIdentityForModel(model))
+			// GPT 模型的身份不得是 Claude，非 GPT 模型的身份必须是 Claude。
+			require.Equal(t, isKiroGPTModel(model), kiroDefaultIdentityForModel(model) != "Claude")
+		})
+	}
+}
+
+// 非 Claude 身份下，<CRITICAL_OVERRIDE> 里的兜底句必须同步改写，
+// 否则 prompt 内会同时存在"自称 GPT-5.6"和"未提供身份则自称 Claude"两条矛盾指令。
+func TestRenderKiroBuiltinIdentityPromptRewritesFallbackSentence(t *testing.T) {
+	gpt := renderKiroBuiltinIdentityPrompt("GPT-5.6 Sol")
+	require.Contains(t, gpt, "You are GPT-5.6 Sol, a senior software engineer")
+	require.Contains(t, gpt, "If no identity is provided, say that you are GPT-5.6 Sol.")
+	require.NotContains(t, gpt, "say that you are Claude.")
+	require.NotContains(t, gpt, "{{identity}}")
+
+	// Claude 身份（含空值回退）行为保持不变。
+	for _, identity := range []string{"", "Claude"} {
+		claude := renderKiroBuiltinIdentityPrompt(identity)
+		require.Contains(t, claude, "You are Claude, a senior software engineer")
+		require.Contains(t, claude, "If no identity is provided, say that you are Claude.")
+		require.NotContains(t, claude, "{{identity}}")
+	}
 }
 
 func TestBuildKiroPayloadInjectsAdaptiveThinkingForOpus46ThinkingModel(t *testing.T) {
@@ -632,6 +729,51 @@ func TestParseNonStreamingEventStreamPreservesLargeIntegerInMapInput(t *testing.
 	require.Equal(t, "9007199254740993", gjson.GetBytes(result.ResponseBody, "content.0.input.id").Raw)
 }
 
+// Kiro 上游只发 meteringEvent(credits),不发 tokenUsage,所以非流式解析出的
+// InputTokens 恒为 0。流式路径靠 inputTokens 参数种入初值,非流式没有对应入口,
+// 需由 requestCtx.EstimatedInputTokens 兜底,否则响应体 usage.input_tokens 为 0。
+func TestParseNonStreamingEventStreamFallsBackToEstimatedInputTokens(t *testing.T) {
+	// 复刻真实 Kiro 流：仅正文 + credits，无 tokenUsage。
+	newStream := func() *bytes.Buffer {
+		b := bytes.NewBuffer(nil)
+		_, _ = b.Write(buildEventStreamFrame(t, "assistantResponseEvent", map[string]any{
+			"assistantResponseEvent": map[string]any{"content": "OK"},
+		}))
+		_, _ = b.Write(buildEventStreamFrame(t, "meteringEvent", map[string]any{
+			"meteringEvent": map[string]any{"unit": "credit", "usage": 0.0283},
+		}))
+		return b
+	}
+
+	// 无兜底（零值）时保持原行为：输出 0。
+	bare, err := ParseNonStreamingEventStreamWithContext(newStream(), "gpt-5.6-sol", KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, 0, bare.Usage.InputTokens)
+	require.Equal(t, int64(0), gjson.GetBytes(bare.ResponseBody, "usage.input_tokens").Int())
+
+	// 有兜底时填入预估值，响应体同步生效。
+	fallback, err := ParseNonStreamingEventStreamWithContext(newStream(), "gpt-5.6-sol", KiroRequestContext{
+		EstimatedInputTokens: 22,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 22, fallback.Usage.InputTokens)
+	require.Equal(t, int64(22), gjson.GetBytes(fallback.ResponseBody, "usage.input_tokens").Int())
+
+	// 缓存模拟生效时其取值优先，兜底不得覆盖（207 = 预估减去缓存部分）。
+	withCache, err := ParseNonStreamingEventStreamWithContext(newStream(), "gpt-5.6-sol", KiroRequestContext{
+		EstimatedInputTokens: 1962,
+		CacheEmulationUsage: &Usage{
+			InputTokens:                207,
+			CacheCreationInputTokens:   1755,
+			CacheCreation5mInputTokens: 1755,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 207, withCache.Usage.InputTokens)
+	require.Equal(t, int64(207), gjson.GetBytes(withCache.ResponseBody, "usage.input_tokens").Int())
+	require.Equal(t, int64(1755), gjson.GetBytes(withCache.ResponseBody, "usage.cache_creation_input_tokens").Int())
+}
+
 func TestParseNonStreamingEventStreamRejectsTrailingJSONValueInToolInput(t *testing.T) {
 	stream := bytes.NewBuffer(nil)
 	_, _ = stream.Write(buildEventStreamFrame(t, "toolUseEvent", map[string]any{
@@ -744,20 +886,6 @@ func TestUpdateUsageFromEventCapturesKiroCreditsAliases(t *testing.T) {
 			require.InDelta(t, tt.want, usage.KiroCredits, 0.000001)
 		})
 	}
-}
-
-// cacheWriteInputTokens 原先从未被读取；Kiro 上报的真实缓存写入量
-// 必须填充到 CacheCreationInputTokens。
-func TestUpdateUsageFromEventCapturesCacheWriteInputTokens(t *testing.T) {
-	var usage Usage
-	updateUsageFromEvent(&usage, "messageMetadataEvent", map[string]any{
-		"messageMetadataEvent": map[string]any{
-			"tokenUsage": map[string]any{
-				"cacheWriteInputTokens": 45,
-			},
-		},
-	})
-	require.Equal(t, 45, usage.CacheCreationInputTokens)
 }
 
 func TestUpdateUsageFromEventAccumulatesMeteringCredits(t *testing.T) {

@@ -242,6 +242,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 
 	cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, parsed.Group, body, mappedModel, inputTokens)
 	requestCtx.CacheEmulationUsage = cacheUsage.toKiroUsage()
+	requestCtx.EstimatedInputTokens = inputTokens
 	parseResult, err := kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, originalModel, requestCtx)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{

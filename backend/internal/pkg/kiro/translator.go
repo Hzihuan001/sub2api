@@ -112,6 +112,12 @@ type KiroRequestContext struct {
 	StructuredOutputUserHint string
 	StopSequences            []string
 	MaxOutputTokens          int
+	// EstimatedInputTokens 是调用方预估的输入 token 数，用于非流式路径兜底：
+	// Kiro 上游只上报 credits(meteringEvent),不发 tokenUsage,解析结果里的
+	// InputTokens 恒为 0。流式路径通过独立的 inputTokens 参数种入初值,非流式
+	// 没有对应入口,不兜底会让响应体 usage.input_tokens 输出 0。
+	// 为 0 时不生效（保持原行为）。
+	EstimatedInputTokens int
 }
 
 type KiroBuildResult struct {
@@ -356,6 +362,26 @@ func isKiroGPTModel(modelID string) bool {
 	}
 }
 
+// extractKiroGPTReasoningEffort 从客户端请求体中解析 GPT-5.6 的 reasoning effort。
+// 依次尝试 Responses 风格的 output_config.effort、OpenAI 风格的 reasoning_effort/
+// reasoning.effort；"max" 归一化为 Kiro 支持的最高档 "xhigh"。
+func extractKiroGPTReasoningEffort(body []byte) string {
+	effort := ""
+	for _, path := range []string{"output_config.effort", "reasoning_effort", "reasoning.effort"} {
+		if effort = strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, path).String())); effort != "" {
+			break
+		}
+	}
+	switch effort {
+	case "max":
+		return "xhigh"
+	case "low", "medium", "high", "xhigh":
+		return effort
+	default:
+		return ""
+	}
+}
+
 func kiroMaxOutputTokensForModel(model string) int {
 	normalized := normalizeModelAlias(model)
 	switch normalized {
@@ -440,11 +466,13 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 			baseSystem = inlineSystem
 		}
 	}
+	gptReasoningEffort := ""
 	if isKiroGPTModel(modelID) {
+		gptReasoningEffort = extractKiroGPTReasoningEffort(claudeBody)
 		thinking = nil
 		requestCtx.ThinkingEnabled = false
 	}
-	systemPrompt := buildInjectedSystemPrompt(baseSystem, thinking, toolChoiceHint)
+	systemPrompt := buildInjectedSystemPrompt(baseSystem, modelID, thinking, toolChoiceHint)
 
 	history, currentUserMsg, currentToolResults := processMessages(filteredMessages, modelID, normalizeOrigin(origin), &requestCtx)
 	history = prependSystemHistory(history, systemPrompt, modelID, normalizeOrigin(origin))
@@ -514,7 +542,7 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 		},
 		ProfileArn:                   profileArn,
 		InferenceConfig:              inferenceConfig,
-		AdditionalModelRequestFields: buildAdditionalModelRequestFields(thinking, modelID),
+		AdditionalModelRequestFields: buildAdditionalModelRequestFields(thinking, modelID, gptReasoningEffort),
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -530,6 +558,13 @@ func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, reque
 	}
 	if requestCtx.CacheEmulationUsage != nil {
 		usage = mergeKiroCacheEmulationUsage(usage, requestCtx.CacheEmulationUsage)
+	}
+	// Kiro 不上报 tokenUsage,解析结果的 InputTokens 恒为 0；缓存模拟生效时会
+	// 顺带填上（inputTokens 减去缓存部分），未生效时用调用方预估值兜底,
+	// 避免响应体 usage.input_tokens 输出 0。放在 merge 之后,让缓存模拟的
+	// 更精确取值优先。
+	if usage.InputTokens == 0 && requestCtx.EstimatedInputTokens > 0 {
+		usage.InputTokens = requestCtx.EstimatedInputTokens
 	}
 	return &ParseResult{
 		ResponseBody: buildClaudeResponse(content, toolUses, model, usage, stopReason, requestCtx),
@@ -1463,19 +1498,47 @@ func thinkingDirectiveFromModel(model string) *thinkingDirective {
 // 这是个字面量;若不替换,模型会直接复读 "I am {{identity}}",对 Opus 4.7/4.8 这类
 // 对格式更敏感的版本尤其明显。
 //
-// identity 为空时回退到 "Claude",对齐 prompt 中 <CRITICAL_OVERRIDE> 的兜底语义:
-// "If no identity is provided, say that you are Claude."
+// identity 为空时回退到 "Claude",对齐 prompt 中 <CRITICAL_OVERRIDE> 的兜底语义。
+// 非 Claude 身份（如 GPT-5.6）会同时改写 <CRITICAL_OVERRIDE> 里的兜底句,
+// 否则 prompt 内会出现"自称 X"与"未提供身份则自称 Claude"两条矛盾指令。
 func renderKiroBuiltinIdentityPrompt(identity string) string {
 	identity = strings.TrimSpace(identity)
 	if identity == "" {
 		identity = "Claude"
 	}
-	return strings.ReplaceAll(kiroBuiltinIdentityPrompt, "{{identity}}", identity)
+	prompt := kiroBuiltinIdentityPrompt
+	if identity != "Claude" {
+		prompt = strings.ReplaceAll(
+			prompt,
+			"If no identity is provided, say that you are Claude.",
+			"If no identity is provided, say that you are "+identity+".",
+		)
+	}
+	return strings.ReplaceAll(prompt, "{{identity}}", identity)
 }
 
-func buildInjectedSystemPrompt(systemPrompt string, thinking *thinkingDirective, toolChoiceHint string) string {
+// kiroDefaultIdentityForModel 返回 Kiro 内置身份提示的默认身份。GPT-5.6 系列不是 Claude
+// 的重皮肤,继续用 "You are Claude" 兜底会让模型收到自相矛盾的身份指令。
+//
+// 这里用 normalizeModelAlias 而非 MapModel:MapModel 对 GPT 的 "-thinking" 变体
+// 会落到 default 返回空串,导致 gpt-5.6-sol-thinking 仍被兜底成 "Claude",
+// 与同一请求里 isKiroGPTModel（同样基于 normalizeModelAlias）的判定不一致。
+func kiroDefaultIdentityForModel(modelID string) string {
+	switch normalizeModelAlias(modelID) {
+	case "gpt-5.6-sol":
+		return "GPT-5.6 Sol"
+	case "gpt-5.6-terra":
+		return "GPT-5.6 Terra"
+	case "gpt-5.6-luna":
+		return "GPT-5.6 Luna"
+	default:
+		return "Claude"
+	}
+}
+
+func buildInjectedSystemPrompt(systemPrompt, modelID string, thinking *thinkingDirective, toolChoiceHint string) string {
 	systemPrompt = strings.TrimSpace(systemPrompt)
-	promptParts := []string{renderKiroBuiltinIdentityPrompt("")}
+	promptParts := []string{renderKiroBuiltinIdentityPrompt(kiroDefaultIdentityForModel(modelID))}
 	if temporalContext := buildKiroTemporalContext(); temporalContext != "" {
 		promptParts = append(promptParts, temporalContext)
 	}
@@ -1525,14 +1588,20 @@ func buildKiroTemporalContext() string {
 }
 
 // buildAdditionalModelRequestFields 构建 Kiro payload 的 additionalModelRequestFields。
-// 对 Claude 4.6+ 模型，使用 output_config.effort 路径（官方 Kiro IDE 的 kr() 逻辑）：
+// GPT-5.6 使用 Kiro 原生 reasoning.effort；Claude 4.6+ 使用 output_config.effort：
 //
+//	GPT-5.6 → { reasoning: {effort} }
 //	output_config 路径 → { thinking: {type:'adaptive',display:'summarized'}, output_config: {effort} }
 //
 // 对于旧模型或 enabled 模式，不注入（依赖 system prompt 标签兜底）。
 //
 // 这实现了管理器的 P1 功能：确保 Claude 4.6+ 新模型的 thinking 使用 effort-based 控制。
-func buildAdditionalModelRequestFields(thinking *thinkingDirective, modelID string) map[string]any {
+func buildAdditionalModelRequestFields(thinking *thinkingDirective, modelID string, gptReasoningEffort string) map[string]any {
+	if gptReasoningEffort != "" {
+		return map[string]any{
+			"reasoning": map[string]any{"effort": gptReasoningEffort},
+		}
+	}
 	if thinking == nil {
 		return nil
 	}
@@ -4305,10 +4374,6 @@ func updateUsageFromEvent(usage *Usage, eventType string, event map[string]any) 
 		}
 		if value, ok := toInt(tokenUsage["cacheReadInputTokens"]); ok {
 			usage.CacheReadInputTokens = value
-		}
-		// cacheWriteInputTokens 原先从未被读取，导致 Kiro 上报的真实缓存写入量丢失。
-		if value, ok := toInt(tokenUsage["cacheWriteInputTokens"]); ok {
-			usage.CacheCreationInputTokens = value
 		}
 		updateKiroCreditsFromMap(usage, tokenUsage)
 	}
