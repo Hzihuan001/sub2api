@@ -106,7 +106,7 @@ func writeAnthropicMessageStart(w io.Writer, msgID, model string, inputTokens in
 }
 
 func (s *GatewayService) streamKiroWebSearchAsAnthropic(
-	ctx context.Context, account *Account, anthropicBody []byte, mappedModel, requestModel, token string, inputTokens int, headers http.Header, w io.Writer, cacheUsage *kiroCacheEmulationUsage,
+	ctx context.Context, account *Account, anthropicBody []byte, mappedModel, requestModel, token string, inputTokens int, headers http.Header, w io.Writer, plan *kiroCacheEmulationPlan,
 ) error {
 	query := kiropkg.ExtractSearchQuery(anthropicBody)
 	if strings.TrimSpace(query) == "" {
@@ -120,7 +120,7 @@ func (s *GatewayService) streamKiroWebSearchAsAnthropic(
 	currentToolUseID := "srvtoolu_" + kiropkg.GenerateToolUseID()
 	nextContentBlockIndex := 0
 
-	if err := writeAnthropicMessageStart(w, "", requestModel, inputTokens, cacheUsage); err != nil {
+	if err := writeAnthropicMessageStart(w, "", requestModel, inputTokens, plan.result()); err != nil {
 		return err
 	}
 
@@ -151,6 +151,10 @@ func (s *GatewayService) streamKiroWebSearchAsAnthropic(
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return &kiroWebSearchHTTPError{Response: resp}
+		}
+		if iteration == 0 {
+			// 首轮请求已确认成功，此时提交缓存前缀落盘才是安全的。
+			plan.commit()
 		}
 
 		chunks, _, streamErr := func() ([][]byte, *kiropkg.StreamResult, error) {
@@ -247,7 +251,10 @@ func (s *GatewayService) executeKiroWebSearch(ctx context.Context, account *Acco
 				cacheUsage = s.buildKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
 				cacheUsageResolved = true
 			}
-			return kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, requestModel, kiropkg.KiroRequestContext{CacheEmulationUsage: cacheUsage.toKiroUsage()})
+			return kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, requestModel, kiropkg.KiroRequestContext{
+				CacheEmulationUsage:  cacheUsage.toKiroUsage(),
+				EstimatedInputTokens: inputTokens,
+			})
 		}()
 		if parseErr != nil {
 			return nil, parseErr

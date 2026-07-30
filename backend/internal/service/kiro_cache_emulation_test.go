@@ -47,6 +47,41 @@ func TestKiroCacheEmulationUsesSnapshotGroupWithoutRepo(t *testing.T) {
 	}
 }
 
+// prepareKiroCacheEmulationUsage 在 commit() 之前不得改动 tracker：连续两次 prepare
+// 且都不 commit，应当观察到完全相同的（未命中）状态，证明 prepare 从未写入缓存条目。
+func TestKiroCacheEmulationPrepareDoesNotMutateUntilCommit(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := &Account{ID: 55, Platform: PlatformKiro}
+	group := kiroCacheGroup(1)
+	body := kiroCacheRequestBody("deferred commit", false)
+
+	planA := svc.prepareKiroCacheEmulationUsage(context.Background(), account, group, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, planA)
+	usageA := planA.result()
+	require.NotNil(t, usageA)
+	require.Equal(t, 2000, usageA.CacheCreationInputTokens)
+	require.Equal(t, 0, usageA.CacheReadInputTokens)
+
+	// 未 commit：同样内容的第二次 prepare 仍应观察到未命中，
+	// 证明第一次 prepare 没有写入 tracker。
+	planB := svc.prepareKiroCacheEmulationUsage(context.Background(), account, group, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, planB)
+	usageB := planB.result()
+	require.NotNil(t, usageB)
+	require.Equal(t, 2000, usageB.CacheCreationInputTokens)
+	require.Equal(t, 0, usageB.CacheReadInputTokens)
+
+	// 提交后，后续 prepare 应观察到缓存命中。
+	planB.commit()
+	planC := svc.prepareKiroCacheEmulationUsage(context.Background(), account, group, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, planC)
+	usageC := planC.result()
+	require.NotNil(t, usageC)
+	require.Equal(t, 2000, usageC.CacheReadInputTokens)
+	require.Equal(t, 0, usageC.CacheCreationInputTokens)
+}
+
 func TestKiroCacheEmulationRatioScalesTokens(t *testing.T) {
 	resetKiroCacheTracker()
 	svc := &GatewayService{}

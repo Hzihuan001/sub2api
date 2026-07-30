@@ -356,6 +356,35 @@ func TestBuildKiroPayloadDoesNotInjectClaudeThinkingTagsForGPTModels(t *testing.
 	require.False(t, gjson.GetBytes(kiroBuildResult.Payload, "additionalModelRequestFields").Exists())
 }
 
+// GPT-5.6 一律不下发 additionalModelRequestFields，即使客户端显式请求了
+// reasoning effort。原因：Kiro 协议里没有 reasoning.effort 字段（下发会被上游
+// 静默忽略），而已确认接受 additionalModelRequestFields 的模型白名单不含 GPT
+// 系列，向未确认模型下发会触发 400 "additionalModelRequestFields is not supported"。
+// 待抓包确认字段名与模型支持情况后再实现。
+func TestBuildKiroPayloadDoesNotSendAdditionalFieldsForGPTModels(t *testing.T) {
+	bodies := []string{
+		`{"model":"gpt-5.6-sol","reasoning_effort":"high","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","reasoning":{"effort":"low"},"messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","output_config":{"effort":"medium"},"messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","reasoning_effort":"max","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","thinking":{"type":"enabled","budget_tokens":16000},"messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hi"}]}`,
+	}
+	for _, body := range bodies {
+		result, err := BuildKiroPayloadWithContext([]byte(body), "gpt-5.6-sol", "", "AI_EDITOR", nil)
+		require.NoError(t, err)
+		require.False(t, gjson.GetBytes(result.Payload, "additionalModelRequestFields").Exists(),
+			"GPT 模型不得下发 additionalModelRequestFields: %s", body)
+	}
+
+	// 对照：Claude 4.6+ 的 output_config 路径不受影响。
+	claude, err := BuildKiroPayloadWithContext(
+		[]byte(`{"model":"claude-opus-4-6-thinking","messages":[{"role":"user","content":"hi"}]}`),
+		"claude-opus-4.6", "", "AI_EDITOR", nil)
+	require.NoError(t, err)
+	require.Equal(t, "high", gjson.GetBytes(claude.Payload, "additionalModelRequestFields.output_config.effort").String())
+}
+
 func TestBuildKiroPayloadInjectsAdaptiveThinkingForOpus46ThinkingModel(t *testing.T) {
 	body := []byte(`{
 		"model":"claude-opus-4-6-thinking",
@@ -630,6 +659,51 @@ func TestParseNonStreamingEventStreamPreservesLargeIntegerInMapInput(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, "tool_use", result.StopReason)
 	require.Equal(t, "9007199254740993", gjson.GetBytes(result.ResponseBody, "content.0.input.id").Raw)
+}
+
+// Kiro 上游只发 meteringEvent(credits),不发 tokenUsage,所以非流式解析出的
+// InputTokens 恒为 0。流式路径靠 inputTokens 参数种入初值,非流式没有对应入口,
+// 需由 requestCtx.EstimatedInputTokens 兜底,否则响应体 usage.input_tokens 为 0。
+func TestParseNonStreamingEventStreamFallsBackToEstimatedInputTokens(t *testing.T) {
+	// 复刻真实 Kiro 流：仅正文 + credits，无 tokenUsage。
+	newStream := func() *bytes.Buffer {
+		b := bytes.NewBuffer(nil)
+		_, _ = b.Write(buildEventStreamFrame(t, "assistantResponseEvent", map[string]any{
+			"assistantResponseEvent": map[string]any{"content": "OK"},
+		}))
+		_, _ = b.Write(buildEventStreamFrame(t, "meteringEvent", map[string]any{
+			"meteringEvent": map[string]any{"unit": "credit", "usage": 0.0283},
+		}))
+		return b
+	}
+
+	// 无兜底（零值）时保持原行为：输出 0。
+	bare, err := ParseNonStreamingEventStreamWithContext(newStream(), "gpt-5.6-sol", KiroRequestContext{})
+	require.NoError(t, err)
+	require.Equal(t, 0, bare.Usage.InputTokens)
+	require.Equal(t, int64(0), gjson.GetBytes(bare.ResponseBody, "usage.input_tokens").Int())
+
+	// 有兜底时填入预估值，响应体同步生效。
+	fallback, err := ParseNonStreamingEventStreamWithContext(newStream(), "gpt-5.6-sol", KiroRequestContext{
+		EstimatedInputTokens: 22,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 22, fallback.Usage.InputTokens)
+	require.Equal(t, int64(22), gjson.GetBytes(fallback.ResponseBody, "usage.input_tokens").Int())
+
+	// 缓存模拟生效时其取值优先，兜底不得覆盖（207 = 预估减去缓存部分）。
+	withCache, err := ParseNonStreamingEventStreamWithContext(newStream(), "gpt-5.6-sol", KiroRequestContext{
+		EstimatedInputTokens: 1962,
+		CacheEmulationUsage: &Usage{
+			InputTokens:                207,
+			CacheCreationInputTokens:   1755,
+			CacheCreation5mInputTokens: 1755,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 207, withCache.Usage.InputTokens)
+	require.Equal(t, int64(207), gjson.GetBytes(withCache.ResponseBody, "usage.input_tokens").Int())
+	require.Equal(t, int64(1755), gjson.GetBytes(withCache.ResponseBody, "usage.cache_creation_input_tokens").Int())
 }
 
 func TestParseNonStreamingEventStreamRejectsTrailingJSONValueInToolInput(t *testing.T) {

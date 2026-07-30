@@ -38,6 +38,13 @@ const (
 	kiroDefaultMaxOutputTokens = 64000
 	kiroRemoteImageMaxBytes    = 10 << 20
 	kiroRemoteImageTimeout     = 8 * time.Second
+)
+
+// kiroUpstreamTraceEnabled 由环境变量 KIRO_UPSTREAM_TRACE=1 开启，仅用于诊断：
+// 打印 Kiro 上游原始事件类型与语义事件类型/内容前缀，定位 CoT 泄漏来自哪个通道。
+var kiroUpstreamTraceEnabled = os.Getenv("KIRO_UPSTREAM_TRACE") == "1"
+
+const (
 	thinkingStartTag           = "<thinking>"
 	thinkingEndTag             = "</thinking>"
 	embeddedToolCallPrefix     = "[Called "
@@ -105,6 +112,12 @@ type KiroRequestContext struct {
 	StructuredOutputUserHint string
 	StopSequences            []string
 	MaxOutputTokens          int
+	// EstimatedInputTokens 是调用方预估的输入 token 数，用于非流式路径兜底：
+	// Kiro 上游只上报 credits(meteringEvent),不发 tokenUsage,解析结果里的
+	// InputTokens 恒为 0。流式路径通过独立的 inputTokens 参数种入初值,非流式
+	// 没有对应入口,不兜底会让响应体 usage.input_tokens 输出 0。
+	// 为 0 时不生效（保持原行为）。
+	EstimatedInputTokens int
 }
 
 type KiroBuildResult struct {
@@ -523,6 +536,13 @@ func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, reque
 	}
 	if requestCtx.CacheEmulationUsage != nil {
 		usage = mergeKiroCacheEmulationUsage(usage, requestCtx.CacheEmulationUsage)
+	}
+	// Kiro 不上报 tokenUsage,解析结果的 InputTokens 恒为 0；缓存模拟生效时会
+	// 顺带填上（inputTokens 减去缓存部分），未生效时用调用方预估值兜底,
+	// 避免响应体 usage.input_tokens 输出 0。放在 merge 之后,让缓存模拟的
+	// 更精确取值优先。
+	if usage.InputTokens == 0 && requestCtx.EstimatedInputTokens > 0 {
+		usage.InputTokens = requestCtx.EstimatedInputTokens
 	}
 	return &ParseResult{
 		ResponseBody: buildClaudeResponse(content, toolUses, model, usage, stopReason, requestCtx),
@@ -1226,8 +1246,28 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			continue
 		}
 
+		if kiroUpstreamTraceEnabled {
+			payloadPrefix := string(msg.Payload)
+			if len(payloadPrefix) > 300 {
+				payloadPrefix = payloadPrefix[:300]
+			}
+			fmt.Fprintf(os.Stderr, "[KIRO_TRACE] model=%s thinkingEnabled=%v eventType=%q payload=%s\n",
+				model, requestCtx.ThinkingEnabled, msg.EventType, payloadPrefix)
+		}
+
 		semanticEvents := extractSemanticEvents(msg.EventType, event, &lastContentFragment)
 		for i := range semanticEvents {
+			if kiroUpstreamTraceEnabled {
+				ev := &semanticEvents[i]
+				detail := ev.Content
+				if detail == "" {
+					detail = ev.Reasoning
+				}
+				if len(detail) > 200 {
+					detail = detail[:200]
+				}
+				fmt.Fprintf(os.Stderr, "[KIRO_TRACE]   -> semanticType=%q detail=%q\n", ev.Type, detail)
+			}
 			if err := applySemanticEvent(&semanticEvents[i]); err != nil {
 				return nil, err
 			}
@@ -1505,6 +1545,11 @@ func buildKiroTemporalContext() string {
 // 对于旧模型或 enabled 模式，不注入（依赖 system prompt 标签兜底）。
 //
 // 这实现了管理器的 P1 功能：确保 Claude 4.6+ 新模型的 thinking 使用 effort-based 控制。
+//
+// GPT-5.6 不在此路径内：Kiro 协议没有 reasoning.effort 字段，且 GPT 系列未被确认
+// 接受 additionalModelRequestFields（向未确认模型下发会触发上游 400
+// "additionalModelRequestFields is not supported"）。客户端请求的 reasoning_effort
+// 对 GPT 暂不透传，待抓包确认字段名与模型支持情况后再实现。
 func buildAdditionalModelRequestFields(thinking *thinkingDirective, modelID string) map[string]any {
 	if thinking == nil {
 		return nil
