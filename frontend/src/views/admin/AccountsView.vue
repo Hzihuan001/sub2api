@@ -477,8 +477,8 @@
     <TotpStepUpDialog :controller="accountExportStepUp" />
     <ConfirmDialog
       :show="showBulkDeleteConfirm"
-      :title="t('common.confirm')"
-      :message="t('common.confirm')"
+      :title="t('admin.accounts.bulkDeleteTitle')"
+      :message="t('admin.accounts.bulkDeleteConfirm', { count: selIds.length })"
       :confirm-text="t('common.delete')"
       :cancel-text="t('common.cancel')"
       :danger="true"
@@ -487,8 +487,8 @@
     />
     <ConfirmDialog
       :show="showBulkResetConfirm"
-      :title="t('common.confirm')"
-      :message="t('common.confirm')"
+      :title="t('admin.accounts.bulkResetStatusTitle')"
+      :message="t('admin.accounts.bulkResetStatusConfirm', { count: selIds.length })"
       :confirm-text="t('common.confirm')"
       :cancel-text="t('common.cancel')"
       @confirm="handleBulkResetStatus"
@@ -496,8 +496,8 @@
     />
     <ConfirmDialog
       :show="showBulkRefreshConfirm"
-      :title="t('common.confirm')"
-      :message="t('common.confirm')"
+      :title="t('admin.accounts.bulkRefreshTokenTitle')"
+      :message="t('admin.accounts.bulkRefreshTokenConfirm', { count: selIds.length })"
       :confirm-text="t('common.confirm')"
       :cancel-text="t('common.cancel')"
       @confirm="handleBulkRefreshToken"
@@ -610,11 +610,8 @@ const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const showBulkDeleteConfirm = ref(false)
-const bulkDeleteConfirmPayload = ref({ count: 0 })
 const showBulkResetConfirm = ref(false)
-const bulkResetConfirmPayload = ref(true)
 const showBulkRefreshConfirm = ref(false)
-const bulkRefreshConfirmPayload = ref(true)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -1592,10 +1589,10 @@ const handleBulkDelete = async () => {
   const accountIds = [...selIds.value]
   if (!showBulkDeleteConfirm.value) {
     showBulkDeleteConfirm.value = true
-    bulkDeleteConfirmPayload.value = { count: accountIds.length }
     return
   }
   try {
+    showBulkDeleteConfirm.value = false
     const result = await adminAPI.accounts.batchDelete(accountIds)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', {
@@ -1616,10 +1613,10 @@ const handleBulkDelete = async () => {
 const handleBulkResetStatus = async () => {
   if (!showBulkResetConfirm.value) {
     showBulkResetConfirm.value = true
-    bulkResetConfirmPayload.value = true
     return
   }
   try {
+    showBulkResetConfirm.value = false
     const result = await adminAPI.accounts.batchClearError(selIds.value)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
@@ -1634,12 +1631,12 @@ const handleBulkResetStatus = async () => {
   }
 }
 const handleBulkRefreshToken = async () => {
-  if (!showBulkResetConfirm.value) {
-    showBulkResetConfirm.value = true
-    bulkResetConfirmPayload.value = true
+  if (!showBulkRefreshConfirm.value) {
+    showBulkRefreshConfirm.value = true
     return
   }
   try {
+    showBulkRefreshConfirm.value = false
     const result = await adminAPI.accounts.batchRefresh(selIds.value)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
