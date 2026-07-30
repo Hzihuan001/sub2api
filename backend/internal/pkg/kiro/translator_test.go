@@ -746,6 +746,20 @@ func TestUpdateUsageFromEventCapturesKiroCreditsAliases(t *testing.T) {
 	}
 }
 
+// cacheWriteInputTokens 原先从未被读取；Kiro 上报的真实缓存写入量
+// 必须填充到 CacheCreationInputTokens。
+func TestUpdateUsageFromEventCapturesCacheWriteInputTokens(t *testing.T) {
+	var usage Usage
+	updateUsageFromEvent(&usage, "messageMetadataEvent", map[string]any{
+		"messageMetadataEvent": map[string]any{
+			"tokenUsage": map[string]any{
+				"cacheWriteInputTokens": 45,
+			},
+		},
+	})
+	require.Equal(t, 45, usage.CacheCreationInputTokens)
+}
+
 func TestUpdateUsageFromEventAccumulatesMeteringCredits(t *testing.T) {
 	var usage Usage
 

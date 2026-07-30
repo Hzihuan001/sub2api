@@ -38,6 +38,13 @@ const (
 	kiroDefaultMaxOutputTokens = 64000
 	kiroRemoteImageMaxBytes    = 10 << 20
 	kiroRemoteImageTimeout     = 8 * time.Second
+)
+
+// kiroUpstreamTraceEnabled 由环境变量 KIRO_UPSTREAM_TRACE=1 开启，仅用于诊断：
+// 打印 Kiro 上游原始事件类型与语义事件类型/内容前缀，定位 CoT 泄漏来自哪个通道。
+var kiroUpstreamTraceEnabled = os.Getenv("KIRO_UPSTREAM_TRACE") == "1"
+
+const (
 	thinkingStartTag           = "<thinking>"
 	thinkingEndTag             = "</thinking>"
 	embeddedToolCallPrefix     = "[Called "
@@ -1226,8 +1233,28 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			continue
 		}
 
+		if kiroUpstreamTraceEnabled {
+			payloadPrefix := string(msg.Payload)
+			if len(payloadPrefix) > 300 {
+				payloadPrefix = payloadPrefix[:300]
+			}
+			fmt.Fprintf(os.Stderr, "[KIRO_TRACE] model=%s thinkingEnabled=%v eventType=%q payload=%s\n",
+				model, requestCtx.ThinkingEnabled, msg.EventType, payloadPrefix)
+		}
+
 		semanticEvents := extractSemanticEvents(msg.EventType, event, &lastContentFragment)
 		for i := range semanticEvents {
+			if kiroUpstreamTraceEnabled {
+				ev := &semanticEvents[i]
+				detail := ev.Content
+				if detail == "" {
+					detail = ev.Reasoning
+				}
+				if len(detail) > 200 {
+					detail = detail[:200]
+				}
+				fmt.Fprintf(os.Stderr, "[KIRO_TRACE]   -> semanticType=%q detail=%q\n", ev.Type, detail)
+			}
 			if err := applySemanticEvent(&semanticEvents[i]); err != nil {
 				return nil, err
 			}
@@ -4278,6 +4305,10 @@ func updateUsageFromEvent(usage *Usage, eventType string, event map[string]any) 
 		}
 		if value, ok := toInt(tokenUsage["cacheReadInputTokens"]); ok {
 			usage.CacheReadInputTokens = value
+		}
+		// cacheWriteInputTokens 原先从未被读取，导致 Kiro 上报的真实缓存写入量丢失。
+		if value, ok := toInt(tokenUsage["cacheWriteInputTokens"]); ok {
+			usage.CacheCreationInputTokens = value
 		}
 		updateKiroCreditsFromMap(usage, tokenUsage)
 	}
