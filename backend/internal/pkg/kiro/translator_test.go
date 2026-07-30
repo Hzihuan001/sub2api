@@ -358,59 +358,33 @@ func TestBuildKiroPayloadDoesNotInjectClaudeThinkingTagsForGPTModels(t *testing.
 	require.False(t, gjson.GetBytes(kiroBuildResult.Payload, "additionalModelRequestFields").Exists())
 }
 
-// GPT-5.6 不走 Claude 的 thinking/output_config 指令路径，但客户端请求的
-// reasoning effort 仍须通过模型自身的 additionalModelRequestFields.reasoning.effort
-// 送达 Kiro。
-func TestBuildKiroPayloadForwardsGPTReasoningEffort(t *testing.T) {
-	cases := []struct {
-		name       string
-		body       string
-		wantEffort string
-	}{
-		{
-			name:       "reasoning_effort field",
-			body:       `{"model":"gpt-5.6-sol","reasoning_effort":"high","messages":[{"role":"user","content":"hi"}]}`,
-			wantEffort: "high",
-		},
-		{
-			name:       "nested reasoning.effort field",
-			body:       `{"model":"gpt-5.6-sol","reasoning":{"effort":"low"},"messages":[{"role":"user","content":"hi"}]}`,
-			wantEffort: "low",
-		},
-		{
-			name:       "responses-style output_config.effort field",
-			body:       `{"model":"gpt-5.6-sol","output_config":{"effort":"medium"},"messages":[{"role":"user","content":"hi"}]}`,
-			wantEffort: "medium",
-		},
-		{
-			name:       "max normalizes to xhigh",
-			body:       `{"model":"gpt-5.6-sol","reasoning_effort":"max","messages":[{"role":"user","content":"hi"}]}`,
-			wantEffort: "xhigh",
-		},
-		{
-			name:       "unrecognized effort is dropped",
-			body:       `{"model":"gpt-5.6-sol","reasoning_effort":"ultra","messages":[{"role":"user","content":"hi"}]}`,
-			wantEffort: "",
-		},
-		{
-			name:       "no effort requested",
-			body:       `{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hi"}]}`,
-			wantEffort: "",
-		},
+// GPT-5.6 一律不下发 additionalModelRequestFields，即使客户端显式请求了
+// reasoning effort。原因：Kiro 协议里没有 reasoning.effort 字段（下发会被上游
+// 静默忽略），而已确认接受 additionalModelRequestFields 的模型白名单不含 GPT
+// 系列，向未确认模型下发会触发 400 "additionalModelRequestFields is not supported"。
+// 待抓包确认字段名与模型支持情况后再实现。
+func TestBuildKiroPayloadDoesNotSendAdditionalFieldsForGPTModels(t *testing.T) {
+	bodies := []string{
+		`{"model":"gpt-5.6-sol","reasoning_effort":"high","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","reasoning":{"effort":"low"},"messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","output_config":{"effort":"medium"},"messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","reasoning_effort":"max","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","thinking":{"type":"enabled","budget_tokens":16000},"messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"hi"}]}`,
+	}
+	for _, body := range bodies {
+		result, err := BuildKiroPayloadWithContext([]byte(body), "gpt-5.6-sol", "", "AI_EDITOR", nil)
+		require.NoError(t, err)
+		require.False(t, gjson.GetBytes(result.Payload, "additionalModelRequestFields").Exists(),
+			"GPT 模型不得下发 additionalModelRequestFields: %s", body)
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			result, err := BuildKiroPayloadWithContext([]byte(tc.body), "gpt-5.6-sol", "", "AI_EDITOR", nil)
-			require.NoError(t, err)
-			if tc.wantEffort == "" {
-				require.False(t, gjson.GetBytes(result.Payload, "additionalModelRequestFields").Exists())
-				return
-			}
-			require.Equal(t, tc.wantEffort, gjson.GetBytes(result.Payload, "additionalModelRequestFields.reasoning.effort").String())
-			require.False(t, gjson.GetBytes(result.Payload, "additionalModelRequestFields.thinking").Exists())
-		})
-	}
+	// 对照：Claude 4.6+ 的 output_config 路径不受影响。
+	claude, err := BuildKiroPayloadWithContext(
+		[]byte(`{"model":"claude-opus-4-6-thinking","messages":[{"role":"user","content":"hi"}]}`),
+		"claude-opus-4.6", "", "AI_EDITOR", nil)
+	require.NoError(t, err)
+	require.Equal(t, "high", gjson.GetBytes(claude.Payload, "additionalModelRequestFields.output_config.effort").String())
 }
 
 // 身份判定必须与 isKiroGPTModel 保持一致：两者都基于 normalizeModelAlias，

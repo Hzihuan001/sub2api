@@ -362,26 +362,6 @@ func isKiroGPTModel(modelID string) bool {
 	}
 }
 
-// extractKiroGPTReasoningEffort 从客户端请求体中解析 GPT-5.6 的 reasoning effort。
-// 依次尝试 Responses 风格的 output_config.effort、OpenAI 风格的 reasoning_effort/
-// reasoning.effort；"max" 归一化为 Kiro 支持的最高档 "xhigh"。
-func extractKiroGPTReasoningEffort(body []byte) string {
-	effort := ""
-	for _, path := range []string{"output_config.effort", "reasoning_effort", "reasoning.effort"} {
-		if effort = strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, path).String())); effort != "" {
-			break
-		}
-	}
-	switch effort {
-	case "max":
-		return "xhigh"
-	case "low", "medium", "high", "xhigh":
-		return effort
-	default:
-		return ""
-	}
-}
-
 func kiroMaxOutputTokensForModel(model string) int {
 	normalized := normalizeModelAlias(model)
 	switch normalized {
@@ -466,9 +446,7 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 			baseSystem = inlineSystem
 		}
 	}
-	gptReasoningEffort := ""
 	if isKiroGPTModel(modelID) {
-		gptReasoningEffort = extractKiroGPTReasoningEffort(claudeBody)
 		thinking = nil
 		requestCtx.ThinkingEnabled = false
 	}
@@ -542,7 +520,7 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 		},
 		ProfileArn:                   profileArn,
 		InferenceConfig:              inferenceConfig,
-		AdditionalModelRequestFields: buildAdditionalModelRequestFields(thinking, modelID, gptReasoningEffort),
+		AdditionalModelRequestFields: buildAdditionalModelRequestFields(thinking, modelID),
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -1588,20 +1566,19 @@ func buildKiroTemporalContext() string {
 }
 
 // buildAdditionalModelRequestFields 构建 Kiro payload 的 additionalModelRequestFields。
-// GPT-5.6 使用 Kiro 原生 reasoning.effort；Claude 4.6+ 使用 output_config.effort：
+// 对 Claude 4.6+ 模型，使用 output_config.effort 路径（官方 Kiro IDE 的 kr() 逻辑）：
 //
-//	GPT-5.6 → { reasoning: {effort} }
 //	output_config 路径 → { thinking: {type:'adaptive',display:'summarized'}, output_config: {effort} }
 //
 // 对于旧模型或 enabled 模式，不注入（依赖 system prompt 标签兜底）。
 //
 // 这实现了管理器的 P1 功能：确保 Claude 4.6+ 新模型的 thinking 使用 effort-based 控制。
-func buildAdditionalModelRequestFields(thinking *thinkingDirective, modelID string, gptReasoningEffort string) map[string]any {
-	if gptReasoningEffort != "" {
-		return map[string]any{
-			"reasoning": map[string]any{"effort": gptReasoningEffort},
-		}
-	}
+//
+// GPT-5.6 不在此路径内：Kiro 协议没有 reasoning.effort 字段，且 GPT 系列未被确认
+// 接受 additionalModelRequestFields（向未确认模型下发会触发上游 400
+// "additionalModelRequestFields is not supported"）。客户端请求的 reasoning_effort
+// 对 GPT 暂不透传，待抓包确认字段名与模型支持情况后再实现。
+func buildAdditionalModelRequestFields(thinking *thinkingDirective, modelID string) map[string]any {
 	if thinking == nil {
 		return nil
 	}
