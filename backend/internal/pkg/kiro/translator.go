@@ -450,7 +450,7 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 		thinking = nil
 		requestCtx.ThinkingEnabled = false
 	}
-	systemPrompt := buildInjectedSystemPrompt(baseSystem, modelID, thinking, toolChoiceHint)
+	systemPrompt := buildInjectedSystemPrompt(baseSystem, thinking, toolChoiceHint)
 
 	history, currentUserMsg, currentToolResults := processMessages(filteredMessages, modelID, normalizeOrigin(origin), &requestCtx)
 	history = prependSystemHistory(history, systemPrompt, modelID, normalizeOrigin(origin))
@@ -1476,47 +1476,19 @@ func thinkingDirectiveFromModel(model string) *thinkingDirective {
 // 这是个字面量;若不替换,模型会直接复读 "I am {{identity}}",对 Opus 4.7/4.8 这类
 // 对格式更敏感的版本尤其明显。
 //
-// identity 为空时回退到 "Claude",对齐 prompt 中 <CRITICAL_OVERRIDE> 的兜底语义。
-// 非 Claude 身份（如 GPT-5.6）会同时改写 <CRITICAL_OVERRIDE> 里的兜底句,
-// 否则 prompt 内会出现"自称 X"与"未提供身份则自称 Claude"两条矛盾指令。
+// identity 为空时回退到 "Claude",对齐 prompt 中 <CRITICAL_OVERRIDE> 的兜底语义:
+// "If no identity is provided, say that you are Claude."
 func renderKiroBuiltinIdentityPrompt(identity string) string {
 	identity = strings.TrimSpace(identity)
 	if identity == "" {
 		identity = "Claude"
 	}
-	prompt := kiroBuiltinIdentityPrompt
-	if identity != "Claude" {
-		prompt = strings.ReplaceAll(
-			prompt,
-			"If no identity is provided, say that you are Claude.",
-			"If no identity is provided, say that you are "+identity+".",
-		)
-	}
-	return strings.ReplaceAll(prompt, "{{identity}}", identity)
+	return strings.ReplaceAll(kiroBuiltinIdentityPrompt, "{{identity}}", identity)
 }
 
-// kiroDefaultIdentityForModel 返回 Kiro 内置身份提示的默认身份。GPT-5.6 系列不是 Claude
-// 的重皮肤,继续用 "You are Claude" 兜底会让模型收到自相矛盾的身份指令。
-//
-// 这里用 normalizeModelAlias 而非 MapModel:MapModel 对 GPT 的 "-thinking" 变体
-// 会落到 default 返回空串,导致 gpt-5.6-sol-thinking 仍被兜底成 "Claude",
-// 与同一请求里 isKiroGPTModel（同样基于 normalizeModelAlias）的判定不一致。
-func kiroDefaultIdentityForModel(modelID string) string {
-	switch normalizeModelAlias(modelID) {
-	case "gpt-5.6-sol":
-		return "GPT-5.6 Sol"
-	case "gpt-5.6-terra":
-		return "GPT-5.6 Terra"
-	case "gpt-5.6-luna":
-		return "GPT-5.6 Luna"
-	default:
-		return "Claude"
-	}
-}
-
-func buildInjectedSystemPrompt(systemPrompt, modelID string, thinking *thinkingDirective, toolChoiceHint string) string {
+func buildInjectedSystemPrompt(systemPrompt string, thinking *thinkingDirective, toolChoiceHint string) string {
 	systemPrompt = strings.TrimSpace(systemPrompt)
-	promptParts := []string{renderKiroBuiltinIdentityPrompt(kiroDefaultIdentityForModel(modelID))}
+	promptParts := []string{renderKiroBuiltinIdentityPrompt("")}
 	if temporalContext := buildKiroTemporalContext(); temporalContext != "" {
 		promptParts = append(promptParts, temporalContext)
 	}

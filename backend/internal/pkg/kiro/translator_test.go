@@ -348,9 +348,7 @@ func TestBuildKiroPayloadDoesNotInjectClaudeThinkingTagsForGPTModels(t *testing.
 	require.NoError(t, err)
 
 	systemContent := gjson.GetBytes(kiroBuildResult.Payload, "conversationState.history.0.userInputMessage.content").String()
-	// GPT-5.6 不是 Claude 的重皮肤：内置身份提示不能让模型自称 Claude。
-	require.Contains(t, systemContent, "You are GPT-5.6 Terra, a senior software engineer")
-	require.NotContains(t, systemContent, "You are Claude,")
+	require.Contains(t, systemContent, "You are Claude, a senior software engineer")
 	require.NotContains(t, systemContent, "<thinking_mode>")
 	require.NotContains(t, systemContent, "<max_thinking_length>")
 	require.NotContains(t, systemContent, "<thinking_effort>")
@@ -385,46 +383,6 @@ func TestBuildKiroPayloadDoesNotSendAdditionalFieldsForGPTModels(t *testing.T) {
 		"claude-opus-4.6", "", "AI_EDITOR", nil)
 	require.NoError(t, err)
 	require.Equal(t, "high", gjson.GetBytes(claude.Payload, "additionalModelRequestFields.output_config.effort").String())
-}
-
-// 身份判定必须与 isKiroGPTModel 保持一致：两者都基于 normalizeModelAlias，
-// 因此 "-thinking" 变体同样要拿到 GPT 身份，不能回退成 "Claude"。
-func TestKiroDefaultIdentityForModelMatchesGPTDetection(t *testing.T) {
-	cases := map[string]string{
-		"gpt-5.6-sol":            "GPT-5.6 Sol",
-		"gpt-5.6-terra":          "GPT-5.6 Terra",
-		"gpt-5.6-luna":           "GPT-5.6 Luna",
-		"gpt-5.6-sol-thinking":   "GPT-5.6 Sol",
-		"gpt-5.6-terra-thinking": "GPT-5.6 Terra",
-		"GPT-5.6-Luna":           "GPT-5.6 Luna",
-		"claude-sonnet-4.5":      "Claude",
-		"claude-opus-4-6":        "Claude",
-	}
-	for model, want := range cases {
-		t.Run(model, func(t *testing.T) {
-			require.Equal(t, want, kiroDefaultIdentityForModel(model))
-			// GPT 模型的身份不得是 Claude，非 GPT 模型的身份必须是 Claude。
-			require.Equal(t, isKiroGPTModel(model), kiroDefaultIdentityForModel(model) != "Claude")
-		})
-	}
-}
-
-// 非 Claude 身份下，<CRITICAL_OVERRIDE> 里的兜底句必须同步改写，
-// 否则 prompt 内会同时存在"自称 GPT-5.6"和"未提供身份则自称 Claude"两条矛盾指令。
-func TestRenderKiroBuiltinIdentityPromptRewritesFallbackSentence(t *testing.T) {
-	gpt := renderKiroBuiltinIdentityPrompt("GPT-5.6 Sol")
-	require.Contains(t, gpt, "You are GPT-5.6 Sol, a senior software engineer")
-	require.Contains(t, gpt, "If no identity is provided, say that you are GPT-5.6 Sol.")
-	require.NotContains(t, gpt, "say that you are Claude.")
-	require.NotContains(t, gpt, "{{identity}}")
-
-	// Claude 身份（含空值回退）行为保持不变。
-	for _, identity := range []string{"", "Claude"} {
-		claude := renderKiroBuiltinIdentityPrompt(identity)
-		require.Contains(t, claude, "You are Claude, a senior software engineer")
-		require.Contains(t, claude, "If no identity is provided, say that you are Claude.")
-		require.NotContains(t, claude, "{{identity}}")
-	}
 }
 
 func TestBuildKiroPayloadInjectsAdaptiveThinkingForOpus46ThinkingModel(t *testing.T) {
