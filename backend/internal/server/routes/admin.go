@@ -116,6 +116,9 @@ func RegisterAdminRoutes(
 		// 独立提示词输入审计
 		registerPromptAuditRoutes(admin, h)
 
+		// 提示词注入规则管理
+		registerPromptRuleRoutes(admin, h)
+
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
 
@@ -137,6 +140,17 @@ func registerPromptAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		promptAudit.POST("/events/batch-delete", h.Admin.PromptAudit.BatchDelete)
 		promptAudit.POST("/events/delete-preview", h.Admin.PromptAudit.DeletePreview)
 		promptAudit.POST("/events/delete-by-filter", h.Admin.PromptAudit.DeleteByFilter)
+	}
+}
+
+func registerPromptRuleRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	rules := admin.Group("/prompt-rules")
+	{
+		rules.GET("", h.Admin.PromptRule.List)
+		rules.GET("/:id", h.Admin.PromptRule.GetByID)
+		rules.POST("", h.Admin.PromptRule.Create)
+		rules.PUT("/:id", h.Admin.PromptRule.Update)
+		rules.DELETE("/:id", h.Admin.PromptRule.Delete)
 	}
 }
 
