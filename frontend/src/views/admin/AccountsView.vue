@@ -177,6 +177,9 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          :total-results="pagination.total"
+          :selecting-all="selectingAllResults"
+          :all-results-selected="allResultsSelected"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -185,6 +188,7 @@
           @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
           @select-page="selectPage"
+          @select-all-results="handleSelectAllResults"
           @toggle-schedulable="handleBulkToggleSchedulable"
         />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -461,9 +465,6 @@
     />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
-    <ConfirmDialog :show="showBulkDeleteDialog" :title="t('admin.accounts.bulkDeleteTitle')" :message="t('admin.accounts.bulkDeleteConfirm', { count: selIds.length })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmBulkDelete" @cancel="showBulkDeleteDialog = false" />
-    <ConfirmDialog :show="showBulkResetStatusDialog" :title="t('admin.accounts.bulkResetStatusTitle')" :message="t('admin.accounts.bulkResetStatusConfirm', { count: selIds.length })" :confirm-text="t('common.confirm')" :cancel-text="t('common.cancel')" @confirm="confirmBulkResetStatus" @cancel="showBulkResetStatusDialog = false" />
-    <ConfirmDialog :show="showBulkRefreshTokenDialog" :title="t('admin.accounts.bulkRefreshTokenTitle')" :message="t('admin.accounts.bulkRefreshTokenConfirm', { count: selIds.length })" :confirm-text="t('common.confirm')" :cancel-text="t('common.cancel')" @confirm="confirmBulkRefreshToken" @cancel="showBulkRefreshTokenDialog = false" />
     <ConfirmDialog :show="showCreateShadowDialog" :title="t('admin.accounts.createSparkShadow')" :message="t('admin.accounts.createSparkShadowConfirm', { name: creatingShadowAcc?.name })" @confirm="confirmCreateSparkShadow" @cancel="showCreateShadowDialog = false" />
     <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
       <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -474,6 +475,34 @@
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
     <TotpStepUpDialog :controller="accountExportStepUp" />
+    <ConfirmDialog
+      :show="showBulkDeleteConfirm"
+      :title="t('admin.accounts.bulkDeleteTitle')"
+      :message="t('admin.accounts.bulkDeleteConfirm', { count: selIds.length })"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="handleBulkDelete"
+      @cancel="showBulkDeleteConfirm = false"
+    />
+    <ConfirmDialog
+      :show="showBulkResetConfirm"
+      :title="t('admin.accounts.bulkResetStatusTitle')"
+      :message="t('admin.accounts.bulkResetStatusConfirm', { count: selIds.length })"
+      :confirm-text="t('common.confirm')"
+      :cancel-text="t('common.cancel')"
+      @confirm="handleBulkResetStatus"
+      @cancel="showBulkResetConfirm = false"
+    />
+    <ConfirmDialog
+      :show="showBulkRefreshConfirm"
+      :title="t('admin.accounts.bulkRefreshTokenTitle')"
+      :message="t('admin.accounts.bulkRefreshTokenConfirm', { count: selIds.length })"
+      :confirm-text="t('common.confirm')"
+      :cancel-text="t('common.cancel')"
+      @confirm="handleBulkRefreshToken"
+      @cancel="showBulkRefreshConfirm = false"
+    />
   </AppLayout>
 </template>
 
@@ -516,6 +545,7 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
+import { fetchAllAccountIds } from '@/utils/accountSelection'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { isKiroRelayAccount } from '@/utils/kiroAccount'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
@@ -579,12 +609,12 @@ const showImportData = ref(false)
 const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
+const showBulkDeleteConfirm = ref(false)
+const showBulkResetConfirm = ref(false)
+const showBulkRefreshConfirm = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
-const showBulkDeleteDialog = ref(false)
-const showBulkResetStatusDialog = ref(false)
-const showBulkRefreshTokenDialog = ref(false)
 const showCreateShadowDialog = ref(false)
 const showReAuth = ref(false)
 const showTest = ref(false)
@@ -929,6 +959,7 @@ const {
 })
 
 const {
+  selectedSet,
   selectedIds: selIds,
   allVisibleSelected,
   isSelected,
@@ -936,15 +967,35 @@ const {
   select,
   deselect,
   toggle: toggleSel,
-  clear: clearSelection,
+  clear: clearSelectedIds,
   removeMany: removeSelectedAccounts,
   toggleVisible,
-  selectVisible: selectPage,
+  selectVisible: selectCurrentPage,
   batchUpdate
 } = useTableSelection<Account>({
   rows: accounts,
   getId: (account) => account.id
 })
+
+const selectingAllResults = ref(false)
+const selectedAllResultIDs = ref<Set<number> | null>(null)
+const selectionRequestVersion = ref(0)
+const allResultsSelected = computed(() => {
+  const snapshot = selectedAllResultIDs.value
+  if (!snapshot || snapshot.size === 0 || snapshot.size !== selectedSet.value.size) return false
+  return Array.from(snapshot).every(id => selectedSet.value.has(id))
+})
+
+const clearSelection = () => {
+  selectionRequestVersion.value++
+  selectingAllResults.value = false
+  selectedAllResultIDs.value = null
+  clearSelectedIds()
+}
+
+const selectPage = () => {
+  selectCurrentPage()
+}
 
 const swipeVirtualContext: SwipeSelectVirtualContext = {
   getVirtualizer: () => dataTableRef.value?.virtualizer ?? null,
@@ -1013,6 +1064,7 @@ const refreshUpstreamBillingSortedList = async (force = false) => {
 }
 
 const debouncedReload = () => {
+  clearSelection()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
@@ -1533,21 +1585,38 @@ const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
   toggleVisible(target.checked)
 }
-const handleBulkDelete = () => { showBulkDeleteDialog.value = true }
-const confirmBulkDelete = async () => {
-  showBulkDeleteDialog.value = false
+const handleBulkDelete = async () => {
+  const accountIds = [...selIds.value]
+  if (!showBulkDeleteConfirm.value) {
+    showBulkDeleteConfirm.value = true
+    return
+  }
   try {
-    await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id)))
-    clearSelection()
-    reload()
+    showBulkDeleteConfirm.value = false
+    const result = await adminAPI.accounts.batchDelete(accountIds)
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', {
+        success: result.success,
+        failed: result.failed
+      }))
+      setSelectedIds(result.failed_ids?.length ? result.failed_ids : accountIds)
+    } else {
+      appStore.showSuccess(t('admin.accounts.bulkActions.deleteSuccess', { count: result.success }))
+      clearSelection()
+    }
+    await reload()
   } catch (error) {
     console.error('Failed to bulk delete accounts:', error)
+    appStore.showError(String(error))
   }
 }
-const handleBulkResetStatus = () => { showBulkResetStatusDialog.value = true }
-const confirmBulkResetStatus = async () => {
-  showBulkResetStatusDialog.value = false
+const handleBulkResetStatus = async () => {
+  if (!showBulkResetConfirm.value) {
+    showBulkResetConfirm.value = true
+    return
+  }
   try {
+    showBulkResetConfirm.value = false
     const result = await adminAPI.accounts.batchClearError(selIds.value)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
@@ -1561,10 +1630,13 @@ const confirmBulkResetStatus = async () => {
     appStore.showError(String(error))
   }
 }
-const handleBulkRefreshToken = () => { showBulkRefreshTokenDialog.value = true }
-const confirmBulkRefreshToken = async () => {
-  showBulkRefreshTokenDialog.value = false
+const handleBulkRefreshToken = async () => {
+  if (!showBulkRefreshConfirm.value) {
+    showBulkRefreshConfirm.value = true
+    return
+  }
   try {
+    showBulkRefreshConfirm.value = false
     const result = await adminAPI.accounts.batchRefresh(selIds.value)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
@@ -1726,6 +1798,32 @@ const buildBulkEditFilterSnapshot = () => {
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
+  }
+}
+
+const handleSelectAllResults = async () => {
+  if (selectingAllResults.value || pagination.total === 0) return
+
+  const requestVersion = ++selectionRequestVersion.value
+  const filters = buildBulkEditFilterSnapshot()
+  selectingAllResults.value = true
+  try {
+    const ids = await fetchAllAccountIds(
+      (page, pageSize, requestFilters) => adminAPI.accounts.list(page, pageSize, requestFilters),
+      filters
+    )
+    if (requestVersion !== selectionRequestVersion.value) return
+
+    setSelectedIds(ids)
+    selectedAllResultIDs.value = new Set(ids)
+  } catch (error) {
+    if (requestVersion !== selectionRequestVersion.value) return
+    console.error('Failed to select all account results:', error)
+    appStore.showError(t('admin.accounts.bulkActions.selectAllFailed'))
+  } finally {
+    if (requestVersion === selectionRequestVersion.value) {
+      selectingAllResults.value = false
+    }
   }
 }
 
