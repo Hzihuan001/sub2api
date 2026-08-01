@@ -475,6 +475,34 @@
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
     <TotpStepUpDialog :controller="accountExportStepUp" />
+    <ConfirmDialog
+      :show="showBulkDeleteConfirm"
+      :title="t('common.confirm')"
+      :message="t('common.confirm')"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="handleBulkDelete"
+      @cancel="showBulkDeleteConfirm = false"
+    />
+    <ConfirmDialog
+      :show="showBulkResetConfirm"
+      :title="t('common.confirm')"
+      :message="t('common.confirm')"
+      :confirm-text="t('common.confirm')"
+      :cancel-text="t('common.cancel')"
+      @confirm="handleBulkResetStatus"
+      @cancel="showBulkResetConfirm = false"
+    />
+    <ConfirmDialog
+      :show="showBulkRefreshConfirm"
+      :title="t('common.confirm')"
+      :message="t('common.confirm')"
+      :confirm-text="t('common.confirm')"
+      :cancel-text="t('common.cancel')"
+      @confirm="handleBulkRefreshToken"
+      @cancel="showBulkRefreshConfirm = false"
+    />
   </AppLayout>
 </template>
 
@@ -581,6 +609,12 @@ const showImportData = ref(false)
 const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
+const showBulkDeleteConfirm = ref(false)
+const bulkDeleteConfirmPayload = ref({ count: 0 })
+const showBulkResetConfirm = ref(false)
+const bulkResetConfirmPayload = ref(true)
+const showBulkRefreshConfirm = ref(false)
+const bulkRefreshConfirmPayload = ref(true)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -1556,7 +1590,11 @@ const toggleSelectAllVisible = (event: Event) => {
 }
 const handleBulkDelete = async () => {
   const accountIds = [...selIds.value]
-  if (!confirm(t('admin.accounts.bulkActions.confirmDelete', { count: accountIds.length }))) return
+  if (!showBulkDeleteConfirm.value) {
+    showBulkDeleteConfirm.value = true
+    bulkDeleteConfirmPayload.value = { count: accountIds.length }
+    return
+  }
   try {
     const result = await adminAPI.accounts.batchDelete(accountIds)
     if (result.failed > 0) {
@@ -1576,7 +1614,11 @@ const handleBulkDelete = async () => {
   }
 }
 const handleBulkResetStatus = async () => {
-  if (!confirm(t('common.confirm'))) return
+  if (!showBulkResetConfirm.value) {
+    showBulkResetConfirm.value = true
+    bulkResetConfirmPayload.value = true
+    return
+  }
   try {
     const result = await adminAPI.accounts.batchClearError(selIds.value)
     if (result.failed > 0) {
@@ -1592,7 +1634,11 @@ const handleBulkResetStatus = async () => {
   }
 }
 const handleBulkRefreshToken = async () => {
-  if (!confirm(t('common.confirm'))) return
+  if (!showBulkResetConfirm.value) {
+    showBulkResetConfirm.value = true
+    bulkResetConfirmPayload.value = true
+    return
+  }
   try {
     const result = await adminAPI.accounts.batchRefresh(selIds.value)
     if (result.failed > 0) {
