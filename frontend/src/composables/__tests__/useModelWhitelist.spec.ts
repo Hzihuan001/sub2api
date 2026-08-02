@@ -118,6 +118,7 @@ describe('useModelWhitelist', () => {
       'gpt-5.6-sol',
       'gpt-5.6-terra',
       'gpt-5.6-luna',
+      'codex-auto-review',
       'claude-opus-4-8',
       'claude-opus-4-8-thinking',
       'claude-opus-4-7',
@@ -140,6 +141,7 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gpt-5.6-sol')
     expect(models).toContain('gpt-5.6-terra')
     expect(models).toContain('gpt-5.6-luna')
+    expect(models).toContain('codex-auto-review')
     expect(models).not.toContain('gpt-5.6')
     expect(models.some(model => model.endsWith('-agentic'))).toBe(false)
     expect(models.some(model => model.endsWith('-chat'))).toBe(false)
@@ -206,6 +208,7 @@ describe('useModelWhitelist', () => {
       { from: 'gpt-5.6-sol', to: 'gpt-5.6-sol' },
       { from: 'gpt-5.6-terra', to: 'gpt-5.6-terra' },
       { from: 'gpt-5.6-luna', to: 'gpt-5.6-luna' },
+      { from: 'codex-auto-review', to: 'gpt-5.6-luna' },
       { from: 'claude-opus-4-8', to: 'claude-opus-4.8' },
       { from: 'claude-opus-4-8-thinking', to: 'claude-opus-4.8' },
       { from: 'claude-opus-4-7', to: 'claude-opus-4.7' },
@@ -228,7 +231,8 @@ describe('useModelWhitelist', () => {
     expect(mappingPairs).toEqual(expect.arrayContaining([
       { from: 'gpt-5.6-sol', to: 'gpt-5.6-sol' },
       { from: 'gpt-5.6-terra', to: 'gpt-5.6-terra' },
-      { from: 'gpt-5.6-luna', to: 'gpt-5.6-luna' }
+      { from: 'gpt-5.6-luna', to: 'gpt-5.6-luna' },
+      { from: 'codex-auto-review', to: 'gpt-5.6-luna' }
     ]))
     expect(mappingTargets).not.toContain('gpt-5.6')
     expect(mappings.some(item => item.from === 'gpt-5.6')).toBe(false)
@@ -258,6 +262,7 @@ describe('useModelWhitelist', () => {
       { from: 'gpt-5.6-sol', to: 'gpt-5.6-sol' },
       { from: 'gpt-5.6-terra', to: 'gpt-5.6-terra' },
       { from: 'gpt-5.6-luna', to: 'gpt-5.6-luna' },
+      { from: 'codex-auto-review', to: 'gpt-5.6-luna' },
       { from: 'claude-opus-4-8', to: 'claude-opus-4.8' },
       { from: 'claude-opus-4-8-thinking', to: 'claude-opus-4.8' },
       { from: 'claude-opus-4-7', to: 'claude-opus-4.7' },
@@ -277,7 +282,7 @@ describe('useModelWhitelist', () => {
       { from: 'claude-haiku-4-5-20251001', to: 'claude-haiku-4.5' },
       { from: 'claude-haiku-4-5-20251001-thinking', to: 'claude-haiku-4.5' }
     ]))
-    expect(mappings).toHaveLength(21)
+    expect(mappings).toHaveLength(22)
     expect(mappings.every(item => !item.from.startsWith('kiro-'))).toBe(true)
     expect(mappings.every(item => !item.to.startsWith('kiro-'))).toBe(true)
     expect(mappings.every(item => !item.from.endsWith('-agentic'))).toBe(true)

@@ -53,6 +53,7 @@ func TestDefaultKiroModelMapping_MatchesKiroReferenceModels(t *testing.T) {
 		"gpt-5.6-sol":                         "gpt-5.6-sol",
 		"gpt-5.6-terra":                       "gpt-5.6-terra",
 		"gpt-5.6-luna":                        "gpt-5.6-luna",
+		"codex-auto-review":                   "gpt-5.6-luna",
 	}
 
 	if len(DefaultKiroModelMapping) != len(expected) {
