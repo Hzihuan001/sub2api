@@ -353,7 +353,10 @@ func normalizeModelAlias(model string) string {
 	}
 }
 
-func isKiroGPTModel(modelID string) bool {
+// IsKiroGPTModel 判断模型是否为 Kiro 暴露的 GPT-5.6 系列。走 normalizeModelAlias
+// 精确匹配而非子串包含，避免误伤同名前缀的其它模型。
+// 导出供 service 层复用（如缓存模拟的最小可缓存 token 阈值判定）。
+func IsKiroGPTModel(modelID string) bool {
 	switch normalizeModelAlias(modelID) {
 	case "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna":
 		return true
@@ -446,7 +449,7 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 			baseSystem = inlineSystem
 		}
 	}
-	if isKiroGPTModel(modelID) {
+	if IsKiroGPTModel(modelID) {
 		thinking = nil
 		requestCtx.ThinkingEnabled = false
 	}

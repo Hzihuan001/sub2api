@@ -20,14 +20,16 @@ import (
 )
 
 const (
-	kiroCacheDefaultTTL          = 5 * time.Minute
-	kiroCacheOneHourTTL          = time.Hour
-	kiroCacheMaxSupportedTTL     = time.Hour
-	kiroTokensPerTool            = 150
-	kiroTokensPerMessage         = 4
-	kiroCacheMinTokensDefault    = 1024
-	kiroCacheMinTokensOpus       = 4096
-	kiroCacheMinTokensHaiku3     = 2048
+	kiroCacheDefaultTTL       = 5 * time.Minute
+	kiroCacheOneHourTTL       = time.Hour
+	kiroCacheMaxSupportedTTL  = time.Hour
+	kiroTokensPerTool         = 150
+	kiroTokensPerMessage      = 4
+	kiroCacheMinTokensDefault = 1024
+	kiroCacheMinTokensOpus    = 4096
+	// kiroCacheMinTokensGPT 与 default 同值但语义独立：1024 对齐 OpenAI 官方的最小
+	// 缓存粒度，不应随 default 一起调整。见 kiroMinimumCacheableTokens。
+	kiroCacheMinTokensGPT        = 1024
 	kiroCachePrefixLookbackLimit = 10
 )
 
@@ -926,16 +928,19 @@ func kiroCacheCredentialIdentity(account *Account) string {
 	return strings.Join(parts, "|")
 }
 
+// kiroMinimumCacheableTokens 返回「前缀至少多少 token 才值得记进缓存」的阈值。
+// 目前只有两档特例：GPT-5.6 系列取 1024（对齐 OpenAI 官方最小缓存粒度），opus 系取
+// 4096；其余 Kiro 模型走默认档。GPT 用 kiropkg.IsKiroGPTModel 精确匹配，opus 仍用
+// 子串以覆盖 -thinking 与带日期后缀的变体。
+// 各模型的期望值由 TestKiroMinimumCacheableTokens 钉死。
 func kiroMinimumCacheableTokens(model string) int {
-	m := strings.ToLower(model)
-	switch {
-	case strings.Contains(m, "opus"):
-		return kiroCacheMinTokensOpus
-	case strings.Contains(m, "haiku-3") || strings.Contains(m, "haiku_3"):
-		return kiroCacheMinTokensHaiku3
-	default:
-		return kiroCacheMinTokensDefault
+	if kiropkg.IsKiroGPTModel(model) {
+		return kiroCacheMinTokensGPT
 	}
+	if strings.Contains(strings.ToLower(model), "opus") {
+		return kiroCacheMinTokensOpus
+	}
+	return kiroCacheMinTokensDefault
 }
 
 func stripKiroCacheControl(v any) any {
