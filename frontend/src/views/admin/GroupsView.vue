@@ -784,6 +784,7 @@
             <div class="grid grid-cols-2 gap-1 rounded border border-gray-200 bg-gray-50 p-1 dark:border-dark-600 dark:bg-dark-800">
               <button
                 type="button"
+                :aria-pressed="createForm.kiro_cache_emulation_mode === 'uniform'"
                 class="h-9 rounded px-3 text-sm font-medium transition-colors"
                 :class="createForm.kiro_cache_emulation_mode === 'uniform'
                   ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-400'
@@ -794,6 +795,7 @@
               </button>
               <button
                 type="button"
+                :aria-pressed="createForm.kiro_cache_emulation_mode === 'independent'"
                 class="h-9 rounded px-3 text-sm font-medium transition-colors"
                 :class="createForm.kiro_cache_emulation_mode === 'independent'
                   ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-400'
@@ -804,19 +806,24 @@
               </button>
             </div>
             <div v-if="createForm.kiro_cache_emulation_mode === 'uniform'" class="mt-3">
-              <label class="input-label">{{ t("admin.groups.kiroCache.ratio") }}</label>
-              <input v-model.number="createForm.kiro_cache_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
-              <p class="input-hint">{{ t("admin.groups.kiroCache.ratioHint") }}</p>
+              <KiroCacheRatioField
+                id-prefix="create-kiro-cache-ratio"
+                v-model="createForm.kiro_cache_emulation_ratio"
+                :label="t('admin.groups.kiroCache.ratio')"
+                :hint="t('admin.groups.kiroCache.ratioHint')"
+              />
             </div>
             <div v-else class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label class="input-label">{{ t("admin.groups.kiroCache.creationRatio") }}</label>
-                <input v-model.number="createForm.kiro_cache_creation_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
-              </div>
-              <div>
-                <label class="input-label">{{ t("admin.groups.kiroCache.readRatio") }}</label>
-                <input v-model.number="createForm.kiro_cache_read_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
-              </div>
+              <KiroCacheRatioField
+                id-prefix="create-kiro-cache-creation-ratio"
+                v-model="createForm.kiro_cache_creation_emulation_ratio"
+                :label="t('admin.groups.kiroCache.creationRatio')"
+              />
+              <KiroCacheRatioField
+                id-prefix="create-kiro-cache-read-ratio"
+                v-model="createForm.kiro_cache_read_emulation_ratio"
+                :label="t('admin.groups.kiroCache.readRatio')"
+              />
               <p class="input-hint sm:col-span-2">{{ t("admin.groups.kiroCache.independentRatioHint") }}</p>
             </div>
           </div>
@@ -2422,6 +2429,7 @@
             <div class="grid grid-cols-2 gap-1 rounded border border-gray-200 bg-gray-50 p-1 dark:border-dark-600 dark:bg-dark-800">
               <button
                 type="button"
+                :aria-pressed="editForm.kiro_cache_emulation_mode === 'uniform'"
                 class="h-9 rounded px-3 text-sm font-medium transition-colors"
                 :class="editForm.kiro_cache_emulation_mode === 'uniform'
                   ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-400'
@@ -2432,6 +2440,7 @@
               </button>
               <button
                 type="button"
+                :aria-pressed="editForm.kiro_cache_emulation_mode === 'independent'"
                 class="h-9 rounded px-3 text-sm font-medium transition-colors"
                 :class="editForm.kiro_cache_emulation_mode === 'independent'
                   ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-400'
@@ -2442,19 +2451,24 @@
               </button>
             </div>
             <div v-if="editForm.kiro_cache_emulation_mode === 'uniform'" class="mt-3">
-              <label class="input-label">{{ t("admin.groups.kiroCache.ratio") }}</label>
-              <input v-model.number="editForm.kiro_cache_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
-              <p class="input-hint">{{ t("admin.groups.kiroCache.ratioHint") }}</p>
+              <KiroCacheRatioField
+                id-prefix="edit-kiro-cache-ratio"
+                v-model="editForm.kiro_cache_emulation_ratio"
+                :label="t('admin.groups.kiroCache.ratio')"
+                :hint="t('admin.groups.kiroCache.ratioHint')"
+              />
             </div>
             <div v-else class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label class="input-label">{{ t("admin.groups.kiroCache.creationRatio") }}</label>
-                <input v-model.number="editForm.kiro_cache_creation_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
-              </div>
-              <div>
-                <label class="input-label">{{ t("admin.groups.kiroCache.readRatio") }}</label>
-                <input v-model.number="editForm.kiro_cache_read_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
-              </div>
+              <KiroCacheRatioField
+                id-prefix="edit-kiro-cache-creation-ratio"
+                v-model="editForm.kiro_cache_creation_emulation_ratio"
+                :label="t('admin.groups.kiroCache.creationRatio')"
+              />
+              <KiroCacheRatioField
+                id-prefix="edit-kiro-cache-read-ratio"
+                v-model="editForm.kiro_cache_read_emulation_ratio"
+                :label="t('admin.groups.kiroCache.readRatio')"
+              />
               <p class="input-hint sm:col-span-2">{{ t("admin.groups.kiroCache.independentRatioHint") }}</p>
             </div>
           </div>
@@ -4235,6 +4249,7 @@ import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
+import KiroCacheRatioField from "@/components/admin/group/KiroCacheRatioField.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";

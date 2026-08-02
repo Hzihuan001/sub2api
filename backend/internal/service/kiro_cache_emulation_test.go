@@ -121,12 +121,28 @@ func TestKiroCacheEmulationIndependentRatiosScaleSeparately(t *testing.T) {
 }
 
 func TestScaleKiroCacheCreationTTLTokensPreservesScaledTotal(t *testing.T) {
+	tokens5m, tokens1h := scaleKiroCacheCreationTTLTokens(2000, 0, 1000, 0.5)
+	require.Equal(t, 1000, tokens5m+tokens1h)
+	require.Equal(t, 1000, tokens5m)
+	require.Zero(t, tokens1h)
+
+	tokens5m, tokens1h = scaleKiroCacheCreationTTLTokens(0, 2000, 1000, 0.5)
+	require.Equal(t, 1000, tokens5m+tokens1h)
+	require.Zero(t, tokens5m)
+	require.Equal(t, 1000, tokens1h)
+
+	tokens5m, tokens1h = scaleKiroCacheCreationTTLTokens(0, 0, 1000, 0.5)
+	require.Zero(t, tokens5m)
+	require.Zero(t, tokens1h)
+}
+
+func TestScaleKiroCacheCreationTTLTokensHandlesFutureMixedBuckets(t *testing.T) {
 	tokens5m, tokens1h := scaleKiroCacheCreationTTLTokens(1001, 999, 1000, 0.5)
 	require.Equal(t, 1000, tokens5m+tokens1h)
 	require.Equal(t, 501, tokens5m)
 	require.Equal(t, 499, tokens1h)
 
-	tokens5m, tokens1h = scaleKiroCacheCreationTTLTokens(2000, 0, 1000, 0.5)
+	tokens5m, tokens1h = scaleKiroCacheCreationTTLTokens(3000, 1, 1000, 0.5)
 	require.Equal(t, 1000, tokens5m)
 	require.Zero(t, tokens1h)
 }

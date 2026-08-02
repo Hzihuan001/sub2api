@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -71,13 +72,33 @@ func TestGroup_KiroCacheEmulationModes(t *testing.T) {
 	require.False(t, independent.EffectiveKiroCacheEmulationEnabled())
 }
 
-func TestNormalizeKiroCacheEmulationFieldsDefaultsAndClears(t *testing.T) {
-	kiro := &Group{Platform: PlatformKiro, KiroCacheEmulationEnabled: true}
-	normalizeKiroCacheEmulationFields(kiro)
-	require.Equal(t, KiroCacheEmulationModeUniform, kiro.KiroCacheEmulationMode)
-	require.InDelta(t, 1, kiro.KiroCacheEmulationRatio, 1e-12)
-	require.InDelta(t, 1, kiro.KiroCacheCreationEmulationRatio, 1e-12)
-	require.InDelta(t, 1, kiro.KiroCacheReadEmulationRatio, 1e-12)
+func TestNormalizeKiroCacheEmulationFieldsSynchronizesAndClears(t *testing.T) {
+	uniform := &Group{
+		Platform:                        PlatformKiro,
+		KiroCacheEmulationEnabled:       true,
+		KiroCacheEmulationRatio:         0,
+		KiroCacheEmulationMode:          KiroCacheEmulationModeUniform,
+		KiroCacheCreationEmulationRatio: 0.8,
+		KiroCacheReadEmulationRatio:     0.4,
+	}
+	normalizeKiroCacheEmulationFields(uniform)
+	require.Zero(t, uniform.KiroCacheEmulationRatio)
+	require.Zero(t, uniform.KiroCacheCreationEmulationRatio)
+	require.Zero(t, uniform.KiroCacheReadEmulationRatio)
+	require.False(t, uniform.EffectiveKiroCacheEmulationEnabled())
+
+	independent := &Group{
+		Platform:                        PlatformKiro,
+		KiroCacheEmulationEnabled:       true,
+		KiroCacheEmulationRatio:         math.NaN(),
+		KiroCacheEmulationMode:          KiroCacheEmulationModeIndependent,
+		KiroCacheCreationEmulationRatio: 0,
+		KiroCacheReadEmulationRatio:     0,
+	}
+	normalizeKiroCacheEmulationFields(independent)
+	require.Zero(t, independent.KiroCacheEmulationRatio)
+	require.Zero(t, independent.KiroCacheCreationEmulationRatio)
+	require.Zero(t, independent.KiroCacheReadEmulationRatio)
 
 	nonKiro := &Group{
 		Platform:                        PlatformAnthropic,

@@ -15,6 +15,13 @@ describe("groups Kiro cache emulation modes", () => {
     expect(groupsViewSource).toContain("setEditKiroCacheMode('independent')");
     expect(groupsViewSource).toContain("kiro_cache_creation_emulation_ratio");
     expect(groupsViewSource).toContain("kiro_cache_read_emulation_ratio");
+    expect(groupsViewSource.match(/<KiroCacheRatioField/g)).toHaveLength(6);
+    expect(groupsViewSource).toContain(
+      ":aria-pressed=\"createForm.kiro_cache_emulation_mode === 'uniform'\"",
+    );
+    expect(groupsViewSource).toContain(
+      ":aria-pressed=\"editForm.kiro_cache_emulation_mode === 'independent'\"",
+    );
   });
 
   it("inherits the uniform ratio when switching to independent mode", () => {

@@ -152,10 +152,10 @@ type CreateGroupRequest struct {
 	KiroCacheEmulationEnabled       bool     `json:"kiro_cache_emulation_enabled"`
 	KiroAutoStickyEnabled           *bool    `json:"kiro_auto_sticky_enabled"`
 	KiroStickySessionTTLSeconds     *int     `json:"kiro_sticky_session_ttl_seconds"`
-	KiroCacheEmulationRatio         *float64 `json:"kiro_cache_emulation_ratio"`
+	KiroCacheEmulationRatio         *float64 `json:"kiro_cache_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
 	KiroCacheEmulationMode          *string  `json:"kiro_cache_emulation_mode" binding:"omitempty,oneof=uniform independent"`
-	KiroCacheCreationEmulationRatio *float64 `json:"kiro_cache_creation_emulation_ratio"`
-	KiroCacheReadEmulationRatio     *float64 `json:"kiro_cache_read_emulation_ratio"`
+	KiroCacheCreationEmulationRatio *float64 `json:"kiro_cache_creation_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
+	KiroCacheReadEmulationRatio     *float64 `json:"kiro_cache_read_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
 	KiroEndpointMode                *string  `json:"kiro_endpoint_mode"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
@@ -220,10 +220,10 @@ type UpdateGroupRequest struct {
 	KiroCacheEmulationEnabled       *bool    `json:"kiro_cache_emulation_enabled"`
 	KiroAutoStickyEnabled           *bool    `json:"kiro_auto_sticky_enabled"`
 	KiroStickySessionTTLSeconds     *int     `json:"kiro_sticky_session_ttl_seconds"`
-	KiroCacheEmulationRatio         *float64 `json:"kiro_cache_emulation_ratio"`
+	KiroCacheEmulationRatio         *float64 `json:"kiro_cache_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
 	KiroCacheEmulationMode          *string  `json:"kiro_cache_emulation_mode" binding:"omitempty,oneof=uniform independent"`
-	KiroCacheCreationEmulationRatio *float64 `json:"kiro_cache_creation_emulation_ratio"`
-	KiroCacheReadEmulationRatio     *float64 `json:"kiro_cache_read_emulation_ratio"`
+	KiroCacheCreationEmulationRatio *float64 `json:"kiro_cache_creation_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
+	KiroCacheReadEmulationRatio     *float64 `json:"kiro_cache_read_emulation_ratio" binding:"omitempty,gte=0,lte=1"`
 	KiroEndpointMode                *string  `json:"kiro_endpoint_mode"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`

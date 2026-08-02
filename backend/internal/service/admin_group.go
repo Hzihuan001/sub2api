@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -404,6 +405,35 @@ func groupSupportsOAuthOnlyFilter(platform string) bool {
 		platform == PlatformComposite
 }
 
+func validateKiroCacheEmulationRatio(name string, value *float64) error {
+	if value == nil {
+		return nil
+	}
+	if math.IsNaN(*value) || math.IsInf(*value, 0) || *value < 0 || *value > 1 {
+		return infraerrors.BadRequest(
+			"INVALID_KIRO_CACHE_EMULATION_RATIO",
+			fmt.Sprintf("%s must be a finite number between 0 and 1", name),
+		)
+	}
+	return nil
+}
+
+func validateKiroCacheEmulationRatioInputs(ratio, creationRatio, readRatio *float64) error {
+	for _, field := range []struct {
+		name  string
+		value *float64
+	}{
+		{"kiro_cache_emulation_ratio", ratio},
+		{"kiro_cache_creation_emulation_ratio", creationRatio},
+		{"kiro_cache_read_emulation_ratio", readRatio},
+	} {
+		if err := validateKiroCacheEmulationRatio(field.name, field.value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
@@ -412,6 +442,13 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	platform := input.Platform
 	if platform == "" {
 		platform = PlatformAnthropic
+	}
+	if err := validateKiroCacheEmulationRatioInputs(
+		input.KiroCacheEmulationRatio,
+		input.KiroCacheCreationEmulationRatio,
+		input.KiroCacheReadEmulationRatio,
+	); err != nil {
+		return nil, err
 	}
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
@@ -513,6 +550,24 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 	allowImageGeneration := input.AllowImageGeneration || defaultAllowImageGenerationForPlatform(platform)
 	allowBatchImageGeneration := input.AllowBatchImageGeneration && allowImageGeneration && platform == PlatformGemini
+	kiroCacheEmulationRatio := 1.0
+	if input.KiroCacheEmulationRatio != nil {
+		kiroCacheEmulationRatio = *input.KiroCacheEmulationRatio
+	}
+	kiroCacheEmulationMode := KiroCacheEmulationModeUniform
+	if input.KiroCacheEmulationMode != nil {
+		kiroCacheEmulationMode = normalizeKiroCacheEmulationMode(*input.KiroCacheEmulationMode)
+	}
+	kiroCacheCreationEmulationRatio := kiroCacheEmulationRatio
+	kiroCacheReadEmulationRatio := kiroCacheEmulationRatio
+	if kiroCacheEmulationMode == KiroCacheEmulationModeIndependent {
+		if input.KiroCacheCreationEmulationRatio != nil {
+			kiroCacheCreationEmulationRatio = *input.KiroCacheCreationEmulationRatio
+		}
+		if input.KiroCacheReadEmulationRatio != nil {
+			kiroCacheReadEmulationRatio = *input.KiroCacheReadEmulationRatio
+		}
+	}
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -594,29 +649,13 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ReasoningEffortMappings:         reasoningEffortMappings,
 		KiroCacheEmulationEnabled:       input.KiroCacheEmulationEnabled,
 		KiroAutoStickyEnabled:           kiroAutoStickyEnabled,
+		KiroCacheEmulationRatio:         kiroCacheEmulationRatio,
+		KiroCacheEmulationMode:          kiroCacheEmulationMode,
+		KiroCacheCreationEmulationRatio: kiroCacheCreationEmulationRatio,
+		KiroCacheReadEmulationRatio:     kiroCacheReadEmulationRatio,
 	}
 	if input.KiroStickySessionTTLSeconds != nil {
 		group.KiroStickySessionTTLSeconds = *input.KiroStickySessionTTLSeconds
-	}
-	if input.KiroCacheEmulationRatio != nil {
-		group.KiroCacheEmulationRatio = *input.KiroCacheEmulationRatio
-	}
-	if input.KiroCacheEmulationMode != nil {
-		group.KiroCacheEmulationMode = *input.KiroCacheEmulationMode
-	}
-	if input.KiroCacheCreationEmulationRatio != nil {
-		group.KiroCacheCreationEmulationRatio = *input.KiroCacheCreationEmulationRatio
-	}
-	if input.KiroCacheReadEmulationRatio != nil {
-		group.KiroCacheReadEmulationRatio = *input.KiroCacheReadEmulationRatio
-	}
-	if normalizeKiroCacheEmulationMode(group.KiroCacheEmulationMode) == KiroCacheEmulationModeIndependent {
-		if input.KiroCacheCreationEmulationRatio == nil {
-			group.KiroCacheCreationEmulationRatio = group.KiroCacheEmulationRatio
-		}
-		if input.KiroCacheReadEmulationRatio == nil {
-			group.KiroCacheReadEmulationRatio = group.KiroCacheEmulationRatio
-		}
 	}
 	if input.KiroEndpointMode != nil {
 		group.KiroEndpointMode = *input.KiroEndpointMode
@@ -749,6 +788,13 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 }
 
 func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error) {
+	if err := validateKiroCacheEmulationRatioInputs(
+		input.KiroCacheEmulationRatio,
+		input.KiroCacheCreationEmulationRatio,
+		input.KiroCacheReadEmulationRatio,
+	); err != nil {
+		return nil, err
+	}
 	group, err := s.groupRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err

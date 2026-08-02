@@ -133,8 +133,8 @@ home.providers.kiro
 `.trim().split(/\s+/)
 
 const expectedHashes = {
-  en: '2a496c2c86e420c035d4b808ff1fbd008ed89508aad6b613a4fbeee7ed88a8a1',
-  zh: 'eca157af58e66d9cd040405dd30bb1702d1b059052e488a4db1e69659706b492',
+  en: '062905f2470a660dc933565a5f819002d3928b3e372e9213367b4f70acb449b7',
+  zh: '351e7d9ed989d2d675bffefc8515a34902affb57f30795eb1f96b3baa70f4988',
 }
 
 function localeValue(locale: Record<string, unknown>, key: string): unknown {

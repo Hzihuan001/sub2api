@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -212,6 +213,9 @@ func normalizeKiroStickySessionTTLSeconds(seconds int) int {
 }
 
 func normalizeKiroCacheEmulationRatio(ratio float64) float64 {
+	if math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+		return 0
+	}
 	if ratio < 0 {
 		return 0
 	}
@@ -249,14 +253,9 @@ func normalizeKiroCacheEmulationFields(g *Group) {
 	}
 	g.KiroStickySessionTTLSeconds = normalizeKiroStickySessionTTLSeconds(g.KiroStickySessionTTLSeconds)
 	g.KiroCacheEmulationMode = normalizeKiroCacheEmulationMode(g.KiroCacheEmulationMode)
-	if g.KiroCacheEmulationRatio == 0 {
-		g.KiroCacheEmulationRatio = 1
-	}
 	g.KiroCacheEmulationRatio = normalizeKiroCacheEmulationRatio(g.KiroCacheEmulationRatio)
-	if g.KiroCacheCreationEmulationRatio == 0 && g.KiroCacheEmulationMode == KiroCacheEmulationModeUniform {
+	if g.KiroCacheEmulationMode == KiroCacheEmulationModeUniform {
 		g.KiroCacheCreationEmulationRatio = g.KiroCacheEmulationRatio
-	}
-	if g.KiroCacheReadEmulationRatio == 0 && g.KiroCacheEmulationMode == KiroCacheEmulationModeUniform {
 		g.KiroCacheReadEmulationRatio = g.KiroCacheEmulationRatio
 	}
 	g.KiroCacheCreationEmulationRatio = normalizeKiroCacheEmulationRatio(g.KiroCacheCreationEmulationRatio)

@@ -173,14 +173,20 @@ func scaleKiroCacheCreationTTLTokens(tokens5m, tokens1h, scaledTotal int, ratio 
 	if scaledTotal <= 0 || ratio <= 0 {
 		return 0, 0
 	}
+	if tokens5m <= 0 && tokens1h <= 0 {
+		return 0, 0
+	}
+	if tokens1h <= 0 {
+		return scaledTotal, 0
+	}
+	if tokens5m <= 0 {
+		return 0, scaledTotal
+	}
 	scaled5m := scaleKiroCacheTokens(tokens5m, ratio)
 	if scaled5m > scaledTotal {
 		scaled5m = scaledTotal
 	}
 	scaled1h := scaledTotal - scaled5m
-	if tokens1h <= 0 {
-		return scaledTotal, 0
-	}
 	return scaled5m, scaled1h
 }
 
