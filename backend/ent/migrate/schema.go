@@ -951,6 +951,9 @@ var (
 		{Name: "kiro_auto_sticky_enabled", Type: field.TypeBool, Default: true},
 		{Name: "kiro_sticky_session_ttl_seconds", Type: field.TypeInt, Default: 3600},
 		{Name: "kiro_cache_emulation_ratio", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(5,4)"}},
+		{Name: "kiro_cache_emulation_mode", Type: field.TypeString, Size: 16, Default: "uniform"},
+		{Name: "kiro_cache_creation_emulation_ratio", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(5,4)"}},
+		{Name: "kiro_cache_read_emulation_ratio", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(5,4)"}},
 		{Name: "kiro_endpoint_mode", Type: field.TypeString, Size: 8, Default: "q"},
 	}
 	// GroupsTable holds the schema information for the "groups" table.

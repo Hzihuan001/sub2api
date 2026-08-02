@@ -1198,8 +1198,22 @@ func init() {
 	groupDescKiroCacheEmulationRatio := groupFields[52].Descriptor()
 	// group.DefaultKiroCacheEmulationRatio holds the default value on creation for the kiro_cache_emulation_ratio field.
 	group.DefaultKiroCacheEmulationRatio = groupDescKiroCacheEmulationRatio.Default.(float64)
+	// groupDescKiroCacheEmulationMode is the schema descriptor for kiro_cache_emulation_mode field.
+	groupDescKiroCacheEmulationMode := groupFields[53].Descriptor()
+	// group.DefaultKiroCacheEmulationMode holds the default value on creation for the kiro_cache_emulation_mode field.
+	group.DefaultKiroCacheEmulationMode = groupDescKiroCacheEmulationMode.Default.(string)
+	// group.KiroCacheEmulationModeValidator is a validator for the "kiro_cache_emulation_mode" field. It is called by the builders before save.
+	group.KiroCacheEmulationModeValidator = groupDescKiroCacheEmulationMode.Validators[0].(func(string) error)
+	// groupDescKiroCacheCreationEmulationRatio is the schema descriptor for kiro_cache_creation_emulation_ratio field.
+	groupDescKiroCacheCreationEmulationRatio := groupFields[54].Descriptor()
+	// group.DefaultKiroCacheCreationEmulationRatio holds the default value on creation for the kiro_cache_creation_emulation_ratio field.
+	group.DefaultKiroCacheCreationEmulationRatio = groupDescKiroCacheCreationEmulationRatio.Default.(float64)
+	// groupDescKiroCacheReadEmulationRatio is the schema descriptor for kiro_cache_read_emulation_ratio field.
+	groupDescKiroCacheReadEmulationRatio := groupFields[55].Descriptor()
+	// group.DefaultKiroCacheReadEmulationRatio holds the default value on creation for the kiro_cache_read_emulation_ratio field.
+	group.DefaultKiroCacheReadEmulationRatio = groupDescKiroCacheReadEmulationRatio.Default.(float64)
 	// groupDescKiroEndpointMode is the schema descriptor for kiro_endpoint_mode field.
-	groupDescKiroEndpointMode := groupFields[53].Descriptor()
+	groupDescKiroEndpointMode := groupFields[56].Descriptor()
 	// group.DefaultKiroEndpointMode holds the default value on creation for the kiro_endpoint_mode field.
 	group.DefaultKiroEndpointMode = groupDescKiroEndpointMode.Default.(string)
 	// group.KiroEndpointModeValidator is a validator for the "kiro_endpoint_mode" field. It is called by the builders before save.

@@ -143,7 +143,6 @@ Additional Kiro-focused features in this fork:
 </tr>
 
 <tr>
-<<<<<<< HEAD
 <td width="180"><a href="https://apikl.ai"><img src="assets/partners/logos/apikl.png" alt="apikl" width="150"></a></td>
 <td>Thanks to Apikl for sponsoring this project! Built on Sub2API, the platform provides developers with relay services for Codex / Claude series models, focusing on long-term stability, high-speed direct connections, and excellent cost-effectiveness. It offers pay-as-you-go balance billing, enterprise-grade official invoices, and one-on-one dedicated support. <a href="https://apikl.ai">Register now</a> for a 1:1 top-up bonus — double your balance!
 </td>
@@ -166,8 +165,6 @@ Additional Kiro-focused features in this fork:
 </tr>
 
 <tr>
-=======
->>>>>>> upstream/main
 <td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
 <td>Thanks to Suixiang AI Gateway for sponsoring this project! <a href="https://sui-xiang.com/">Suixiang AI Gateway</a> is a reliable and efficient API relay service provider offering relay services for Claude, Codex, Gemini, and more. A privacy-focused relay — no data reselling, no model dilution; privacy, transparency, and lightning-fast after-sales support. New accounts get ¥0.5 in trial credit daily by signing in; top-ups are 1:1, no subscription required, pay-as-you-go. Multi-line redundancy, cross-region disaster recovery, automatic failover, and uninterrupted long-link SSE. 99.9% availability — critical calls never fall behind.
 </td>

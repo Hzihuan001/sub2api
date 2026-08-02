@@ -97,6 +97,40 @@ func TestKiroCacheEmulationRatioScalesTokens(t *testing.T) {
 	}
 }
 
+func TestKiroCacheEmulationIndependentRatiosScaleSeparately(t *testing.T) {
+	resetKiroCacheTracker()
+	svc := &GatewayService{}
+	account := &Account{ID: 79, Platform: PlatformKiro}
+	group := kiroCacheGroup(1)
+	group.KiroCacheEmulationMode = KiroCacheEmulationModeIndependent
+	group.KiroCacheCreationEmulationRatio = 0.75
+	group.KiroCacheReadEmulationRatio = 0.25
+	body := kiroCacheRequestBody("independent ratios", false)
+
+	first := svc.buildKiroCacheEmulationUsage(context.Background(), account, group, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, first)
+	require.Equal(t, 1500, first.CacheCreationInputTokens)
+	require.Zero(t, first.CacheReadInputTokens)
+	require.Equal(t, 500, first.InputTokens)
+
+	second := svc.buildKiroCacheEmulationUsage(context.Background(), account, group, body, "claude-sonnet-4-6", 2000)
+	require.NotNil(t, second)
+	require.Zero(t, second.CacheCreationInputTokens)
+	require.Equal(t, 500, second.CacheReadInputTokens)
+	require.Equal(t, 1500, second.InputTokens)
+}
+
+func TestScaleKiroCacheCreationTTLTokensPreservesScaledTotal(t *testing.T) {
+	tokens5m, tokens1h := scaleKiroCacheCreationTTLTokens(1001, 999, 1000, 0.5)
+	require.Equal(t, 1000, tokens5m+tokens1h)
+	require.Equal(t, 501, tokens5m)
+	require.Equal(t, 499, tokens1h)
+
+	tokens5m, tokens1h = scaleKiroCacheCreationTTLTokens(2000, 0, 1000, 0.5)
+	require.Equal(t, 1000, tokens5m)
+	require.Zero(t, tokens1h)
+}
+
 func TestKiroCacheEmulationAccountIsolation(t *testing.T) {
 	resetKiroCacheTracker()
 	svc := &GatewayService{}

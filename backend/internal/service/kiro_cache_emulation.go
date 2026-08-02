@@ -142,11 +142,23 @@ func (s *GatewayService) prepareKiroCacheEmulationPlanFromProfile(account *Accou
 		return nil
 	}
 	result := globalKiroCacheTracker.compute(cacheKey, profile)
-	ratio := group.EffectiveKiroCacheEmulationRatio()
-	result.CacheReadInputTokens = scaleKiroCacheTokens(result.CacheReadInputTokens, ratio)
-	result.CacheCreationInputTokens = scaleKiroCacheTokens(result.CacheCreationInputTokens, ratio)
-	result.CacheCreation5mInputTokens = scaleKiroCacheTokens(result.CacheCreation5mInputTokens, ratio)
-	result.CacheCreation1hInputTokens = scaleKiroCacheTokens(result.CacheCreation1hInputTokens, ratio)
+	if group.EffectiveKiroCacheEmulationMode() == KiroCacheEmulationModeUniform {
+		ratio := group.EffectiveKiroCacheEmulationRatio()
+		result.CacheReadInputTokens = scaleKiroCacheTokens(result.CacheReadInputTokens, ratio)
+		result.CacheCreationInputTokens = scaleKiroCacheTokens(result.CacheCreationInputTokens, ratio)
+		result.CacheCreation5mInputTokens = scaleKiroCacheTokens(result.CacheCreation5mInputTokens, ratio)
+		result.CacheCreation1hInputTokens = scaleKiroCacheTokens(result.CacheCreation1hInputTokens, ratio)
+	} else {
+		creationRatio, readRatio := group.EffectiveKiroCacheEmulationRatios()
+		result.CacheReadInputTokens = scaleKiroCacheTokens(result.CacheReadInputTokens, readRatio)
+		result.CacheCreationInputTokens = scaleKiroCacheTokens(result.CacheCreationInputTokens, creationRatio)
+		result.CacheCreation5mInputTokens, result.CacheCreation1hInputTokens = scaleKiroCacheCreationTTLTokens(
+			result.CacheCreation5mInputTokens,
+			result.CacheCreation1hInputTokens,
+			result.CacheCreationInputTokens,
+			creationRatio,
+		)
+	}
 	result.InputTokens = inputTokens - result.CacheReadInputTokens - result.CacheCreationInputTokens
 	if result.InputTokens < 0 {
 		result.InputTokens = 0
@@ -155,6 +167,21 @@ func (s *GatewayService) prepareKiroCacheEmulationPlanFromProfile(account *Accou
 		result = nil
 	}
 	return &kiroCacheEmulationPlan{usage: result, cacheKey: cacheKey, profile: profile}
+}
+
+func scaleKiroCacheCreationTTLTokens(tokens5m, tokens1h, scaledTotal int, ratio float64) (int, int) {
+	if scaledTotal <= 0 || ratio <= 0 {
+		return 0, 0
+	}
+	scaled5m := scaleKiroCacheTokens(tokens5m, ratio)
+	if scaled5m > scaledTotal {
+		scaled5m = scaledTotal
+	}
+	scaled1h := scaledTotal - scaled5m
+	if tokens1h <= 0 {
+		return scaledTotal, 0
+	}
+	return scaled5m, scaled1h
 }
 
 func scaleKiroCacheTokens(tokens int, ratio float64) int {

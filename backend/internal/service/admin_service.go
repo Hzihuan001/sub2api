@@ -263,16 +263,19 @@ type CreateGroupInput struct {
 	ModelsListConfig            GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
-// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
+	// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string
 	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []ReasoningEffortMapping
 	// Kiro 模拟缓存配置（仅 kiro 分组生效）
-	KiroCacheEmulationEnabled   bool
-	KiroAutoStickyEnabled       *bool
-	KiroStickySessionTTLSeconds *int
-	KiroCacheEmulationRatio     *float64
-	KiroEndpointMode            *string
+	KiroCacheEmulationEnabled       bool
+	KiroAutoStickyEnabled           *bool
+	KiroStickySessionTTLSeconds     *int
+	KiroCacheEmulationRatio         *float64
+	KiroCacheEmulationMode          *string
+	KiroCacheCreationEmulationRatio *float64
+	KiroCacheReadEmulationRatio     *float64
+	KiroEndpointMode                *string
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -330,16 +333,19 @@ type UpdateGroupInput struct {
 	ModelsListConfig            *GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
-// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。
+	// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。
 	MaxReasoningEffort *string
 	// ReasoningEffortMappings nil 表示不修改，空数组表示清空，非空数组表示替换。
 	ReasoningEffortMappings *[]ReasoningEffortMapping
 	// Kiro 模拟缓存配置（仅 kiro 分组生效）
-	KiroCacheEmulationEnabled   *bool
-	KiroAutoStickyEnabled       *bool
-	KiroStickySessionTTLSeconds *int
-	KiroCacheEmulationRatio     *float64
-	KiroEndpointMode            *string
+	KiroCacheEmulationEnabled       *bool
+	KiroAutoStickyEnabled           *bool
+	KiroStickySessionTTLSeconds     *int
+	KiroCacheEmulationRatio         *float64
+	KiroCacheEmulationMode          *string
+	KiroCacheCreationEmulationRatio *float64
+	KiroCacheReadEmulationRatio     *float64
+	KiroEndpointMode                *string
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }

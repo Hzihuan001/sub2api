@@ -98,12 +98,15 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
 		SetRpmLimit(groupIn.RPMLimit).
-SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
+		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
 		SetKiroCacheEmulationEnabled(groupIn.KiroCacheEmulationEnabled).
 		SetKiroAutoStickyEnabled(groupIn.KiroAutoStickyEnabled).
 		SetKiroStickySessionTTLSeconds(groupIn.KiroStickySessionTTLSeconds).
 		SetKiroCacheEmulationRatio(groupIn.KiroCacheEmulationRatio).
+		SetKiroCacheEmulationMode(groupIn.KiroCacheEmulationMode).
+		SetKiroCacheCreationEmulationRatio(groupIn.KiroCacheCreationEmulationRatio).
+		SetKiroCacheReadEmulationRatio(groupIn.KiroCacheReadEmulationRatio).
 		SetKiroEndpointMode(groupIn.KiroEndpointMode).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).
@@ -270,12 +273,15 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelsListConfig(groupIn.ModelsListConfig).
 		SetRpmLimit(groupIn.RPMLimit).
-SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
+		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
 		SetReasoningEffortMappings(groupIn.ReasoningEffortMappings).
 		SetKiroCacheEmulationEnabled(groupIn.KiroCacheEmulationEnabled).
 		SetKiroAutoStickyEnabled(groupIn.KiroAutoStickyEnabled).
 		SetKiroStickySessionTTLSeconds(groupIn.KiroStickySessionTTLSeconds).
 		SetKiroCacheEmulationRatio(groupIn.KiroCacheEmulationRatio).
+		SetKiroCacheEmulationMode(groupIn.KiroCacheEmulationMode).
+		SetKiroCacheCreationEmulationRatio(groupIn.KiroCacheCreationEmulationRatio).
+		SetKiroCacheReadEmulationRatio(groupIn.KiroCacheReadEmulationRatio).
 		SetKiroEndpointMode(groupIn.KiroEndpointMode).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
 		SetPeakStart(groupIn.PeakStart).

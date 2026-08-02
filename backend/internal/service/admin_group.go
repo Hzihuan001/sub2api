@@ -601,6 +601,23 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.KiroCacheEmulationRatio != nil {
 		group.KiroCacheEmulationRatio = *input.KiroCacheEmulationRatio
 	}
+	if input.KiroCacheEmulationMode != nil {
+		group.KiroCacheEmulationMode = *input.KiroCacheEmulationMode
+	}
+	if input.KiroCacheCreationEmulationRatio != nil {
+		group.KiroCacheCreationEmulationRatio = *input.KiroCacheCreationEmulationRatio
+	}
+	if input.KiroCacheReadEmulationRatio != nil {
+		group.KiroCacheReadEmulationRatio = *input.KiroCacheReadEmulationRatio
+	}
+	if normalizeKiroCacheEmulationMode(group.KiroCacheEmulationMode) == KiroCacheEmulationModeIndependent {
+		if input.KiroCacheCreationEmulationRatio == nil {
+			group.KiroCacheCreationEmulationRatio = group.KiroCacheEmulationRatio
+		}
+		if input.KiroCacheReadEmulationRatio == nil {
+			group.KiroCacheReadEmulationRatio = group.KiroCacheEmulationRatio
+		}
+	}
 	if input.KiroEndpointMode != nil {
 		group.KiroEndpointMode = *input.KiroEndpointMode
 	}
@@ -952,6 +969,24 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.KiroCacheEmulationRatio != nil {
 		group.KiroCacheEmulationRatio = *input.KiroCacheEmulationRatio
+	}
+	previousCacheMode := group.EffectiveKiroCacheEmulationMode()
+	if input.KiroCacheEmulationMode != nil {
+		group.KiroCacheEmulationMode = *input.KiroCacheEmulationMode
+	}
+	if input.KiroCacheCreationEmulationRatio != nil {
+		group.KiroCacheCreationEmulationRatio = *input.KiroCacheCreationEmulationRatio
+	}
+	if input.KiroCacheReadEmulationRatio != nil {
+		group.KiroCacheReadEmulationRatio = *input.KiroCacheReadEmulationRatio
+	}
+	if previousCacheMode == KiroCacheEmulationModeUniform && normalizeKiroCacheEmulationMode(group.KiroCacheEmulationMode) == KiroCacheEmulationModeIndependent {
+		if input.KiroCacheCreationEmulationRatio == nil {
+			group.KiroCacheCreationEmulationRatio = group.KiroCacheEmulationRatio
+		}
+		if input.KiroCacheReadEmulationRatio == nil {
+			group.KiroCacheReadEmulationRatio = group.KiroCacheEmulationRatio
+		}
 	}
 	if input.KiroEndpointMode != nil {
 		group.KiroEndpointMode = *input.KiroEndpointMode

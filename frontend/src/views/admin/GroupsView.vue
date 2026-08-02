@@ -780,17 +780,45 @@
             {{ t("admin.groups.kiroCache.enabled") }}
           </label>
           <div v-if="createForm.kiro_cache_emulation_enabled">
-            <label class="input-label">{{ t("admin.groups.kiroCache.ratio") }}</label>
-            <input
-              v-model.number="createForm.kiro_cache_emulation_ratio"
-              type="number"
-              step="0.01"
-              min="0"
-              max="1"
-              class="input"
-              placeholder="1"
-            />
-            <p class="input-hint">{{ t("admin.groups.kiroCache.ratioHint") }}</p>
+            <label class="input-label">{{ t("admin.groups.kiroCache.ratioMode") }}</label>
+            <div class="grid grid-cols-2 gap-1 rounded border border-gray-200 bg-gray-50 p-1 dark:border-dark-600 dark:bg-dark-800">
+              <button
+                type="button"
+                class="h-9 rounded px-3 text-sm font-medium transition-colors"
+                :class="createForm.kiro_cache_emulation_mode === 'uniform'
+                  ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-400'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-dark-100'"
+                @click="setCreateKiroCacheMode('uniform')"
+              >
+                {{ t("admin.groups.kiroCache.uniformMode") }}
+              </button>
+              <button
+                type="button"
+                class="h-9 rounded px-3 text-sm font-medium transition-colors"
+                :class="createForm.kiro_cache_emulation_mode === 'independent'
+                  ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-400'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-dark-100'"
+                @click="setCreateKiroCacheMode('independent')"
+              >
+                {{ t("admin.groups.kiroCache.independentMode") }}
+              </button>
+            </div>
+            <div v-if="createForm.kiro_cache_emulation_mode === 'uniform'" class="mt-3">
+              <label class="input-label">{{ t("admin.groups.kiroCache.ratio") }}</label>
+              <input v-model.number="createForm.kiro_cache_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
+              <p class="input-hint">{{ t("admin.groups.kiroCache.ratioHint") }}</p>
+            </div>
+            <div v-else class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t("admin.groups.kiroCache.creationRatio") }}</label>
+                <input v-model.number="createForm.kiro_cache_creation_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.kiroCache.readRatio") }}</label>
+                <input v-model.number="createForm.kiro_cache_read_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
+              </div>
+              <p class="input-hint sm:col-span-2">{{ t("admin.groups.kiroCache.independentRatioHint") }}</p>
+            </div>
           </div>
           <div class="mt-3">
             <label class="input-label">{{ t("admin.groups.kiroCache.endpointMode") }}</label>
@@ -2390,17 +2418,45 @@
             {{ t("admin.groups.kiroCache.enabled") }}
           </label>
           <div v-if="editForm.kiro_cache_emulation_enabled">
-            <label class="input-label">{{ t("admin.groups.kiroCache.ratio") }}</label>
-            <input
-              v-model.number="editForm.kiro_cache_emulation_ratio"
-              type="number"
-              step="0.01"
-              min="0"
-              max="1"
-              class="input"
-              placeholder="1"
-            />
-            <p class="input-hint">{{ t("admin.groups.kiroCache.ratioHint") }}</p>
+            <label class="input-label">{{ t("admin.groups.kiroCache.ratioMode") }}</label>
+            <div class="grid grid-cols-2 gap-1 rounded border border-gray-200 bg-gray-50 p-1 dark:border-dark-600 dark:bg-dark-800">
+              <button
+                type="button"
+                class="h-9 rounded px-3 text-sm font-medium transition-colors"
+                :class="editForm.kiro_cache_emulation_mode === 'uniform'
+                  ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-400'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-dark-100'"
+                @click="setEditKiroCacheMode('uniform')"
+              >
+                {{ t("admin.groups.kiroCache.uniformMode") }}
+              </button>
+              <button
+                type="button"
+                class="h-9 rounded px-3 text-sm font-medium transition-colors"
+                :class="editForm.kiro_cache_emulation_mode === 'independent'
+                  ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-400'
+                  : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-dark-100'"
+                @click="setEditKiroCacheMode('independent')"
+              >
+                {{ t("admin.groups.kiroCache.independentMode") }}
+              </button>
+            </div>
+            <div v-if="editForm.kiro_cache_emulation_mode === 'uniform'" class="mt-3">
+              <label class="input-label">{{ t("admin.groups.kiroCache.ratio") }}</label>
+              <input v-model.number="editForm.kiro_cache_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
+              <p class="input-hint">{{ t("admin.groups.kiroCache.ratioHint") }}</p>
+            </div>
+            <div v-else class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t("admin.groups.kiroCache.creationRatio") }}</label>
+                <input v-model.number="editForm.kiro_cache_creation_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.kiroCache.readRatio") }}</label>
+                <input v-model.number="editForm.kiro_cache_read_emulation_ratio" type="number" step="0.01" min="0" max="1" class="input" placeholder="1" />
+              </div>
+              <p class="input-hint sm:col-span-2">{{ t("admin.groups.kiroCache.independentRatioHint") }}</p>
+            </div>
           </div>
           <div class="mt-3">
             <label class="input-label">{{ t("admin.groups.kiroCache.endpointMode") }}</label>
@@ -4783,6 +4839,9 @@ max_reasoning_effort: "",
   kiro_auto_sticky_enabled: true,
   kiro_sticky_session_ttl_seconds: 3600,
   kiro_cache_emulation_ratio: 1,
+  kiro_cache_emulation_mode: "uniform" as "uniform" | "independent",
+  kiro_cache_creation_emulation_ratio: 1,
+  kiro_cache_read_emulation_ratio: 1,
   kiro_endpoint_mode: "q" as "q" | "krs" | "auto",
 });
 
@@ -5140,6 +5199,9 @@ max_reasoning_effort: "",
   kiro_auto_sticky_enabled: true,
   kiro_sticky_session_ttl_seconds: 3600,
   kiro_cache_emulation_ratio: 1,
+  kiro_cache_emulation_mode: "uniform" as "uniform" | "independent",
+  kiro_cache_creation_emulation_ratio: 1,
+  kiro_cache_read_emulation_ratio: 1,
   kiro_endpoint_mode: "q" as "q" | "krs" | "auto",
 });
 
@@ -5576,6 +5638,9 @@ createForm.max_reasoning_effort = "";
   createForm.kiro_auto_sticky_enabled = true;
   createForm.kiro_sticky_session_ttl_seconds = 3600;
   createForm.kiro_cache_emulation_ratio = 1;
+  createForm.kiro_cache_emulation_mode = "uniform";
+  createForm.kiro_cache_creation_emulation_ratio = 1;
+  createForm.kiro_cache_read_emulation_ratio = 1;
   createForm.kiro_endpoint_mode = "q";
   resetModelsListState(createModelsListState);
   createModelRoutingRules.value = [];
@@ -5618,6 +5683,22 @@ const normalizeKiroStickySessionTTL = (
     return 3600;
   }
   return Math.min(86400, Math.max(60, Math.trunc(seconds)));
+};
+
+const setCreateKiroCacheMode = (mode: "uniform" | "independent") => {
+  if (mode === "independent" && createForm.kiro_cache_emulation_mode !== "independent") {
+    createForm.kiro_cache_creation_emulation_ratio = createForm.kiro_cache_emulation_ratio;
+    createForm.kiro_cache_read_emulation_ratio = createForm.kiro_cache_emulation_ratio;
+  }
+  createForm.kiro_cache_emulation_mode = mode;
+};
+
+const setEditKiroCacheMode = (mode: "uniform" | "independent") => {
+  if (mode === "independent" && editForm.kiro_cache_emulation_mode !== "independent") {
+    editForm.kiro_cache_creation_emulation_ratio = editForm.kiro_cache_emulation_ratio;
+    editForm.kiro_cache_read_emulation_ratio = editForm.kiro_cache_emulation_ratio;
+  }
+  editForm.kiro_cache_emulation_mode = mode;
 };
 
 const handleCreateGroup = async () => {
@@ -5681,6 +5762,9 @@ const handleCreateGroup = async () => {
       requestData.kiro_sticky_session_ttl_seconds = 0;
       requestData.kiro_cache_emulation_enabled = false;
       requestData.kiro_cache_emulation_ratio = 0;
+      requestData.kiro_cache_emulation_mode = "uniform";
+      requestData.kiro_cache_creation_emulation_ratio = 0;
+      requestData.kiro_cache_read_emulation_ratio = 0;
       requestData.kiro_endpoint_mode = "q";
     } else {
       requestData.kiro_sticky_session_ttl_seconds = normalizeKiroStickySessionTTL(
@@ -5807,6 +5891,13 @@ editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
     group.kiro_sticky_session_ttl_seconds ?? 3600;
   editForm.kiro_cache_emulation_enabled = group.kiro_cache_emulation_enabled ?? false;
   editForm.kiro_cache_emulation_ratio = group.kiro_cache_emulation_ratio ?? 1;
+  editForm.kiro_cache_emulation_mode = group.kiro_cache_emulation_mode === "independent"
+    ? "independent"
+    : "uniform";
+  editForm.kiro_cache_creation_emulation_ratio =
+    group.kiro_cache_creation_emulation_ratio ?? group.kiro_cache_emulation_ratio ?? 1;
+  editForm.kiro_cache_read_emulation_ratio =
+    group.kiro_cache_read_emulation_ratio ?? group.kiro_cache_emulation_ratio ?? 1;
   const mode = group.kiro_endpoint_mode;
   editForm.kiro_endpoint_mode = (mode === "krs" || mode === "auto") ? mode : "q";
   resetModelsListState(editModelsListState, group.models_list_config);
@@ -5914,6 +6005,9 @@ const handleUpdateGroup = async () => {
       payload.kiro_sticky_session_ttl_seconds = 0;
       payload.kiro_cache_emulation_enabled = false;
       payload.kiro_cache_emulation_ratio = 0;
+      payload.kiro_cache_emulation_mode = "uniform";
+      payload.kiro_cache_creation_emulation_ratio = 0;
+      payload.kiro_cache_read_emulation_ratio = 0;
       payload.kiro_endpoint_mode = "q";
     } else {
       payload.kiro_sticky_session_ttl_seconds = normalizeKiroStickySessionTTL(
