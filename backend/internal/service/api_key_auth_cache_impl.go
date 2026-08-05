@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 20 // v20: carry Kiro cache emulation mode and independent ratios
+const apiKeyAuthSnapshotVersion = 21 // v21: carry Kiro cache fields and group profit control fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -434,6 +434,9 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			PeakStart:                       groupForSnapshot.PeakStart,
 			PeakEnd:                         groupForSnapshot.PeakEnd,
 			PeakRateMultiplier:              groupForSnapshot.PeakRateMultiplier,
+			ProfitControlEnabled:            groupForSnapshot.ProfitControlEnabled,
+			ProfitMinMargin:                 groupForSnapshot.ProfitMinMargin,
+			ProfitSafetyBuffer:              groupForSnapshot.ProfitSafetyBuffer,
 		}
 	}
 	return snapshot
@@ -529,6 +532,9 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			PeakStart:                       snapshot.Group.PeakStart,
 			PeakEnd:                         snapshot.Group.PeakEnd,
 			PeakRateMultiplier:              snapshot.Group.PeakRateMultiplier,
+			ProfitControlEnabled:            snapshot.Group.ProfitControlEnabled,
+			ProfitMinMargin:                 snapshot.Group.ProfitMinMargin,
+			ProfitSafetyBuffer:              snapshot.Group.ProfitSafetyBuffer,
 		}
 		normalizeKiroCacheEmulationFields(apiKey.Group)
 		normalizeKiroEndpointFields(apiKey.Group)

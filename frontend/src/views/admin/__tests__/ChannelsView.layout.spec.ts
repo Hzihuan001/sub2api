@@ -196,10 +196,13 @@ describe('ChannelsView 弹框布局', () => {
         return { found: true, input_price: 0.000005, output_price: 0.00003, cache_write_price: 0.00000625, cache_read_price: 0.0000005 }
       }
       if (model === 'gpt-5.6-terra') {
-        return { found: true, input_price: 0.0000025, output_price: 0.000015, cache_write_price: 0.000003125, cache_read_price: 0.00000025 }
+        return { found: true, input_price: 0.000002, output_price: 0.000012, cache_write_price: 0.0000025, cache_read_price: 0.0000002 }
       }
       if (model === 'gpt-5.6-luna') {
-        return { found: true, input_price: 0.000001, output_price: 0.000006, cache_write_price: 0.00000125, cache_read_price: 0.0000001 }
+        return { found: true, input_price: 0.0000002, output_price: 0.0000012, cache_write_price: 0.00000025, cache_read_price: 0.00000002 }
+      }
+      if (model === 'codex-auto-review') {
+        return { found: true, input_price: 0.0000002, output_price: 0.0000012, cache_write_price: 0.00000025, cache_read_price: 0.00000002 }
       }
       if (model === 'claude-opus-4-8') {
         return { found: true, input_price: 0.000001, output_price: 0.000005, cache_write_price: 0.00000125, cache_read_price: 0.0000001 }
@@ -269,6 +272,7 @@ describe('ChannelsView 弹框布局', () => {
     expect(getModelDefaultPricing).toHaveBeenCalledWith('gpt-5.6-sol')
     expect(getModelDefaultPricing).toHaveBeenCalledWith('gpt-5.6-terra')
     expect(getModelDefaultPricing).toHaveBeenCalledWith('gpt-5.6-luna')
+    expect(getModelDefaultPricing).toHaveBeenCalledWith('codex-auto-review')
     expect(getModelDefaultPricing).toHaveBeenCalledWith('claude-opus-4-8')
     expect(getModelDefaultPricing).toHaveBeenCalledWith('claude-opus-4-8-thinking')
     expect(getModelDefaultPricing).not.toHaveBeenCalledWith('gpt-5.6')
@@ -279,12 +283,14 @@ describe('ChannelsView 弹框布局', () => {
     expect(pricingCards[0].find('.pricing-models').text()).toBe('gpt-5.6-sol')
     expect(pricingCards[0].find('.pricing-input-price').text()).toBe('5')
     expect(pricingCards[1].find('.pricing-models').text()).toBe('gpt-5.6-terra')
-    expect(pricingCards[1].find('.pricing-input-price').text()).toBe('2.5')
+    expect(pricingCards[1].find('.pricing-input-price').text()).toBe('2')
     expect(pricingCards[2].find('.pricing-models').text()).toBe('gpt-5.6-luna')
-    expect(pricingCards[2].find('.pricing-input-price').text()).toBe('1')
-    expect(pricingCards[3].find('.pricing-models').text()).toBe('claude-opus-4-8')
-    expect(pricingCards[3].find('.pricing-input-price').text()).toBe('1')
-    expect(pricingCards[4].find('.pricing-models').text()).toBe('claude-opus-4-8-thinking')
-    expect(pricingCards[4].find('.pricing-input-price').text()).toBe('2')
+    expect(pricingCards[2].find('.pricing-input-price').text()).toBe('0.2')
+    expect(pricingCards[3].find('.pricing-models').text()).toBe('codex-auto-review')
+    expect(pricingCards[3].find('.pricing-input-price').text()).toBe('0.2')
+    expect(pricingCards[4].find('.pricing-models').text()).toBe('claude-opus-4-8')
+    expect(pricingCards[4].find('.pricing-input-price').text()).toBe('1')
+    expect(pricingCards[5].find('.pricing-models').text()).toBe('claude-opus-4-8-thinking')
+    expect(pricingCards[5].find('.pricing-input-price').text()).toBe('2')
   })
 })
