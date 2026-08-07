@@ -242,6 +242,19 @@ function buildKiroOAuthAccount() {
   } as any
 }
 
+function buildKiroAPIKeyAccount(baseUrl?: string) {
+  return {
+    ...buildAccount(),
+    id: baseUrl ? 8 : 7,
+    name: baseUrl ? 'Kiro Relay API Key' : 'Kiro Direct API Key',
+    platform: 'kiro',
+    credentials: {
+      api_key: baseUrl ? 'sk-relay' : 'ksk_direct',
+      ...(baseUrl ? { base_url: baseUrl } : {})
+    }
+  } as any
+}
+
 function buildAntigravityAccount(projectId = 'configured-project') {
   return {
     id: 3,
@@ -340,6 +353,20 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it('uses the Kiro direct API-key placeholder when base_url is absent', () => {
+    const wrapper = mountModal(buildKiroAPIKeyAccount())
+
+    expect(wrapper.find('input[type="password"][placeholder="ksk_..."]').exists()).toBe(true)
+    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(false)
+  })
+
+  it('keeps the relay API-key placeholder when a Kiro base_url is present', () => {
+    const wrapper = mountModal(buildKiroAPIKeyAccount('https://relay.example/v1'))
+
+    expect(wrapper.find('input[type="password"][placeholder="sk-..."]').exists()).toBe(true)
+    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(true)
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
