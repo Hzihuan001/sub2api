@@ -965,8 +965,11 @@ func decodeUpstreamBillingProbeSnapshot(extra map[string]any) *UpstreamBillingPr
 
 // IsUpstreamBillingProbeIdentity reports whether an account identity may opt
 // in to the upstream billing probe. `/v1/sub2api/billing` is a key-scoped
-// sub2api convention shared by the five supported API-key platforms.
+// sub2api convention shared by the six supported API-key platforms.
 // Non-sub2api upstreams return 404 and the snapshot records "unsupported".
+// Kiro direct accounts have no base_url, so they take the existing unsupported
+// fast path without sending an invalid request to AWS; Kiro relay accounts with
+// a custom base_url probe /v1/sub2api/billing normally.
 // Only AccountTypeAPIKey is in scope. OAuth/Bedrock hold no static API key to
 // present at all; AccountTypeUpstream (antigravity relay accounts) does carry
 // a base_url plus a static api_key, but it is deliberately left out of the
@@ -978,7 +981,7 @@ func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
 		return false
 	}
 	switch platform {
-	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok:
+	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok, PlatformKiro:
 		return true
 	default:
 		return false
