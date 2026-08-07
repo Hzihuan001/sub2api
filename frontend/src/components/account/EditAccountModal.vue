@@ -72,7 +72,9 @@
                 : account.platform === 'gemini'
                   ? 'AIza...'
                   : account.platform === 'kiro'
-                    ? 'sk-...'
+                    ? isKiroRelay
+                      ? 'sk-...'
+                      : 'ksk_...'
                   : account.platform === 'antigravity'
                     ? 'sk-...'
                     : account.platform === 'grok'
