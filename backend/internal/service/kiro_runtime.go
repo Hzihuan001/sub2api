@@ -370,7 +370,7 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 		s.ensureKiroProfileArnForRequest(ctx, account, token, KiroEndpointModeKRS)
 	}
 	accountKey := buildKiroAccountKey(account)
-	if err := s.checkAndWaitKiroCooldown(ctx, accountKey); err != nil {
+	if err := s.checkKiroCooldown(ctx, accountKey); err != nil {
 		if failoverErr := asKiroCooldownFailoverError(err); failoverErr != nil {
 			return nil, requestCtx, failoverErr
 		}

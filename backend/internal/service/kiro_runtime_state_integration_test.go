@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,32 +30,61 @@ func TestRedisKiroCooldownStoreSharesCooldownAcrossInstances(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, time.Minute, cooldown)
 
-	wait, err := storeB.ReserveRequest(ctx, "token-shared")
-	require.Zero(t, wait)
+	err = storeB.CheckCooldown(ctx, "token-shared")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), kirocooldown.CooldownReason429)
 
 	require.NoError(t, storeB.MarkSuccess(ctx, "token-shared"))
 
-	wait, err = storeA.ReserveRequest(ctx, "token-shared")
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, wait, 0*time.Second)
+	require.NoError(t, storeA.CheckCooldown(ctx, "token-shared"))
 }
 
-func TestRedisKiroCooldownStoreSharesReservationAcrossInstances(t *testing.T) {
+func TestRedisKiroCooldownStoreHealthyChecksDoNotPaceAcrossInstances(t *testing.T) {
 	ctx := context.Background()
 	rdb := startKiroCooldownRedis(t, ctx)
 	storeA := kirocooldown.NewStore(rdb)
 	storeB := kirocooldown.NewStore(rdb)
 
-	wait, err := storeA.ReserveRequest(ctx, "token-rate")
-	require.NoError(t, err)
-	require.Zero(t, wait)
+	require.NoError(t, storeA.CheckCooldown(ctx, "token-rate"))
+	require.NoError(t, storeB.CheckCooldown(ctx, "token-rate"))
+	require.Equal(t, int64(0), rdb.Exists(ctx, kirocooldown.RedisKey("token-rate")).Val())
+}
 
-	wait, err = storeB.ReserveRequest(ctx, "token-rate")
-	require.NoError(t, err)
-	require.Greater(t, wait, 0*time.Millisecond)
-	require.LessOrEqual(t, wait, kirocooldown.MaxRequestInterval)
+func TestRedisKiroCooldownStoreHealthyChecksAllowConcurrentBurst(t *testing.T) {
+	ctx := context.Background()
+	rdb := startKiroCooldownRedis(t, ctx)
+	store := kirocooldown.NewStore(rdb)
+
+	const requests = 30
+	start := make(chan struct{})
+	errs := make(chan error, requests)
+	var wg sync.WaitGroup
+	wg.Add(requests)
+	for range requests {
+		go func() {
+			defer wg.Done()
+			<-start
+			errs <- store.CheckCooldown(ctx, "token-burst")
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.Equal(t, int64(0), rdb.Exists(ctx, kirocooldown.RedisKey("token-burst")).Val())
+}
+
+func TestRedisKiroCooldownStoreRemovesLegacyPacingState(t *testing.T) {
+	ctx := context.Background()
+	rdb := startKiroCooldownRedis(t, ctx)
+	store := kirocooldown.NewStore(rdb)
+	key := kirocooldown.RedisKey("token-legacy")
+
+	require.NoError(t, rdb.HSet(ctx, key, "last_request_ms", time.Now().Add(time.Hour).UnixMilli()).Err())
+	require.NoError(t, store.CheckCooldown(ctx, "token-legacy"))
+	require.False(t, rdb.HExists(ctx, key, "last_request_ms").Val())
 }
 
 func TestRedisKiroCooldownStoreSharesSuspendedStateAcrossInstances(t *testing.T) {
@@ -67,8 +97,7 @@ func TestRedisKiroCooldownStoreSharesSuspendedStateAcrossInstances(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, kirocooldown.LongCooldown, cooldown)
 
-	wait, err := storeB.ReserveRequest(ctx, "token-suspended")
-	require.Zero(t, wait)
+	err = storeB.CheckCooldown(ctx, "token-suspended")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), kirocooldown.CooldownReasonSuspended)
 }
@@ -92,7 +121,7 @@ func TestRedisKiroCooldownStoreSuspendedResetsFailCount(t *testing.T) {
 	require.Equal(t, time.Minute, cooldown)
 }
 
-func TestRedisKiroCooldownStoreReserveDifferentTokenIgnoresOldCooldown(t *testing.T) {
+func TestRedisKiroCooldownStoreCheckDifferentTokenIgnoresOldCooldown(t *testing.T) {
 	ctx := context.Background()
 	rdb := startKiroCooldownRedis(t, ctx)
 	store := kirocooldown.NewStore(rdb)
@@ -100,9 +129,7 @@ func TestRedisKiroCooldownStoreReserveDifferentTokenIgnoresOldCooldown(t *testin
 	_, err := store.Mark429(ctx, "token-old")
 	require.NoError(t, err)
 
-	wait, err := store.ReserveRequest(ctx, "token-new")
-	require.NoError(t, err)
-	require.Zero(t, wait)
+	require.NoError(t, store.CheckCooldown(ctx, "token-new"))
 }
 
 func TestRedisKiroCooldownStoreUsesExpectedTTLs(t *testing.T) {
@@ -110,14 +137,10 @@ func TestRedisKiroCooldownStoreUsesExpectedTTLs(t *testing.T) {
 	rdb := startKiroCooldownRedis(t, ctx)
 	store := kirocooldown.NewStore(rdb)
 
-	_, err := store.ReserveRequest(ctx, "token-ttl-active")
-	require.NoError(t, err)
-	activeTTL, err := rdb.PTTL(ctx, kirocooldown.RedisKey("token-ttl-active")).Result()
-	require.NoError(t, err)
-	require.Greater(t, activeTTL, 0*time.Second)
-	require.LessOrEqual(t, activeTTL, kirocooldown.ActiveTTL())
+	require.NoError(t, store.CheckCooldown(ctx, "token-ttl-active"))
+	require.Equal(t, int64(0), rdb.Exists(ctx, kirocooldown.RedisKey("token-ttl-active")).Val())
 
-	_, err = store.MarkSuspended(ctx, "token-ttl-state")
+	_, err := store.MarkSuspended(ctx, "token-ttl-state")
 	require.NoError(t, err)
 	stateTTL, err := rdb.PTTL(ctx, kirocooldown.RedisKey("token-ttl-state")).Result()
 	require.NoError(t, err)

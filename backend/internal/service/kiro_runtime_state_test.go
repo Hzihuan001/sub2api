@@ -9,19 +9,21 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/kirocooldown"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
 type stubKiroCooldownStore struct {
-	reserveWait  time.Duration
-	reserveErr   error
-	reserveKeys  []string
+	mu           sync.Mutex
+	checkErr     error
+	checkKeys    []string
 	successErr   error
 	successKeys  []string
 	mark429TTL   time.Duration
@@ -87,19 +89,44 @@ func (r *recordingKiroErrorRepo) SetError(_ context.Context, id int64, errorMsg 
 	return nil
 }
 
-func (s *stubKiroCooldownStore) ReserveRequest(_ context.Context, tokenKey string) (time.Duration, error) {
-	s.reserveKeys = append(s.reserveKeys, tokenKey)
-	return s.reserveWait, s.reserveErr
+func (s *stubKiroCooldownStore) CheckCooldown(_ context.Context, tokenKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.checkKeys = append(s.checkKeys, tokenKey)
+	return s.checkErr
 }
 
 func (s *stubKiroCooldownStore) MarkSuccess(_ context.Context, tokenKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.successKeys = append(s.successKeys, tokenKey)
 	return s.successErr
 }
 
 func (s *stubKiroCooldownStore) Mark429(_ context.Context, tokenKey string) (time.Duration, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.mark429Keys = append(s.mark429Keys, tokenKey)
 	return s.mark429TTL, s.mark429Err
+}
+
+type barrierKiroHTTPUpstream struct {
+	reached chan struct{}
+	release chan struct{}
+}
+
+func (u *barrierKiroHTTPUpstream) Do(*http.Request, string, int64, int) (*http.Response, error) {
+	return nil, errors.New("unexpected Do call")
+}
+
+func (u *barrierKiroHTTPUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	u.reached <- struct{}{}
+	select {
+	case <-u.release:
+		return newJSONResponse(http.StatusOK, `{"ok":true}`), nil
+	case <-req.Context().Done():
+		return nil, req.Context().Err()
+	}
 }
 
 func (s *stubKiroCooldownStore) MarkSuspended(context.Context, string) (time.Duration, error) {
@@ -209,40 +236,36 @@ func TestCalculateKiro429Cooldown(t *testing.T) {
 	require.Equal(t, 5*time.Minute, kirocooldown.Calculate429Cooldown(10))
 }
 
-func TestGatewayServiceCheckAndWaitKiroCooldownReturnsNilWithoutWait(t *testing.T) {
+func TestGatewayServiceCheckKiroCooldownReturnsNilForHealthyAccount(t *testing.T) {
 	svc := &GatewayService{
 		kiroCooldownStore: &stubKiroCooldownStore{},
 	}
 
-	require.NoError(t, svc.checkAndWaitKiroCooldown(context.Background(), "token1"))
+	require.NoError(t, svc.checkKiroCooldown(context.Background(), "token1"))
 }
 
-func TestGatewayServiceCheckAndWaitKiroCooldownPropagatesReserveError(t *testing.T) {
+func TestGatewayServiceCheckKiroCooldownPropagatesError(t *testing.T) {
 	expected := errors.New("redis unavailable")
 	svc := &GatewayService{
-		kiroCooldownStore: &stubKiroCooldownStore{reserveErr: expected},
+		kiroCooldownStore: &stubKiroCooldownStore{checkErr: expected},
 	}
 
-	err := svc.checkAndWaitKiroCooldown(context.Background(), "token1")
+	err := svc.checkKiroCooldown(context.Background(), "token1")
 	require.ErrorIs(t, err, expected)
 }
 
-func TestGatewayServiceCheckAndWaitKiroCooldownRequiresStore(t *testing.T) {
+func TestGatewayServiceCheckKiroCooldownRequiresStore(t *testing.T) {
 	svc := &GatewayService{}
-	err := svc.checkAndWaitKiroCooldown(context.Background(), "token1")
+	err := svc.checkKiroCooldown(context.Background(), "token1")
 	require.ErrorIs(t, err, errKiroCooldownStoreUnavailable)
 }
 
-func TestGatewayServiceCheckAndWaitKiroCooldownWaitsAndHonorsContext(t *testing.T) {
-	svc := &GatewayService{
-		kiroCooldownStore: &stubKiroCooldownStore{reserveWait: 200 * time.Millisecond},
-	}
+func TestGatewayServiceCheckKiroCooldownPassesTokenKey(t *testing.T) {
+	store := &stubKiroCooldownStore{}
+	svc := &GatewayService{kiroCooldownStore: store}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	err := svc.checkAndWaitKiroCooldown(ctx, "token1")
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.NoError(t, svc.checkKiroCooldown(context.Background(), "token1"))
+	require.Equal(t, []string{"token1"}, store.checkKeys)
 }
 
 func TestAsKiroCooldownFailoverError(t *testing.T) {
@@ -375,7 +398,7 @@ func TestClassifyKiroHTTPErrorPlain402IsTransient(t *testing.T) {
 func TestExecuteKiroUpstreamCooldownReturnsFailoverError(t *testing.T) {
 	svc := &GatewayService{
 		kiroCooldownStore: &stubKiroCooldownStore{
-			reserveErr: kirocooldown.NewError(32500*time.Millisecond, kirocooldown.CooldownReason429),
+			checkErr: kirocooldown.NewError(32500*time.Millisecond, kirocooldown.CooldownReason429),
 		},
 	}
 
@@ -387,6 +410,60 @@ func TestExecuteKiroUpstreamCooldownReturnsFailoverError(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
 	require.Equal(t, "kiro token is in cooldown for 33s (reason: rate_limit_exceeded)", string(failoverErr.ResponseBody))
 	require.False(t, failoverErr.RetryableOnSameAccount)
+}
+
+func TestExecuteKiroUpstreamHealthyBurstReachesUpstreamConcurrently(t *testing.T) {
+	const requests = 30
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	upstream := &barrierKiroHTTPUpstream{
+		reached: make(chan struct{}, requests),
+		release: make(chan struct{}),
+	}
+	account := &Account{
+		ID:          42,
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: requests,
+		Credentials: map[string]any{"api_region": "us-east-1"},
+	}
+	svc := &GatewayService{
+		httpUpstream:        upstream,
+		kiroCooldownStore:   &stubKiroCooldownStore{},
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+	payload, err := createTestPayload("claude-sonnet-4-6")
+	require.NoError(t, err)
+	payloadBytes, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	errs := make(chan error, requests)
+	for range requests {
+		go func() {
+			resp, _, callErr := svc.executeKiroUpstream(
+				ctx, account, payloadBytes,
+				"claude-sonnet-4-6", "claude-sonnet-4-6", "token", nil,
+			)
+			if resp != nil {
+				_ = resp.Body.Close()
+			}
+			errs <- callErr
+		}()
+	}
+
+	for range requests {
+		select {
+		case <-upstream.reached:
+		case <-ctx.Done():
+			t.Fatal("healthy Kiro requests did not reach upstream concurrently")
+		}
+	}
+	close(upstream.release)
+	for range requests {
+		require.NoError(t, <-errs)
+	}
 }
 
 func TestExecuteKiroUpstreamEnsuresProfileArnBeforeCooldownKey(t *testing.T) {
@@ -435,7 +512,7 @@ func TestExecuteKiroUpstreamEnsuresProfileArnBeforeCooldownKey(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, kiroBuilderIDProfileARN, account.GetCredential("profile_arn"))
 	expectedKey := buildKiroAccountKey(account)
-	require.Equal(t, []string{expectedKey}, cooldownStore.reserveKeys)
+	require.Equal(t, []string{expectedKey}, cooldownStore.checkKeys)
 	require.Equal(t, []string{expectedKey}, cooldownStore.successKeys)
 }
 

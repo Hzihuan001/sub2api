@@ -112,13 +112,18 @@ async function selectButtonByText(wrapper: ReturnType<typeof mountModal>, text: 
 }
 
 async function submitApiKeyAccount(
-  platform: 'openai' | 'anthropic',
+  platform: 'openai' | 'anthropic' | 'kiro',
   enableLongContextBilling = false,
   disableUpstreamBillingProbe = false
 ) {
   const wrapper = mountModal()
-  await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
-  if (platform === 'openai') {
+  const platformLabel = {
+    openai: 'OpenAI',
+    anthropic: 'admin.accounts.claudeConsole',
+    kiro: 'Kiro'
+  }[platform]
+  await selectButtonByText(wrapper, platformLabel)
+  if (platform === 'openai' || platform === 'kiro') {
     await selectButtonByText(wrapper, 'API Key')
   }
   await wrapper.get('form#create-account-form input[type="text"]').setValue(`${platform} account`)
@@ -262,6 +267,18 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await submitApiKeyAccount('anthropic', false, true)
 
     expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(false)
+  })
+
+  it('creates a Kiro API-key account with upstream billing probe enabled by default', async () => {
+    await submitApiKeyAccount('kiro')
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload?.platform).toBe('kiro')
+    expect(payload?.type).toBe('apikey')
+    expect(payload?.credentials?.api_key).toBe('test-api-key')
+    expect(payload?.upstream_billing_probe_enabled).toBe(true)
+    expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
   })
 
   it('antigravity upstream 创建默认携带上游倍率探测开关', async () => {

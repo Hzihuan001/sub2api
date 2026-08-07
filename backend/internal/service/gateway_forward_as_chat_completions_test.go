@@ -263,8 +263,8 @@ func TestForwardAsChatCompletions_KiroCacheEmulation(t *testing.T) {
 
 type noopKiroChatCooldownStore struct{}
 
-func (noopKiroChatCooldownStore) ReserveRequest(context.Context, string) (time.Duration, error) {
-	return 0, nil
+func (noopKiroChatCooldownStore) CheckCooldown(context.Context, string) error {
+	return nil
 }
 
 func (noopKiroChatCooldownStore) MarkSuccess(context.Context, string) error {

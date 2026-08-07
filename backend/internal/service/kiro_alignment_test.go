@@ -18,8 +18,8 @@ type kiroUsageCooldownStore struct {
 	err   error
 }
 
-func (s *kiroUsageCooldownStore) ReserveRequest(context.Context, string) (time.Duration, error) {
-	return 0, nil
+func (s *kiroUsageCooldownStore) CheckCooldown(context.Context, string) error {
+	return nil
 }
 
 func (s *kiroUsageCooldownStore) MarkSuccess(context.Context, string) error {

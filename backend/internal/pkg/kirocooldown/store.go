@@ -6,19 +6,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 const (
-	MinRequestInterval = time.Second
-	MaxRequestInterval = 2 * time.Second
-
 	CooldownReason429       = "rate_limit_exceeded"
 	CooldownReasonSuspended = "account_suspended"
 
@@ -35,16 +30,14 @@ const (
 var (
 	ErrStoreUnavailable = errors.New("kiro cooldown store unavailable")
 
-	reserveRequestScript = redis.NewScript(`
+	checkCooldownScript = redis.NewScript(`
 local t = redis.call('TIME')
 local now_ms = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
-local last_request_ms = tonumber(redis.call('HGET', KEYS[1], 'last_request_ms') or '0')
-local fail_count = tonumber(redis.call('HGET', KEYS[1], 'fail_count') or '0')
 local cooldown_until_ms = tonumber(redis.call('HGET', KEYS[1], 'cooldown_until_ms') or '0')
 local cooldown_reason = redis.call('HGET', KEYS[1], 'cooldown_reason') or ''
-local interval_ms = tonumber(ARGV[1])
-local active_ttl_ms = tonumber(ARGV[2])
-local state_ttl_ms = tonumber(ARGV[3])
+
+-- Remove pacing state left by versions that serialized healthy requests.
+redis.call('HDEL', KEYS[1], 'last_request_ms')
 
 if cooldown_until_ms > now_ms then
   return {1, cooldown_until_ms - now_ms, cooldown_reason}
@@ -54,21 +47,7 @@ if cooldown_until_ms > 0 then
   redis.call('HDEL', KEYS[1], 'cooldown_until_ms', 'cooldown_reason')
 end
 
-local next_slot_ms = now_ms
-if last_request_ms > 0 then
-  local candidate_ms = last_request_ms + interval_ms
-  if candidate_ms > now_ms then
-    next_slot_ms = candidate_ms
-  end
-end
-
-redis.call('HSET', KEYS[1], 'last_request_ms', next_slot_ms)
-if fail_count > 0 or cooldown_until_ms > now_ms then
-  redis.call('PEXPIRE', KEYS[1], state_ttl_ms)
-else
-  redis.call('PEXPIRE', KEYS[1], active_ttl_ms)
-end
-return {0, next_slot_ms - now_ms, ''}
+return {0, 0, ''}
 `)
 
 	mark429Script = redis.NewScript(`
@@ -156,58 +135,47 @@ func Calculate429Cooldown(retryCount int) time.Duration {
 
 type Store struct {
 	client *redis.Client
-	rngMu  sync.Mutex
-	rng    *rand.Rand
 }
 
 func NewStore(client *redis.Client) *Store {
-	return &Store{
-		client: client,
-		rng:    rand.New(rand.NewSource(time.Now().UnixNano())),
-	}
+	return &Store{client: client}
 }
 
-func (s *Store) ReserveRequest(ctx context.Context, tokenKey string) (time.Duration, error) {
+func (s *Store) CheckCooldown(ctx context.Context, tokenKey string) error {
 	if err := s.validate(); err != nil {
-		return 0, err
+		return err
 	}
 	cacheCtx, cancel := withRedisTimeout(ctx)
 	defer cancel()
 
-	values, err := reserveRequestScript.Run(
+	values, err := checkCooldownScript.Run(
 		cacheCtx,
 		s.client,
 		[]string{RedisKey(tokenKey)},
-		s.nextInterval().Milliseconds(),
-		activeTTL.Milliseconds(),
-		stateTTL.Milliseconds(),
 	).Result()
 	if err != nil {
-		return 0, fmt.Errorf("kiro cooldown reserve request: %w", err)
+		return fmt.Errorf("kiro cooldown check: %w", err)
 	}
 	parts, ok := values.([]any)
 	if !ok || len(parts) != 3 {
-		return 0, fmt.Errorf("kiro cooldown reserve request: unexpected response %T", values)
+		return fmt.Errorf("kiro cooldown check: unexpected response %T", values)
 	}
 	state, err := luaInt64(parts[0])
 	if err != nil {
-		return 0, fmt.Errorf("kiro cooldown reserve request state: %w", err)
+		return fmt.Errorf("kiro cooldown check state: %w", err)
 	}
 	waitMS, err := luaInt64(parts[1])
 	if err != nil {
-		return 0, fmt.Errorf("kiro cooldown reserve request wait: %w", err)
+		return fmt.Errorf("kiro cooldown check wait: %w", err)
 	}
 	reason, err := luaString(parts[2])
 	if err != nil {
-		return 0, fmt.Errorf("kiro cooldown reserve request reason: %w", err)
+		return fmt.Errorf("kiro cooldown check reason: %w", err)
 	}
 	if state == 1 {
-		return 0, NewError(time.Duration(waitMS)*time.Millisecond, reason)
+		return NewError(time.Duration(waitMS)*time.Millisecond, reason)
 	}
-	if waitMS <= 0 {
-		return 0, nil
-	}
-	return time.Duration(waitMS) * time.Millisecond, nil
+	return nil
 }
 
 func (s *Store) MarkSuccess(ctx context.Context, tokenKey string) error {
@@ -432,15 +400,6 @@ func (s *Store) validate() error {
 		return ErrStoreUnavailable
 	}
 	return nil
-}
-
-func (s *Store) nextInterval() time.Duration {
-	s.rngMu.Lock()
-	defer s.rngMu.Unlock()
-	if MaxRequestInterval <= MinRequestInterval {
-		return MinRequestInterval
-	}
-	return MinRequestInterval + time.Duration(s.rng.Int63n(int64(MaxRequestInterval-MinRequestInterval)))
 }
 
 func withRedisTimeout(ctx context.Context) (context.Context, context.CancelFunc) {

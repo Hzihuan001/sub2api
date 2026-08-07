@@ -395,7 +395,7 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
 
 	for attempt := 0; attempt < 3; attempt++ {
-		if err := s.checkAndWaitKiroCooldown(ctx, accountKey); err != nil {
+		if err := s.checkKiroCooldown(ctx, accountKey); err != nil {
 			if failoverErr := asKiroCooldownFailoverError(err); failoverErr != nil {
 				return nil, currentToken, failoverErr
 			}
