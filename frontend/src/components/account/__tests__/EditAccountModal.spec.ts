@@ -360,6 +360,7 @@ describe('EditAccountModal', () => {
 
     expect(wrapper.find('input[type="password"][placeholder="ksk_..."]').exists()).toBe(true)
     expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="edit-kiro-api-region"]').exists()).toBe(true)
   })
 
   it('keeps the relay API-key placeholder when a Kiro base_url is present', () => {
@@ -367,6 +368,39 @@ describe('EditAccountModal', () => {
 
     expect(wrapper.find('input[type="password"][placeholder="sk-..."]').exists()).toBe(true)
     expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="edit-kiro-api-region"]').exists()).toBe(false)
+  })
+
+  it('loads and submits Kiro direct API-key API region', async () => {
+    const account = buildKiroAPIKeyAccount()
+    account.credentials.api_region = 'eu-central-1'
+    account.credentials.apiRegion = 'ap-southeast-1'
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const regionInput = wrapper.get<HTMLInputElement>('[data-testid="edit-kiro-api-region"]')
+    expect(regionInput.element.value).toBe('eu-central-1')
+
+    await regionInput.setValue('eu-west-1')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials?.api_region).toBe('eu-west-1')
+    expect(credentials).not.toHaveProperty('apiRegion')
+  })
+
+  it('rehydrates Kiro direct API-key API region from legacy region', () => {
+    const account = buildKiroAPIKeyAccount()
+    account.credentials.region = 'eu-central-1'
+
+    const wrapper = mountModal(account)
+
+    expect((wrapper.get('[data-testid="edit-kiro-api-region"]').element as HTMLInputElement).value)
+      .toBe('eu-central-1')
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {

@@ -1135,6 +1135,17 @@
           />
           <p class="input-hint">{{ apiKeyHint }}</p>
         </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.kiro.apiRegionLabel') }}</label>
+          <input
+            v-model="kiroAPIRegion"
+            type="text"
+            class="input"
+            placeholder="us-east-1"
+            data-testid="kiro-api-region"
+          />
+          <p class="input-hint">{{ t('admin.accounts.kiro.apiRegionHint') }}</p>
+        </div>
       </div>
 
       <!-- Kiro 外部中转(API Key + Base URL):转发到 Anthropic 兼容上游,作为分组兜底 -->
@@ -4272,6 +4283,7 @@ const KIRO_RELAY_DEFAULT_PRIORITY = 100
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const kiroAPIRegion = ref('us-east-1')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 const syncPreviewCredentials = computed(() => {
@@ -4869,6 +4881,7 @@ watch(
       kiroOAuthProvider.value = 'google'
       apiKeyBaseUrl.value = ''
       apiKeyValue.value = ''
+      kiroAPIRegion.value = 'us-east-1'
     } else {
       allowOverages.value = false
       antigravityProjectId.value = ''
@@ -5340,6 +5353,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  kiroAPIRegion.value = 'us-east-1'
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5793,7 +5807,8 @@ const handleSubmit = async () => {
     // Kiro API Key 账号直连 AWS(q.{region}.amazonaws.com),不使用 base_url。
     // 区域由凭据 api_region 控制(默认 us-east-1),无需也不展示 Base URL。
     const credentials: Record<string, unknown> = {
-      api_key: apiKeyValue.value.trim()
+      api_key: apiKeyValue.value.trim(),
+      api_region: kiroAPIRegion.value.trim() || 'us-east-1'
     }
 
     const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)

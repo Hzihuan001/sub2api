@@ -56,6 +56,17 @@
             @select="editBaseUrl = $event"
           />
         </div>
+        <div v-if="account.platform === 'kiro' && !isKiroRelay">
+          <label class="input-label">{{ t('admin.accounts.kiro.apiRegionLabel') }}</label>
+          <input
+            v-model="editKiroAPIRegion"
+            type="text"
+            class="input"
+            placeholder="us-east-1"
+            data-testid="edit-kiro-api-region"
+          />
+          <p class="input-hint">{{ t('admin.accounts.kiro.apiRegionHint') }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
           <input
@@ -2933,6 +2944,17 @@ const isKiroAccount = computed(() => props.account?.platform === 'kiro')
 // Kiro 外部中转账号(apikey + 已配 base_url):编辑时显示 base_url 输入。
 const isKiroRelay = computed(() => isKiroRelayAccount(props.account))
 
+const credentialString = (credentials: Record<string, unknown>, ...keys: string[]) => {
+  for (const key of keys) {
+    const value = credentials[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+const resolveKiroAPIRegionInput = (credentials: Record<string, unknown>) =>
+  credentialString(credentials, 'api_region', 'apiRegion', 'region') || 'us-east-1'
+
 // Model mapping type
 interface ModelMapping {
   from: string
@@ -2950,6 +2972,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editKiroAPIRegion = ref('us-east-1')
 const kiroCreditUnitPriceUsd = ref(0)
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
@@ -3778,6 +3801,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             ? 'https://api.x.ai/v1'
             : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
+    editKiroAPIRegion.value = newAccount.platform === 'kiro' && !isKiroRelayAccount(newAccount)
+      ? resolveKiroAPIRegionInput(credentials)
+      : 'us-east-1'
 
     // Load model mappings and detect mode
     if (newAccount.platform === 'kiro') {
@@ -3890,6 +3916,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  if (newAccount.platform !== 'kiro' || newAccount.type !== 'apikey') {
+    editKiroAPIRegion.value = 'us-east-1'
+  }
 }
 
 async function loadTLSProfiles() {
@@ -4445,6 +4474,10 @@ const handleSubmit = async () => {
       } else if (!hasExistingApiKey) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
+      }
+      if (props.account.platform === 'kiro' && !isKiroRelay.value) {
+        newCredentials.api_region = editKiroAPIRegion.value.trim() || 'us-east-1'
+        delete newCredentials.apiRegion
       }
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）

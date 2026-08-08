@@ -277,8 +277,26 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(payload?.platform).toBe('kiro')
     expect(payload?.type).toBe('apikey')
     expect(payload?.credentials?.api_key).toBe('test-api-key')
+    expect(payload?.credentials?.api_region).toBe('us-east-1')
     expect(payload?.upstream_billing_probe_enabled).toBe(true)
     expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
+  })
+
+  it('creates a Kiro API-key account with the selected API region', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kiro')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('kiro eu account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('ksk-eu')
+    await wrapper.get('[data-testid="kiro-api-region"]').setValue('eu-central-1')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      api_key: 'ksk-eu',
+      api_region: 'eu-central-1'
+    })
   })
 
   it('antigravity upstream 创建默认携带上游倍率探测开关', async () => {
