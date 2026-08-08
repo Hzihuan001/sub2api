@@ -306,7 +306,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(false)
   })
 
-  it('creates a Kiro API-key account with upstream billing probe enabled by default', async () => {
+  it('creates a Kiro direct API-key account with upstream billing probe disabled by default', async () => {
     await submitApiKeyAccount('kiro')
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
@@ -315,6 +315,29 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(payload?.type).toBe('apikey')
     expect(payload?.credentials?.api_key).toBe('test-api-key')
     expect(payload?.credentials?.api_region).toBe('us-east-1')
+    expect(payload?.upstream_billing_probe_enabled).toBe(false)
+    expect(probeUpstreamBillingMock).not.toHaveBeenCalled()
+  })
+
+  it('creates a Kiro external relay API-key account with upstream billing probe enabled by default', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Kiro')
+    await selectButtonByText(wrapper, 'API Key + Base URL')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('kiro relay account')
+    const baseUrlInput = wrapper
+      .findAll('input')
+      .find((candidate) => candidate.attributes('placeholder') === 'https://your-relay.example.com')
+    expect(baseUrlInput).toBeDefined()
+    await baseUrlInput?.setValue('https://relay.example')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload?.platform).toBe('kiro')
+    expect(payload?.type).toBe('apikey')
+    expect(payload?.credentials?.base_url).toBe('https://relay.example')
     expect(payload?.upstream_billing_probe_enabled).toBe(true)
     expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
   })
@@ -437,5 +460,12 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await flushPromises()
 
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+
+  it('allows enabling the Kiro direct API-key upstream billing probe', async () => {
+    await submitApiKeyAccount('kiro', false, true)
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(true)
+    expect(probeUpstreamBillingMock).toHaveBeenCalledWith(42)
   })
 })

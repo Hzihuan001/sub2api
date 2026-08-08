@@ -1185,6 +1185,23 @@
         </div>
       </div>
 
+      <div
+        v-if="form.platform === 'kiro' && (accountCategory === 'apikey' || accountCategory === 'apikey-relay')"
+        class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div>
+          <label class="input-label mb-0">{{ t('admin.accounts.upstreamBilling.autoProbe') }}</label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.upstreamBilling.autoProbeHint') }}
+          </p>
+        </div>
+        <Toggle
+          v-model="upstreamBillingAutoProbeEnabled"
+          data-testid="upstream-billing-auto-probe"
+          :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
+        />
+      </div>
+
       <div v-if="form.platform === 'kiro' && accountCategory === 'apikey'" class="space-y-4">
         <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
@@ -4855,6 +4872,10 @@ watch(
 watch(
   () => form.platform,
   (newPlatform) => {
+    if (newPlatform !== 'kiro') {
+      // 离开 Kiro 后恢复其他 API Key 平台原有的默认开启行为。
+      upstreamBillingAutoProbeEnabled.value = true
+    }
     // Reset base URL based on platform
     apiKeyBaseUrl.value =
       (newPlatform === 'openai')
@@ -4976,6 +4997,13 @@ watch(
         form.priority = KIRO_RELAY_DEFAULT_PRIORITY
       } else if (category !== 'apikey-relay' && form.priority === KIRO_RELAY_DEFAULT_PRIORITY) {
         form.priority = KIRO_DEFAULT_PRIORITY
+      }
+
+      // Kiro 直连不依赖中转侧计费信息；外部中转则默认开启探测。
+      if (category === 'apikey') {
+        upstreamBillingAutoProbeEnabled.value = false
+      } else if (category === 'apikey-relay') {
+        upstreamBillingAutoProbeEnabled.value = true
       }
     }
   }
