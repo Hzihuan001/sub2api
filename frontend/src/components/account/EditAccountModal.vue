@@ -56,7 +56,7 @@
             @select="editBaseUrl = $event"
           />
         </div>
-        <div v-if="account.platform === 'kiro' && !isKiroRelay">
+        <div v-if="isKiroDirectApiKey">
           <label class="input-label">{{ t('admin.accounts.kiro.apiRegionLabel') }}</label>
           <Select
             v-model="editKiroAPIRegion"
@@ -2881,7 +2881,7 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
-import { isKiroRelayAccount } from '@/utils/kiroAccount'
+import { isKiroDirectApiKeyAccount, isKiroRelayAccount } from '@/utils/kiroAccount'
 import { VERTEX_LOCATION_SELECT_OPTIONS } from '@/constants/account'
 import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
 import {
@@ -2946,17 +2946,14 @@ const isKiroOAuthAccount = computed(() => props.account?.platform === 'kiro' && 
 const isKiroAccount = computed(() => props.account?.platform === 'kiro')
 // Kiro 外部中转账号(apikey + 已配 base_url):编辑时显示 base_url 输入。
 const isKiroRelay = computed(() => isKiroRelayAccount(props.account))
+// Kiro 直连 API Key 账号(apikey + 无 base_url):仅这类账号的推理区域由 api_region 控制。
+// OAuth/IdC 账号的 region 是 Identity Center 区域,不参与推理路由,故不展示本字段。
+const isKiroDirectApiKey = computed(() => isKiroDirectApiKeyAccount(props.account))
 
-const credentialString = (credentials: Record<string, unknown>, ...keys: string[]) => {
-  for (const key of keys) {
-    const value = credentials[key]
-    if (typeof value === 'string' && value.trim()) return value.trim()
-  }
-  return ''
+const resolveKiroAPIRegionInput = (credentials: Record<string, unknown>) => {
+  const value = credentials.api_region
+  return typeof value === 'string' && value.trim() ? value.trim() : 'us-east-1'
 }
-
-const resolveKiroAPIRegionInput = (credentials: Record<string, unknown>) =>
-  credentialString(credentials, 'api_region', 'apiRegion', 'region') || 'us-east-1'
 
 // Model mapping type
 interface ModelMapping {
@@ -3804,7 +3801,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             ? 'https://api.x.ai/v1'
             : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
-    editKiroAPIRegion.value = newAccount.platform === 'kiro' && !isKiroRelayAccount(newAccount)
+    editKiroAPIRegion.value = isKiroDirectApiKeyAccount(newAccount)
       ? resolveKiroAPIRegionInput(credentials)
       : 'us-east-1'
 
@@ -4478,9 +4475,8 @@ const handleSubmit = async () => {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
       }
-      if (props.account.platform === 'kiro' && !isKiroRelay.value) {
+      if (isKiroDirectApiKey.value) {
         newCredentials.api_region = editKiroAPIRegion.value.trim() || 'us-east-1'
-        delete newCredentials.apiRegion
       }
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）

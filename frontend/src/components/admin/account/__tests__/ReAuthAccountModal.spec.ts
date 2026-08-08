@@ -42,6 +42,7 @@ const BaseDialogStub = defineComponent({
 
 const OAuthAuthorizationFlowStub = defineComponent({
   name: 'OAuthAuthorizationFlow',
+  props: { platform: { type: String, default: '' } },
   emits: ['generate-url'],
   template: '<button data-testid="reauth-generate-url" @click="$emit(\'generate-url\')">generate</button>',
 })
@@ -90,11 +91,23 @@ function buildKiroIDCAccount() {
   } as any
 }
 
-function mountModal() {
+function buildGrokAccount() {
+  return {
+    id: 21,
+    name: 'Grok OAuth',
+    platform: 'grok',
+    type: 'oauth',
+    credentials: { refresh_token: 'refresh-token' },
+    extra: {},
+    proxy_id: null,
+  } as any
+}
+
+function mountModal(account: any = buildKiroIDCAccount()) {
   return mount(ReAuthAccountModal, {
     props: {
       show: false,
-      account: buildKiroIDCAccount(),
+      account,
     },
     global: {
       stubs: {
@@ -136,5 +149,20 @@ describe('ReAuthAccountModal Kiro regions', () => {
       start_url: 'https://view.awsapps.com/start',
       region: 'eu-west-1',
     })
+  })
+})
+
+describe('ReAuthAccountModal platform routing', () => {
+  // 回归:Grok 账号曾因 oauthPlatform 缺少分支回落到 anthropic,
+  // 导致弹窗显示 Claude 文案且 callback URL 自动提取 code/state 失效。
+  it('passes platform="grok" to the OAuth flow for Grok accounts', async () => {
+    const wrapper = mountModal(buildGrokAccount())
+
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const flow = wrapper.getComponent(OAuthAuthorizationFlowStub)
+    expect(flow.props('platform')).toBe('grok')
+    expect(wrapper.text()).toContain('admin.accounts.grokAccount')
   })
 })

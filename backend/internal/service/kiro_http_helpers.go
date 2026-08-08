@@ -158,12 +158,6 @@ func kiroAPIRegion(account *Account) string {
 	}
 	region := strings.TrimSpace(account.GetCredential("api_region"))
 	if region == "" {
-		region = strings.TrimSpace(account.GetCredential("apiRegion"))
-	}
-	if region == "" && account.Type == AccountTypeAPIKey {
-		region = strings.TrimSpace(account.GetCredential("region"))
-	}
-	if region == "" {
 		region = kiroDefaultRegion
 	}
 	return region

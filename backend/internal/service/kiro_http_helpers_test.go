@@ -330,28 +330,6 @@ func TestKiroAPIRegionPrefersAPIRegionOverProfileARN(t *testing.T) {
 	require.Equal(t, "eu-west-1", kiroAPIRegion(account))
 }
 
-func TestKiroAPIRegionSupportsCamelCaseAPIRegion(t *testing.T) {
-	account := &Account{
-		Type: AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"apiRegion": "eu-central-1",
-		},
-	}
-
-	require.Equal(t, "eu-central-1", kiroAPIRegion(account))
-}
-
-func TestKiroAPIRegionAPIKeyFallsBackToRegion(t *testing.T) {
-	account := &Account{
-		Type: AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"region": "eu-central-1",
-		},
-	}
-
-	require.Equal(t, "eu-central-1", kiroAPIRegion(account))
-}
-
 func TestKiroAPIRegionIgnoresProfileARNRegionFallback(t *testing.T) {
 	account := &Account{
 		Credentials: map[string]any{
@@ -362,27 +340,38 @@ func TestKiroAPIRegionIgnoresProfileARNRegionFallback(t *testing.T) {
 	require.Equal(t, kiroDefaultRegion, kiroAPIRegion(account))
 }
 
-func TestKiroAPIRegionIgnoresOAuthRegionFallback(t *testing.T) {
-	account := &Account{
-		Type: AccountTypeOAuth,
-		Credentials: map[string]any{
-			"region": "ap-northeast-2",
+// 推理区域只认凭据 api_region。IdC/SSO 授权写入的 region 是 Identity Center
+// 区域(用于 oidc.{region}.amazonaws.com 换取令牌),与推理端点无关,任何账号
+// 类型下都不得回退到它,否则会把 SSO 区域误当推理区域。
+func TestKiroAPIRegionIgnoresSSORegion(t *testing.T) {
+	cases := []struct {
+		name        string
+		accountType string
+		credentials map[string]any
+	}{
+		{
+			name:        "oauth",
+			accountType: AccountTypeOAuth,
+			credentials: map[string]any{"region": "ap-northeast-2"},
+		},
+		{
+			name:        "oauth idc",
+			accountType: AccountTypeOAuth,
+			credentials: map[string]any{"auth_method": "idc", "region": "eu-central-1"},
+		},
+		{
+			name:        "apikey",
+			accountType: AccountTypeAPIKey,
+			credentials: map[string]any{"region": "eu-central-1"},
 		},
 	}
 
-	require.Equal(t, kiroDefaultRegion, kiroAPIRegion(account))
-}
-
-func TestKiroAPIRegionIgnoresIDCRegionFallback(t *testing.T) {
-	account := &Account{
-		Type: AccountTypeOAuth,
-		Credentials: map[string]any{
-			"auth_method": "idc",
-			"region":      "eu-central-1",
-		},
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			account := &Account{Type: tc.accountType, Credentials: tc.credentials}
+			require.Equal(t, kiroDefaultRegion, kiroAPIRegion(account))
+		})
 	}
-
-	require.Equal(t, kiroDefaultRegion, kiroAPIRegion(account))
 }
 
 func TestBuildKiroEndpointsUsesOnlyAmazonQEndpoint(t *testing.T) {
@@ -401,7 +390,8 @@ func TestBuildKiroEndpointsUsesOnlyAmazonQEndpoint(t *testing.T) {
 	require.Empty(t, endpoints[0].AmzTarget)
 }
 
-func TestBuildKiroEndpointsUsesKiroAPIKeyRegionFallback(t *testing.T) {
+// 端点构造同样只认 api_region:仅有 SSO region 时落到默认区域,不得据其拼出端点。
+func TestBuildKiroEndpointsIgnoresSSORegion(t *testing.T) {
 	account := &Account{
 		Type: AccountTypeAPIKey,
 		Credentials: map[string]any{
@@ -412,7 +402,7 @@ func TestBuildKiroEndpointsUsesKiroAPIKeyRegionFallback(t *testing.T) {
 	endpoints := buildKiroEndpoints(account, KiroEndpointModeQ)
 	require.Len(t, endpoints, 1)
 	require.Equal(t, "AmazonQ", endpoints[0].Name)
-	require.Equal(t, "https://q.eu-central-1.amazonaws.com/generateAssistantResponse", endpoints[0].URL)
+	require.Equal(t, "https://q."+kiroDefaultRegion+".amazonaws.com/generateAssistantResponse", endpoints[0].URL)
 }
 
 func TestBuildKiroEndpointsIgnoresPreferredEndpoint(t *testing.T) {
