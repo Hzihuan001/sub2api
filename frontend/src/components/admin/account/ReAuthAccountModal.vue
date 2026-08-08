@@ -288,11 +288,14 @@
           </div>
           <div>
             <label class="input-label">{{ t('admin.accounts.oauth.kiro.regionLabel') }}</label>
-            <input
+            <Select
               v-model="kiroIDCRegion"
-              type="text"
-              class="input"
+              :options="KIRO_REGION_SELECT_OPTIONS"
+              searchable
+              creatable
+              creatable-label-mode="raw"
               :placeholder="t('admin.accounts.oauth.kiro.regionPlaceholder')"
+              data-testid="reauth-kiro-idc-region-select"
             />
           </div>
         </div>
@@ -423,6 +426,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OAuthAuthorizationFlow from '@/components/account/OAuthAuthorizationFlow.vue'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
@@ -437,6 +441,7 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useAppStore } from '@/stores/app'
 import type { Account, AccountPlatform } from '@/types'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
 
 interface OAuthFlowExposed {
   authCode: string

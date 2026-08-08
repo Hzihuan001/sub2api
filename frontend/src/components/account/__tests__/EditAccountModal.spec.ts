@@ -360,7 +360,7 @@ describe('EditAccountModal', () => {
 
     expect(wrapper.find('input[type="password"][placeholder="ksk_..."]').exists()).toBe(true)
     expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="edit-kiro-api-region"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(true)
   })
 
   it('keeps the relay API-key placeholder when a Kiro base_url is present', () => {
@@ -368,7 +368,7 @@ describe('EditAccountModal', () => {
 
     expect(wrapper.find('input[type="password"][placeholder="sk-..."]').exists()).toBe(true)
     expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="edit-kiro-api-region"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(false)
   })
 
   it('loads and submits Kiro direct API-key API region', async () => {
@@ -381,10 +381,12 @@ describe('EditAccountModal', () => {
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
-    const regionInput = wrapper.get<HTMLInputElement>('[data-testid="edit-kiro-api-region"]')
-    expect(regionInput.element.value).toBe('eu-central-1')
+    const regionSelect = wrapper.get<HTMLSelectElement>('[data-testid="edit-kiro-api-region-select"]')
+    expect(regionSelect.element.value).toBe('eu-central-1')
+    expect(regionSelect.find('option[value="eu-central-1"]').exists()).toBe(true)
+    expect(regionSelect.find('option[value="eu-central-1"]').text()).toBe('eu-central-1')
 
-    await regionInput.setValue('eu-west-1')
+    await regionSelect.setValue('eu-west-1')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
@@ -399,7 +401,7 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
-    expect((wrapper.get('[data-testid="edit-kiro-api-region"]').element as HTMLInputElement).value)
+    expect((wrapper.get('[data-testid="edit-kiro-api-region-select"]').element as HTMLSelectElement).value)
       .toBe('eu-central-1')
   })
 

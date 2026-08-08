@@ -58,12 +58,14 @@
         </div>
         <div v-if="account.platform === 'kiro' && !isKiroRelay">
           <label class="input-label">{{ t('admin.accounts.kiro.apiRegionLabel') }}</label>
-          <input
+          <Select
             v-model="editKiroAPIRegion"
-            type="text"
-            class="input"
+            :options="KIRO_REGION_SELECT_OPTIONS"
+            searchable
+            creatable
+            creatable-label-mode="raw"
             placeholder="us-east-1"
-            data-testid="edit-kiro-api-region"
+            data-testid="edit-kiro-api-region-select"
           />
           <p class="input-hint">{{ t('admin.accounts.kiro.apiRegionHint') }}</p>
         </div>
@@ -2881,6 +2883,7 @@ import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } fro
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { isKiroRelayAccount } from '@/utils/kiroAccount'
 import { VERTEX_LOCATION_SELECT_OPTIONS } from '@/constants/account'
+import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,

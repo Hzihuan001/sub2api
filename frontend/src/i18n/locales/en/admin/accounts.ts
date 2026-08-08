@@ -890,7 +890,7 @@ export default {
       kiro: {
         apiKeyHint: 'Kiro API Key (starts with ksk_), used as the Bearer token for direct AWS access',
         apiRegionLabel: 'API Region',
-        apiRegionHint: 'Region used for direct Kiro API requests. Use eu-central-1 for Europe keys.',
+        apiRegionHint: 'Choose or enter the region code used for direct Kiro API requests. Use eu-central-1 for Europe keys.',
         relayApiKeyHint: 'API Key for that external upstream (sent via the x-api-key header)',
         relayBaseUrlHint: 'External Anthropic-compatible upstream URL (e.g. https://your-relay.example.com); requests go to {base_url}/v1/messages',
         relayPriorityHint: 'Keep a low priority (larger number) so it acts as a fallback only — used when all native Kiro accounts fail'

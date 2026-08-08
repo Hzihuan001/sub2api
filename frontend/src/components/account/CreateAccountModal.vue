@@ -1100,11 +1100,14 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.oauth.kiro.regionLabel') }}</label>
-          <input
+          <Select
             v-model="kiroIDCRegion"
-            type="text"
-            class="input"
+            :options="KIRO_REGION_SELECT_OPTIONS"
+            searchable
+            creatable
+            creatable-label-mode="raw"
             :placeholder="t('admin.accounts.oauth.kiro.regionPlaceholder')"
+            data-testid="kiro-idc-region-select"
           />
         </div>
       </div>
@@ -1137,12 +1140,14 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.kiro.apiRegionLabel') }}</label>
-          <input
+          <Select
             v-model="kiroAPIRegion"
-            type="text"
-            class="input"
+            :options="KIRO_REGION_SELECT_OPTIONS"
+            searchable
+            creatable
+            creatable-label-mode="raw"
             placeholder="us-east-1"
-            data-testid="kiro-api-region"
+            data-testid="kiro-api-region-select"
           />
           <p class="input-hint">{{ t('admin.accounts.kiro.apiRegionHint') }}</p>
         </div>
@@ -4136,6 +4141,7 @@ import {
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS } from '@/constants/account'
+import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
