@@ -319,6 +319,7 @@ func TestBuildKiroPayloadForAccountDoesNotEnableThinkingForNonThinkingAlias(t *t
 
 func TestKiroAPIRegionPrefersAPIRegionOverProfileARN(t *testing.T) {
 	account := &Account{
+		Type: AccountTypeAPIKey,
 		Credentials: map[string]any{
 			"api_region":  "eu-west-1",
 			"profile_arn": "arn:aws:codewhisperer:us-west-2:123456789012:profile/test",
@@ -327,6 +328,28 @@ func TestKiroAPIRegionPrefersAPIRegionOverProfileARN(t *testing.T) {
 	}
 
 	require.Equal(t, "eu-west-1", kiroAPIRegion(account))
+}
+
+func TestKiroAPIRegionSupportsCamelCaseAPIRegion(t *testing.T) {
+	account := &Account{
+		Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"apiRegion": "eu-central-1",
+		},
+	}
+
+	require.Equal(t, "eu-central-1", kiroAPIRegion(account))
+}
+
+func TestKiroAPIRegionAPIKeyFallsBackToRegion(t *testing.T) {
+	account := &Account{
+		Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"region": "eu-central-1",
+		},
+	}
+
+	require.Equal(t, "eu-central-1", kiroAPIRegion(account))
 }
 
 func TestKiroAPIRegionIgnoresProfileARNRegionFallback(t *testing.T) {
@@ -339,8 +362,9 @@ func TestKiroAPIRegionIgnoresProfileARNRegionFallback(t *testing.T) {
 	require.Equal(t, kiroDefaultRegion, kiroAPIRegion(account))
 }
 
-func TestKiroAPIRegionIgnoresOIDCRegionFallback(t *testing.T) {
+func TestKiroAPIRegionIgnoresOAuthRegionFallback(t *testing.T) {
 	account := &Account{
+		Type: AccountTypeOAuth,
 		Credentials: map[string]any{
 			"region": "ap-northeast-2",
 		},
@@ -349,8 +373,21 @@ func TestKiroAPIRegionIgnoresOIDCRegionFallback(t *testing.T) {
 	require.Equal(t, kiroDefaultRegion, kiroAPIRegion(account))
 }
 
+func TestKiroAPIRegionIgnoresIDCRegionFallback(t *testing.T) {
+	account := &Account{
+		Type: AccountTypeOAuth,
+		Credentials: map[string]any{
+			"auth_method": "idc",
+			"region":      "eu-central-1",
+		},
+	}
+
+	require.Equal(t, kiroDefaultRegion, kiroAPIRegion(account))
+}
+
 func TestBuildKiroEndpointsUsesOnlyAmazonQEndpoint(t *testing.T) {
 	account := &Account{
+		Type: AccountTypeAPIKey,
 		Credentials: map[string]any{
 			"api_region":         "us-west-2",
 			"preferred_endpoint": "cw",
@@ -364,9 +401,24 @@ func TestBuildKiroEndpointsUsesOnlyAmazonQEndpoint(t *testing.T) {
 	require.Empty(t, endpoints[0].AmzTarget)
 }
 
+func TestBuildKiroEndpointsUsesKiroAPIKeyRegionFallback(t *testing.T) {
+	account := &Account{
+		Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"region": "eu-central-1",
+		},
+	}
+
+	endpoints := buildKiroEndpoints(account, KiroEndpointModeQ)
+	require.Len(t, endpoints, 1)
+	require.Equal(t, "AmazonQ", endpoints[0].Name)
+	require.Equal(t, "https://q.eu-central-1.amazonaws.com/generateAssistantResponse", endpoints[0].URL)
+}
+
 func TestBuildKiroEndpointsIgnoresPreferredEndpoint(t *testing.T) {
 	for _, preferred := range []string{"codewhisperer", "cw", "unknown"} {
 		account := &Account{
+			Type: AccountTypeAPIKey,
 			Credentials: map[string]any{
 				"api_region":         "us-west-2",
 				"preferred_endpoint": preferred,

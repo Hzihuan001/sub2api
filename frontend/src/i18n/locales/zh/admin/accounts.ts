@@ -954,6 +954,8 @@ export default {
       },
       kiro: {
         apiKeyHint: 'Kiro API Key（ksk_ 开头），将作为直连 AWS 的 Bearer Token',
+        apiRegionLabel: 'API Region',
+        apiRegionHint: '选择或输入直连 Kiro API 的区域代码。',
         relayApiKeyHint: '该外部上游的 API Key（通过 x-api-key 头发送）',
         relayBaseUrlHint: '外部 Anthropic 兼容上游地址（如 https://your-relay.example.com），将请求 {base_url}/v1/messages',
         relayPriorityHint: '建议保持较低优先级（数字更大），仅作兜底——原生 Kiro 账号全部异常时才启用'

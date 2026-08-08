@@ -1100,11 +1100,14 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.oauth.kiro.regionLabel') }}</label>
-          <input
+          <Select
             v-model="kiroIDCRegion"
-            type="text"
-            class="input"
+            :options="KIRO_REGION_SELECT_OPTIONS"
+            searchable
+            creatable
+            creatable-label-mode="raw"
             :placeholder="t('admin.accounts.oauth.kiro.regionPlaceholder')"
+            data-testid="kiro-idc-region-select"
           />
         </div>
       </div>
@@ -1134,6 +1137,19 @@
             placeholder="ksk_..."
           />
           <p class="input-hint">{{ apiKeyHint }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.kiro.apiRegionLabel') }}</label>
+          <Select
+            v-model="kiroAPIRegion"
+            :options="KIRO_REGION_SELECT_OPTIONS"
+            searchable
+            creatable
+            creatable-label-mode="raw"
+            placeholder="us-east-1"
+            data-testid="kiro-api-region-select"
+          />
+          <p class="input-hint">{{ t('admin.accounts.kiro.apiRegionHint') }}</p>
         </div>
       </div>
 
@@ -4142,6 +4158,7 @@ import {
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS } from '@/constants/account'
+import { KIRO_REGION_SELECT_OPTIONS } from '@/constants/kiroRegions'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -4289,6 +4306,7 @@ const KIRO_RELAY_DEFAULT_PRIORITY = 100
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const kiroAPIRegion = ref('us-east-1')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 const syncPreviewCredentials = computed(() => {
@@ -4890,6 +4908,7 @@ watch(
       kiroOAuthProvider.value = 'google'
       apiKeyBaseUrl.value = ''
       apiKeyValue.value = ''
+      kiroAPIRegion.value = 'us-east-1'
     } else {
       allowOverages.value = false
       antigravityProjectId.value = ''
@@ -5368,6 +5387,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  kiroAPIRegion.value = 'us-east-1'
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5821,7 +5841,8 @@ const handleSubmit = async () => {
     // Kiro API Key 账号直连 AWS(q.{region}.amazonaws.com),不使用 base_url。
     // 区域由凭据 api_region 控制(默认 us-east-1),无需也不展示 Base URL。
     const credentials: Record<string, unknown> = {
-      api_key: apiKeyValue.value.trim()
+      api_key: apiKeyValue.value.trim(),
+      api_region: kiroAPIRegion.value.trim() || 'us-east-1'
     }
 
     const modelMapping = buildModelMappingObject('mapping', [], kiroModelMappings.value)
