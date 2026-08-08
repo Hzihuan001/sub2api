@@ -19,11 +19,9 @@
                     ? 'from-amber-500 to-amber-600'
                     : isAntigravity
                       ? 'from-purple-500 to-purple-600'
-                  : isAntigravity
-                    ? 'from-purple-500 to-purple-600'
-                    : isGrok
-                      ? 'from-zinc-700 to-zinc-900'
-                      : 'from-orange-500 to-orange-600'
+                      : isGrok
+                        ? 'from-zinc-700 to-zinc-900'
+                        : 'from-orange-500 to-orange-600'
             ]"
           >
             <Icon name="sparkles" size="md" class="text-white" />
@@ -40,11 +38,9 @@
                       ? t('admin.accounts.kiroAccount')
                       : isAntigravity
                         ? t('admin.accounts.antigravityAccount')
-                    : isAntigravity
-                      ? t('admin.accounts.antigravityAccount')
-                      : isGrok
-                        ? t('admin.accounts.grokAccount')
-                        : t('admin.accounts.claudeCodeAccount')
+                        : isGrok
+                          ? t('admin.accounts.grokAccount')
+                          : t('admin.accounts.claudeCodeAccount')
               }}
             </span>
           </div>
@@ -507,15 +503,16 @@ const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
 const isKiro = computed(() => props.account?.platform === 'kiro')
+const isGrok = computed(() => props.account?.platform === 'grok')
 
 const oauthPlatform = computed<AccountPlatform>(() => {
   if (isOpenAI.value) return 'openai'
   if (isGemini.value) return 'gemini'
   if (isKiro.value) return 'kiro'
   if (isAntigravity.value) return 'antigravity'
+  if (isGrok.value) return 'grok'
   return 'anthropic'
 })
-const isGrok = computed(() => props.account?.platform === 'grok')
 
 const currentAuthUrl = computed(() => {
   if (isOpenAILike.value) return openaiOAuth.authUrl.value
