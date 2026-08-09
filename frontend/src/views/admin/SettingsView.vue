@@ -5181,14 +5181,17 @@
                 </div>
                 <div class="md:col-span-2">
                   <label
+                    for="grok-default-base-url-mode"
                     class="text-sm font-medium text-gray-700 dark:text-gray-300"
                   >
                     {{ t("admin.settings.gatewayForwarding.grokDefaultBaseURLMode") }}
                   </label>
                   <div class="mt-2">
                     <Select
+                      id="grok-default-base-url-mode"
                       v-model="form.grok_default_base_url_mode"
                       :options="grokDefaultBaseURLModeOptions"
+                      :aria-label="t('admin.settings.gatewayForwarding.grokDefaultBaseURLMode')"
                       data-testid="grok-default-base-url-mode"
                     />
                   </div>

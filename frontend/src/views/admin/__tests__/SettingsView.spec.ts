@@ -1490,6 +1490,37 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(Array.isArray(receivedProviders[0].supported_types)).toBe(true);
     expect(receivedProviders[0].supported_types).toEqual([]);
   });
+
+  it("renders all Grok default base URL mode options and saves the picked value", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const select = wrapper.get('[data-testid="grok-default-base-url-mode"]');
+
+    // 五个上游选项必须齐全且顺序与取值稳定（保存的是 value，不是 label）
+    const optionValues = select
+      .findAll("option")
+      .map((node) => (node.element as HTMLOptionElement).value);
+    expect(optionValues).toEqual([
+      "cli",
+      "api",
+      "us-east-1",
+      "us-west-2",
+      "eu-west-1",
+    ]);
+
+    // 默认值来自 form 初始化
+    expect((select.element as HTMLSelectElement).value).toBe("cli");
+
+    await select.setValue("us-west-2");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ grok_default_base_url_mode: "us-west-2" }),
+    );
+  });
 });
 
 describe("admin SettingsView wechat connect controls", () => {
