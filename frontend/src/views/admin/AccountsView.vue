@@ -320,6 +320,9 @@
             </div>
           </template>
           <template #cell-usage="{ row }">
+            <!-- request-batched-usage 只传给父组件真会批量拉取的账号：一旦传了回调，
+                 单元格就进入批量托管模式并放弃自身取数；若此处判定与
+                 accountSupportsBatchUsage 不一致（如 Kiro），该账号将永远拿不到用量 -->
             <AccountUsageCell
               :account="row"
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
@@ -329,7 +332,9 @@
               :batched-usage="usageBatchByAccountId[String(row.id)] ?? null"
               :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
               :batched-usage-loading="usageBatchLoadingByAccountId[String(row.id)] === true"
-              :request-batched-usage="isDesktopViewport ? queueBatchedUsage : null"
+              :request-batched-usage="
+                isDesktopViewport && accountSupportsBatchUsage(row) ? queueBatchedUsage : null
+              "
               @account-updated="handleAccountUpdated"
               @usage-loaded="handleAccountUsageLoaded(row.id, $event)"
             />
