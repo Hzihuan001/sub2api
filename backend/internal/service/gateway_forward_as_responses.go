@@ -103,9 +103,10 @@ func (s *GatewayService) ForwardAsResponses(
 	// OpenAI Responses 协议进来的请求永远不是 Claude Code 客户端，所以对 OAuth 账号
 	// 必须完整执行 /v1/messages 主路径上的伪装链路（system 重写 + normalize + metadata 注入），
 	// 否则会被 Anthropic 判为第三方应用并扣 extra usage。
-	// 见 applyClaudeCodeOAuthMimicryToBody 的 godoc。
+	// 见 applyClaudeCodeOAuthMimicryToBody 与 shouldMimicClaudeCodeForAccount 的 godoc
+	// （后者说明了 Kiro 为何必须排除）。
 	isClaudeCode := false
-	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
+	shouldMimicClaudeCode := shouldMimicClaudeCodeForAccount(account, isClaudeCode)
 
 	if shouldMimicClaudeCode {
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
@@ -673,12 +674,42 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	return finalizeStream()
 }
 
-// appendRawJSON appends a JSON fragment string to existing raw JSON.
+// appendRawJSON 累积 tool_use 块的 input_json_delta 分片。
+//
+// Anthropic 协议里 content_block_start 会带一个空对象占位（"input": {}），真实参数
+// 随后由 input_json_delta.partial_json 分片流出，消费方必须忽略这个占位。buffered
+// 路径把整个 ContentBlock 直接追加进 finalResp.Content，Input 因此已是 "{}"，若按
+// 普通分片往后拼就会得到 `{}{"command":"ls"}` 这种非法 JSON——Input 是
+// json.RawMessage，不做校验，会原样出到客户端。
+//
+// 因此把"占位空对象"与"空值"同等对待，让第一个真实分片直接替换它。真流式路径靠
+// content_block_start 时 CurrentArgs.Reset() 达到同一效果（见
+// anthropic_to_responses_response.go 的状态机），这里是它在 buffered 路径上的对应。
+//
+// 上游只发占位、不发任何 delta 时（无参工具），existing 保持 "{}" 不变，正是应有的
+// 语义——不能退化成空串，否则 Input 的 omitempty 会让 input 字段整个消失。
 func appendRawJSON(existing json.RawMessage, fragment string) json.RawMessage {
-	if len(existing) == 0 {
+	if len(existing) == 0 || isEmptyJSONObject(existing) {
 		return json.RawMessage(fragment)
 	}
 	return json.RawMessage(string(existing) + fragment)
+}
+
+// isEmptyJSONObject 判断 raw 是否只是一个空 JSON 对象（允许任意位置的空白）。
+//
+// 只匹配闭合的空对象：分片过程中的中间态是 "{" 或 "{\"cmd" 这类不闭合前缀，不会
+// 命中；真正把 {} 拆成 "{" + "}" 两片发的上游，第一片后 existing 是 "{"，同样不
+// 命中。所以命中场景只有两种——content_block_start 的占位，或一个完整的空对象
+// 分片，两者都应被后续分片替换而非拼接。
+//
+// 不走 json.Unmarshal：该判断在每个分片上都要做一次，长参数的工具会被调用很多次。
+// 这里对真实载荷是 O(1) 退出——内层 TrimSpace 从左侧遇到第一个非空白字符就停。
+func isEmptyJSONObject(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) < 2 || trimmed[0] != '{' || trimmed[len(trimmed)-1] != '}' {
+		return false
+	}
+	return len(bytes.TrimSpace(trimmed[1:len(trimmed)-1])) == 0
 }
 
 // writeResponsesError writes an error response in OpenAI Responses API format.
