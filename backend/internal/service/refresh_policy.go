@@ -72,8 +72,11 @@ func GrokProviderRefreshPolicy() ProviderRefreshPolicy {
 func CursorProviderRefreshPolicy() ProviderRefreshPolicy {
 	return ProviderRefreshPolicy{
 		OnRefreshError: ProviderRefreshErrorUseExistingToken,
-		OnLockHeld:     ProviderLockHeldUseExistingToken,
-		FailureTTL:     0,
+		// Cursor access tokens are short-lived (~1h) and the account row is the
+		// only other copy, so when a peer holds the refresh lock the useful
+		// answer is the token it is about to publish, not the stale one we hold.
+		OnLockHeld: ProviderLockHeldWaitForCache,
+		FailureTTL: 0,
 	}
 }
 

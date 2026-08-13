@@ -141,23 +141,68 @@ func TestCursorAgentProxyClientCacheEvictsOldest(t *testing.T) {
 
 func TestValidateCursorAgentHostAppliesSSRFGuardOnlyWhenConfigured(t *testing.T) {
 	private := "http://127.0.0.1:8080"
+	privateHTTPS := "https://127.0.0.1:8080"
 
-	// No config, or an allowlist that is off / permits private hosts: the
-	// guard stays out of the way.
-	require.NoError(t, validateCursorAgentHost(nil, private))
-	require.NoError(t, validateCursorAgentHost(&config.Config{}, private))
+	// Plaintext is refused whatever the allowlist says: this stream carries the
+	// account's bearer token.
+	require.Error(t, validateCursorAgentHost(nil, private, false))
+	require.Error(t, validateCursorAgentHost(&config.Config{}, private, false))
+
+	insecureOK := &config.Config{}
+	insecureOK.Security.URLAllowlist.AllowInsecureHTTP = true
+	require.NoError(t, validateCursorAgentHost(insecureOK, private, false),
+		"a deployment that opted into plaintext upstreams keeps working")
+
+	// Allowlist off: private hosts stay reachable, which local relays rely on.
+	require.NoError(t, validateCursorAgentHost(&config.Config{}, privateHTTPS, false))
 
 	permissive := &config.Config{}
 	permissive.Security.URLAllowlist.Enabled = true
 	permissive.Security.URLAllowlist.AllowPrivateHosts = true
-	require.NoError(t, validateCursorAgentHost(permissive, private))
+	require.NoError(t, validateCursorAgentHost(permissive, privateHTTPS, false))
 
 	strict := &config.Config{}
 	strict.Security.URLAllowlist.Enabled = true
-	require.Error(t, validateCursorAgentHost(strict, private),
+	require.Error(t, validateCursorAgentHost(strict, privateHTTPS, false),
 		"a private agent base url must be refused when the allowlist forbids private hosts")
-	require.Error(t, validateCursorAgentHost(strict, "agentn.global.api5.cursor.sh"),
+	require.Error(t, validateCursorAgentHost(strict, "agentn.global.api5.cursor.sh", false),
 		"a base url with no scheme parses to an empty host and must be refused")
+}
+
+// A per-account override is the untrusted path: it must clear the operator's
+// UpstreamHosts allowlist, while the process default must not be held to a list
+// written for third-party relays.
+func TestValidateCursorAgentHostEnforcesAllowlistOnAccountOverrideOnly(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = true
+	cfg.Security.URLAllowlist.AllowPrivateHosts = true
+	cfg.Security.URLAllowlist.UpstreamHosts = []string{"relay.example.com"}
+
+	const foreign = "https://evil.example.net"
+	require.Error(t, validateCursorAgentHost(cfg, foreign, true),
+		"an account override outside the allowlist must be refused")
+	require.NoError(t, validateCursorAgentHost(cfg, "https://relay.example.com", true))
+	require.NoError(t, validateCursorAgentHost(cfg, foreign, false),
+		"the process default is not account input and is not allowlist-scoped")
+
+	// An enabled allowlist with nothing listed fails an override closed.
+	empty := &config.Config{}
+	empty.Security.URLAllowlist.Enabled = true
+	empty.Security.URLAllowlist.AllowPrivateHosts = true
+	require.Error(t, validateCursorAgentHost(empty, "https://relay.example.com", true))
+}
+
+// A named-but-unresolved proxy must not degrade into a direct dial.
+func TestCursorAgentHTTPClientFailsClosedOnUnresolvedProxy(t *testing.T) {
+	t.Cleanup(resetCursorAgentClients)
+	account := cursorAccount()
+	proxyID := int64(7)
+	account.ProxyID = &proxyID
+	account.Proxy = nil
+
+	client, err := cursorAgentHTTPClient(account)
+	require.ErrorIs(t, err, errCursorAgentProxyUnresolved)
+	require.Nil(t, client)
 }
 
 func resetCursorAgentClients() {

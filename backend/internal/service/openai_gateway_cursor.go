@@ -146,8 +146,8 @@ func (s *OpenAIGatewayService) openCursorAgentStream(
 		return nil, s.newCursorCredentialFailover(c, account, errCursorAccessTokenMissing)
 	}
 
-	baseURL := cursorAgentBaseURL(account)
-	if err := validateCursorAgentHost(s.cfg, baseURL); err != nil {
+	baseURL, accountOverride := cursorAgentBaseURLSource(account)
+	if err := validateCursorAgentHost(s.cfg, baseURL, accountOverride); err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	httpClient, err := cursorAgentHTTPClient(account)
@@ -513,6 +513,13 @@ func (s *OpenAIGatewayService) cursorAgentFailure(c *gin.Context, account *Accou
 	if isCursorNotLoggedIn(agentErr) {
 		return s.cursorNotLoggedInFailure(c, account, agentErr)
 	}
+	// permission_denied is Cursor's answer to both an expired credential and a
+	// client-version it refuses to serve. Only the former is an account fault;
+	// mistaking the latter for one walks the whole pool and disables every
+	// account over a single wrong config value.
+	if isCursorClientVersionRejected(agentErr) {
+		return s.cursorClientVersionFailure(c, account, agentErr)
+	}
 
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
@@ -608,6 +615,72 @@ func isCursorNotLoggedIn(agentErr *cursorpkg.AgentError) bool {
 	}
 	haystack := strings.ToUpper(agentErr.Code + " " + agentErr.Message + " " + agentErr.Raw)
 	return strings.Contains(haystack, "ERROR_NOT_LOGGED_IN")
+}
+
+// isCursorClientVersionRejected reports whether a permission_denied verdict is
+// about the advertised client version rather than the credential. Cursor
+// enforces a minimum client version on the agent endpoints and rejects older
+// ones with the same Connect code it uses for a dead token.
+func isCursorClientVersionRejected(agentErr *cursorpkg.AgentError) bool {
+	if agentErr == nil {
+		return false
+	}
+	haystack := strings.ToUpper(agentErr.Code + " " + agentErr.Message + " " + agentErr.Raw)
+	for _, marker := range []string{
+		"UPDATE REQUIRED",
+		"UPDATE_REQUIRED",
+		"UPDATE YOUR",
+		"PLEASE UPDATE",
+		"OUTDATED",
+		"OUT OF DATE",
+		"UNSUPPORTED_CLIENT",
+		"UNSUPPORTED CLIENT",
+		"CLIENT_VERSION",
+		"CLIENT VERSION",
+		"CLIENT-VERSION",
+		"MINIMUM VERSION",
+		"VERSION TOO OLD",
+		"TOO OLD",
+		"ERROR_CLIENT_TOO_OLD",
+	} {
+		if strings.Contains(haystack, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// cursorClientVersionFailure reports a client-version rejection as an operator
+// configuration fault: the account is left healthy, the failover loop stops,
+// and the message names the knob to change. Rotating accounts cannot help — the
+// gateway advertises the same version on every one of them.
+func (s *OpenAIGatewayService) cursorClientVersionFailure(c *gin.Context, account *Account, agentErr *cursorpkg.AgentError) error {
+	logger.L().Warn("cursor agent turn failed: client version rejected",
+		zap.Int64("account_id", cursorAccountID(account)),
+		zap.String("connect_code", agentErr.Code),
+		zap.String("upstream_message", agentErr.Message),
+	)
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           PlatformCursor,
+		AccountID:          cursorAccountID(account),
+		AccountName:        cursorAccountName(account),
+		UpstreamStatusCode: http.StatusForbidden,
+		Stage:              string(GatewayFailureStageAccountAuth),
+		Scope:              string(GatewayFailureScopeProvider),
+		Reason:             string(CursorCredentialReasonClientVersion),
+		Kind:               "config_error",
+		Message:            agentErr.Error(),
+	})
+	return &UpstreamFailoverError{
+		Stage:             GatewayFailureStageAccountAuth,
+		Scope:             GatewayFailureScopeProvider,
+		Reason:            CursorCredentialReasonClientVersion,
+		NextAccountAction: NextAccountStop,
+		StatusCode:        http.StatusForbidden,
+		ResponseBody:      cursorUpstreamErrorBody(agentErr),
+		ClientStatusCode:  http.StatusBadGateway,
+		ClientMessage:     CursorClientVersionRejectedClientMessage,
+	}
 }
 
 // cursorUpstreamErrorBodyLimit caps what an upstream verdict contributes to the

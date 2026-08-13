@@ -266,6 +266,12 @@ func ProvideAccountTestService(
 	)
 	service.agentIdentityWS = openAIGatewayService
 	service.SetSettingService(settingService)
+	if openAIGatewayService != nil {
+		// Reused rather than injected separately: the gateway already owns the
+		// only Cursor token provider, and the connection test has to resolve a
+		// credential exactly the way a real request does.
+		service.cursorTokenProvider = openAIGatewayService.cursorTokenProvider
+	}
 	return service
 }
 

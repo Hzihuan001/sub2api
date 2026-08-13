@@ -87,10 +87,19 @@ func parseEnvDuration(raw string, fallback time.Duration) time.Duration {
 // deliberately separate from GetCursorBaseURL: that one still points at api2,
 // which continues to serve AvailableModels.
 func cursorAgentBaseURL(account *Account) string {
+	baseURL, _ := cursorAgentBaseURLSource(account)
+	return baseURL
+}
+
+// cursorAgentBaseURLSource also reports whether the value came from the
+// account row. That distinction drives how hard it is validated: a per-account
+// override is operator input that reaches the request path through the
+// database, while the process default is compiled-in or set by env at boot.
+func cursorAgentBaseURLSource(account *Account) (string, bool) {
 	if override := cursorAgentAccountOverride(account, credCursorAgentBaseURL, extraCursorAgentBaseURL); override != "" {
-		return strings.TrimRight(override, "/")
+		return strings.TrimRight(override, "/"), true
 	}
-	return cursorAgentProcessDefaults().baseURL
+	return cursorAgentProcessDefaults().baseURL, false
 }
 
 func cursorAgentClientVersion(account *Account) string {
@@ -143,6 +152,12 @@ var (
 	cursorAgentDirectOnce    sync.Once
 	errCursorAgentProxyEmpty = errors.New("cursor: proxy url is empty")
 	errCursorAgentTransport  = errors.New("cursor: agent transport is not an *http.Transport")
+
+	// errCursorAgentProxyUnresolved fails a turn closed when the account names a
+	// proxy that was not loaded. Falling back to a direct dial would send the
+	// account's real credential from the gateway's own IP, which is the exact
+	// outcome configuring a proxy is meant to prevent.
+	errCursorAgentProxyUnresolved = errors.New("cursor: account has a proxy configured but it was not resolved")
 )
 
 // cursorAgentHTTPClient returns an HTTP/2-capable client honouring the
@@ -154,6 +169,11 @@ func cursorAgentHTTPClient(account *Account) (*http.Client, error) {
 		proxyURL = strings.TrimSpace(account.Proxy.URL())
 	}
 	if proxyURL == "" {
+		// A configured-but-missing proxy is a load failure, not a request for a
+		// direct connection.
+		if account != nil && account.ProxyID != nil {
+			return nil, errCursorAgentProxyUnresolved
+		}
 		cursorAgentDirectOnce.Do(func() {
 			cursorAgentDirectClient = cursorpkg.NewAgentHTTPClient()
 		})
@@ -240,15 +260,53 @@ func closeCursorAgentClient(client *http.Client) {
 	}
 }
 
-// validateCursorAgentHost repeats the SSRF guard httpUpstream applies to every
+// validateCursorAgentHost applies the same guard httpUpstream applies to every
 // other upstream call. Agent turns dial directly — the request body stays open
 // for the whole turn, which the shared Do(req) port cannot express — so an
-// operator-configured agent base URL would otherwise skip the check.
-func validateCursorAgentHost(cfg *config.Config, baseURL string) error {
-	if cfg == nil || !cfg.Security.URLAllowlist.Enabled || cfg.Security.URLAllowlist.AllowPrivateHosts {
+// operator-configured agent base URL would otherwise skip validation entirely
+// and this credential-bearing stream would go wherever the value pointed.
+//
+// Three layers, matching the rest of the codebase: scheme and host format
+// always; the operator's UpstreamHosts allowlist for a per-account override,
+// which is the untrusted input here (the process default is compiled in or set
+// at boot, and holding it to a list the operator wrote for third-party relays
+// would break every default deployment); then a resolved-IP check against DNS
+// rebinding, since validation and dialling are separate steps.
+func validateCursorAgentHost(cfg *config.Config, baseURL string, accountOverride bool) error {
+	trimmed := strings.TrimSpace(baseURL)
+	if trimmed == "" {
+		return errors.New("cursor: agent base url is empty")
+	}
+
+	allowInsecureHTTP := false
+	allowlistEnabled := false
+	allowPrivate := false
+	var upstreamHosts []string
+	if cfg != nil {
+		allowInsecureHTTP = cfg.Security.URLAllowlist.AllowInsecureHTTP
+		allowlistEnabled = cfg.Security.URLAllowlist.Enabled
+		allowPrivate = cfg.Security.URLAllowlist.AllowPrivateHosts
+		upstreamHosts = cfg.Security.URLAllowlist.UpstreamHosts
+	}
+
+	if allowlistEnabled && accountOverride {
+		if _, err := urlvalidator.ValidateHTTPURL(trimmed, allowInsecureHTTP, urlvalidator.ValidationOptions{
+			AllowedHosts:     upstreamHosts,
+			RequireAllowlist: true,
+			AllowPrivate:     allowPrivate,
+		}); err != nil {
+			return fmt.Errorf("cursor: agent base url rejected: %w", err)
+		}
+	} else if _, err := urlvalidator.ValidateHTTPURL(trimmed, allowInsecureHTTP, urlvalidator.ValidationOptions{
+		AllowPrivate: allowPrivate || !allowlistEnabled,
+	}); err != nil {
+		return fmt.Errorf("cursor: agent base url rejected: %w", err)
+	}
+
+	if !allowlistEnabled || allowPrivate {
 		return nil
 	}
-	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	parsed, err := url.Parse(trimmed)
 	if err != nil {
 		return fmt.Errorf("cursor: invalid agent base url: %w", err)
 	}

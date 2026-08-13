@@ -106,6 +106,141 @@ func TestCursorTokenProviderNeverServesWebSessionToken(t *testing.T) {
 	require.Equal(t, clientToken, token)
 }
 
+// cursorFakeTokenCache is an in-memory GeminiTokenCache.
+type cursorFakeTokenCache struct {
+	values     map[string]string
+	getCalls   int
+	lockResult bool
+}
+
+func newCursorFakeTokenCache() *cursorFakeTokenCache {
+	return &cursorFakeTokenCache{values: map[string]string{}, lockResult: true}
+}
+
+func (c *cursorFakeTokenCache) GetAccessToken(_ context.Context, key string) (string, error) {
+	c.getCalls++
+	value, ok := c.values[key]
+	if !ok {
+		return "", nil
+	}
+	return value, nil
+}
+
+func (c *cursorFakeTokenCache) SetAccessToken(_ context.Context, key, token string, _ time.Duration) error {
+	c.values[key] = token
+	return nil
+}
+
+func (c *cursorFakeTokenCache) DeleteAccessToken(_ context.Context, key string) error {
+	delete(c.values, key)
+	return nil
+}
+
+func (c *cursorFakeTokenCache) AcquireRefreshLock(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return c.lockResult, nil
+}
+
+func (c *cursorFakeTokenCache) ReleaseRefreshLock(_ context.Context, _ string) error { return nil }
+
+// The cache has to be read, not just written. Writing only made it dead weight:
+// every request re-derived the token from the account row, and InvalidateToken
+// deleting a value nobody read was a no-op.
+func TestCursorTokenProviderServesCachedToken(t *testing.T) {
+	cached := makeCursorTypedJWT(t, time.Now().Add(2*time.Hour), cursorpkg.TokenTypeSession)
+	cache := newCursorFakeTokenCache()
+	cache.values[CursorTokenCacheKey(newCursorTestAccount(nil))] = cached
+
+	// The account row holds a different, still-fresh token; the cache wins
+	// because a peer refresh publishes there first.
+	account := newCursorTestAccount(map[string]any{
+		"access_token": makeCursorTypedJWT(t, time.Now().Add(2*time.Hour), cursorpkg.TokenTypeSession),
+		"expires_at":   time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+	})
+	provider := NewCursorTokenProvider(nil, cache)
+
+	token, err := provider.GetAccessToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, cached, token)
+	require.Positive(t, cache.getCalls, "the cache must be consulted before the account row")
+}
+
+// A cached token that is itself about to expire must not be served.
+func TestCursorTokenProviderIgnoresStaleAndWebCachedTokens(t *testing.T) {
+	account := newCursorTestAccount(map[string]any{
+		"access_token": "row-token",
+		"expires_at":   time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+	})
+	cacheKey := CursorTokenCacheKey(account)
+
+	for name, cachedToken := range map[string]string{
+		"expiring":    makeCursorTypedJWT(t, time.Now().Add(time.Minute), cursorpkg.TokenTypeSession),
+		"web session": makeCursorTypedJWT(t, time.Now().Add(60*24*time.Hour), cursorpkg.TokenTypeWeb),
+	} {
+		t.Run(name, func(t *testing.T) {
+			cache := newCursorFakeTokenCache()
+			cache.values[cacheKey] = cachedToken
+			provider := NewCursorTokenProvider(nil, cache)
+
+			token, err := provider.GetAccessToken(context.Background(), account)
+			require.NoError(t, err)
+			require.Equal(t, "row-token", token)
+		})
+	}
+}
+
+// After a 401 the same JWT must not come back, from either the cache or the
+// account row. Without the rejection marker the request path would loop on the
+// identical credential until it finally expired.
+func TestCursorTokenProviderInvalidateForcesRotation(t *testing.T) {
+	rejected := makeCursorTypedJWT(t, time.Now().Add(2*time.Hour), cursorpkg.TokenTypeSession)
+	account := newCursorTestAccount(map[string]any{
+		"access_token": rejected,
+		"expires_at":   time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+	})
+	cache := newCursorFakeTokenCache()
+	provider := NewCursorTokenProvider(nil, cache)
+
+	// Warm the cache the way a successful turn would.
+	token, err := provider.GetAccessToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, rejected, token)
+	require.Equal(t, rejected, cache.values[CursorTokenCacheKey(account)])
+
+	require.NoError(t, provider.InvalidateToken(context.Background(), account))
+	require.NotContains(t, cache.values, CursorTokenCacheKey(account), "the cached copy must be dropped")
+
+	// No refresh source is configured, so the only correct answer is a refusal —
+	// never the token upstream just rejected.
+	_, err = provider.GetAccessToken(context.Background(), account)
+	require.ErrorIs(t, err, errCursorAccessTokenRejected)
+
+	// A rotated credential no longer matches the marker and is served normally.
+	rotated := makeCursorTypedJWT(t, time.Now().Add(3*time.Hour), cursorpkg.TokenTypeSession)
+	require.NotEqual(t, rejected, rotated)
+	account.Credentials["access_token"] = rotated
+	token, err = provider.GetAccessToken(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, rotated, token)
+}
+
+// Invalidation must also survive a cached copy that outlives the account row.
+func TestCursorTokenProviderRejectedTokenIsNotServedFromCache(t *testing.T) {
+	rejected := makeCursorTypedJWT(t, time.Now().Add(2*time.Hour), cursorpkg.TokenTypeSession)
+	account := newCursorTestAccount(map[string]any{
+		"access_token": rejected,
+		"expires_at":   time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+	})
+	cache := newCursorFakeTokenCache()
+	provider := NewCursorTokenProvider(nil, cache)
+
+	require.NoError(t, provider.InvalidateToken(context.Background(), account))
+	// A racing worker re-publishes the rejected token into the cache.
+	cache.values[CursorTokenCacheKey(account)] = rejected
+
+	_, err := provider.GetAccessToken(context.Background(), account)
+	require.ErrorIs(t, err, errCursorAccessTokenRejected)
+}
+
 func TestCursorTokenProviderRejectsNonCursorAccount(t *testing.T) {
 	provider := NewCursorTokenProvider(nil, nil)
 	_, err := provider.GetAccessToken(context.Background(), &Account{

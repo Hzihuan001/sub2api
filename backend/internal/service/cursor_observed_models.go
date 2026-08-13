@@ -88,6 +88,10 @@ func (s *OpenAIGatewayService) syncCursorObservedModels(ctx context.Context, acc
 	proxyURL := ""
 	if account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
+	} else if account.ProxyID != nil {
+		// Fail closed: an unresolved proxy would send this account's bearer
+		// direct from the gateway's own IP.
+		return errCursorAgentProxyUnresolved
 	}
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {

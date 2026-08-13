@@ -155,10 +155,24 @@ func (c *cursorOAuthClient) PollDeepLink(ctx context.Context, id, verifier, prox
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "CURSOR_OAUTH_REQUEST_FAILED", "request failed: %v", err)
 	}
+	if cursorDeepLinkPollPending(resp.StatusCode) {
+		return nil, nil
+	}
 	if !resp.IsSuccessState() {
 		return nil, cursorOAuthStatusError("CURSOR_OAUTH_POLL_FAILED", "deep-link poll failed", resp.StatusCode, resp.String())
 	}
 	return &tokenResp, nil
+}
+
+// cursorDeepLinkPollPending reports whether a poll status means "the user has
+// not confirmed in the browser yet" rather than a failure.
+//
+// Cursor answers 404 for the whole time the login is outstanding: the id does
+// not exist upstream until approval lands. Treating that as an error aborted
+// every login not confirmed within the first poll, which is nearly all of them.
+// A nil token with no error is how the service layer recognizes pending.
+func cursorDeepLinkPollPending(statusCode int) bool {
+	return statusCode == http.StatusNotFound
 }
 
 func cursorOAuthStatusError(code, message string, statusCode int, body string) error {

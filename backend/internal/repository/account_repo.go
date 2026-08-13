@@ -1173,6 +1173,12 @@ func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, o
 	// NOT (a AND b) 在 PG 三值逻辑下会把 a 或 b 为 NULL 的行（即绝大多数
 	// 健康账号：temp_unschedulable_until=NULL）也排除，导致后台 token
 	// 刷新工作器漏掉所有正常账号 → access_token 到期后请求开始 401。
+	args := []any{pq.Array(options.Platforms), options.AfterID}
+	placeholder := func(value any) string {
+		args = append(args, value)
+		return "$" + strconv.Itoa(len(args))
+	}
+
 	query := `
 		SELECT id
 		FROM accounts
@@ -1192,9 +1198,32 @@ func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, o
 			AND type = 'oauth'`
 	}
 	if options.RequireRefreshToken {
+		refreshable := `(credentials ? 'refresh_token' AND btrim(credentials->>'refresh_token') <> '')`
+		// A platform that refreshes from something other than a refresh_token
+		// still belongs in the candidate set; without this its short-lived
+		// access tokens are only ever refreshed inline on a user's request.
+		for _, source := range options.AltRefreshCredentialSources {
+			platform := strings.TrimSpace(source.Platform)
+			if platform == "" || len(source.CredentialKeys) == 0 {
+				continue
+			}
+			keyConditions := make([]string, 0, len(source.CredentialKeys))
+			for _, key := range source.CredentialKeys {
+				key = strings.TrimSpace(key)
+				if key == "" {
+					continue
+				}
+				keyConditions = append(keyConditions,
+					"btrim(coalesce(credentials->>"+placeholder(key)+", '')) <> ''")
+			}
+			if len(keyConditions) == 0 {
+				continue
+			}
+			refreshable += `
+				OR (platform = ` + placeholder(platform) + ` AND (` + strings.Join(keyConditions, " OR ") + `))`
+		}
 		query += `
-			AND credentials ? 'refresh_token'
-			AND btrim(credentials->>'refresh_token') <> ''`
+			AND (` + refreshable + `)`
 	}
 	if options.ExcludeRetryCooldown {
 		query += `
@@ -1205,9 +1234,9 @@ func (r *accountRepository) ListOAuthRefreshCandidatePage(ctx context.Context, o
 	}
 	query += `
 		ORDER BY id ASC
-		LIMIT $3`
+		LIMIT ` + placeholder(options.Limit)
 
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(options.Platforms), options.AfterID, options.Limit)
+	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

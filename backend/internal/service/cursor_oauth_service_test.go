@@ -9,6 +9,7 @@ import (
 	"time"
 
 	cursorpkg "github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,6 +29,10 @@ type fakeCursorOAuthClient struct {
 	webErr    error
 	webCall   int
 	webCookie string
+
+	pollResp *cursorpkg.TokenResponse
+	pollErr  error
+	pollCall int
 }
 
 func (f *fakeCursorOAuthClient) ExchangeUserAPIKey(_ context.Context, _, _ string) (*cursorpkg.TokenResponse, error) {
@@ -41,7 +46,8 @@ func (f *fakeCursorOAuthClient) RefreshToken(_ context.Context, _, _ string) (*c
 }
 
 func (f *fakeCursorOAuthClient) PollDeepLink(_ context.Context, _, _, _ string) (*cursorpkg.TokenResponse, error) {
-	return nil, errors.New("not used")
+	f.pollCall++
+	return f.pollResp, f.pollErr
 }
 
 func (f *fakeCursorOAuthClient) ExchangeWebSession(_ context.Context, workosSessionToken, _ string) (*cursorpkg.TokenResponse, error) {
@@ -57,6 +63,101 @@ func cursorClientTokenResponse(t *testing.T) *cursorpkg.TokenResponse {
 		RefreshToken: "deep-link-refresh",
 		AuthID:       "auth0|user_01",
 	}
+}
+
+// The repository reports an outstanding login as (nil, nil). That has to become
+// the "pending" verdict the frontend polls on, not a failure that tears the
+// login down.
+func TestCursorOAuthServicePollReportsPendingForOutstandingLogin(t *testing.T) {
+	client := &fakeCursorOAuthClient{}
+	svc := NewCursorOAuthService(nil, client)
+
+	info, err := svc.Poll(context.Background(), "uuid-1", "verifier-1", nil)
+	require.Nil(t, info)
+	require.Error(t, err)
+	require.Equal(t, "CURSOR_OAUTH_PENDING", infraerrors.Reason(err))
+	require.Equal(t, 1, client.pollCall)
+
+	// A 2xx with an empty token is the other pending shape.
+	client.pollResp = &cursorpkg.TokenResponse{}
+	info, err = svc.Poll(context.Background(), "uuid-1", "verifier-1", nil)
+	require.Nil(t, info)
+	require.Equal(t, "CURSOR_OAUTH_PENDING", infraerrors.Reason(err))
+}
+
+func TestCursorOAuthServicePollReturnsCredentialOnceConfirmed(t *testing.T) {
+	client := &fakeCursorOAuthClient{pollResp: cursorClientTokenResponse(t)}
+	svc := NewCursorOAuthService(nil, client)
+
+	info, err := svc.Poll(context.Background(), "uuid-1", "verifier-1", nil)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.Equal(t, client.pollResp.AccessToken, info.AccessToken)
+	require.Equal(t, cursorpkg.CredentialSourceDeepLink, info.Source)
+}
+
+// Reauthorizing through a different credential source must retire the old one.
+// Keeping it made the new credential dead weight: RefreshAccountToken prefers
+// api_key over refresh_token, so the account went straight back to the
+// credential the operator had just replaced.
+func TestNormalizeCursorReauthorizedCredentialsReplacesMutuallyExclusiveSources(t *testing.T) {
+	t.Run("deep-link reauth retires api key and cookie", func(t *testing.T) {
+		incoming := map[string]any{"access_token": "new-access", "refresh_token": "new-refresh"}
+		merged := map[string]any{
+			"access_token":      "new-access",
+			"refresh_token":     "new-refresh",
+			"api_key":           "crsr_old",
+			"web_session_token": "user_01%3A%3Aold-cookie",
+			"base_url":          "https://api2.cursor.sh",
+		}
+
+		out := NormalizeCursorReauthorizedCredentials(PlatformCursor, incoming, merged)
+		require.Equal(t, "new-refresh", out["refresh_token"])
+		require.NotContains(t, out, "api_key")
+		require.NotContains(t, out, "web_session_token")
+		require.Equal(t, "https://api2.cursor.sh", out["base_url"], "operator config is untouched")
+	})
+
+	t.Run("api-key reauth retires refresh token and cookie", func(t *testing.T) {
+		incoming := map[string]any{"access_token": "new-access", "api_key": "crsr_new"}
+		merged := map[string]any{
+			"access_token":      "new-access",
+			"api_key":           "crsr_new",
+			"refresh_token":     "old-refresh",
+			"web_session_token": "user_01%3A%3Aold-cookie",
+		}
+
+		out := NormalizeCursorReauthorizedCredentials(PlatformCursor, incoming, merged)
+		require.Equal(t, "crsr_new", out["api_key"])
+		require.NotContains(t, out, "refresh_token")
+		require.NotContains(t, out, "web_session_token")
+	})
+}
+
+// An ordinary edit must not touch credentials. The API redacts them, so a
+// full-object PUT legitimately arrives without any token at all.
+func TestNormalizeCursorReauthorizedCredentialsLeavesOrdinaryEditsAlone(t *testing.T) {
+	stored := func() map[string]any {
+		return map[string]any{
+			"access_token":      "kept-access",
+			"api_key":           "crsr_kept",
+			"web_session_token": "user_01%3A%3Akept",
+			"refresh_token":     "kept-refresh",
+		}
+	}
+
+	// No credential fields at all (renaming the account).
+	out := NormalizeCursorReauthorizedCredentials(PlatformCursor, map[string]any{"model_mapping": map[string]any{}}, stored())
+	require.Equal(t, stored(), out)
+
+	// An access token with no refresh source is not a source rotation.
+	out = NormalizeCursorReauthorizedCredentials(PlatformCursor, map[string]any{"access_token": "kept-access"}, stored())
+	require.Equal(t, stored(), out)
+
+	// Other platforms are never rewritten by this rule.
+	out = NormalizeCursorReauthorizedCredentials(PlatformGrok,
+		map[string]any{"access_token": "a", "refresh_token": "b"}, stored())
+	require.Equal(t, stored(), out)
 }
 
 func TestCursorOAuthServiceUpgradesCookieOnlyAccount(t *testing.T) {

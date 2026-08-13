@@ -386,6 +386,60 @@ func (s *CursorOAuthService) BuildAccountCredentials(tokenInfo *CursorTokenInfo)
 	return creds
 }
 
+// cursorRefreshSourceKeys are the three mutually exclusive credentials Cursor
+// can refresh from, in the order RefreshAccountToken tries them.
+var cursorRefreshSourceKeys = []string{"api_key", "refresh_token", "web_session_token"}
+
+// NormalizeCursorReauthorizedCredentials drops the refresh sources a
+// reauthorization replaced.
+//
+// The generic account-update merge keeps any sensitive key the request did not
+// mention, which is right for an ordinary edit (the API redacts credentials, so
+// a full-object PUT cannot echo them back) and wrong for a reauthorization:
+// re-authorizing an API-key account through the deep link left the old api_key
+// in place, and because RefreshAccountToken prefers api_key over refresh_token,
+// every later refresh went back to the credential the operator had just
+// replaced. The new one was persisted and never used.
+//
+// Only a request that actually carries a new access token re-scopes the sources,
+// and only the sources it did not supply are dropped.
+func NormalizeCursorReauthorizedCredentials(platform string, incoming, merged map[string]any) map[string]any {
+	if platform != PlatformCursor || merged == nil || len(incoming) == 0 {
+		return merged
+	}
+	if credentialStringValue(incoming, "access_token") == "" {
+		return merged
+	}
+	supplied := false
+	for _, key := range cursorRefreshSourceKeys {
+		if credentialStringValue(incoming, key) != "" {
+			supplied = true
+			break
+		}
+	}
+	if !supplied {
+		return merged
+	}
+	for _, key := range cursorRefreshSourceKeys {
+		if credentialStringValue(incoming, key) != "" {
+			continue
+		}
+		delete(merged, key)
+	}
+	return merged
+}
+
+func credentialStringValue(credentials map[string]any, key string) string {
+	if credentials == nil {
+		return ""
+	}
+	value, ok := credentials[key].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
 func (s *CursorOAuthService) tokenInfoFromResponse(resp *cursorpkg.TokenResponse, apiKey, source string) *CursorTokenInfo {
 	info := &CursorTokenInfo{
 		AccessToken:  resp.AccessToken,
