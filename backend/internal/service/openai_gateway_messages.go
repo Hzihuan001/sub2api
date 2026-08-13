@@ -36,18 +36,21 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 ) (*OpenAIForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
 
+	// Cursor 上游只有 Connect/protobuf 聊天 RPC：/v1/messages 经
+	// Anthropic → Chat Completions → cursor 桥转发（与 Responses 桥对称）。
+	// 必须排在下面的 APIKey 分流之前：cursor 账号没有任何 HTTP 版的
+	// /v1/chat/completions 上游，一旦被 CC 直转接走就必然失败（与
+	// ForwardAsChatCompletions 的判定顺序保持一致）。
+	if account.Platform == PlatformCursor {
+		return s.forwardCursorAnthropic(ctx, c, account, body, defaultMappedModel)
+	}
+
 	// 入口分流：APIKey 账号 + 上游不支持 Responses API → 走 CC 直转（与
 	// ForwardAsChatCompletions 对称）。缺少此分流时，/v1/messages 入站请求
 	// 会被无条件转为 Responses 格式发往上游 /v1/responses，导致只支持
 	// /v1/chat/completions 的第三方 OpenAI 兼容上游全部 400。
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 		return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel)
-	}
-
-	// Cursor 上游只有 Connect/protobuf 聊天 RPC：/v1/messages 经
-	// Anthropic → Chat Completions → cursor 桥转发（与 Responses 桥对称）。
-	if account.Platform == PlatformCursor {
-		return s.forwardCursorAnthropic(ctx, c, account, body, defaultMappedModel)
 	}
 
 	startTime := time.Now()

@@ -158,6 +158,15 @@ func (s *OpenAIGatewayService) openCursorAgentStream(
 	SetActualOpenAIUpstreamEndpoint(c, cursorAgentEndpoint)
 
 	defaults := cursorAgentProcessDefaults()
+	logger.L().Debug("cursor agent turn: opening",
+		zap.Int64("account_id", cursorAccountID(account)),
+		zap.String("wire_model", params.Model),
+		zap.Bool("max_mode", params.MaxMode),
+		zap.Int("prompt_bytes", len(params.Prompt)),
+		zap.Int("system_bytes", len(params.SystemPrompt)),
+		zap.Int("tool_count", len(params.Tools)),
+		zap.Int("image_count", len(params.Images)),
+	)
 	stream, err := cursorpkg.OpenAgentStream(ctx, params, cursorpkg.AgentStreamOptions{
 		BaseURL:          baseURL,
 		Token:            token,
@@ -461,6 +470,12 @@ func cursorAgentRequestID(stream *cursorpkg.AgentStream, prefix string) string {
 func (s *OpenAIGatewayService) cursorAgentFailure(c *gin.Context, account *Account, err error) error {
 	var agentErr *cursorpkg.AgentError
 	if !errors.As(err, &agentErr) {
+		// A transport fault carries no Connect code, so this is the only record
+		// of what actually went wrong.
+		logger.L().Warn("cursor agent turn failed: transport",
+			zap.Int64("account_id", cursorAccountID(account)),
+			zap.Error(err),
+		)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           PlatformCursor,
 			AccountID:          cursorAccountID(account),
@@ -468,13 +483,33 @@ func (s *OpenAIGatewayService) cursorAgentFailure(c *gin.Context, account *Accou
 			Kind:               "failover",
 			Message:            err.Error(),
 		})
-		return &UpstreamFailoverError{StatusCode: http.StatusBadGateway}
+		// The turn never reached Cursor's application layer: a TLS handshake
+		// that timed out, a reset connection, response headers that never
+		// arrived. api5 produces these intermittently and they say nothing
+		// about the account, so the turn is retried in place. Without this a
+		// single flaky handshake burns the account for the whole request and a
+		// one-account pool answers 502 immediately.
+		retryable := !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+		return &UpstreamFailoverError{
+			StatusCode:             http.StatusBadGateway,
+			RetryableOnSameAccount: retryable,
+			RequestScopedTransient: retryable,
+		}
 	}
 
 	status := agentErr.HTTPStatus
 	if status == 0 {
 		status = cursorpkg.ConnectCodeToHTTPStatus(agentErr.Code)
 	}
+	// Codes this package has no mapping for all collapse to 502, so the verdict
+	// itself is logged: without it a 502 is indistinguishable from a hang.
+	logger.L().Warn("cursor agent turn failed: upstream verdict",
+		zap.Int64("account_id", cursorAccountID(account)),
+		zap.String("connect_code", agentErr.Code),
+		zap.String("upstream_message", agentErr.Message),
+		zap.String("upstream_raw", agentErr.Raw),
+		zap.Int("mapped_status", status),
+	)
 	if isCursorNotLoggedIn(agentErr) {
 		return s.cursorNotLoggedInFailure(c, account, agentErr)
 	}
