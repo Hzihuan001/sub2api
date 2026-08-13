@@ -84,6 +84,30 @@ func (s *GatewayService) ForwardAsResponses(
 	}
 	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 mapping 完成之后。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, mappedModel)
+
+	// 4b. Codex remote compaction v2：input 里带 compaction_trigger 的请求不是普通
+	// 轮次，而是"把前文压缩成摘要"。Anthropic 协议族没有原生 compact 端点，转换器
+	// 已把触发器降级成摘要指令（见 apicompat.CompactionSummaryPrompt），这里只需把
+	// 请求参数调成适合产出摘要的形态。
+	isCompact := apicompat.HasCompactionTrigger(&responsesReq)
+	if isCompact {
+		// 压缩专用模型映射：账号未配 compact_model_mapping 时沿用普通映射结果。
+		if next, matched := account.ResolveCompactMappedModel(originalModel); matched {
+			if trimmed := strings.TrimSpace(next); trimmed != "" {
+				mappedModel = trimmed
+			}
+		}
+		// 摘要轮次不允许调用工具。tools 必须保留：历史里的 tool_use 块引用了工具
+		// 定义，删掉会让上游校验失败；tool_choice=none 已足够抑制调用。
+		anthropicReq.ToolChoice = json.RawMessage(`{"type":"none"}`)
+		// 摘要不需要思考块，省 token 也避免 thinking 与 tool_choice 的组合限制。
+		anthropicReq.Thinking = nil
+		// Codex 的 compact 请求不带 max_output_tokens，会落到转换器的 8192 默认值；
+		// 对覆盖数十万 token 前文的结构化摘要偏紧，容易被截断。
+		if anthropicReq.MaxTokens < compactionMinMaxTokens {
+			anthropicReq.MaxTokens = compactionMinMaxTokens
+		}
+	}
 	anthropicReq.Model = mappedModel
 
 	logger.L().Debug("gateway forward_as_responses: model mapping applied",
@@ -91,6 +115,7 @@ func (s *GatewayService) ForwardAsResponses(
 		zap.String("original_model", originalModel),
 		zap.String("mapped_model", mappedModel),
 		zap.Bool("client_stream", clientStream),
+		zap.Bool("compaction", isCompact),
 	)
 
 	// 5. Marshal Anthropic request body
@@ -217,7 +242,11 @@ func (s *GatewayService) ForwardAsResponses(
 	// 13. Handle normal response (convert Anthropic → Responses)
 	var result *ForwardResult
 	var handleErr error
-	if clientStream {
+	if isCompact {
+		// compact 请求必须缓冲：要拿到完整摘要文本才能合成 Codex 要求的单个
+		// compaction item，逐事件透传做不到。
+		result, handleErr = s.handleResponsesCompactionResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientStream)
+	} else if clientStream {
 		result, handleErr = s.handleResponsesStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
 	} else {
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
@@ -376,8 +405,27 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	finalResp, usage := s.collectAnthropicResponseFromSSE(resp.Body, requestID, nil)
 
-	scanner := bufio.NewScanner(resp.Body)
+	if finalResp == nil {
+		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
+		return nil, fmt.Errorf("upstream stream ended without response")
+	}
+	return s.writeResponsesBufferedResult(
+		c, resp, finalResp, usage, requestID,
+		originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping,
+	)
+}
+
+// collectAnthropicResponseFromSSE 读完上游 Anthropic SSE 流并聚合成一个完整的
+// Anthropic 响应。onEvent 在每个事件解析成功后被调用（可为 nil），供调用方挂载
+// 心跳一类的副作用——compact 请求会借此在漫长的摘要生成期间向下游发送保活字节。
+func (s *GatewayService) collectAnthropicResponseFromSSE(
+	body io.Reader,
+	requestID string,
+	onEvent func(),
+) (*apicompat.AnthropicResponse, ClaudeUsage) {
+	scanner := bufio.NewScanner(body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.cfg.Gateway.MaxLineSize
@@ -413,6 +461,9 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 				zap.String("event_type", eventType),
 			)
 			continue
+		}
+		if onEvent != nil {
+			onEvent()
 		}
 
 		// message_start carries the initial response structure
@@ -459,12 +510,22 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 			)
 		}
 	}
+	return finalResp, usage
+}
 
-	if finalResp == nil {
-		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
-		return nil, fmt.Errorf("upstream stream ended without response")
-	}
-
+// writeResponsesBufferedResult 把聚合好的 Anthropic 响应转成 Responses JSON 写回。
+func (s *GatewayService) writeResponsesBufferedResult(
+	c *gin.Context,
+	resp *http.Response,
+	finalResp *apicompat.AnthropicResponse,
+	usage ClaudeUsage,
+	requestID string,
+	originalModel string,
+	mappedModel string,
+	reasoningEffort *string,
+	startTime time.Time,
+	clientToolMapping apicompat.ResponsesClientToolMapping,
+) (*ForwardResult, error) {
 	// Update usage from accumulated delta. 无条件赋值：纯缓存命中的响应
 	// （input/output 均为 0 但 cache read/write 非 0）不能被整体丢弃。
 	finalResp.Usage = apicompat.AnthropicUsage{

@@ -254,7 +254,14 @@ type ResponsesInputItem struct {
 	Content json.RawMessage `json:"content,omitempty"` // string or []ResponsesContentPart
 
 	// type=reasoning (multi-turn replay of encrypted reasoning)
+	// type=compaction 也复用该字段承载压缩摘要信封（见 responses_compaction.go）。
 	EncryptedContent string `json:"encrypted_content,omitempty"`
+
+	// type=compaction（Codex remote compaction v2 把压缩结果原样放回 input 回放）。
+	// 两个字段都带 omitempty：CC→Responses 桥接构造的 item 永不含 compaction，
+	// 序列化输出因此逐字节不变。
+	Summary []ResponsesSummary `json:"summary,omitempty"`
+	Status  string             `json:"status,omitempty"`
 
 	// type=function_call / custom_tool_call
 	CallID    string `json:"call_id,omitempty"`
