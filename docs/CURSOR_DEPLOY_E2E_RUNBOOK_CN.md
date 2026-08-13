@@ -853,7 +853,7 @@ curl -sS -X POST "$BASE/v1/chat/completions" \
   -H "Authorization: Bearer $SK" \
   -H 'Content-Type: application/json' \
   -d '{
-        "model": "default",
+        "model": "auto",
         "messages": [
           {"role": "user", "content": "用一句中文确认你在线。"}
         ],
@@ -864,7 +864,7 @@ curl -sS -X POST "$BASE/v1/chat/completions" \
 **Windows（curl.exe，注意 JSON 引号）：**
 
 ```powershell
-$body = '{"model":"default","messages":[{"role":"user","content":"say hi in one short sentence"}],"stream":false}'
+$body = '{"model":"auto","messages":[{"role":"user","content":"say hi in one short sentence"}],"stream":false}'
 $body | Out-File -Encoding utf8NoBOM C:\temp\chat.json
 curl.exe -sS -X POST "$Base/v1/chat/completions" `
   -H "Authorization: Bearer $Sk" `
@@ -880,7 +880,7 @@ curl.exe -sS -X POST "$Base/v1/chat/completions" `
 ```powershell
 $resp = Invoke-RestMethod -Method Post -Uri "$Base/v1/chat/completions" -Headers $KH `
   -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes((@{
-    model    = 'default'
+    model    = 'auto'
     messages = @(@{ role='user'; content='用一句中文确认你在线。' })
     stream   = $false
   } | ConvertTo-Json -Depth 5)))
@@ -888,6 +888,11 @@ $resp.choices[0].message.content
 ```
 
 预期：标准 OpenAI `chat.completion` 结构，`choices[0].message.content` 是真实回复。
+
+> **model 传 `auto`，不要传 `default`**（真机 e2e 确认）：网关会按分组模型清单校验请求的 `model`，
+> 对外 `/v1/models` 清单（含 5.1 的内置兜底 13 个 id）里没有 `default`，直接传会被拒为 404 `model_not_found`；
+> `auto` 会在协议线级被映射成上游 agent 的 `default`，免费账号（只有 Auto 可用）也传 `auto`。
+> 只有 4.0 的离线探针（`cursor_e2e -mode agent`）是直连上游、绕过网关，那里才用 `-model default`。
 
 ### 5.3 `POST /v1/chat/completions` 流式
 
@@ -898,7 +903,7 @@ curl -N -sS -X POST "$BASE/v1/chat/completions" \
   -H "Authorization: Bearer $SK" \
   -H 'Content-Type: application/json' \
   -d '{
-        "model": "default",
+        "model": "auto",
         "messages": [{"role":"user","content":"数到五，每个数字一行。"}],
         "stream": true
       }'
@@ -907,7 +912,7 @@ curl -N -sS -X POST "$BASE/v1/chat/completions" \
 **Windows：**
 
 ```powershell
-$body = '{"model":"default","messages":[{"role":"user","content":"count to five"}],"stream":true}'
+$body = '{"model":"auto","messages":[{"role":"user","content":"count to five"}],"stream":true}'
 $body | Out-File -Encoding utf8NoBOM C:\temp\chat-stream.json
 curl.exe -N -sS -X POST "$Base/v1/chat/completions" `
   -H "Authorization: Bearer $Sk" `
@@ -916,6 +921,10 @@ curl.exe -N -sS -X POST "$Base/v1/chat/completions" `
 ```
 
 预期：一串 `data: {...}` SSE 帧，最后 `data: [DONE]`。`-N` / `--no-buffer` 必须加，否则 curl 会缓冲到结束才吐。
+
+> **醒目提示（真机已踩坑）**：默认 `SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=4s` 可能截断「先思考后输出」的响应——
+> 真机 e2e 观察到一次流式请求只收到思考帧就被 4s 空闲超时截停，重试才成功。
+> 思考较久的模型建议生产环境调大到 `15s`（改法见第 6 节，改完必须重启），代价是每次请求收尾多等几秒。
 
 ### 5.4 端到端自检清单
 
@@ -980,7 +989,7 @@ curl -fsS https://cursor.com/install | grep -oE 'cli-20[0-9]{2}\.[0-9]{2}\.[0-9]
 | `/v1/models` 通，但 `/v1/chat/completions` 失败 | **鉴权没问题**（models 走 api2，用同一个 token 过了），是 api5 对话链路的问题 | 看 7.2 |
 | Connect `permission_denied` | 客户端版本被上游判过期 | 按第 6 节更新 `SUB2API_CURSOR_AGENT_CLIENT_VERSION` |
 | `ERROR_NOT_LOGGED_IN` | 用的是纯 web cookie，还没升级成 client 凭据 | 确认 `credentials.web_session_token` 存在；或 `POST /api/v1/admin/cursor/accounts/<AID>/refresh` 主动刷；或改用 `crsr_` API Key |
-| 免费账号点名模型就报错 | Cursor 免费档只服务 `default` | 请求 `"model":"default"`（`auto` / `AUTO` / 空串也会被映射成 `default`） |
+| 免费账号点名模型就报错 | 免费账号只有 Auto 可用 | 经网关请求用 `"model":"auto"`（协议线级会映射成上游 `default`）；**不要直接传 `default`**——它不在对外 `/v1/models` 清单里，会被网关按模型清单校验拒为 404 `model_not_found` |
 | 回复被截断 | 空闲超时太短 | `SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=15s` |
 | 首帧一直等不到 | 首字节超时太短或网络慢 | `SUB2API_CURSOR_AGENT_FIRST_BYTE_TIMEOUT=120s` |
 | `Service temporarily unavailable` / 无可用账号 | 分组里没有可调度的 cursor 账号 | `GET /api/v1/admin/accounts?platform=cursor` 检查 status/schedulable/group 绑定 |
