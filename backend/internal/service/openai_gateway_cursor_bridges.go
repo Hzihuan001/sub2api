@@ -9,10 +9,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
 
 // cursorChunkSynthesizer turns Cursor deltas into synthetic OpenAI Chat
@@ -152,9 +150,10 @@ func (s *OpenAIGatewayService) forwardCursorResponses(
 	}
 
 	meta := s.resolveCursorChatMeta(account, originalModel, "", reqStream)
+	meta.maxOutputTokens = cursorRequestOutputLimit(chatReq)
 	chatReq.Model = meta.upstreamModel
 
-	params, inputText, err := buildCursorAgentRun(account, meta.upstreamModel, chatReq)
+	params, input, err := buildCursorAgentRun(account, meta.upstreamModel, chatReq)
 	if err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
@@ -169,11 +168,11 @@ func (s *OpenAIGatewayService) forwardCursorResponses(
 	requestID := cursorAgentRequestID(stream, "resp-")
 
 	if !reqStream {
-		outcome, consumeErr := consumeCursorAgentEvents(stream.Events(), startTime, nil)
+		outcome, consumeErr := consumeCursorAgentEvents(stream.Events(), startTime, meta.maxOutputTokens, nil)
 		if consumeErr != nil {
 			return nil, s.cursorAgentFailure(c, account, consumeErr)
 		}
-		usage := resolveCursorUsage(inputText, outcome)
+		usage := resolveCursorUsage(input, outcome)
 		ccResp := cursorChatCompletionsResponse(meta.originalModel, outcome, usage)
 		responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, meta.originalModel, customTools, toolSearch, namespaceTools)
 		c.JSON(http.StatusOK, responsesResp)
@@ -225,27 +224,36 @@ func (s *OpenAIGatewayService) forwardCursorResponses(
 	synth := newCursorChunkSynthesizer(meta.originalModel, func(chunk *apicompat.ChatCompletionsChunk) {
 		writeEvents(apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state))
 	})
-	outcome, consumeErr := consumeCursorAgentEvents(stream.Events(), startTime, func(delta cursorDelta) error {
+	outcome, consumeErr := consumeCursorAgentEvents(stream.Events(), startTime, meta.maxOutputTokens, func(delta cursorDelta) error {
 		synth.onDelta(delta)
 		return nil
 	})
+	upstreamError := ""
 	if consumeErr != nil {
 		if !headersWritten {
 			return nil, s.cursorAgentFailure(c, account, consumeErr)
 		}
-		logger.L().Warn("cursor responses bridge: upstream error after first byte",
-			zap.String("request_id", requestID),
-			zap.Error(consumeErr),
-		)
+		upstreamError = s.reportCursorStreamFailure(c, account, requestID, consumeErr)
 	}
 
-	usage := resolveCursorUsage(inputText, outcome)
-	synth.finish(outcome.finishReason, usage)
-	writeEvents(apicompat.FinalizeChatCompletionsResponsesStream(state))
-	if !clientDisconnected {
-		ensureHeaders()
-		_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")
-		c.Writer.Flush()
+	usage := resolveCursorUsage(input, outcome)
+	if upstreamError != "" {
+		// The turn died mid-flight, so it gets an error event rather than a
+		// completed/incomplete response envelope that would read as a clean end.
+		if !clientDisconnected {
+			ensureHeaders()
+			_, _ = fmt.Fprint(c.Writer, cursorResponsesStreamErrorSSE(upstreamError))
+			_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")
+			c.Writer.Flush()
+		}
+	} else {
+		synth.finish(outcome.finishReason, usage)
+		writeEvents(apicompat.FinalizeChatCompletionsResponsesStream(state))
+		if !clientDisconnected {
+			ensureHeaders()
+			_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")
+			c.Writer.Flush()
+		}
 	}
 
 	return &OpenAIForwardResult{
@@ -283,6 +291,14 @@ func (s *OpenAIGatewayService) forwardCursorAnthropic(
 		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return nil, fmt.Errorf("cursor: missing model in anthropic request")
 	}
+	// max_tokens is required by the Messages API, and on this path it is also
+	// load-bearing: the agent protocol has no output ceiling, so it is the only
+	// thing that bounds the answer. Accepting the request without it would return
+	// an unbounded reply under a spec that promises the opposite.
+	if anthropicReq.MaxTokens <= 0 {
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", "max_tokens: field required")
+		return nil, fmt.Errorf("cursor: anthropic request is missing max_tokens")
+	}
 	clientStream := anthropicReq.Stream
 
 	chatReq, err := apicompat.AnthropicToChatCompletionsRequest(&anthropicReq)
@@ -292,9 +308,16 @@ func (s *OpenAIGatewayService) forwardCursorAnthropic(
 	}
 
 	meta := s.resolveCursorChatMeta(account, originalModel, defaultMappedModel, clientStream)
+	meta.maxOutputTokens = cursorRequestOutputLimit(chatReq)
+	if meta.maxOutputTokens <= 0 {
+		// The bridge normally carries max_tokens across as
+		// max_completion_tokens; fall back to the inbound value so a mapping
+		// change cannot silently disable the ceiling.
+		meta.maxOutputTokens = anthropicReq.MaxTokens
+	}
 	chatReq.Model = meta.upstreamModel
 
-	params, inputText, err := buildCursorAgentRun(account, meta.upstreamModel, chatReq)
+	params, input, err := buildCursorAgentRun(account, meta.upstreamModel, chatReq)
 	if err != nil {
 		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
@@ -309,11 +332,11 @@ func (s *OpenAIGatewayService) forwardCursorAnthropic(
 	requestID := cursorAgentRequestID(stream, "msg-")
 
 	if !clientStream {
-		outcome, consumeErr := consumeCursorAgentEvents(stream.Events(), startTime, nil)
+		outcome, consumeErr := consumeCursorAgentEvents(stream.Events(), startTime, meta.maxOutputTokens, nil)
 		if consumeErr != nil {
 			return nil, s.cursorAgentFailure(c, account, consumeErr)
 		}
-		usage := resolveCursorUsage(inputText, outcome)
+		usage := resolveCursorUsage(input, outcome)
 		ccResp := cursorChatCompletionsResponse(meta.originalModel, outcome, usage)
 		anthropicResp := apicompat.ChatCompletionsResponseToAnthropic(ccResp, meta.originalModel)
 		c.JSON(http.StatusOK, anthropicResp)
@@ -361,25 +384,34 @@ func (s *OpenAIGatewayService) forwardCursorAnthropic(
 	synth := newCursorChunkSynthesizer(meta.originalModel, func(chunk *apicompat.ChatCompletionsChunk) {
 		writeEvents(apicompat.ChatCompletionsChunkToAnthropicEvents(chunk, state))
 	})
-	outcome, consumeErr := consumeCursorAgentEvents(stream.Events(), startTime, func(delta cursorDelta) error {
+	outcome, consumeErr := consumeCursorAgentEvents(stream.Events(), startTime, meta.maxOutputTokens, func(delta cursorDelta) error {
 		synth.onDelta(delta)
 		return nil
 	})
+	upstreamError := ""
 	if consumeErr != nil {
 		if !headersWritten {
 			return nil, s.cursorAgentFailure(c, account, consumeErr)
 		}
-		logger.L().Warn("cursor anthropic bridge: upstream error after first byte",
-			zap.String("request_id", requestID),
-			zap.Error(consumeErr),
-		)
+		upstreamError = s.reportCursorStreamFailure(c, account, requestID, consumeErr)
 	}
 
-	usage := resolveCursorUsage(inputText, outcome)
-	synth.finish(outcome.finishReason, usage)
-	writeEvents(apicompat.FinalizeChatCompletionsAnthropicStream(state))
-	if !clientDisconnected {
-		c.Writer.Flush()
+	usage := resolveCursorUsage(input, outcome)
+	if upstreamError != "" {
+		// Anthropic's own upstream ends a broken stream with an error event and
+		// no message_stop; synthesizing message_delta + message_stop here would
+		// present the truncated answer as a finished one.
+		if !clientDisconnected {
+			ensureHeaders()
+			_, _ = fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("api_error", upstreamError))
+			c.Writer.Flush()
+		}
+	} else {
+		synth.finish(outcome.finishReason, usage)
+		writeEvents(apicompat.FinalizeChatCompletionsAnthropicStream(state))
+		if !clientDisconnected {
+			c.Writer.Flush()
+		}
 	}
 
 	return &OpenAIForwardResult{

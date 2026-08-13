@@ -94,13 +94,38 @@ type cursorToolPlan struct {
 	instruction string
 }
 
+// cursorInputEstimate is what the local input-token estimate is computed from
+// when the turn ends without a TurnEndedUpdate, which is the common case.
+//
+// Images have no textual form, so they cannot ride along in text and are
+// counted separately; without this a request carrying only images billed zero
+// input tokens.
+type cursorInputEstimate struct {
+	// text is everything the turn sends as prose: the flattened transcript, the
+	// system prompt, and the serialized tool declarations.
+	text string
+	// imageTokens is the conservative cost of the attached images.
+	imageTokens int
+}
+
+// cursorImageFallbackTokens is what one image costs when its dimensions are
+// unknown, which is the normal case: clients send base64 payloads and this
+// gateway does not decode them. Anthropic's own guidance puts a typical
+// screenshot near this figure, so it is a deliberate middle estimate rather
+// than a worst case.
+const cursorImageFallbackTokens = 1500
+
+// cursorImageTokenDivisor is Anthropic's width*height/750 rule, used whenever a
+// client did supply pixel dimensions.
+const cursorImageTokenDivisor = 750
+
 // buildCursorAgentRun translates an OpenAI Chat Completions request into the
 // agent turn for the given account.
 func buildCursorAgentRun(
 	account *Account,
 	upstreamModel string,
 	req *apicompat.ChatCompletionsRequest,
-) (cursorpkg.AgentRunParams, string, error) {
+) (cursorpkg.AgentRunParams, cursorInputEstimate, error) {
 	opts := cursorNativeFlags()
 	opts.cwd = cursorpkg.AgentDefaultCwd
 	// The observed list is only consulted to pick a "-thinking" variant, and
@@ -124,9 +149,9 @@ func buildCursorAgentRunParams(
 	upstreamModel string,
 	req *apicompat.ChatCompletionsRequest,
 	opts cursorTranslateOptions,
-) (cursorpkg.AgentRunParams, string, error) {
+) (cursorpkg.AgentRunParams, cursorInputEstimate, error) {
 	if req == nil {
-		return cursorpkg.AgentRunParams{}, "", fmt.Errorf("cursor: nil chat request")
+		return cursorpkg.AgentRunParams{}, cursorInputEstimate{}, fmt.Errorf("cursor: nil chat request")
 	}
 
 	plan := planCursorAgentTools(req, opts.nativeTools)
@@ -191,7 +216,51 @@ func buildCursorAgentRunParams(
 		Images:       images,
 		Cwd:          opts.cwd,
 	}
-	return params, strings.Join(inputParts, "\n"), nil
+	// The tool catalogue is part of what the model is charged for, whether it
+	// travels natively in mcp_tools or as the degraded instruction block. Neither
+	// reaches inputParts above, so a tool-heavy request used to bill as if it had
+	// declared nothing.
+	appendInput(plan.instruction)
+	if len(plan.declarations) > 0 {
+		appendInput(cursorToolDeclarationsEstimateText(plan.declarations, req.ToolChoice))
+	}
+	return params, cursorInputEstimate{
+		text:        strings.Join(inputParts, "\n"),
+		imageTokens: cursorImageTokens(images),
+	}, nil
+}
+
+// cursorToolDeclarationsEstimateText renders the native tool declarations the
+// way the estimate needs to see them: as the JSON that actually goes upstream.
+// tool_choice rides along because it is part of the same instruction budget.
+func cursorToolDeclarationsEstimateText(declarations []cursorpkg.AgentTool, toolChoice json.RawMessage) string {
+	parts := make([]string, 0, len(declarations)+1)
+	for _, tool := range declarations {
+		if encoded, err := json.Marshal(tool); err == nil {
+			parts = append(parts, string(encoded))
+			continue
+		}
+		// A schema that will not marshal still costs its name and description.
+		parts = append(parts, tool.Name+" "+tool.Description)
+	}
+	if choice := strings.TrimSpace(string(toolChoice)); choice != "" && choice != "null" {
+		parts = append(parts, choice)
+	}
+	return strings.Join(parts, "\n")
+}
+
+// cursorImageTokens estimates what the attached images cost, by Anthropic's
+// width*height/750 rule when dimensions are known and a flat figure otherwise.
+func cursorImageTokens(images []cursorpkg.AgentImage) int {
+	total := 0
+	for _, img := range images {
+		if img.Width > 0 && img.Height > 0 {
+			total += int(img.Width) * int(img.Height) / cursorImageTokenDivisor
+			continue
+		}
+		total += cursorImageFallbackTokens
+	}
+	return total
 }
 
 // cursorAgentTurn is one rendered history entry in the flattened prompt.

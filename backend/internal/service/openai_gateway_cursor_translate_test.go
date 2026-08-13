@@ -29,7 +29,7 @@ func TestBuildCursorAgentRunSingleUserMessageIsPlainPrompt(t *testing.T) {
 		Messages: []apicompat.ChatMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
 	}
 
-	params, inputText, err := buildCursorAgentRunParams("claude-4.5-sonnet", req, cursorNativeOpts)
+	params, input, err := buildCursorAgentRunParams("claude-4.5-sonnet", req, cursorNativeOpts)
 	require.NoError(t, err)
 
 	// The common case reads as a plain prompt, with no synthetic role label.
@@ -41,7 +41,8 @@ func TestBuildCursorAgentRunSingleUserMessageIsPlainPrompt(t *testing.T) {
 	require.Equal(t, cursorpkg.AgentDefaultCwd, params.Cwd)
 	// The stateless bridge never carries a prior conversation.
 	require.Empty(t, params.ConversationID)
-	require.Equal(t, "Hello", inputText)
+	require.Equal(t, "Hello", input.text)
+	require.Zero(t, input.imageTokens)
 }
 
 func TestBuildCursorAgentRunFlattensHistoryWithRoleLabels(t *testing.T) {
@@ -56,7 +57,7 @@ func TestBuildCursorAgentRunFlattensHistoryWithRoleLabels(t *testing.T) {
 		},
 	}
 
-	params, inputText, err := buildCursorAgentRunParams("claude-4.5-sonnet", req, cursorNativeOpts)
+	params, input, err := buildCursorAgentRunParams("claude-4.5-sonnet", req, cursorNativeOpts)
 	require.NoError(t, err)
 
 	// system/developer fold into custom_system_prompt, everything else into
@@ -64,9 +65,9 @@ func TestBuildCursorAgentRunFlattensHistoryWithRoleLabels(t *testing.T) {
 	require.Equal(t, "You are helpful.\n\nBe concise.", params.SystemPrompt)
 	require.Equal(t, "User: Hello\n\nAssistant: Hi there\n\nUser: Next question", params.Prompt)
 
-	require.Contains(t, inputText, "You are helpful.")
-	require.Contains(t, inputText, "Hello")
-	require.Contains(t, inputText, "Next question")
+	require.Contains(t, input.text, "You are helpful.")
+	require.Contains(t, input.text, "Hello")
+	require.Contains(t, input.text, "Next question")
 }
 
 func TestBuildCursorAgentRunRendersToolRoundTripInTranscript(t *testing.T) {
@@ -83,7 +84,7 @@ func TestBuildCursorAgentRunRendersToolRoundTripInTranscript(t *testing.T) {
 		apicompat.ChatMessage{Role: "user", Content: json.RawMessage(`"thanks"`)},
 	)
 
-	params, inputText, err := buildCursorAgentRunParams("gpt-5.2", req, cursorNativeOpts)
+	params, input, err := buildCursorAgentRunParams("gpt-5.2", req, cursorNativeOpts)
 	require.NoError(t, err)
 
 	// The protocol has no field to replay a prior call, so the whole loop is
@@ -92,8 +93,10 @@ func TestBuildCursorAgentRunRendersToolRoundTripInTranscript(t *testing.T) {
 		"Assistant: [tool call] get_weather {\"city\":\"SF\"}\n\n"+
 		"Tool result (call_1): 18C\n\n"+
 		"User: thanks", params.Prompt)
-	require.Contains(t, inputText, "18C")
-	require.Contains(t, inputText, `{"city":"SF"}`)
+	require.Contains(t, input.text, "18C")
+	require.Contains(t, input.text, `{"city":"SF"}`)
+	// The native tool schema is part of the billable input.
+	require.Contains(t, input.text, "get_weather")
 }
 
 func weatherToolRequest() *apicompat.ChatCompletionsRequest {

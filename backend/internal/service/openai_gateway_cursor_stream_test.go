@@ -46,7 +46,7 @@ func TestConsumeCursorAgentEventsTextAndThinking(t *testing.T) {
 		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventHeartbeat},
 		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventToolCallStarted, ToolCall: &cursorpkg.AgentToolCall{ID: "builtin_1"}},
 		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventTurnEnded},
-	), time.Now(), collectCursorDeltas(&deltas))
+	), time.Now(), 0, collectCursorDeltas(&deltas))
 	require.NoError(t, err)
 
 	require.Equal(t, "Hello world", outcome.content)
@@ -69,7 +69,7 @@ func TestConsumeCursorAgentEventsToolCall(t *testing.T) {
 		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventToolCall, ToolCall: &cursorpkg.AgentToolCall{
 			ID: "call_a", Name: "get_weather", Arguments: `{"city":"SF"}`,
 		}},
-	), time.Now(), collectCursorDeltas(&deltas))
+	), time.Now(), 0, collectCursorDeltas(&deltas))
 	require.NoError(t, err)
 
 	require.Equal(t, "Let me check.", outcome.content)
@@ -96,7 +96,7 @@ func TestConsumeCursorAgentEventsParallelToolCallsGetStableIndexes(t *testing.T)
 		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventToolCall, ToolCall: &cursorpkg.AgentToolCall{
 			ID: "call_b", Name: "get_time", Arguments: `{"tz":"PT"}`,
 		}},
-	), time.Now(), nil)
+	), time.Now(), 0, nil)
 	require.NoError(t, err)
 
 	require.Len(t, outcome.toolCalls, 2)
@@ -111,7 +111,7 @@ func TestConsumeCursorAgentEventsErrorKeepsPartialOutput(t *testing.T) {
 	outcome, err := consumeCursorAgentEvents(agentEvents(
 		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventText, Text: "partial"},
 		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventError, Err: upstreamErr},
-	), time.Now(), nil)
+	), time.Now(), 0, nil)
 
 	require.ErrorIs(t, err, error(upstreamErr))
 	// The text already streamed to the client stays in the outcome so a
@@ -126,7 +126,7 @@ func TestResolveCursorUsagePrefersUpstreamAccounting(t *testing.T) {
 			InputTokens: 120, OutputTokens: 34, CacheReadTokens: 7, CacheWriteTokens: 3,
 		},
 	}
-	usage := resolveCursorUsage("a much longer prompt than the answer", outcome)
+	usage := resolveCursorUsage(cursorInputEstimate{text: "a much longer prompt than the answer"}, outcome)
 	require.Equal(t, 120, usage.InputTokens)
 	require.Equal(t, 34, usage.OutputTokens)
 	require.Equal(t, 7, usage.CacheReadInputTokens)
@@ -135,7 +135,7 @@ func TestResolveCursorUsagePrefersUpstreamAccounting(t *testing.T) {
 
 func TestResolveCursorUsageFallsBackToEstimateWithoutTurnEndedFrame(t *testing.T) {
 	outcome := cursorChatOutcome{content: "hello there"}
-	usage := resolveCursorUsage("what is up", outcome)
+	usage := resolveCursorUsage(cursorInputEstimate{text: "what is up"}, outcome)
 	require.Equal(t, estimateTokensForText("what is up"), usage.InputTokens)
 	require.Equal(t, estimateTokensForText("hello there"), usage.OutputTokens)
 	require.Positive(t, usage.InputTokens)
@@ -146,8 +146,34 @@ func TestResolveCursorUsageFallsBackToEstimateWithoutTurnEndedFrame(t *testing.T
 // that reported nothing, so it must not bill as zero.
 func TestResolveCursorUsageIgnoresEmptyUsageFrame(t *testing.T) {
 	outcome := cursorChatOutcome{content: "hello there", usage: &cursorpkg.AgentUsage{}}
-	usage := resolveCursorUsage("what is up", outcome)
+	usage := resolveCursorUsage(cursorInputEstimate{text: "what is up"}, outcome)
 	require.Equal(t, estimateTokensForText("hello there"), usage.OutputTokens)
+}
+
+// Images have no textual form, so a request that carries only images used to
+// bill zero input tokens.
+func TestResolveCursorUsageEstimateCountsImages(t *testing.T) {
+	usage := resolveCursorUsage(cursorInputEstimate{imageTokens: 1500}, cursorChatOutcome{content: "ok"})
+	require.Equal(t, 1500, usage.InputTokens)
+
+	withText := resolveCursorUsage(
+		cursorInputEstimate{text: "describe this", imageTokens: 1500},
+		cursorChatOutcome{content: "ok"},
+	)
+	require.Equal(t, estimateTokensForText("describe this")+1500, withText.InputTokens)
+}
+
+// A locally truncated turn must not bill the upstream's output count: that
+// includes the tail this gateway dropped and never delivered.
+func TestResolveCursorUsageIgnoresUpstreamOutputWhenTruncated(t *testing.T) {
+	outcome := cursorChatOutcome{
+		content:   "delivered",
+		truncated: true,
+		usage:     &cursorpkg.AgentUsage{InputTokens: 120, OutputTokens: 9000},
+	}
+	usage := resolveCursorUsage(cursorInputEstimate{text: "prompt"}, outcome)
+	require.Equal(t, 120, usage.InputTokens, "upstream input accounting is still the best available")
+	require.Equal(t, estimateTokensForText("delivered"), usage.OutputTokens)
 }
 
 func TestResolveCursorUsageEstimateCoversToolCalls(t *testing.T) {
@@ -159,8 +185,141 @@ func TestResolveCursorUsageEstimateCoversToolCalls(t *testing.T) {
 			Function: apicompat.ChatFunctionCall{Name: "get_weather", Arguments: `{"city":"SF"}`},
 		}},
 	}
-	usage := resolveCursorUsage("weather in SF?", outcome)
+	usage := resolveCursorUsage(cursorInputEstimate{text: "weather in SF?"}, outcome)
 	require.Equal(t, estimateTokensForText(`get_weather{"city":"SF"}`), usage.OutputTokens)
+}
+
+// The agent protocol has no max_tokens field, so the ceiling is enforced while
+// relaying: output stops at the budget and the turn reports "length", which the
+// Anthropic and Responses bridges translate into max_tokens / max_output_tokens.
+func TestConsumeCursorAgentEventsTruncatesAtMaxTokens(t *testing.T) {
+	var deltas []cursorDelta
+	// ~4 ASCII chars per token, so 2 tokens is about 8 characters.
+	outcome, err := consumeCursorAgentEvents(agentEvents(
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventText, Text: "12345678"},
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventText, Text: "this must never reach the client"},
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventTurnEnded, Usage: &cursorpkg.AgentUsage{OutputTokens: 500}},
+	), time.Now(), 2, collectCursorDeltas(&deltas))
+
+	require.NoError(t, err)
+	require.True(t, outcome.truncated)
+	require.Equal(t, "length", outcome.finishReason)
+	require.Equal(t, "12345678", outcome.content)
+	require.Len(t, deltas, 1)
+	// The upstream frame that followed the cut is never consumed, so its usage
+	// cannot leak into billing either.
+	require.Nil(t, outcome.usage)
+}
+
+// The budget can run out inside an increment; the part that fits is still
+// delivered rather than being dropped whole.
+func TestConsumeCursorAgentEventsTruncatesMidIncrement(t *testing.T) {
+	var deltas []cursorDelta
+	outcome, err := consumeCursorAgentEvents(agentEvents(
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventText, Text: strings.Repeat("a", 400)},
+	), time.Now(), 4, collectCursorDeltas(&deltas))
+
+	require.NoError(t, err)
+	require.True(t, outcome.truncated)
+	require.Equal(t, "length", outcome.finishReason)
+	require.NotEmpty(t, outcome.content)
+	require.Less(t, len(outcome.content), 400)
+	require.LessOrEqual(t, estimateTokensForText(outcome.content), 4)
+	require.Len(t, deltas, 1)
+	require.Equal(t, outcome.content, deltas[0].text)
+}
+
+// Reasoning is output too: a thinking-heavy turn must not slip past the ceiling.
+func TestConsumeCursorAgentEventsCountsReasoningTowardsMaxTokens(t *testing.T) {
+	outcome, err := consumeCursorAgentEvents(agentEvents(
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventThinking, Text: strings.Repeat("b", 200)},
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventText, Text: "answer"},
+	), time.Now(), 3, nil)
+
+	require.NoError(t, err)
+	require.True(t, outcome.truncated)
+	require.Empty(t, outcome.content, "the ceiling was spent on reasoning")
+	require.NotEmpty(t, outcome.reasoning)
+}
+
+// A tool call is all-or-nothing: half an argument object is not parseable, so
+// the turn ends before it rather than shipping a fragment.
+func TestConsumeCursorAgentEventsDoesNotSplitToolCallsAtCeiling(t *testing.T) {
+	var deltas []cursorDelta
+	outcome, err := consumeCursorAgentEvents(agentEvents(
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventText, Text: "1234"},
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventToolCall, ToolCall: &cursorpkg.AgentToolCall{
+			ID: "call_a", Name: "get_weather", Arguments: `{"city":"SF"}`,
+		}},
+	), time.Now(), 1, collectCursorDeltas(&deltas))
+
+	require.NoError(t, err)
+	require.True(t, outcome.truncated)
+	require.Equal(t, "length", outcome.finishReason)
+	require.Empty(t, outcome.toolCalls)
+	require.Len(t, deltas, 1)
+
+	// With budget left, the call is admitted whole even though its own cost
+	// overshoots: the arguments must stay valid JSON.
+	whole, err := consumeCursorAgentEvents(agentEvents(
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventToolCall, ToolCall: &cursorpkg.AgentToolCall{
+			ID: "call_a", Name: "get_weather", Arguments: `{"city":"SF"}`,
+		}},
+	), time.Now(), 1, nil)
+	require.NoError(t, err)
+	require.False(t, whole.truncated)
+	require.Equal(t, "tool_calls", whole.finishReason)
+	require.Len(t, whole.toolCalls, 1)
+	require.Equal(t, `{"city":"SF"}`, whole.toolCalls[0].Function.Arguments)
+}
+
+// A turn that finishes inside the budget is a normal stop, not a truncation.
+func TestConsumeCursorAgentEventsUnderBudgetIsNotTruncated(t *testing.T) {
+	outcome, err := consumeCursorAgentEvents(agentEvents(
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventText, Text: "short"},
+		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventTurnEnded, Usage: &cursorpkg.AgentUsage{OutputTokens: 2}},
+	), time.Now(), 4096, nil)
+
+	require.NoError(t, err)
+	require.False(t, outcome.truncated)
+	require.Equal(t, "stop", outcome.finishReason)
+	require.Equal(t, "short", outcome.content)
+	require.NotNil(t, outcome.usage)
+}
+
+func TestCursorFitTextToTokenBudget(t *testing.T) {
+	// Fits whole.
+	text, cost := cursorFitTextToTokenBudget("hello", 100)
+	require.Equal(t, "hello", text)
+	require.Equal(t, estimateTokensForText("hello"), cost)
+
+	// No budget at all.
+	text, cost = cursorFitTextToTokenBudget("hello", 0)
+	require.Empty(t, text)
+	require.Zero(t, cost)
+
+	// Cuts on a rune boundary, never mid-rune.
+	text, cost = cursorFitTextToTokenBudget(strings.Repeat("\u754c", 50), 10)
+	require.True(t, utf8.ValidString(text))
+	require.Equal(t, 10, len([]rune(text)), "CJK text estimates one token per rune")
+	require.LessOrEqual(t, cost, 10)
+}
+
+func TestCursorRequestOutputLimitReadsEitherField(t *testing.T) {
+	require.Zero(t, cursorRequestOutputLimit(nil))
+	require.Zero(t, cursorRequestOutputLimit(&apicompat.ChatCompletionsRequest{}))
+
+	maxTokens := 128
+	require.Equal(t, 128, cursorRequestOutputLimit(&apicompat.ChatCompletionsRequest{MaxTokens: &maxTokens}))
+
+	// max_completion_tokens is the newer field and wins; both bridges set it.
+	maxCompletion := 64
+	require.Equal(t, 64, cursorRequestOutputLimit(&apicompat.ChatCompletionsRequest{
+		MaxTokens: &maxTokens, MaxCompletionTokens: &maxCompletion,
+	}))
+
+	zero := 0
+	require.Zero(t, cursorRequestOutputLimit(&apicompat.ChatCompletionsRequest{MaxCompletionTokens: &zero}))
 }
 
 func TestIsCursorNotLoggedIn(t *testing.T) {
@@ -181,7 +340,7 @@ func TestCursorUpstreamErrorBodyPrefersRawUpstreamPayload(t *testing.T) {
 	require.Contains(t, body, "internal")
 
 	// Truncation must not leave a split rune behind.
-	long := &cursorpkg.AgentError{Raw: strings.Repeat("界", cursorUpstreamErrorBodyLimit)}
+	long := &cursorpkg.AgentError{Raw: strings.Repeat("\u754c", cursorUpstreamErrorBodyLimit)}
 	truncated := cursorUpstreamErrorBody(long)
 	require.LessOrEqual(t, len(truncated), cursorUpstreamErrorBodyLimit)
 	require.True(t, utf8.Valid(truncated))
@@ -247,7 +406,7 @@ func TestConsumeCursorAgentEventsStopsOnDeltaError(t *testing.T) {
 	outcome, err := consumeCursorAgentEvents(agentEvents(
 		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventText, Text: "one"},
 		cursorpkg.AgentEvent{Type: cursorpkg.AgentEventText, Text: "two"},
-	), time.Now(), func(cursorDelta) error {
+	), time.Now(), 0, func(cursorDelta) error {
 		calls++
 		return writeErr
 	})

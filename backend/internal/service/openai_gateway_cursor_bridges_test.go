@@ -142,13 +142,13 @@ func TestCursorAgentFailureConnectVerdictKeepsFailoverContract(t *testing.T) {
 func TestCursorAgentRunParamsIdenticalAcrossInboundProtocols(t *testing.T) {
 	const userText = "confirm you are online"
 
-	build := func(t *testing.T, req *apicompat.ChatCompletionsRequest) (cursorpkg.AgentRunParams, string) {
+	build := func(t *testing.T, req *apicompat.ChatCompletionsRequest) (cursorpkg.AgentRunParams, cursorInputEstimate) {
 		t.Helper()
-		params, inputText, err := buildCursorAgentRunParams("auto", req, cursorTranslateOptions{
+		params, input, err := buildCursorAgentRunParams("auto", req, cursorTranslateOptions{
 			nativeTools: true, nativeImages: true, cwd: cursorpkg.AgentDefaultCwd,
 		})
 		require.NoError(t, err)
-		return params, inputText
+		return params, input
 	}
 
 	var chatReq apicompat.ChatCompletionsRequest
