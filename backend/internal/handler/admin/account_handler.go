@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	cursorpkg "github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -53,6 +54,7 @@ type AccountHandler struct {
 	geminiOAuthService      *service.GeminiOAuthService
 	antigravityOAuthService *service.AntigravityOAuthService
 	grokOAuthService        service.GrokOAuthTokenService
+	cursorOAuthService      service.CursorOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
 	accountTestService      *service.AccountTestService
@@ -73,6 +75,12 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+// SetCursorOAuthService attaches the Cursor token refresh port (kept out of
+// NewAccountHandler so existing positional test constructors stay valid).
+func (h *AccountHandler) SetCursorOAuthService(svc service.CursorOAuthTokenService) {
+	h.cursorOAuthService = svc
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -1290,6 +1298,19 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		}
 
 		newCredentials = service.MergeCredentials(account.Credentials, h.grokOAuthService.BuildAccountCredentials(tokenInfo))
+		if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
+			newCredentials["base_url"] = baseURL
+		}
+	} else if account.Platform == service.PlatformCursor {
+		if h.cursorOAuthService == nil {
+			return nil, "", fmt.Errorf("cursor oauth service is not configured")
+		}
+		tokenInfo, err := h.cursorOAuthService.RefreshAccountToken(ctx, account)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to refresh Cursor credentials: %w", err)
+		}
+
+		newCredentials = service.MergeCredentials(account.Credentials, h.cursorOAuthService.BuildAccountCredentials(tokenInfo))
 		if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
 			newCredentials["base_url"] = baseURL
 		}
@@ -2653,6 +2674,57 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	if account.Platform == service.PlatformAntigravity {
 		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
 		response.Success(c, antigravity.DefaultModels())
+		return
+	}
+
+	// Handle Cursor accounts: explicit mapping keys (or default catalog) plus
+	// any observed upstream models recorded on the account.
+	if account.Platform == service.PlatformCursor {
+		hasExplicitMapping := false
+		switch rawMapping := account.Credentials["model_mapping"].(type) {
+		case map[string]any:
+			hasExplicitMapping = len(rawMapping) > 0
+		case map[string]string:
+			hasExplicitMapping = len(rawMapping) > 0
+		}
+
+		seen := make(map[string]struct{})
+		ids := make([]string, 0)
+		add := func(list []string) {
+			for _, id := range list {
+				id = strings.TrimSpace(id)
+				if id == "" {
+					continue
+				}
+				if _, ok := seen[id]; ok {
+					continue
+				}
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+		if hasExplicitMapping {
+			mapping := account.GetModelMapping()
+			mappingKeys := make([]string, 0, len(mapping))
+			for requestedModel := range mapping {
+				mappingKeys = append(mappingKeys, requestedModel)
+			}
+			add(mappingKeys)
+		} else {
+			add(cursorpkg.DefaultModelIDs())
+		}
+		add(service.CursorObservedModelIDs(account.Extra))
+		sort.Strings(ids)
+
+		models := make([]claude.Model, 0, len(ids))
+		for _, id := range ids {
+			models = append(models, claude.Model{
+				ID:          id,
+				Type:        "model",
+				DisplayName: id,
+			})
+		}
+		response.Success(c, models)
 		return
 	}
 

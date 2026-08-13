@@ -50,7 +50,7 @@
         <input
           v-model="form.name"
           type="text"
-          :required="!isGrokSSOInputMethod"
+          :required="!isGrokSSOInputMethod && !isCursorSSOInputMethod"
           class="input"
           :placeholder="t('admin.accounts.enterAccountName')"
           data-tour="account-form-name"
@@ -159,6 +159,19 @@
           >
             <PlatformIcon platform="grok" size="sm" />
             Grok
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'cursor'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'cursor'
+                ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="cursor" size="sm" />
+            Cursor
           </button>
         </div>
       </div>
@@ -406,6 +419,65 @@
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.responsesApi') }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Account Type Selection (Cursor) -->
+      <div v-if="form.platform === 'cursor'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-type">
+          <button
+            type="button"
+            @click="accountCategory = 'oauth-based'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'oauth-based'
+                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                : 'border-gray-200 hover:border-indigo-300 dark:border-dark-600 dark:hover:border-indigo-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'oauth-based'
+                  ? 'bg-indigo-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <PlatformIcon platform="cursor" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.cursorOauth') }}</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            data-testid="cursor-account-type-api-key"
+            @click="accountCategory = 'apikey'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'apikey'
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'apikey'
+                  ? 'bg-purple-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.cursorApikey') }}</span>
             </div>
           </button>
         </div>
@@ -1127,12 +1199,19 @@
                   ? 'https://generativelanguage.googleapis.com'
                   : form.platform === 'grok'
                     ? 'https://api.x.ai/v1'
-                    : 'https://api.anthropic.com'
+                    : form.platform === 'cursor'
+                      ? 'https://api2.cursor.sh'
+                      : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
           <GrokBaseUrlPresets
             v-if="form.platform === 'grok'"
+            class="mt-2"
+            @select="apiKeyBaseUrl = $event"
+          />
+          <CursorBaseUrlPresets
+            v-if="form.platform === 'cursor'"
             class="mt-2"
             @select="apiKeyBaseUrl = $event"
           />
@@ -1151,7 +1230,9 @@
                   ? 'AIza...'
                   : form.platform === 'grok'
                     ? 'xai-...'
-                    : 'sk-ant-...'
+                    : form.platform === 'cursor'
+                      ? 'crsr_...'
+                      : 'sk-ant-...'
             "
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
@@ -2025,9 +2106,50 @@
         </div>
       </div>
 
+      <!-- Cursor OAuth Custom Upstream URL (仅改写转发端点，OAuth 授权/刷新不受影响) -->
+      <div
+        v-if="form.platform === 'cursor' && isOAuthFlow"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="mb-3 flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.cursorCustomBaseUrl.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.cursorCustomBaseUrl.hint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="cursor-custom-base-url-toggle"
+            @click="cursorOAuthCustomBaseUrlEnabled = !cursorOAuthCustomBaseUrlEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              cursorOAuthCustomBaseUrlEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                cursorOAuthCustomBaseUrlEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+        <div v-if="cursorOAuthCustomBaseUrlEnabled" class="space-y-2">
+          <input
+            v-model="cursorOAuthBaseUrl"
+            type="text"
+            class="input"
+            data-testid="cursor-custom-base-url-input"
+            :placeholder="t('admin.accounts.cursorCustomBaseUrl.placeholder')"
+          />
+          <CursorBaseUrlPresets @select="cursorOAuthBaseUrl = $event" />
+        </div>
+      </div>
+
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        v-if="(form.platform === 'openai' || form.platform === 'grok' || form.platform === 'cursor') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3219,17 +3341,17 @@
         :loading="currentOAuthLoading"
         :error="currentOAuthError"
         :show-help="form.platform === 'anthropic'"
-        :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && !!form.proxy_id"
+        :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && form.platform !== 'cursor' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
+        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok' || form.platform === 'cursor'"
         :show-mobile-refresh-token-option="form.platform === 'openai'"
         :show-session-token-option="false"
         :show-access-token-option="false"
         :show-codex-session-import-option="form.platform === 'openai'"
         :show-agent-identity-option="form.platform === 'openai'"
         :show-codex-pat-option="form.platform === 'openai'"
-        :show-sso-option="form.platform === 'grok'"
+        :show-sso-option="form.platform === 'grok' || form.platform === 'cursor'"
         :show-email-password-option="false"
         :show-manual-option="true"
         :initial-input-method="'manual'"
@@ -3242,9 +3364,28 @@
         @validate-session-token="handleValidateSessionToken"
         @import-codex-session="handleOpenAIImportCodexSession"
         @import-codex-pat="handleOpenAIImportCodexPAT"
-        @import-sso="handleGrokImportSSO"
+        @import-sso="handleImportSSO"
         @authorize-password="handleGrokAuthorizePassword"
       />
+
+      <!-- Cursor 深链授权：生成链接后前端自动轮询，无需手动粘贴授权码 -->
+      <div
+        v-if="form.platform === 'cursor' && cursorOAuth.polling.value"
+        class="flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-700 dark:bg-indigo-900/30"
+        data-testid="cursor-oauth-polling"
+      >
+        <svg class="h-5 w-5 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          ></path>
+        </svg>
+        <p class="text-sm text-indigo-800 dark:text-indigo-200">
+          {{ t('admin.accounts.oauth.cursor.waitingForAuthorization') }}
+        </p>
+      </div>
 
     </div>
 
@@ -3585,6 +3726,8 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { useCursorOAuth } from '@/composables/useCursorOAuth'
+import type { CursorTokenInfo } from '@/api/admin/cursor'
 import type {
   Proxy,
   AdminGroup,
@@ -3609,6 +3752,7 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
+import CursorBaseUrlPresets from '@/components/account/CursorBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
   applyAntigravityProjectID,
@@ -3656,6 +3800,7 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
+  if (form.platform === 'cursor') return t('admin.accounts.oauth.cursor.title')
   return t('admin.accounts.oauth.title')
 })
 
@@ -3664,6 +3809,7 @@ const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return ''
+  if (form.platform === 'cursor') return t('admin.accounts.cursor.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -3671,6 +3817,7 @@ const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'grok') return ''
+  if (form.platform === 'cursor') return t('admin.accounts.cursor.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 })
 
@@ -3694,6 +3841,7 @@ const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 const grokOAuth = useGrokOAuth() // For Grok OAuth
+const cursorOAuth = useCursorOAuth() // For Cursor OAuth (deep-link + poll)
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
@@ -3701,6 +3849,7 @@ const currentAuthUrl = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
   if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
   if (form.platform === 'grok') return grokOAuth.authUrl.value
+  if (form.platform === 'cursor') return cursorOAuth.authUrl.value
   return oauth.authUrl.value
 })
 
@@ -3709,6 +3858,7 @@ const currentSessionId = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
   if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
   if (form.platform === 'grok') return grokOAuth.sessionId.value
+  if (form.platform === 'cursor') return cursorOAuth.sessionId.value
   return oauth.sessionId.value
 })
 
@@ -3717,6 +3867,7 @@ const currentOAuthLoading = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   if (form.platform === 'grok') return grokOAuth.loading.value
+  if (form.platform === 'cursor') return cursorOAuth.loading.value
   return oauth.loading.value
 })
 
@@ -3725,6 +3876,7 @@ const currentOAuthError = computed(() => {
   if (form.platform === 'gemini') return geminiOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
   if (form.platform === 'grok') return grokOAuth.error.value
+  if (form.platform === 'cursor') return cursorOAuth.error.value
   return oauth.error.value
 })
 
@@ -3839,6 +3991,34 @@ const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
     credentials.base_url = grokOAuthBaseUrl.value.trim()
   }
   applyHeaderOverride(credentials, headerOverrideEnabled.value, headerOverrideRows.value, 'create')
+}
+
+// Cursor OAuth：自定义上游地址（base_url 仅改写转发端点，默认 https://api2.cursor.sh）
+const cursorOAuthCustomBaseUrlEnabled = ref(false)
+const cursorOAuthBaseUrl = ref('')
+
+// Cursor OAuth 各创建路径（深链轮询/手动兑换/RT 批量/会话令牌批量）共用的前置校验。
+// 深链路径在生成授权链接前调用，避免用户完成浏览器确认后才发现配置非法。
+const validateCursorOAuthUpstreamConfig = (): boolean => {
+  if (cursorOAuthCustomBaseUrlEnabled.value) {
+    const trimmed = cursorOAuthBaseUrl.value.trim()
+    if (!trimmed) {
+      appStore.showError(t('admin.accounts.cursorCustomBaseUrl.required'))
+      return false
+    }
+    if (!/^https?:\/\//i.test(trimmed)) {
+      appStore.showError(t('admin.accounts.cursorCustomBaseUrl.invalid'))
+      return false
+    }
+  }
+  return true
+}
+
+// 把已通过校验的自定义上游地址写入 credentials（Cursor 无请求头覆写能力）
+const applyCursorOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
+  if (cursorOAuthCustomBaseUrlEnabled.value) {
+    credentials.base_url = cursorOAuthBaseUrl.value.trim()
+  }
 }
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
@@ -4160,6 +4340,7 @@ const isOAuthFlow = computed(() => {
 })
 
 const isGrokSSOInputMethod = computed(() => form.platform === 'grok' && oauthFlowRef.value?.inputMethod === 'sso_cookie')
+const isCursorSSOInputMethod = computed(() => form.platform === 'cursor' && oauthFlowRef.value?.inputMethod === 'sso_cookie')
 
 const isManualInputMethod = computed(() => {
   return oauthFlowRef.value?.inputMethod === 'manual'
@@ -4185,6 +4366,9 @@ const canExchangeCode = computed(() => {
   }
   if (form.platform === 'grok') {
     return authCode.trim() && grokOAuth.sessionId.value && !grokOAuth.loading.value
+  }
+  if (form.platform === 'cursor') {
+    return authCode.trim() && cursorOAuth.sessionId.value && !cursorOAuth.loading.value
   }
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 })
@@ -4255,7 +4439,9 @@ watch(
           ? 'https://generativelanguage.googleapis.com'
           : newPlatform === 'grok'
             ? 'https://api.x.ai/v1'
-            : 'https://api.anthropic.com'
+            : newPlatform === 'cursor'
+              ? 'https://api2.cursor.sh'
+              : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -4276,6 +4462,13 @@ watch(
       antigravityModelRestrictionMode.value = 'mapping'
     }
     if (newPlatform === 'grok') {
+      accountCategory.value = 'oauth-based'
+      addMethod.value = 'oauth'
+      modelRestrictionMode.value = 'mapping'
+      form.concurrency = 1
+      form.load_factor = null
+    }
+    if (newPlatform === 'cursor') {
       accountCategory.value = 'oauth-based'
       addMethod.value = 'oauth'
       modelRestrictionMode.value = 'mapping'
@@ -4324,6 +4517,8 @@ watch(
     headerOverrideRows.value = []
     grokOAuthCustomBaseUrlEnabled.value = false
     grokOAuthBaseUrl.value = ''
+    cursorOAuthCustomBaseUrlEnabled.value = false
+    cursorOAuthBaseUrl.value = ''
     // Reset OAuth states
     oauth.resetState()
     openaiOAuth.resetState()
@@ -4331,6 +4526,7 @@ watch(
     geminiOAuth.resetState()
     antigravityOAuth.resetState()
     grokOAuth.resetState()
+    cursorOAuth.resetState()
   }
 )
 
@@ -4728,6 +4924,8 @@ const resetForm = () => {
   headerOverrideRows.value = []
   grokOAuthCustomBaseUrlEnabled.value = false
   grokOAuthBaseUrl.value = ''
+  cursorOAuthCustomBaseUrlEnabled.value = false
+  cursorOAuthBaseUrl.value = ''
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
@@ -4784,6 +4982,7 @@ const resetForm = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  cursorOAuth.resetState()
   oauthFlowRef.value?.reset()
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
@@ -5145,12 +5344,22 @@ const handleSubmit = async () => {
         ? 'https://generativelanguage.googleapis.com'
         : form.platform === 'grok'
           ? 'https://api.x.ai/v1'
-          : 'https://api.anthropic.com'
+          : form.platform === 'cursor'
+            ? 'https://api2.cursor.sh'
+            : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {
-    base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
-    api_key: apiKeyValue.value.trim()
+    base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl
+  }
+  const apiKeyInput = apiKeyValue.value.trim()
+  if (form.platform === 'cursor' && !apiKeyInput.startsWith('crsr_')) {
+    // Cursor apikey 账号支持直接粘贴 access token（JWT）或
+    // WorkosCursorSessionToken（userId::JWT）；仅 crsr_ 前缀写入 api_key，
+    // 其余按契约写入 access_token。
+    credentials.access_token = apiKeyInput
+  } else {
+    credentials.api_key = apiKeyInput
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
@@ -5223,6 +5432,7 @@ const goBackToBasicInfo = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  cursorOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
@@ -5240,6 +5450,8 @@ const handleGenerateUrl = async () => {
     await antigravityOAuth.generateAuthUrl(form.proxy_id)
   } else if (form.platform === 'grok') {
     await grokOAuth.generateAuthUrl(form.proxy_id)
+  } else if (form.platform === 'cursor') {
+    await handleCursorGenerateUrlAndPoll()
   } else {
     await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
   }
@@ -5252,6 +5464,16 @@ const handleValidateRefreshToken = (rt: string) => {
     handleAntigravityValidateRT(rt)
   } else if (form.platform === 'grok') {
     handleGrokValidateRT(rt)
+  } else if (form.platform === 'cursor') {
+    handleCursorValidateRT(rt)
+  }
+}
+
+const handleImportSSO = (content: string) => {
+  if (form.platform === 'cursor') {
+    handleCursorImportSSO(content)
+  } else {
+    handleGrokImportSSO(content)
   }
 }
 
@@ -5319,6 +5541,15 @@ const createAccountAndFinish = async (
     if (!credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
     }
+    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    } else {
+      delete credentials.model_mapping
+    }
+  }
+  if (platform === 'cursor') {
+    // base_url 留空时由后端选择默认 https://api2.cursor.sh，不在前端固化
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     if (modelMapping) {
       credentials.model_mapping = modelMapping
@@ -5617,6 +5848,237 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
     }
   } finally {
     grokOAuth.loading.value = false
+  }
+}
+
+// ==================== Cursor OAuth（深链轮询 + 手动兑换 + RT/会话令牌批量） ====================
+
+// 深链/手动兑换拿到 token 后共用的建号逻辑
+const createCursorOAuthAccount = async (tokenInfo: CursorTokenInfo) => {
+  const credentials = cursorOAuth.buildCredentials(tokenInfo)
+  applyCursorOAuthUpstreamConfig(credentials)
+  const extra = cursorOAuth.buildExtraInfo(tokenInfo)
+  await createAccountAndFinish('cursor', 'oauth', credentials, extra)
+}
+
+// Cursor 深链授权：生成授权链接后立即开始轮询；用户在浏览器确认后自动创建账号
+const handleCursorGenerateUrlAndPoll = async () => {
+  if (!validateCursorOAuthUpstreamConfig()) return
+
+  const generated = await cursorOAuth.generateAuthUrl(form.proxy_id)
+  if (!generated) return
+
+  const tokenInfo = await cursorOAuth.pollForToken({
+    sessionId: cursorOAuth.sessionId.value,
+    state: cursorOAuth.state.value,
+    proxyId: form.proxy_id
+  })
+  // 超时/取消/出错时 pollForToken 返回 null（取消不提示错误）
+  if (!tokenInfo) return
+  if (form.platform !== 'cursor') return
+
+  try {
+    await createCursorOAuthAccount(tokenInfo)
+  } catch (error: any) {
+    cursorOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(cursorOAuth.error.value)
+  }
+}
+
+// Cursor 手动兑换（粘贴回调 code 的兜底路径，镜像 Grok）
+const handleCursorExchange = async (authCode: string) => {
+  if (!authCode.trim() || !cursorOAuth.sessionId.value) return
+  if (!validateCursorOAuthUpstreamConfig()) return
+
+  cursorOAuth.cancelPolling()
+  cursorOAuth.loading.value = true
+  cursorOAuth.error.value = ''
+
+  try {
+    const stateFromInput = oauthFlowRef.value?.oauthState || ''
+    const stateToUse = stateFromInput || cursorOAuth.state.value
+    if (!stateToUse) {
+      cursorOAuth.error.value = t('admin.accounts.oauth.authFailed')
+      appStore.showError(cursorOAuth.error.value)
+      return
+    }
+
+    const tokenInfo = await cursorOAuth.exchangeAuthCode({
+      code: authCode.trim(),
+      sessionId: cursorOAuth.sessionId.value,
+      state: stateToUse,
+      proxyId: form.proxy_id
+    })
+    if (!tokenInfo) return
+
+    await createCursorOAuthAccount(tokenInfo)
+  } catch (error: any) {
+    cursorOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(cursorOAuth.error.value)
+  } finally {
+    cursorOAuth.loading.value = false
+  }
+}
+
+// Cursor 手动 RT 批量验证和创建（镜像 Grok RT 批量路径）
+const handleCursorValidateRT = async (refreshTokenInput: string) => {
+  if (!refreshTokenInput.trim()) return
+
+  const refreshTokens = refreshTokenInput
+    .split('\n')
+    .map((rt) => rt.trim())
+    .filter((rt) => rt)
+
+  if (refreshTokens.length === 0) {
+    cursorOAuth.error.value = t('admin.accounts.oauth.cursor.pleaseEnterRefreshToken')
+    return
+  }
+  if (!validateCursorOAuthUpstreamConfig()) return
+
+  cursorOAuth.loading.value = true
+  cursorOAuth.error.value = ''
+
+  let successCount = 0
+  let failedCount = 0
+  const errors: string[] = []
+
+  try {
+    for (let i = 0; i < refreshTokens.length; i++) {
+      try {
+        const tokenInfo = await cursorOAuth.validateRefreshToken(refreshTokens[i], form.proxy_id)
+        if (!tokenInfo) {
+          failedCount++
+          errors.push(`#${i + 1}: ${cursorOAuth.error.value || 'Validation failed'}`)
+          cursorOAuth.error.value = ''
+          continue
+        }
+
+        const credentials = cursorOAuth.buildCredentials(tokenInfo)
+        applyCursorOAuthUpstreamConfig(credentials)
+        const extra = cursorOAuth.buildExtraInfo(tokenInfo)
+        const accountName = refreshTokens.length > 1 ? `${form.name || tokenInfo.email || 'Cursor OAuth Account'} #${i + 1}` : (form.name || tokenInfo.email || 'Cursor OAuth Account')
+
+        const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+        if (modelMapping) {
+          credentials.model_mapping = modelMapping
+        }
+        if (!applyTempUnschedConfig(credentials)) {
+          return
+        }
+
+        await adminAPI.accounts.create({
+          name: accountName,
+          notes: form.notes,
+          platform: 'cursor',
+          type: 'oauth',
+          credentials,
+          extra,
+          proxy_id: form.proxy_id,
+          concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
+          priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
+          auto_pause_on_expired: autoPauseOnExpired.value
+        })
+        successCount++
+      } catch (error: any) {
+        failedCount++
+        const errMsg = error.response?.data?.detail || error.message || 'Unknown error'
+        errors.push(`#${i + 1}: ${errMsg}`)
+      }
+    }
+
+    if (successCount > 0 && failedCount === 0) {
+      appStore.showSuccess(
+        refreshTokens.length > 1
+          ? t('admin.accounts.oauth.batchSuccess', { count: successCount })
+          : t('admin.accounts.accountCreated')
+      )
+      emit('created')
+      handleClose()
+    } else if (successCount > 0) {
+      appStore.showWarning(t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: failedCount }))
+      cursorOAuth.error.value = errors.join('\n')
+      emit('created')
+    } else {
+      cursorOAuth.error.value = errors.join('\n')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    }
+  } finally {
+    cursorOAuth.loading.value = false
+  }
+}
+
+// Cursor 会话令牌批量导入（WorkosCursorSessionToken userId::JWT，每行一个；镜像 Grok SSO 批量路径）
+const handleCursorImportSSO = async (ssoInput: string) => {
+  const ssoTokens = ssoInput
+    .split('\n')
+    .map((token) => token.trim())
+    .filter((token) => token)
+  if (ssoTokens.length === 0) return
+  if (!validateCursorOAuthUpstreamConfig()) return
+
+  cursorOAuth.loading.value = true
+  cursorOAuth.error.value = ''
+
+  const credentials: Record<string, unknown> = {}
+  applyCursorOAuthUpstreamConfig(credentials)
+  const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  }
+  if (!applyTempUnschedConfig(credentials)) {
+    cursorOAuth.loading.value = false
+    return
+  }
+
+  try {
+    const result = await adminAPI.cursor.createFromSSO({
+      sso_tokens: ssoTokens,
+      name: form.name || undefined,
+      notes: form.notes || undefined,
+      proxy_id: form.proxy_id,
+      group_ids: form.group_ids,
+      credentials,
+      concurrency: form.concurrency,
+      load_factor: form.load_factor ?? undefined,
+      priority: form.priority,
+      rate_multiplier: form.rate_multiplier,
+      expires_at: form.expires_at,
+      auto_pause_on_expired: autoPauseOnExpired.value
+    })
+
+    const successCount = result.created?.length || 0
+    const failedCount = result.failed?.length || 0
+    if (successCount > 0 && failedCount === 0) {
+      appStore.showSuccess(
+        ssoTokens.length > 1
+          ? t('admin.accounts.oauth.batchSuccess', { count: successCount })
+          : t('admin.accounts.accountCreated')
+      )
+      emit('created')
+      handleClose()
+    } else if (successCount > 0 && failedCount > 0) {
+      appStore.showWarning(
+        t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: failedCount })
+      )
+      cursorOAuth.error.value = (result.failed || [])
+        .map((item) => `#${item.index}: ${item.error || 'Unknown error'}`)
+        .join('\n')
+      emit('created')
+    } else {
+      cursorOAuth.error.value = (result.failed || [])
+        .map((item) => `#${item.index}: ${item.error || 'Unknown error'}`)
+        .join('\n') || t('admin.accounts.oauth.cursor.failedToConvertSSO')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    }
+  } catch (error: any) {
+    cursorOAuth.error.value = error.response?.data?.detail || error.message || t('admin.accounts.oauth.cursor.failedToConvertSSO')
+    appStore.showError(cursorOAuth.error.value)
+  } finally {
+    cursorOAuth.loading.value = false
   }
 }
 
@@ -6320,6 +6782,8 @@ const handleExchangeCode = async () => {
       return handleAntigravityExchange(authCode)
     case 'grok':
       return handleGrokExchange(authCode)
+    case 'cursor':
+      return handleCursorExchange(authCode)
     default:
       return handleAnthropicExchange(authCode)
   }

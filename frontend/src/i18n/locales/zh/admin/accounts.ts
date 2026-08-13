@@ -307,6 +307,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        cursor: 'Cursor',
       },
       types: {
         oauth: 'OAuth',
@@ -316,6 +317,8 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        cursorOauth: 'Cursor 深链登录',
+        cursorApikey: 'crsr_ Key / Access Token',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游'
@@ -823,6 +826,20 @@ export default {
         invalidValue: '请求头值不合法（不允许控制字符，长度不超过 8192）',
         tooManyEntries: '请求头覆写条目过多（最多 64 条）'
       },
+      cursor: {
+        baseUrlHint: '留空使用官方端点 https://api2.cursor.sh。',
+        apiKeyHint: '支持粘贴 crsr_ 开头的 User API Key，或直接粘贴 access token / WorkosCursorSessionToken（userId::JWT）。',
+      },
+      cursorCustomBaseUrl: {
+        title: '自定义上游地址',
+        hint: '开启后账号流量改发指定地址；OAuth 授权与令牌刷新不受影响，仍走官方端点。留空/关闭默认 https://api2.cursor.sh。',
+        placeholder: 'https://api2.cursor.sh',
+        required: '请填写自定义上游地址',
+        invalid: '上游地址格式不正确（需为 http(s):// 开头的完整地址）',
+        presets: {
+          official: '官方 API'
+        }
+      },
       grokCustomBaseUrl: {
         title: '自定义上游地址',
         hint: '开启后账号流量（对话/媒体/探测）改发指定地址；OAuth 授权与令牌刷新不受影响，仍走官方端点。',
@@ -1170,6 +1187,64 @@ export default {
           },
           oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
         },
+        cursor: {
+          title: 'Cursor 账号授权',
+          followSteps: '请按照以下步骤授权您的 Cursor 账号：',
+          step1GenerateUrl: '生成 Cursor 深链登录链接',
+          generateAuthUrl: '生成授权链接',
+          step2OpenUrl: '在浏览器中打开链接并确认登录',
+          openUrlDesc: '在新标签页中打开授权链接，登录 cursor.com 并点击确认。确认后系统会自动轮询完成授权，无需手动粘贴授权码。',
+          importantNotice: '生成链接后系统会自动轮询授权结果；在浏览器完成确认即可，无需复制回调 URL。若页面展示了 code，也可粘贴到下方作为兜底。',
+          step3EnterCode: '等待自动完成（或粘贴授权码兜底）',
+          authCodeDesc: '正常情况下无需填写：浏览器确认后会自动创建账号。若自动轮询失败，可粘贴 callback URL 或授权码后点击兑换：',
+          authCode: '授权链接或 Code（可选）',
+          authCodePlaceholder: '通常无需填写；自动轮询失败时可粘贴 callback URL、?code=... 查询字符串或 code 值',
+          authCodeHint: '支持完整 callback URL、查询字符串或裸 code；留空则等待自动轮询完成。',
+          waitingForAuthorization: '等待浏览器确认授权中，完成后将自动创建账号...',
+          refreshTokenAuth: '手动输入 RT',
+          refreshTokenDesc: '输入已有的 Cursor refresh token，支持批量输入（每行一个）。',
+          refreshTokenPlaceholder: '粘贴您的 Cursor refresh token...\n支持多个，每行一个',
+          ssoCookieAuth: '会话令牌导入',
+          ssoCookieDesc: '每行粘贴一个 WorkosCursorSessionToken（格式 userId::JWT），服务端会校验并转换为 Cursor 账号凭据。',
+          ssoCookieLabel: 'WorkosCursorSessionToken',
+          ssoCookiePlaceholder: '每行一个会话令牌（userId::JWT）\n支持多个，每行一个',
+          ssoCookieHint: '每行一个会话令牌；多个令牌会 3 路并发导入，耗时约 90 秒 × 批次数，建议使用对应地区代理。',
+          pleaseEnterSSOToken: '请输入会话令牌',
+          failedToValidateSSO: '校验 Cursor 会话令牌失败',
+          failedToAuthorizePassword: 'Cursor 密码授权失败',
+          pleaseEnterPassword: '请输入 email----password（每行一组）',
+          convertingSSO: '转换中...',
+          convertSSOAndCreate: '转换并创建账号',
+          validating: '验证中...',
+          validateAndCreate: '验证并创建账号',
+          pleaseEnterRefreshToken: '请输入 Refresh Token',
+          failedToGenerateUrl: '生成 Cursor 授权链接失败',
+          missingExchangeParams: '缺少授权码、state 或 OAuth 会话',
+          failedToExchangeCode: 'Cursor 授权码兑换失败',
+          failedToPoll: '轮询 Cursor 授权结果失败',
+          pollTimeout: 'Cursor 授权等待超时。请重新生成授权链接后再试。',
+          failedToValidateRT: '验证 Cursor refresh token 失败',
+          failedToConvertSSO: 'Cursor 会话令牌转换失败',
+          errors: {
+            CURSOR_OAUTH_SESSION_NOT_FOUND:
+              'Cursor OAuth 会话不存在或已过期。请重新生成授权链接后再试。',
+            CURSOR_OAUTH_INVALID_STATE:
+              'Cursor OAuth state 与当前会话不匹配。请重新生成授权链接后再试。',
+            CURSOR_OAUTH_STATE_REQUIRED:
+              '缺少 OAuth state。请重新生成授权链接后再试。',
+            CURSOR_OAUTH_CODE_REQUIRED:
+              '缺少 Cursor 授权码。请等待自动轮询完成，或粘贴完整 callback URL / code 值。',
+            CURSOR_OAUTH_AUTHORIZATION_PENDING:
+              '授权尚未完成。请在浏览器中确认登录后等待自动轮询。',
+            CURSOR_OAUTH_NO_ACCESS_TOKEN:
+              'Cursor 响应未返回 access token。请重新生成授权链接并再次确认登录。',
+            CURSOR_OAUTH_PROXY_NOT_AVAILABLE:
+              '无法查询 Cursor OAuth 代理配置。请检查选择的代理后重试。',
+            CURSOR_OAUTH_PROXY_NOT_FOUND:
+              '找不到所选代理。请选择可用代理后重试。'
+          },
+          oauthOnlyHint: '首版 Cursor 支持包含 OAuth 深链登录与 crsr_ Key / access token 直填两种方式。'
+        },
         // Gemini specific
         gemini: {
           title: 'Gemini 账户授权',
@@ -1396,6 +1471,7 @@ export default {
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
       grokAccount: 'Grok 账号',
+      cursorAccount: 'Cursor 账号',
       inputMethod: '输入方式',
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal

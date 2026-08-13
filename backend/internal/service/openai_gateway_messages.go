@@ -44,6 +44,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return s.forwardAnthropicViaRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 
+	// Cursor 上游只有 Connect/protobuf 聊天 RPC：/v1/messages 经
+	// Anthropic → Chat Completions → cursor 桥转发（与 Responses 桥对称）。
+	if account.Platform == PlatformCursor {
+		return s.forwardCursorAnthropic(ctx, c, account, body, defaultMappedModel)
+	}
+
 	startTime := time.Now()
 
 	// 1. Parse Anthropic request

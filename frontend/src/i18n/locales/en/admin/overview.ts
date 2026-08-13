@@ -949,6 +949,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        cursor: 'Cursor',
         composite: 'Composite',
       },
       deleteConfirm:

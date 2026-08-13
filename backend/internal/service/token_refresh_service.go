@@ -142,6 +142,18 @@ func NewTokenRefreshService(
 	return s
 }
 
+// RegisterCursorRefresher appends the Cursor platform to the background
+// refresh registry. Kept out of NewTokenRefreshService so the existing
+// positional constructor callers stay unchanged.
+func (s *TokenRefreshService) RegisterCursorRefresher(cursorOAuthService CursorOAuthTokenService) {
+	refresher := NewCursorTokenRefresher(cursorOAuthService)
+	s.registrations = append(s.registrations, tokenRefreshRegistration{
+		platform:  PlatformCursor,
+		refresher: refresher,
+		executor:  refresher,
+	})
+}
+
 func (s *TokenRefreshService) eligiblePlatforms() []string {
 	platforms := make([]string, 0, len(s.registrations))
 	for _, registration := range s.registrations {

@@ -125,6 +125,7 @@ func ProvideTokenRefreshService(
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
 	grokOAuthService *GrokOAuthService,
+	cursorOAuthService *CursorOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
@@ -135,6 +136,7 @@ func ProvideTokenRefreshService(
 	runtimeBlocker AccountRuntimeBlocker,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
+	svc.RegisterCursorRefresher(cursorOAuthService)
 	// 注入 OpenAI privacy opt-out 依赖
 	svc.SetPrivacyDeps(privacyClientFactory, proxyRepo)
 	// 注入统一 OAuth 刷新 API（消除 TokenRefreshService 与 TokenProvider 之间的竞争条件）
@@ -171,6 +173,26 @@ func ProvideOpenAITokenProvider(
 	executor := NewOpenAITokenRefresher(openaiOAuthService, accountRepo)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(OpenAIProviderRefreshPolicy())
+	return p
+}
+
+// ProvideCursorOAuthService adapts the variadic NewCursorOAuthService
+// constructor for wire (explicit config injection).
+func ProvideCursorOAuthService(proxyRepo ProxyRepository, oauthClient CursorOAuthClient, cfg *config.Config) *CursorOAuthService {
+	return NewCursorOAuthService(proxyRepo, oauthClient, cfg)
+}
+
+// ProvideCursorTokenProvider creates CursorTokenProvider with OAuthRefreshAPI injection.
+func ProvideCursorTokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	cursorOAuthService *CursorOAuthService,
+	refreshAPI *OAuthRefreshAPI,
+) *CursorTokenProvider {
+	p := NewCursorTokenProvider(accountRepo, tokenCache)
+	executor := NewCursorTokenRefresher(cursorOAuthService)
+	p.SetRefreshAPI(refreshAPI, executor)
+	p.SetRefreshPolicy(CursorProviderRefreshPolicy())
 	return p
 }
 
@@ -783,6 +805,9 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAIOAuthService,
 	ProvideGrokOAuthService,
 	wire.Bind(new(GrokOAuthTokenService), new(*GrokOAuthService)),
+	ProvideCursorOAuthService,
+	wire.Bind(new(CursorOAuthTokenService), new(*CursorOAuthService)),
+	ProvideCursorTokenProvider,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,

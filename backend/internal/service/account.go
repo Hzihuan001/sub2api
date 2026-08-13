@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	cursorpkg "github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
@@ -271,8 +272,16 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
+func (a *Account) IsCursor() bool {
+	return a.Platform == PlatformCursor
+}
+
+func (a *Account) IsCursorOAuth() bool {
+	return a.IsCursor() && a.Type == AccountTypeOAuth
+}
+
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok)
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.Platform == PlatformCursor)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -599,6 +608,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
 		}
+		if a.Platform == domain.PlatformCursor {
+			return cursorDefaultModelMapping()
+		}
 		// Bedrock 默认映射由 forwardBedrock 统一处理（需配合 region prefix 调整）
 		return nil
 	}
@@ -609,6 +621,9 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		}
 		if a.Platform == domain.PlatformGrok {
 			return xai.DefaultModelMapping()
+		}
+		if a.Platform == domain.PlatformCursor {
+			return cursorDefaultModelMapping()
 		}
 		return nil
 	}
@@ -643,7 +658,22 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	if a.Platform == domain.PlatformGrok {
 		return xai.DefaultModelMapping()
 	}
+	if a.Platform == domain.PlatformCursor {
+		return cursorDefaultModelMapping()
+	}
 	return nil
+}
+
+// cursorDefaultModelMapping is the identity mapping over the fallback Cursor
+// model catalog. It only matters when the account has no explicit
+// model_mapping; observed upstream models widen the public list separately.
+func cursorDefaultModelMapping() map[string]string {
+	ids := cursorpkg.DefaultModelIDs()
+	mapping := make(map[string]string, len(ids))
+	for _, id := range ids {
+		mapping[id] = id
+	}
+	return mapping
 }
 
 func mapPtr(m map[string]any) uintptr {
@@ -1390,6 +1420,68 @@ func (a *Account) GetGrokRefreshToken() string {
 	return a.GetCredential("refresh_token")
 }
 
+// GetCursorAccessToken returns the stored Cursor access token. The stored
+// value may be a bare JWT or the "userId::JWT" cookie form; pkg/cursor's
+// ParseToken normalizes either shape at the transport layer.
+func (a *Account) GetCursorAccessToken() string {
+	if !a.IsCursor() {
+		return ""
+	}
+	return a.GetCredential("access_token")
+}
+
+// GetCursorRefreshToken returns the deep-link refresh token, when present.
+// API-key sourced credentials have no usable refresh token (re-exchange the
+// crsr_ key instead).
+func (a *Account) GetCursorRefreshToken() string {
+	if !a.IsCursor() {
+		return ""
+	}
+	return a.GetCredential("refresh_token")
+}
+
+// GetCursorAPIKey returns the crsr_ user API key, when present. It can be
+// exchanged repeatedly for fresh access tokens.
+func (a *Account) GetCursorAPIKey() string {
+	if !a.IsCursor() {
+		return ""
+	}
+	return a.GetCredential("api_key")
+}
+
+// GetCursorWebSessionToken returns the WorkosCursorSessionToken browser cookie
+// kept for re-running the deep-link upgrade. It is a "web" credential: it can
+// mint client tokens but cannot itself drive a chat.
+//
+// Accounts imported before the upgrade existed hold the cookie in access_token
+// instead, so that value is used as long as it still carries the web claim.
+func (a *Account) GetCursorWebSessionToken() string {
+	if !a.IsCursor() {
+		return ""
+	}
+	if stored := strings.TrimSpace(a.GetCredential("web_session_token")); stored != "" {
+		return stored
+	}
+	if access := strings.TrimSpace(a.GetCredential("access_token")); cursorpkg.IsWebSessionToken(access) {
+		return access
+	}
+	return ""
+}
+
+// GetCursorBaseURL resolves the Cursor upstream base URL with the package
+// default. Credential lifecycle traffic (exchange/refresh/poll) always uses
+// the official auth endpoints regardless of this value.
+func (a *Account) GetCursorBaseURL() string {
+	if !a.IsCursor() {
+		return ""
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL == "" {
+		return cursorpkg.DefaultBaseURL
+	}
+	return strings.TrimRight(baseURL, "/")
+}
+
 func (a *Account) GetOpenAIIDToken() string {
 	if !a.IsOpenAIOAuth() {
 		return ""
@@ -1481,6 +1573,16 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 			// forwarding gate itself fails closed if that probe is unavailable or
 			// cannot produce positive paid-entitlement evidence.
 			return eligible || reason == "billing_unobserved"
+		default:
+			return false
+		}
+	}
+	if a.IsCursor() {
+		// Cursor upstream only serves text chat (agent.v1 Run translation);
+		// Responses-shape requests are bridged through the same chat pipeline.
+		switch capability {
+		case OpenAIEndpointCapabilityChatCompletions, OpenAIEndpointCapabilityResponses:
+			return true
 		default:
 			return false
 		}

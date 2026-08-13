@@ -9,15 +9,17 @@ const source = readFileSync(
 
 describe('ReAuthAccountModal Grok re-auth paths', () => {
   it('exposes SSO cookie and refresh-token options; password auth stays hidden', () => {
-    expect(source).toContain(':show-sso-option="isGrok"')
+    expect(source).toContain(':show-sso-option="isGrok || isCursor"')
     expect(source).toContain(':show-email-password-option="false"')
-    expect(source).toContain(':show-refresh-token-option="isOpenAI || isAntigravity || isGrok"')
+    expect(source).toContain(':show-refresh-token-option="isOpenAI || isAntigravity || isGrok || isCursor"')
     expect(source).not.toContain('@authorize-password=')
   })
 
   it('wires SSO and RT reauth without batch account create', () => {
-    expect(source).toContain('@import-sso="handleGrokImportSSO"')
-    expect(source).toContain('@validate-refresh-token="handleGrokValidateRefreshToken"')
+    expect(source).toContain('@import-sso="handleImportSSO"')
+    expect(source).toContain('@validate-refresh-token="handleValidateRefreshToken"')
+    expect(source).toContain('handleGrokImportSSO')
+    expect(source).toContain('handleGrokValidateRefreshToken')
     expect(source).toContain('grokOAuth.validateSSOToken')
     expect(source).toContain('grokOAuth.buildCredentials')
     // Re-auth updates the existing account; must not call createFromSSO batch create
@@ -31,10 +33,10 @@ describe('ReAuthAccountModal Grok re-auth paths', () => {
   })
 
   it('defaults reauth to refresh_token or sso_cookie (not password)', () => {
-    expect(source).toContain('grokInitialInputMethod')
-    expect(source).toContain(':initial-input-method="grokInitialInputMethod"')
-    expect(source).toContain("return 'sso_cookie'")
-    expect(source).toContain("return 'refresh_token'")
+    expect(source).toContain('initialInputMethod')
+    expect(source).toContain(':initial-input-method="initialInputMethod"')
+    expect(source).toContain("'sso_cookie'")
+    expect(source).toContain("'refresh_token'")
     expect(source).not.toContain("return 'email_password'")
     expect(source).not.toContain('grokPrefillEmailPassword')
   })

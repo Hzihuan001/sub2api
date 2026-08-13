@@ -1386,6 +1386,19 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 				modelSet[model] = struct{}{}
 			}
 		}
+		// Cursor enhancement over Grok: fold each schedulable account's observed
+		// upstream models (extra.cursor_observed_models) into the public list so
+		// /v1/models reflects what the pooled subscriptions can actually serve.
+		if acc.Platform == PlatformCursor {
+			if snap := parseCursorObservedModels(acc.Extra); snap != nil {
+				hasAnyMapping = true
+				for _, model := range snap.Models {
+					if model = strings.TrimSpace(model); model != "" {
+						modelSet[model] = struct{}{}
+					}
+				}
+			}
+		}
 	}
 
 	// If no account has model_mapping, return nil (use default)

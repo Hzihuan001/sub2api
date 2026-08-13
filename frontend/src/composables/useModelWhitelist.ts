@@ -162,6 +162,26 @@ const xaiModels = [
   'grok-imagine-video-1.5'
 ]
 
+// Cursor（cursor.com 订阅上游）
+// 前端预设仅作快速填充；实际可用模型以后端动态 /v1/models 返回为准。
+const cursorModels = [
+  'auto',
+  'composer-2.5',
+  'claude-4.5-sonnet',
+  'claude-4.5-sonnet-thinking',
+  'claude-4.6-sonnet',
+  'claude-4.5-haiku',
+  'claude-4.5-opus',
+  'gpt-5',
+  'gpt-5-codex',
+  'gpt-5.6-sol',
+  'gemini-3-pro',
+  'gemini-3.5-flash',
+  'deepseek-v3.1',
+  'grok-4.6',
+  'kimi-k2-instruct'
+]
+
 // Cohere
 const cohereModels = [
   'command-a-03-2025',
@@ -242,6 +262,7 @@ const allModelsList: string[] = [
   ...mistralModels,
   ...metaModels,
   ...xaiModels,
+  ...cursorModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -319,6 +340,23 @@ const grokPresetMappings = [
   { label: 'Imagine Image', from: 'grok-imagine', to: 'grok-imagine-image-quality', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: 'Imagine Edit', from: 'grok-imagine-edit', to: 'grok-imagine-image-quality', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
   { label: 'Imagine Video', from: 'grok-imagine-video-1.5', to: 'grok-imagine-video-1.5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
+]
+
+// Cursor 预设映射（前端预设，实际以后端动态 /v1/models 为准）
+const cursorPresetMappings = [
+  { label: 'Auto', from: 'auto', to: 'auto', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'Composer 2.5', from: 'composer-2.5', to: 'composer-2.5', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
+  { label: 'Sonnet 4.5', from: 'claude-4.5-sonnet', to: 'claude-4.5-sonnet', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
+  { label: 'Sonnet 4.6', from: 'claude-4.6-sonnet', to: 'claude-4.6-sonnet', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'GPT-5', from: 'gpt-5', to: 'gpt-5', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' },
+  { label: 'GPT-5.6 Sol', from: 'gpt-5.6-sol', to: 'gpt-5.6-sol', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
+  { label: 'Gemini 3 Pro', from: 'gemini-3-pro', to: 'gemini-3-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Gemini 3.5 Flash', from: 'gemini-3.5-flash', to: 'gemini-3.5-flash', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
+  { label: 'DeepSeek v3.1', from: 'deepseek-v3.1', to: 'deepseek-v3.1', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'Grok 4.6', from: 'grok-4.6', to: 'grok-4.6', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-300' },
+  // 常见跨平台改写：把 Anthropic 命名映射到 Cursor 命名
+  { label: 'Claude→Cursor Sonnet', from: 'claude-sonnet-4-5-20250929', to: 'claude-4.5-sonnet', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
+  { label: 'Opus→Auto', from: 'claude-opus-4-6', to: 'auto', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' }
 ]
 
 // Antigravity 预设映射（支持通配符）
@@ -426,6 +464,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'meta': return metaModels
     case 'xai':
     case 'grok': return xaiModels
+    case 'cursor': return cursorModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
     case 'moonshot': return moonshotModels
@@ -444,6 +483,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
+  if (platform === 'cursor') return cursorPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings

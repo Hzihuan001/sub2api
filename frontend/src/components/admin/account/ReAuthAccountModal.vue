@@ -22,7 +22,9 @@
                     ? 'from-purple-500 to-purple-600'
                     : isGrok
                       ? 'from-zinc-700 to-zinc-900'
-                      : 'from-orange-500 to-orange-600'
+                      : isCursor
+                        ? 'from-indigo-500 to-indigo-600'
+                        : 'from-orange-500 to-orange-600'
             ]"
           >
             <Icon name="sparkles" size="md" class="text-white" />
@@ -41,7 +43,9 @@
                       ? t('admin.accounts.antigravityAccount')
                       : isGrok
                         ? t('admin.accounts.grokAccount')
-                        : t('admin.accounts.claudeCodeAccount')
+                        : isCursor
+                          ? t('admin.accounts.cursorAccount')
+                          : t('admin.accounts.claudeCodeAccount')
               }}
             </span>
           </div>
@@ -130,19 +134,38 @@
         :show-help="isAnthropic"
         :show-proxy-warning="isAnthropic"
         :show-cookie-option="isAnthropic"
-        :show-refresh-token-option="isOpenAI || isAntigravity || isGrok"
-        :show-sso-option="isGrok"
+        :show-refresh-token-option="isOpenAI || isAntigravity || isGrok || isCursor"
+        :show-sso-option="isGrok || isCursor"
         :show-email-password-option="false"
         :allow-multiple="false"
         :method-label="t('admin.accounts.inputMethod')"
-        :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : isGrok ? 'grok' : 'anthropic'"
+        :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : isGrok ? 'grok' : isCursor ? 'cursor' : 'anthropic'"
         :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
-        :initial-input-method="grokInitialInputMethod"
+        :initial-input-method="initialInputMethod"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
-        @validate-refresh-token="handleGrokValidateRefreshToken"
-        @import-sso="handleGrokImportSSO"
+        @validate-refresh-token="handleValidateRefreshToken"
+        @import-sso="handleImportSSO"
       />
+
+      <!-- Cursor deep-link polling status -->
+      <div
+        v-if="isCursor && cursorOAuth.polling.value"
+        class="flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-700 dark:bg-indigo-900/30"
+        data-testid="cursor-reauth-polling"
+      >
+        <svg class="h-5 w-5 animate-spin text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          ></path>
+        </svg>
+        <span class="text-sm text-indigo-700 dark:text-indigo-300">
+          {{ t('admin.accounts.oauth.cursor.waitingForAuthorization') }}
+        </span>
+      </div>
 
     </div>
 
@@ -203,6 +226,7 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
+import { useCursorOAuth } from '@/composables/useCursorOAuth'
 import type { Account } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -239,6 +263,7 @@ const openaiOAuth = useOpenAIOAuth()
 const geminiOAuth = useGeminiOAuth()
 const antigravityOAuth = useAntigravityOAuth()
 const grokOAuth = useGrokOAuth()
+const cursorOAuth = useCursorOAuth()
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
@@ -254,20 +279,31 @@ const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
 const isGrok = computed(() => props.account?.platform === 'grok')
+const isCursor = computed(() => props.account?.platform === 'cursor')
+
+const accountHasRefreshToken = computed(() => {
+  const creds = (props.account?.credentials || {}) as Record<string, unknown>
+  return (
+    (typeof creds.refresh_token === 'string' && creds.refresh_token.trim() !== '') ||
+    (typeof creds.has_refresh_token === 'boolean' && creds.has_refresh_token)
+  )
+})
 
 /**
  * Grok reauth default tab (password auth is hidden):
  * - refresh_token when RT may still work
  * - SSO cookie otherwise
+ * Cursor defaults to refresh_token when an RT exists, otherwise the
+ * deep-link (manual/OAuth) flow which auto-polls after browser confirmation.
  */
-const grokInitialInputMethod = computed<AuthInputMethod>(() => {
-  if (!isGrok.value) return 'manual'
-  const creds = (props.account?.credentials || {}) as Record<string, unknown>
-  const hasRT =
-    (typeof creds.refresh_token === 'string' && creds.refresh_token.trim() !== '') ||
-    (typeof creds.has_refresh_token === 'boolean' && creds.has_refresh_token)
-  if (hasRT) return 'refresh_token'
-  return 'sso_cookie'
+const initialInputMethod = computed<AuthInputMethod>(() => {
+  if (isGrok.value) {
+    return accountHasRefreshToken.value ? 'refresh_token' : 'sso_cookie'
+  }
+  if (isCursor.value) {
+    return accountHasRefreshToken.value ? 'refresh_token' : 'manual'
+  }
+  return 'manual'
 })
 
 // Computed - current OAuth state based on platform
@@ -276,6 +312,7 @@ const currentAuthUrl = computed(() => {
   if (isGemini.value) return geminiOAuth.authUrl.value
   if (isAntigravity.value) return antigravityOAuth.authUrl.value
   if (isGrok.value) return grokOAuth.authUrl.value
+  if (isCursor.value) return cursorOAuth.authUrl.value
   return claudeOAuth.authUrl.value
 })
 const currentSessionId = computed(() => {
@@ -283,6 +320,7 @@ const currentSessionId = computed(() => {
   if (isGemini.value) return geminiOAuth.sessionId.value
   if (isAntigravity.value) return antigravityOAuth.sessionId.value
   if (isGrok.value) return grokOAuth.sessionId.value
+  if (isCursor.value) return cursorOAuth.sessionId.value
   return claudeOAuth.sessionId.value
 })
 const currentLoading = computed(() => {
@@ -290,6 +328,7 @@ const currentLoading = computed(() => {
   if (isGemini.value) return geminiOAuth.loading.value
   if (isAntigravity.value) return antigravityOAuth.loading.value
   if (isGrok.value) return grokOAuth.loading.value
+  if (isCursor.value) return cursorOAuth.loading.value
   return claudeOAuth.loading.value
 })
 const currentError = computed(() => {
@@ -297,6 +336,7 @@ const currentError = computed(() => {
   if (isGemini.value) return geminiOAuth.error.value
   if (isAntigravity.value) return antigravityOAuth.error.value
   if (isGrok.value) return grokOAuth.error.value
+  if (isCursor.value) return cursorOAuth.error.value
   return claudeOAuth.error.value
 })
 
@@ -306,12 +346,13 @@ const isManualInputMethod = computed(() => {
   if (method === 'sso_cookie' || method === 'email_password' || method === 'refresh_token') {
     return false
   }
-  // OpenAI/Gemini/Antigravity/Grok use manual code paste by default (no cookie auth)
+  // OpenAI/Gemini/Antigravity/Grok/Cursor use manual code paste by default (no cookie auth)
   return (
     isOpenAILike.value ||
     isGemini.value ||
     isAntigravity.value ||
     isGrok.value ||
+    isCursor.value ||
     method === 'manual'
   )
 })
@@ -359,6 +400,7 @@ const resetState = () => {
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   grokOAuth.resetState()
+  cursorOAuth.resetState()
   oauthFlowRef.value?.reset()
 }
 
@@ -380,9 +422,30 @@ const handleGenerateUrl = async () => {
     await antigravityOAuth.generateAuthUrl(props.account.proxy_id)
   } else if (isGrok.value) {
     await grokOAuth.generateAuthUrl(props.account.proxy_id)
+  } else if (isCursor.value) {
+    await handleCursorGenerateUrlAndPoll()
   } else {
     await claudeOAuth.generateAuthUrl(addMethod.value, props.account.proxy_id)
   }
+}
+
+/**
+ * Cursor deep-link reauth: generate the login URL, then poll until the user
+ * confirms in the browser and apply the returned tokens automatically.
+ * Manual code exchange stays available as a fallback via handleExchangeCode.
+ */
+const handleCursorGenerateUrlAndPoll = async () => {
+  if (!props.account) return
+  const ok = await cursorOAuth.generateAuthUrl(props.account.proxy_id)
+  if (!ok) return
+
+  const tokenInfo = await cursorOAuth.pollForToken({
+    sessionId: cursorOAuth.sessionId.value,
+    state: cursorOAuth.state.value,
+    proxyId: props.account.proxy_id
+  })
+  if (!tokenInfo) return
+  await applyCursorReauthTokenInfo(tokenInfo)
 }
 
 const handleExchangeCode = async () => {
@@ -527,6 +590,26 @@ const handleExchangeCode = async () => {
       grokOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
       appStore.showError(grokOAuth.error.value)
     }
+  } else if (isCursor.value) {
+    const sessionId = cursorOAuth.sessionId.value
+    if (!sessionId) return
+
+    const stateFromInput = oauthFlowRef.value?.oauthState || ''
+    const stateToUse = stateFromInput || cursorOAuth.state.value
+    if (!stateToUse) return
+
+    // Manual exchange supersedes the automatic deep-link poll.
+    cursorOAuth.cancelPolling()
+
+    const tokenInfo = await cursorOAuth.exchangeAuthCode({
+      code: authCode.trim(),
+      sessionId,
+      state: stateToUse,
+      proxyId: props.account.proxy_id
+    })
+    if (!tokenInfo) return
+
+    await applyCursorReauthTokenInfo(tokenInfo)
   } else {
     // Claude OAuth flow
     const sessionId = claudeOAuth.sessionId.value
@@ -650,6 +733,72 @@ const handleGrokImportSSO = async (ssoInput: string) => {
   } finally {
     grokOAuth.loading.value = false
   }
+}
+
+/** Apply Cursor OAuth tokens onto the existing account (never store session token/password). */
+const applyCursorReauthTokenInfo = async (tokenInfo: {
+  access_token?: string
+  refresh_token?: string
+  email?: string
+  [key: string]: unknown
+}) => {
+  if (!props.account) return
+  const credentials = cursorOAuth.buildCredentials(tokenInfo as any)
+  const extra = cursorOAuth.buildExtraInfo(tokenInfo as any)
+  try {
+    const updatedAccount = await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
+      type: 'oauth',
+      credentials,
+      extra
+    })
+    appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+    emit('reauthorized', updatedAccount)
+    handleClose()
+  } catch (error: any) {
+    cursorOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(cursorOAuth.error.value)
+  }
+}
+
+/** Re-auth with a single WorkosCursorSessionToken (userId::JWT). */
+const handleCursorImportSSO = async (ssoInput: string) => {
+  if (!props.account || !isCursor.value) return
+  const ssoToken = ssoInput
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)[0]
+  if (!ssoToken) return
+
+  const tokenInfo = await cursorOAuth.validateSSOToken(ssoToken, props.account.proxy_id)
+  if (!tokenInfo) return
+  await applyCursorReauthTokenInfo(tokenInfo)
+}
+
+/** Re-auth with a single Cursor refresh token. */
+const handleCursorValidateRefreshToken = async (refreshTokenInput: string) => {
+  if (!props.account || !isCursor.value) return
+  const refreshToken = refreshTokenInput
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)[0]
+  if (!refreshToken) {
+    cursorOAuth.error.value = t('admin.accounts.oauth.cursor.pleaseEnterRefreshToken')
+    return
+  }
+
+  const tokenInfo = await cursorOAuth.validateRefreshToken(refreshToken, props.account.proxy_id)
+  if (!tokenInfo) return
+  await applyCursorReauthTokenInfo(tokenInfo)
+}
+
+const handleImportSSO = (ssoInput: string) => {
+  if (isCursor.value) return handleCursorImportSSO(ssoInput)
+  return handleGrokImportSSO(ssoInput)
+}
+
+const handleValidateRefreshToken = (refreshTokenInput: string) => {
+  if (isCursor.value) return handleCursorValidateRefreshToken(refreshTokenInput)
+  return handleGrokValidateRefreshToken(refreshTokenInput)
 }
 
 /** Re-auth with a single refresh token. */
