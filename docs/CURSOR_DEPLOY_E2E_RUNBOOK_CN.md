@@ -239,7 +239,7 @@ services:
       - SUB2API_CURSOR_AGENT_CLIENT_VERSION=${SUB2API_CURSOR_AGENT_CLIENT_VERSION:-cli-2026.08.11-e8db854}
       - SUB2API_CURSOR_AGENT_GHOST_MODE=${SUB2API_CURSOR_AGENT_GHOST_MODE:-true}
       - SUB2API_CURSOR_AGENT_FIRST_BYTE_TIMEOUT=${SUB2API_CURSOR_AGENT_FIRST_BYTE_TIMEOUT:-60s}
-      - SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=${SUB2API_CURSOR_AGENT_IDLE_TIMEOUT:-4s}
+      - SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=${SUB2API_CURSOR_AGENT_IDLE_TIMEOUT:-30s}
 EOF
 ```
 
@@ -387,7 +387,7 @@ services:
       - SUB2API_CURSOR_AGENT_CLIENT_VERSION=cli-2026.08.11-e8db854
       - SUB2API_CURSOR_AGENT_GHOST_MODE=true
       - SUB2API_CURSOR_AGENT_FIRST_BYTE_TIMEOUT=60s
-      - SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=4s
+      - SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=30s
 '@
 [IO.File]::WriteAllText("C:\srv\sub2api\deploy\docker-compose.override.yml", $override)
 
@@ -524,7 +524,7 @@ $env:SUB2API_CURSOR_AGENT_BASE_URL          = "https://agentn.global.api5.cursor
 $env:SUB2API_CURSOR_AGENT_CLIENT_VERSION    = "cli-2026.08.11-e8db854"
 $env:SUB2API_CURSOR_AGENT_GHOST_MODE        = "true"
 $env:SUB2API_CURSOR_AGENT_FIRST_BYTE_TIMEOUT = "60s"
-$env:SUB2API_CURSOR_AGENT_IDLE_TIMEOUT      = "4s"
+$env:SUB2API_CURSOR_AGENT_IDLE_TIMEOUT      = "30s"
 
 C:\srv\sub2api\bin\sub2api.exe
 ```
@@ -922,9 +922,10 @@ curl.exe -N -sS -X POST "$Base/v1/chat/completions" `
 
 预期：一串 `data: {...}` SSE 帧，最后 `data: [DONE]`。`-N` / `--no-buffer` 必须加，否则 curl 会缓冲到结束才吐。
 
-> **醒目提示（真机已踩坑）**：默认 `SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=4s` 可能截断「先思考后输出」的响应——
-> 真机 e2e 观察到一次流式请求只收到思考帧就被 4s 空闲超时截停，重试才成功。
-> 思考较久的模型建议生产环境调大到 `15s`（改法见第 6 节，改完必须重启），代价是每次请求收尾多等几秒。
+> **醒目提示（真机已踩坑）**：早期默认 `SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=4s` 会截断「先思考后输出」的响应——
+> 真机 e2e 观察到一次流式请求只收到思考帧就被 4s 空闲超时截停，重试才成功。默认值已改成 `30s`。
+> 空闲超时只是「流真卡死」的安全网：上游发 `turn_ended` / Connect 结束帧时立刻收尾，不会白等这 30s；
+> 只有上游在等 tool exec-result 而不关流时才会走到它，这种收尾会多等一个空闲预算。
 
 ### 5.4 端到端自检清单
 
@@ -952,7 +953,7 @@ curl.exe -N -sS -X POST "$Base/v1/chat/completions" `
 | `SUB2API_CURSOR_AGENT_CLIENT_VERSION` | `cli-2026.08.11-e8db854` | `x-cursor-client-version`。Cursor 会抬高最低版本门槛，被拒时表现为 Connect `permission_denied` |
 | `SUB2API_CURSOR_AGENT_GHOST_MODE` | `true` | `x-ghost-mode`（隐私模式）。只有 `0` / `false` / `no` / `off`（忽略大小写）会关掉，其它任何值都是 true |
 | `SUB2API_CURSOR_AGENT_FIRST_BYTE_TIMEOUT` | `60s` | 等首帧的预算。Go duration 格式（`90s`、`2m`）。非法或 ≤0 回落默认 |
-| `SUB2API_CURSOR_AGENT_IDLE_TIMEOUT` | `4s` | 输出静默多久判定一轮结束。上游在等 tool exec-result 时不会主动关流，所以靠这个收尾。回复被截断就调大到 `8s`/`15s` |
+| `SUB2API_CURSOR_AGENT_IDLE_TIMEOUT` | `30s` | 输出静默多久判定一轮结束。**只是安全网**：收到 `turn_ended` / 结束帧立刻收尾，上游在等 tool exec-result 不关流时才靠它兜底。任何帧（思考、token_delta、心跳）都会重置计时。思考特别久的模型被截断就调大到 `60s` |
 
 **三条硬性注意：**
 
@@ -990,7 +991,7 @@ curl -fsS https://cursor.com/install | grep -oE 'cli-20[0-9]{2}\.[0-9]{2}\.[0-9]
 | Connect `permission_denied` | 客户端版本被上游判过期 | 按第 6 节更新 `SUB2API_CURSOR_AGENT_CLIENT_VERSION` |
 | `ERROR_NOT_LOGGED_IN` | 用的是纯 web cookie，还没升级成 client 凭据 | 确认 `credentials.web_session_token` 存在；或 `POST /api/v1/admin/cursor/accounts/<AID>/refresh` 主动刷；或改用 `crsr_` API Key |
 | 免费账号点名模型就报错 | 免费账号只有 Auto 可用 | 经网关请求用 `"model":"auto"`（协议线级会映射成上游 `default`）；**不要直接传 `default`**——它不在对外 `/v1/models` 清单里，会被网关按模型清单校验拒为 404 `model_not_found` |
-| 回复被截断 | 空闲超时太短 | `SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=15s` |
+| 回复被截断 | 空闲超时太短（默认 `30s` 已能覆盖常见思考停顿） | `SUB2API_CURSOR_AGENT_IDLE_TIMEOUT=60s` |
 | 首帧一直等不到 | 首字节超时太短或网络慢 | `SUB2API_CURSOR_AGENT_FIRST_BYTE_TIMEOUT=120s` |
 | `Service temporarily unavailable` / 无可用账号 | 分组里没有可调度的 cursor 账号 | `GET /api/v1/admin/accounts?platform=cursor` 检查 status/schedulable/group 绑定 |
 | 网关 401 / 提示未分组 | API Key 没绑分组 | `PUT /api/v1/admin/api-keys/<KID>` 或重建 Key 带 `group_id` |

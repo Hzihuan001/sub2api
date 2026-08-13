@@ -16,7 +16,7 @@ import (
 // Nothing here opens a socket: the transport is covered separately, and the
 // decoding rules are what a protocol change would break.
 func newReaderStream(body io.Reader, opts AgentStreamOptions) *AgentStream {
-	return &AgentStream{
+	s := &AgentStream{
 		opts:   opts.resolved(),
 		body:   body,
 		events: make(chan AgentEvent, agentEventBuffer),
@@ -25,6 +25,10 @@ func newReaderStream(body io.Reader, opts AgentStreamOptions) *AgentStream {
 		stop:   make(chan struct{}),
 		done:   make(chan struct{}),
 	}
+	// OpenAgentStream starts the clock before the first read; without it a
+	// watchdog started by a test would see an epoch-old last activity.
+	s.touch()
+	return s
 }
 
 func drainEvents(t *testing.T, s *AgentStream) []AgentEvent {
@@ -55,6 +59,24 @@ func trailerFrame(json string) []byte { return encodeRawFrame(flagEndStream, []b
 func textFrame(text string) []byte {
 	return dataFrame(nest(stringField(fieldAgentDeltaText, text),
 		fieldAgentServerInteractionUpdate, fieldAgentUpdateTextDelta))
+}
+
+// thinkingFrame is a reasoning delta: output, but not the answer.
+func thinkingFrame(text string) []byte {
+	return dataFrame(nest(stringField(fieldAgentDeltaText, text),
+		fieldAgentServerInteractionUpdate, fieldAgentUpdateThinkingDelta))
+}
+
+// heartbeatFrame is the server keep-alive, an update with an empty body.
+func heartbeatFrame() []byte {
+	return dataFrame(nest(nil, fieldAgentServerInteractionUpdate, fieldAgentUpdateHeartbeat))
+}
+
+func turnEndedFrame(inputTokens, outputTokens int64) []byte {
+	var turn Writer
+	turn.WriteInt64(fieldAgentTurnInputTokens, inputTokens)
+	turn.WriteInt64(fieldAgentTurnOutputTokens, outputTokens)
+	return dataFrame(nest(turn.Bytes(), fieldAgentServerInteractionUpdate, fieldAgentUpdateTurnEnded))
 }
 
 func TestAgentStreamEmitsTextThenTurnEnd(t *testing.T) {
@@ -155,12 +177,8 @@ func TestAgentStreamKeepReadingAfterToolCall(t *testing.T) {
 
 // turn_ended is a terminal event: anything after it belongs to no turn.
 func TestAgentStreamStopsAtTurnEnded(t *testing.T) {
-	var turn Writer
-	turn.WriteInt64(fieldAgentTurnInputTokens, 10)
-	turn.WriteInt64(fieldAgentTurnOutputTokens, 20)
-
 	body := bytes.NewReader(bytes.Join([][]byte{
-		dataFrame(nest(turn.Bytes(), fieldAgentServerInteractionUpdate, fieldAgentUpdateTurnEnded)),
+		turnEndedFrame(10, 20),
 		textFrame("after the end"),
 	}, nil))
 
@@ -170,6 +188,92 @@ func TestAgentStreamStopsAtTurnEnded(t *testing.T) {
 	}
 	if events[0].Usage == nil || events[0].Usage.InputTokens != 10 || events[0].Usage.OutputTokens != 20 {
 		t.Errorf("usage = %+v", events[0].Usage)
+	}
+}
+
+// The idle budget measures silence on the wire, so every frame has to reset it
+// — including ones that carry no answer text. A reasoning model emits one
+// thinking delta and then deliberates behind heartbeats; when only text counted
+// as activity (or the budget was a few seconds long) the watchdog cut the turn
+// off mid-thought and the answer never arrived.
+func TestAgentStreamIdleBudgetResetsOnEveryFrame(t *testing.T) {
+	const (
+		idleBudget = 500 * time.Millisecond
+		frameGap   = 150 * time.Millisecond
+	)
+
+	pr, pw := io.Pipe()
+	s := newReaderStream(pr, AgentStreamOptions{IdleTimeout: idleBudget})
+	// Closing the read side is how the watchdog would interrupt the reader,
+	// standing in for the response body it closes against a live upstream.
+	s.closer = pr
+
+	// Paced so no single gap reaches the budget while the whole turn runs well
+	// past it: the turn only survives if each frame pushes the deadline out.
+	go func() {
+		defer func() { _ = pw.Close() }()
+		frames := [][]byte{
+			thinkingFrame("weighing the options"),
+			heartbeatFrame(), heartbeatFrame(), heartbeatFrame(), heartbeatFrame(),
+			textFrame("the answer"),
+			trailerFrame("{}"),
+		}
+		for _, frame := range frames {
+			time.Sleep(frameGap)
+			if _, err := pw.Write(frame); err != nil {
+				return
+			}
+		}
+	}()
+
+	go s.watchdog()
+	events := drainEvents(t, s)
+
+	if s.timedOut.Load() {
+		t.Fatal("the idle watchdog fired while the upstream was still sending frames")
+	}
+	var text strings.Builder
+	for _, event := range events {
+		if event.Type == AgentEventText {
+			text.WriteString(event.Text)
+		}
+	}
+	if text.String() != "the answer" {
+		t.Errorf("text = %q, want %q (the turn was cut short)", text.String(), "the answer")
+	}
+	if last := events[len(events)-1]; last.Type != AgentEventTurnEnded {
+		t.Errorf("final event = %s, want turn_ended: %+v", last.Type, events)
+	}
+}
+
+// An end the upstream states outright is honoured on the spot. The idle budget
+// is only the safety net for a stream that stopped talking without saying so,
+// so it must not be what a finished turn is waiting on.
+func TestAgentStreamExplicitEndBeatsIdleBudget(t *testing.T) {
+	const idleBudget = 200 * time.Millisecond
+
+	bodies := map[string][]byte{
+		"turn_ended update":   bytes.Join([][]byte{thinkingFrame("hm"), turnEndedFrame(10, 20)}, nil),
+		"end-of-stream frame": bytes.Join([][]byte{thinkingFrame("hm"), trailerFrame("{}")}, nil),
+	}
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			s := newReaderStream(bytes.NewReader(body), AgentStreamOptions{IdleTimeout: idleBudget})
+			s.closer = io.NopCloser(strings.NewReader(""))
+			go s.watchdog()
+
+			events := drainEvents(t, s)
+			if last := events[len(events)-1]; last.Type != AgentEventTurnEnded {
+				t.Fatalf("final event = %s, want turn_ended: %+v", last.Type, events)
+			}
+
+			// Well past the budget: a watchdog still armed here would mean the
+			// turn ended on a timer rather than on the upstream's word.
+			time.Sleep(idleBudget + 2*agentWatchdogTick)
+			if s.timedOut.Load() {
+				t.Error("the idle watchdog fired after the upstream ended the turn")
+			}
+		})
 	}
 }
 
@@ -199,8 +303,10 @@ func TestAgentStreamReportsTruncatedFrame(t *testing.T) {
 }
 
 func TestIsAgentOutput(t *testing.T) {
-	// Only real model output switches the watchdog off the first-byte budget;
-	// a server heartbeat must not make a stalled turn look productive.
+	// This only picks which budget applies — first-byte until the model has
+	// produced something, idle afterwards. A server heartbeat must not make a
+	// turn that never started look productive, even though it does keep the
+	// idle deadline moving once one has.
 	for typ, want := range map[AgentEventType]bool{
 		AgentEventText:            true,
 		AgentEventThinking:        true,

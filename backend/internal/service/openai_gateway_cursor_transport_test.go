@@ -37,6 +37,12 @@ func TestCursorAgentKnobsFallBackToProcessDefaults(t *testing.T) {
 	if os.Getenv(envCursorAgentGhostMode) == "" {
 		require.True(t, defaults.ghostMode)
 	}
+	if os.Getenv(envCursorAgentFirstByteTimeout) == "" {
+		require.Equal(t, cursorpkg.AgentDefaultFirstByteTimeout, defaults.firstByteTimeout)
+	}
+	if os.Getenv(envCursorAgentIdleTimeout) == "" {
+		require.Equal(t, cursorpkg.AgentDefaultIdleTimeout, defaults.idleTimeout)
+	}
 }
 
 func TestCursorAgentKnobsPreferCredentialsThenExtra(t *testing.T) {

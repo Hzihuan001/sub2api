@@ -30,7 +30,7 @@ import (
 //     stream therefore refuses to proceed over HTTP/1.1 unless AllowHTTP1 is set.
 //   - The server keeps the response side open after the assistant message when
 //     it expects a tool exec-result. This client never sends one, so a turn is
-//     also finished by an idle timeout, not only by an explicit end.
+//     also finished by an idle timeout when no explicit end ever arrives.
 
 const (
 	// AgentDefaultFirstByteTimeout bounds the wait for the first response
@@ -40,7 +40,13 @@ const (
 	// AgentDefaultIdleTimeout ends a turn once output has gone quiet. It exists
 	// because the server will not close a stream on which it is still waiting
 	// for an exec result.
-	AgentDefaultIdleTimeout = 4 * time.Second
+	//
+	// A turn the upstream ends itself never reaches this budget, so a generous
+	// one costs nothing and a short one is dangerous: it has to outlast the
+	// longest silence a healthy turn contains, which is a reasoning model
+	// emitting one thinking delta and then deliberating. At a few seconds those
+	// turns were cut off mid-thought and only succeeded on retry.
+	AgentDefaultIdleTimeout = 30 * time.Second
 
 	// agentWatchdogTick is how often the idle/first-byte budget is re-checked.
 	agentWatchdogTick = 250 * time.Millisecond
@@ -441,6 +447,10 @@ func (s *AgentStream) readResponseFrames() {
 			s.emitTerminal(err)
 			return
 		}
+		// Every frame is activity, not just assistant text: a thinking delta, a
+		// token_delta and a heartbeat all say the upstream is alive. The idle
+		// budget measures silence on the wire, so it is reset here — before the
+		// payload is even looked at — rather than per event type.
 		s.touch()
 		if s.opts.OnResponseFrame != nil {
 			s.opts.OnResponseFrame(AgentFrameInfo{
@@ -451,6 +461,8 @@ func (s *AgentStream) readResponseFrames() {
 			}, frame)
 		}
 
+		// An explicit end is honoured on the spot rather than left to the idle
+		// budget: returning here retires the watchdog through signalStop.
 		if frame.EndStream {
 			if agentErr := ParseAgentTrailer(frame.Payload); agentErr != nil {
 				s.emit(AgentEvent{Type: AgentEventError, Err: agentErr})
@@ -546,6 +558,10 @@ func (s *AgentStream) emit(event AgentEvent) bool {
 // watchdog enforces the first-byte and idle budgets. The frame reader blocks in
 // a read that only a closed body can interrupt, so the budget is applied by
 // closing the body out from under it.
+//
+// The idle budget is a last resort for a stream that will never speak again. A
+// turn the upstream ends itself never reaches it: the reader returns first and
+// signalStop retires this goroutine.
 func (s *AgentStream) watchdog() {
 	ticker := time.NewTicker(agentWatchdogTick)
 	defer ticker.Stop()
