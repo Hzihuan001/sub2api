@@ -51,6 +51,17 @@ const (
 	// agentWatchdogTick is how often the idle/first-byte budget is re-checked.
 	agentWatchdogTick = 250 * time.Millisecond
 
+	// AgentDefaultToolCallDrainWindow is how long the reader keeps going after
+	// the first native tool call when KeepReadingAfterToolCall is off.
+	//
+	// A model that decides to call three tools emits them as three frames a few
+	// milliseconds apart. Returning on the first one dropped its siblings, so a
+	// parallel tool turn reached the client as a single call. The window is
+	// deliberately short: nothing useful follows a tool call other than more of
+	// them, and the turn must not sit here waiting for an exec result that this
+	// client never sends.
+	AgentDefaultToolCallDrainWindow = 400 * time.Millisecond
+
 	// agentEventBuffer keeps the reader a little ahead of a slow consumer.
 	agentEventBuffer = 32
 
@@ -109,6 +120,11 @@ type AgentStreamOptions struct {
 	// blocked waiting for an exec result this client never sends.
 	KeepReadingAfterToolCall bool
 
+	// ToolCallDrainWindow defaults to AgentDefaultToolCallDrainWindow and only
+	// applies when KeepReadingAfterToolCall is off: it bounds the extra time
+	// spent collecting sibling tool calls from the same turn.
+	ToolCallDrainWindow time.Duration
+
 	// AllowHTTP1 disables the HTTP/2 requirement. Only useful for tests against
 	// a local server; against the real upstream an HTTP/1.1 request is dropped
 	// by the load balancer.
@@ -137,6 +153,9 @@ func (o AgentStreamOptions) resolved() AgentStreamOptions {
 	}
 	if o.HeartbeatInterval <= 0 {
 		o.HeartbeatInterval = AgentHeartbeatInterval
+	}
+	if o.ToolCallDrainWindow <= 0 {
+		o.ToolCallDrainWindow = AgentDefaultToolCallDrainWindow
 	}
 	return o
 }
@@ -187,6 +206,7 @@ type AgentStream struct {
 	lastActivity atomic.Int64
 	gotOutput    atomic.Bool
 	timedOut     atomic.Bool
+	drained      atomic.Bool
 }
 
 // OpenAgentStream starts a turn and returns once the response headers arrive. A
@@ -440,6 +460,15 @@ func (s *AgentStream) readResponseFrames() {
 	defer close(s.events)
 	defer s.signalStop()
 
+	// Only set once the first tool call has been seen; see the drain comment at
+	// the bottom of the loop.
+	var drainTimer *time.Timer
+	defer func() {
+		if drainTimer != nil {
+			drainTimer.Stop()
+		}
+	}()
+
 	fr := NewFrameReader(s.body)
 	for index := 1; ; index++ {
 		frame, err := fr.Next()
@@ -480,6 +509,12 @@ func (s *AgentStream) readResponseFrames() {
 		if event == nil {
 			continue
 		}
+		// While draining after a tool call, anything that is not another tool
+		// call means the turn moved on. It is dropped rather than forwarded,
+		// which is exactly what returning at the first call used to do.
+		if drainTimer != nil && !isAgentToolCallEvent(event.Type) && event.Type != AgentEventTurnEnded {
+			return
+		}
 		if isAgentOutput(event.Type) {
 			s.gotOutput.Store(true)
 		}
@@ -492,9 +527,32 @@ func (s *AgentStream) readResponseFrames() {
 		// A native tool call ends the assistant's turn: the model is now
 		// waiting for an exec result on the stream. A stateless bridge surfaces
 		// the call and re-runs with the result in history instead.
-		if event.Type == AgentEventToolCall && !s.opts.KeepReadingAfterToolCall {
-			return
+		//
+		// Siblings from the same turn arrive as their own frames right behind
+		// the first one, so the reader stays for ToolCallDrainWindow to collect
+		// them. It stops itself by closing the body out from under the blocking
+		// read, the same lever the watchdog uses; the resulting read error is
+		// then reported as a clean end rather than a fault.
+		if event.Type == AgentEventToolCall && !s.opts.KeepReadingAfterToolCall && drainTimer == nil {
+			drainTimer = time.AfterFunc(s.opts.ToolCallDrainWindow, func() {
+				s.drained.Store(true)
+				if s.closer != nil {
+					_ = s.closer.Close()
+				}
+			})
+			continue
 		}
+	}
+}
+
+// isAgentToolCallEvent reports whether an event belongs to a tool call, which
+// is what the post-tool-call drain window is allowed to keep collecting.
+func isAgentToolCallEvent(t AgentEventType) bool {
+	switch t {
+	case AgentEventToolCall, AgentEventToolCallStarted, AgentEventToolCallArgs:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -516,6 +574,11 @@ func (s *AgentStream) emitTerminal(err error) {
 	case errors.Is(err, io.EOF):
 		// A clean end on a frame boundary. The upstream often closes this way
 		// instead of sending a trailer.
+		s.emit(AgentEvent{Type: AgentEventTurnEnded})
+
+	case s.drained.Load():
+		// The tool-call drain window closed the body on purpose. The calls
+		// already emitted are the turn's result.
 		s.emit(AgentEvent{Type: AgentEventTurnEnded})
 
 	case s.timedOut.Load() && s.gotOutput.Load():

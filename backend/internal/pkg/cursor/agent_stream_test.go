@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -24,6 +25,12 @@ func newReaderStream(body io.Reader, opts AgentStreamOptions) *AgentStream {
 		cancel: func() {},
 		stop:   make(chan struct{}),
 		done:   make(chan struct{}),
+	}
+	// The watchdog and the tool-call drain both stop a blocking read by closing
+	// the body, which only works if the stream owns a closer, as it does in
+	// production (resp.Body).
+	if closer, ok := body.(io.Closer); ok {
+		s.closer = closer
 	}
 	// OpenAgentStream starts the clock before the first read; without it a
 	// watchdog started by a test would see an epoch-old last activity.
@@ -156,6 +163,78 @@ func TestAgentStreamEndsTurnOnToolCall(t *testing.T) {
 	if events[0].Type != AgentEventToolCall || events[0].ToolCall.Name != "get_weather" {
 		t.Errorf("event = %+v, want a get_weather tool call", events[0])
 	}
+}
+
+// Parallel tool calls arrive as separate frames a few milliseconds apart.
+// Stopping at the first one turned a three-call turn into a one-call turn, so
+// the reader collects the siblings before it ends the stream.
+func TestAgentStreamDrainsSiblingToolCalls(t *testing.T) {
+	frames := make([][]byte, 0, 3)
+	for _, name := range []string{"read_file", "list_dir", "grep"} {
+		frames = append(frames, dataFrame(mcpArgsPayload(t, "", name, "call-"+name, nil)))
+	}
+	body := bytes.NewReader(bytes.Join(frames, nil))
+
+	events := drainEvents(t, newReaderStream(body, AgentStreamOptions{
+		// Long enough that the window cannot expire before the frames are read,
+		// short enough that a regression does not hang the suite.
+		ToolCallDrainWindow: 2 * time.Second,
+	}))
+
+	names := make([]string, 0, len(events))
+	for _, event := range events {
+		if event.Type == AgentEventToolCall {
+			names = append(names, event.ToolCall.Name)
+		}
+	}
+	if len(names) != 3 {
+		t.Fatalf("tool calls = %v, want all three: %+v", names, events)
+	}
+	// The body runs out inside the window, which is a clean end, not a fault.
+	last := events[len(events)-1]
+	if last.Type != AgentEventTurnEnded {
+		t.Errorf("final event = %s, want turn_ended", last.Type)
+	}
+}
+
+// The window is a ceiling, not a wait: a turn that only ever produces one call
+// must not sit on the stream once the window expires.
+func TestAgentStreamToolCallDrainWindowBoundsTheWait(t *testing.T) {
+	call := mcpArgsPayload(t, "", "get_weather", "call-1", nil)
+	body := &blockingBody{prefix: bytes.NewReader(dataFrame(call)), unblock: make(chan struct{})}
+
+	start := time.Now()
+	events := drainEvents(t, newReaderStream(body, AgentStreamOptions{ToolCallDrainWindow: 150 * time.Millisecond}))
+	elapsed := time.Since(start)
+
+	if elapsed > 3*time.Second {
+		t.Fatalf("drain took %s; the window did not bound the wait", elapsed)
+	}
+	if len(events) != 2 || events[0].Type != AgentEventToolCall || events[1].Type != AgentEventTurnEnded {
+		t.Fatalf("events = %+v, want tool_call then turn_ended", events)
+	}
+}
+
+// blockingBody serves a fixed prefix and then blocks, mimicking an upstream
+// that keeps the response open while it waits for an exec result. Close is what
+// releases the read, exactly as closing the real response body does.
+type blockingBody struct {
+	prefix  *bytes.Reader
+	unblock chan struct{}
+	once    sync.Once
+}
+
+func (b *blockingBody) Read(p []byte) (int, error) {
+	if b.prefix.Len() > 0 {
+		return b.prefix.Read(p)
+	}
+	<-b.unblock
+	return 0, io.EOF
+}
+
+func (b *blockingBody) Close() error {
+	b.once.Do(func() { close(b.unblock) })
+	return nil
 }
 
 func TestAgentStreamKeepReadingAfterToolCall(t *testing.T) {

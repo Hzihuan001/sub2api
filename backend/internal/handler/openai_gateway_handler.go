@@ -194,8 +194,13 @@ func allowOpenAICompatibleMessagesDispatch(apiKey *service.APIKey) bool {
 	return apiKey.Group.AllowMessagesDispatch
 }
 
+// openAICompatibleTextTargetAllowed lists the platforms whose accounts this
+// process can actually serve behind /v1/chat/completions, /v1/responses and
+// /v1/messages. Cursor belongs here: composite routing resolves "cursor/..."
+// models to it, and the gateway has a text bridge for all three protocols.
 func openAICompatibleTextTargetAllowed(c *gin.Context, apiKey *service.APIKey, model string) bool {
-	return compositeTargetPlatformAllowed(c, apiKey, model, service.PlatformOpenAI, service.PlatformGrok)
+	return compositeTargetPlatformAllowed(c, apiKey, model,
+		service.PlatformOpenAI, service.PlatformGrok, service.PlatformCursor)
 }
 
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
@@ -311,7 +316,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	reqModel := modelResult.String()
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
-	if !compositeTargetPlatformAllowed(c, apiKey, reqModel, service.PlatformOpenAI, service.PlatformGrok) {
+	if !openAICompatibleTextTargetAllowed(c, apiKey, reqModel) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 	}

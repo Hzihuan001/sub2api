@@ -135,6 +135,19 @@ func TestAuditSensitiveKeys_CoverCredentialTable(t *testing.T) {
 	}
 }
 
+// PKCE 材料与 Cursor 的 rt 别名：值即凭证，键名不含 token/secret 之类的子串，
+// 只有精确清单能挡住它们。
+func TestRedactAuditBody_PKCEAndShortAliasKeysRedacted(t *testing.T) {
+	raw := []byte(`{"verifier":"ver-canary","code_verifier":"cv-canary","challenge":"ch-canary","rt":"rt-canary"}`)
+	out := RedactAuditBody(raw, "application/json")
+
+	for _, secret := range []string{"ver-canary", "cv-canary", "ch-canary", "rt-canary"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("redacted body still contains %q: %s", secret, out)
+		}
+	}
+}
+
 func TestRedactAuditBody_NonJSONOmitted(t *testing.T) {
 	out := RedactAuditBody([]byte("username=admin&password=secret"), "application/x-www-form-urlencoded")
 	if strings.Contains(out, "secret") {
