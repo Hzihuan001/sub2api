@@ -424,10 +424,14 @@
         </div>
       </div>
 
-      <!-- Account Type Selection (Cursor) -->
+      <!-- Account Type Selection (Cursor)
+           OAuth only: a crsr_ User API Key is not a bearer for api2/api5, it has
+           to be exchanged for a session token, and that lifecycle only runs for
+           oauth-typed accounts. crsr_ keys and session cookies are pasted into
+           the authorization flow below instead. -->
       <div v-if="form.platform === 'cursor'">
         <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
-        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-1 gap-3" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -453,34 +457,10 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.cursorOauth') }}</span>
             </div>
           </button>
-
-          <button
-            type="button"
-            data-testid="cursor-account-type-api-key"
-            @click="accountCategory = 'apikey'"
-            :class="[
-              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              accountCategory === 'apikey'
-                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-                : 'border-gray-200 hover:border-purple-300 dark:border-dark-600 dark:hover:border-purple-700'
-            ]"
-          >
-            <div
-              :class="[
-                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                accountCategory === 'apikey'
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
-              ]"
-            >
-              <Icon name="key" size="sm" />
-            </div>
-            <div>
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.cursorApikey') }}</span>
-            </div>
-          </button>
         </div>
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" data-testid="cursor-oauth-only-hint">
+          {{ t('admin.accounts.cursor.oauthOnlyHint') }}
+        </p>
       </div>
 
       <!-- Account Type Selection (Gemini) -->
@@ -5352,15 +5332,10 @@ const handleSubmit = async () => {
   const credentials: Record<string, unknown> = {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl
   }
-  const apiKeyInput = apiKeyValue.value.trim()
-  if (form.platform === 'cursor' && !apiKeyInput.startsWith('crsr_')) {
-    // Cursor apikey 账号支持直接粘贴 access token（JWT）或
-    // WorkosCursorSessionToken（userId::JWT）；仅 crsr_ 前缀写入 api_key，
-    // 其余按契约写入 access_token。
-    credentials.access_token = apiKeyInput
-  } else {
-    credentials.api_key = apiKeyInput
-  }
+  // Cursor never reaches here: it has no apikey account type, because a crsr_
+  // key must be exchanged for a session token first. Those credentials are
+  // imported through the authorization flow instead.
+  credentials.api_key = apiKeyValue.value.trim()
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
   }

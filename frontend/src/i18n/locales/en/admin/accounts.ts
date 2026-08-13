@@ -115,7 +115,6 @@ export default {
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
         cursorOauth: 'Cursor Deep-link Login',
-        cursorApikey: 'crsr_ Key / Access Token',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -765,6 +764,7 @@ export default {
       cursor: {
         baseUrlHint: 'Leave empty to use the official endpoint https://api2.cursor.sh.',
         apiKeyHint: 'Paste a crsr_ User API Key, or paste an access token / WorkosCursorSessionToken (userId::JWT) directly.',
+        oauthOnlyHint: 'Cursor supports OAuth accounts only: a crsr_ User API Key is not a bearer token and must be exchanged for a session token first. To use a crsr_ key or a WorkosCursorSessionToken, choose the paste-credential option in the authorization flow below — it is exchanged automatically and renewed when it expires.',
       },
       cursorCustomBaseUrl: {
         title: 'Custom Upstream URL',

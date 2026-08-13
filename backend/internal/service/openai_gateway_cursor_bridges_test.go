@@ -28,6 +28,54 @@ func cursorFailureContext() *gin.Context {
 // says nothing about the account: it has to be retried in place. Without this a
 // single flaky TLS handshake burns the account for the whole request, and a
 // one-account pool answers 502 straight away.
+// Cursor model ids must reach the agent protocol untouched. Running them through
+// the Codex table rewrote gpt-5 to gpt-5.4 (a model no Cursor account can
+// address) and stripped the "-max" suffix that selects max mode.
+func TestResolveCursorChatMetaDoesNotApplyCodexModelRules(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 1, Platform: PlatformCursor, Type: AccountTypeOAuth}
+
+	for _, model := range []string{
+		"gpt-5",
+		"gpt-5-codex",
+		"claude-4.5-sonnet-max",
+		"composer-2.5-fast",
+		"auto",
+	} {
+		meta := svc.resolveCursorChatMeta(account, model, "", false)
+		require.Equal(t, model, meta.upstreamModel, "cursor must forward %q verbatim", model)
+		require.Equal(t, model, meta.billingModel)
+
+		// Cross-check against the Codex normalizer to keep this test honest: it
+		// only proves something while the two actually disagree.
+		if codex := normalizeOpenAIModelForUpstream(account, model); codex != model {
+			require.NotEqual(t, codex, meta.upstreamModel,
+				"the codex table rewrites %q to %q; cursor must not follow it", model, codex)
+		}
+	}
+}
+
+// The account's own model_mapping still applies: it is how an operator points a
+// client-facing name at a Cursor model id.
+func TestResolveCursorChatMetaAppliesAccountModelMapping(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		ID:       1,
+		Platform: PlatformCursor,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"claude-sonnet-4-5": "claude-4.5-sonnet-max"},
+		},
+	}
+
+	meta := svc.resolveCursorChatMeta(account, "claude-sonnet-4-5", "", false)
+	require.Equal(t, "claude-4.5-sonnet-max", meta.upstreamModel)
+	require.Equal(t, "claude-sonnet-4-5", meta.originalModel)
+
+	// An unmapped model falls back to the dispatch default, then to itself.
+	require.Equal(t, "gpt-5", svc.resolveCursorChatMeta(account, "gpt-5", "", false).upstreamModel)
+}
+
 func TestCursorAgentFailureTransportRetriesSameAccount(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 7, Platform: PlatformCursor, Type: AccountTypeOAuth}

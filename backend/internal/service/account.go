@@ -563,6 +563,19 @@ func stringMappingFromRaw(raw any) map[string]string {
 	}
 }
 
+// HasExplicitModelMapping reports whether the operator actually configured a
+// model_mapping, as opposed to resolveModelMapping substituting a platform
+// default. Callers that treat a mapping as a declaration of intent need the
+// difference: for Cursor the default stands in for the whole catalogue, which is
+// exactly what an observed-model snapshot is supposed to narrow.
+func (a *Account) HasExplicitModelMapping() bool {
+	if a == nil || a.Credentials == nil {
+		return false
+	}
+	raw, _ := a.Credentials["model_mapping"].(map[string]any)
+	return len(raw) > 0
+}
+
 func (a *Account) GetModelMapping() map[string]string {
 	runtimeVersion := xai.RuntimeModelMappingVersion()
 	credentialsPtr := mapPtr(a.Credentials)

@@ -396,6 +396,24 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
+// validateCursorAccountType rejects the cursor + apikey combination.
+//
+// A crsr_ user API key is not a bearer token: Cursor's api2/api5 hosts only
+// accept the session JWT minted by /auth/exchange_user_api_key, and the whole
+// credential lifecycle here (cursorTokenProvider, cursorTokenRefresher,
+// re-exchange on 401) is keyed on AccountTypeOAuth. An apikey-typed Cursor
+// account therefore reaches the gateway's API Key branch, which asks for
+// GetOpenAIApiKey() and gets "" — every request fails with an empty credential.
+// Operators who hold a crsr_ key import it through the Cursor OAuth import
+// flow, which stores the key and re-exchanges it automatically.
+func validateCursorAccountType(platform, accountType string) error {
+	if platform != PlatformCursor || accountType != AccountTypeAPIKey {
+		return nil
+	}
+	return infraerrors.New(http.StatusBadRequest, "CURSOR_APIKEY_ACCOUNT_UNSUPPORTED",
+		"cursor accounts cannot be of type apikey: a crsr_ user API key must be exchanged for a session token, so import it via the Cursor login flow (it is stored as an oauth account and re-exchanged automatically)")
+}
+
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
@@ -459,6 +477,9 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if err := validateCursorAccountType(input.Platform, input.Type); err != nil {
+		return nil, err
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -592,6 +613,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Name = input.Name
 	}
 	if input.Type != "" {
+		// Closes the same door on update that CreateAccount closes: switching an
+		// existing Cursor account to apikey would strand it on a credential the
+		// gateway cannot read.
+		if err := validateCursorAccountType(account.Platform, input.Type); err != nil {
+			return nil, err
+		}
 		account.Type = input.Type
 	}
 	if input.Notes != nil {

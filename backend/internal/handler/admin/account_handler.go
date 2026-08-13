@@ -2677,8 +2677,12 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
-	// Handle Cursor accounts: explicit mapping keys (or default catalog) plus
-	// any observed upstream models recorded on the account.
+	// Handle Cursor accounts: the observed upstream models recorded on the
+	// account are authoritative when present, since they are what this
+	// subscription can actually be asked for. Only without a snapshot does the
+	// explicit mapping (or the fallback catalog) stand in for them — otherwise a
+	// free-tier account, which only observes "auto", would be shown offering
+	// every model in the catalog.
 	if account.Platform == service.PlatformCursor {
 		hasExplicitMapping := false
 		switch rawMapping := account.Credentials["model_mapping"].(type) {
@@ -2687,6 +2691,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		case map[string]string:
 			hasExplicitMapping = len(rawMapping) > 0
 		}
+		observed := service.CursorObservedModelIDs(account.Extra)
 
 		seen := make(map[string]struct{})
 		ids := make([]string, 0)
@@ -2703,17 +2708,24 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				ids = append(ids, id)
 			}
 		}
+		add(observed)
 		if hasExplicitMapping {
 			mapping := account.GetModelMapping()
+			observedSet := service.CursorObservedModelSet(account.Extra)
 			mappingKeys := make([]string, 0, len(mapping))
-			for requestedModel := range mapping {
+			for requestedModel, target := range mapping {
+				// With a snapshot in hand an alias is only real if its target was
+				// observed; keeping the rest would re-advertise models this
+				// account cannot address, which is the bug being fixed here.
+				if len(observedSet) > 0 && !service.CursorModelObserved(observedSet, target) {
+					continue
+				}
 				mappingKeys = append(mappingKeys, requestedModel)
 			}
 			add(mappingKeys)
-		} else {
+		} else if len(observed) == 0 {
 			add(cursorpkg.DefaultModelIDs())
 		}
-		add(service.CursorObservedModelIDs(account.Extra))
 		sort.Strings(ids)
 
 		models := make([]claude.Model, 0, len(ids))

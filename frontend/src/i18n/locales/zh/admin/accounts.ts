@@ -318,7 +318,6 @@ export default {
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
         cursorOauth: 'Cursor 深链登录',
-        cursorApikey: 'crsr_ Key / Access Token',
         antigravityApikey: '通过 Base URL + API Key 连接',
         upstream: '对接上游',
         upstreamDesc: '通过 Base URL + API Key 连接上游'
@@ -829,6 +828,7 @@ export default {
       cursor: {
         baseUrlHint: '留空使用官方端点 https://api2.cursor.sh。',
         apiKeyHint: '支持粘贴 crsr_ 开头的 User API Key，或直接粘贴 access token / WorkosCursorSessionToken（userId::JWT）。',
+        oauthOnlyHint: 'Cursor 只支持 OAuth 账号：crsr_ User API Key 不能直接当 Bearer，必须先兑换成 session token。要用 crsr_ Key 或 WorkosCursorSessionToken，请在下方授权流程里选择粘贴凭证，系统会自动兑换并在过期时自动续期。',
       },
       cursorCustomBaseUrl: {
         title: '自定义上游地址',

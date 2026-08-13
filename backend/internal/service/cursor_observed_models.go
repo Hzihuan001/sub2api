@@ -150,6 +150,53 @@ func cursorObservedModelIDs(models []cursorpkg.Model) []string {
 	return out
 }
 
+// cursorObservedLookupKey folds a model id onto the identity an observed
+// snapshot records it under, so a mapping target can be checked against it.
+//
+// The snapshot holds picker names, while a mapping target may carry the max-mode
+// suffix (which travels as a protocol flag, not part of the id) and may say
+// "auto" where the agent protocol says "default". Comparing raw strings would
+// drop legitimate aliases from /v1/models.
+func cursorObservedLookupKey(model string) string {
+	id := strings.ToLower(strings.TrimSpace(model))
+	for _, suffix := range []string{"-max", ":max"} {
+		if trimmed := strings.TrimSuffix(id, suffix); trimmed != id && trimmed != "" {
+			id = trimmed
+			break
+		}
+	}
+	if id == "auto" {
+		return cursorpkg.AgentDefaultModel
+	}
+	return id
+}
+
+// CursorObservedModelSet folds an account's observed model ids into lookup keys
+// so a mapping target can be tested against them. Nil when nothing is observed,
+// which callers must read as "no snapshot", not as "nothing is available".
+func CursorObservedModelSet(extra map[string]any) map[string]struct{} {
+	ids := CursorObservedModelIDs(extra)
+	if len(ids) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if key := cursorObservedLookupKey(id); key != "" {
+			set[key] = struct{}{}
+		}
+	}
+	return set
+}
+
+// CursorModelObserved reports whether target names a model the snapshot covers.
+func CursorModelObserved(observed map[string]struct{}, target string) bool {
+	if len(observed) == 0 {
+		return false
+	}
+	_, ok := observed[cursorObservedLookupKey(target)]
+	return ok
+}
+
 // CursorObservedModelIDs exposes an account's observed Cursor model IDs to
 // handlers (admin available-models view). Returns nil when nothing observed.
 func CursorObservedModelIDs(extra map[string]any) []string {

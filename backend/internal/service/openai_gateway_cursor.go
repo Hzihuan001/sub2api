@@ -111,13 +111,20 @@ func (s *OpenAIGatewayService) forwardCursorChatCompletions(
 
 // resolveCursorChatMeta resolves the billing/upstream model identity reusing the
 // account model_mapping, matching the Grok raw path.
+//
+// Deliberately not normalizeOpenAIModelForUpstream: that is the Codex model
+// table, and for an OAuth account it rewrites ids to whatever Codex serves —
+// gpt-5 becomes gpt-5.4, and its normalization drops the "-max" suffix that
+// cursorAgentWireModel needs to set max mode. Cursor's own model ids are
+// authoritative here; the only line-level mapping the agent protocol wants is
+// auto → default, which cursorAgentWireModel applies. Anything else and the turn
+// either asks for a model this account cannot address or silently loses max mode.
 func (s *OpenAIGatewayService) resolveCursorChatMeta(account *Account, requestedModel, defaultMappedModel string, stream bool) cursorChatMeta {
 	billingModel := resolveOpenAIForwardModel(account, requestedModel, defaultMappedModel)
-	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	return cursorChatMeta{
 		originalModel: requestedModel,
 		billingModel:  billingModel,
-		upstreamModel: upstreamModel,
+		upstreamModel: strings.TrimSpace(billingModel),
 		stream:        stream,
 	}
 }

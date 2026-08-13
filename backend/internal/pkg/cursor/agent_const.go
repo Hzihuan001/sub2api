@@ -61,7 +61,11 @@ const (
 
 	// AgentAcceptEncoding is the per-frame compression the client accepts
 	// (connect-accept-encoding, not the HTTP accept-encoding).
-	AgentAcceptEncoding = "gzip,br"
+	//
+	// gzip only: FrameReader decodes the compressed bit with gunzip and nothing
+	// else, so advertising br invites frames this client cannot read — every one
+	// of them would fail the turn at "decompress frame".
+	AgentAcceptEncoding = "gzip"
 
 	// ConnectProtocolVersion is the connect-protocol-version header value.
 	ConnectProtocolVersion = "1"

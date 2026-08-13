@@ -41,6 +41,30 @@ func TestEncodeFrameGzipRoundTrip(t *testing.T) {
 	require.Equal(t, payload, f.Payload)
 }
 
+// A frame whose compressed size passes maxFrameSize can still expand past what
+// the gateway is willing to hold. Bounding only the wire length left a
+// decompression bomb: ~64 KiB of zeros gunzips to 64 MiB.
+func TestFrameReaderRejectsDecompressionBomb(t *testing.T) {
+	t.Parallel()
+	bomb := gzipBytes(make([]byte, maxDecompressedFrameSize+1))
+	require.Less(t, len(bomb), maxFrameSize, "the bomb must pass the wire-length cap to test the decompressed one")
+
+	fr := NewFrameReader(bytes.NewReader(encodeRawFrame(flagCompressed, bomb)))
+	_, err := fr.Next()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exceeds max")
+}
+
+// The cap is a ceiling, not a budget: a payload landing exactly on it decodes.
+func TestFrameReaderAcceptsPayloadAtDecompressedCap(t *testing.T) {
+	t.Parallel()
+	payload := make([]byte, maxDecompressedFrameSize)
+	fr := NewFrameReader(bytes.NewReader(encodeRawFrame(flagCompressed, gzipBytes(payload))))
+	f, err := fr.Next()
+	require.NoError(t, err)
+	require.Len(t, f.Payload, maxDecompressedFrameSize)
+}
+
 func TestFrameReaderStickyPackets(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer

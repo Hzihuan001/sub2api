@@ -47,6 +47,11 @@ const (
 // hostile length prefix cannot trigger an unbounded allocation.
 const maxFrameSize = 64 << 20 // 64 MiB
 
+// maxDecompressedFrameSize caps a frame's payload *after* gunzip. Bounding the
+// compressed length alone is not enough: gzip reaches ~1000:1 on repetitive
+// input, so a frame well under maxFrameSize can still expand into gigabytes.
+const maxDecompressedFrameSize = 64 << 20 // 64 MiB
+
 // EncodeFrame wraps a protobuf payload in a single Connect data frame. When
 // compress is true the payload is gzipped and the compressed bit is set. It
 // only ever produces data frames (flag 0x00/0x01); end-of-stream frames are
@@ -154,5 +159,14 @@ func gunzip(b []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer gr.Close()
-	return io.ReadAll(gr)
+	// One byte past the cap, so a payload that lands exactly on it still decodes
+	// while anything larger is rejected instead of silently truncated.
+	out, err := io.ReadAll(io.LimitReader(gr, maxDecompressedFrameSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(out) > maxDecompressedFrameSize {
+		return nil, fmt.Errorf("cursor: decompressed frame exceeds max %d bytes", maxDecompressedFrameSize)
+	}
+	return out, nil
 }

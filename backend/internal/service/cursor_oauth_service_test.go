@@ -304,6 +304,21 @@ func TestCursorWebSessionTokenIsSensitive(t *testing.T) {
 	require.Equal(t, "https://new", merged["base_url"])
 }
 
+// An apikey-typed Cursor account can never work: the gateway's API Key branch
+// reads GetOpenAIApiKey() (empty for Cursor), and a crsr_ key is not a bearer
+// anyway — it has to be exchanged, which only the oauth lifecycle does.
+func TestValidateCursorAccountTypeRejectsAPIKey(t *testing.T) {
+	err := validateCursorAccountType(PlatformCursor, AccountTypeAPIKey)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "apikey")
+
+	require.NoError(t, validateCursorAccountType(PlatformCursor, AccountTypeOAuth))
+	require.NoError(t, validateCursorAccountType(PlatformCursor, ""))
+	// Other platforms keep their API-key accounts.
+	require.NoError(t, validateCursorAccountType(PlatformGrok, AccountTypeAPIKey))
+	require.NoError(t, validateCursorAccountType(PlatformOpenAI, AccountTypeAPIKey))
+}
+
 func TestClassifyCursorWebSessionFailure(t *testing.T) {
 	class := classifyCursorCredentialFailure(errCursorWebSessionNotUpgraded)
 	require.Equal(t, CursorCredentialReasonWebSession, class.reason)

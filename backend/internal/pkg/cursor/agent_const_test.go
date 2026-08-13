@@ -16,7 +16,8 @@ func TestBuildAgentHeadersSendsExactlyTheCLISet(t *testing.T) {
 		"Authorization":            "Bearer jwt-value",
 		"Content-Type":             ContentTypeConnectProto,
 		"Connect-Protocol-Version": "1",
-		"Connect-Accept-Encoding":  "gzip,br",
+		// gzip only: this client can decode nothing else per frame.
+		"Connect-Accept-Encoding": "gzip",
 		"X-Cursor-Client-Version":  "cli-2026.01.01-abcdef0",
 		"X-Cursor-Client-Type":     "cli",
 		"X-Ghost-Mode":             "true",
