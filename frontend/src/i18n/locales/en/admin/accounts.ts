@@ -166,10 +166,6 @@ export default {
         creditsExhaustedUntil: 'AI Credits exhausted, expected recovery at {time}',
         overloadedUntil: 'Overloaded until {time}',
         viewTempUnschedDetails: 'View temp unschedulable details',
-        overageActive: 'Overage',
-        overageActiveUntil: 'Using overage until the reset window at {time}',
-        overageExhausted: 'Overage Exhausted',
-        overageExhaustedUntil: 'Overage exhausted, expected recovery at {time}',
         tempUnschedulableUntil: 'Resumes {time}'
       },
       columns: {
@@ -1559,7 +1555,6 @@ export default {
         kiroCredits: 'Credits',
         kiroDaysLeft: '{days}d left',
         kiroExpires: 'Expires',
-        kiroOverage: 'Overage',
         kiroReset: 'Reset'
       },
       openaiQuotaReset: {

@@ -369,10 +369,6 @@ export default {
         creditsExhaustedUntil: 'AI Credits 已用尽，预计 {time} 恢复',
         overloadedUntil: '负载过重，重置时间：{time}',
         viewTempUnschedDetails: '查看临时不可调度详情',
-        overageActive: '超量',
-        overageActiveUntil: '当前正在使用超量额度，重置窗口时间 {time}',
-        overageExhausted: '超量额度已用尽',
-        overageExhaustedUntil: '超量额度已用尽，预计 {time} 恢复',
         tempUnschedulableUntil: '预计 {time} 恢复'
       },
       tempUnschedulable: {
@@ -457,7 +453,6 @@ export default {
         kiroCredits: 'Credits',
         kiroDaysLeft: '剩余 {days} 天',
         kiroExpires: '到期',
-        kiroOverage: '超额',
         kiroReset: '重置'
       },
       openaiQuotaReset: {
