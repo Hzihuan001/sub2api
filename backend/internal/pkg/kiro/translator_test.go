@@ -34,6 +34,78 @@ func TestBuildRuntimeUserAgentStable(t *testing.T) {
 	require.Contains(t, amzUA, machineID)
 }
 
+func TestKiroResponseBrandComesFromUpstreamModel(t *testing.T) {
+	tests := []struct {
+		model string
+		want  string
+	}{
+		{model: "claude-sonnet-4.6", want: "Claude"},
+		{model: "gpt-5.6-sol", want: "Codex"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			result, err := BuildKiroPayloadWithRequestModel(
+				[]byte(`{"model":"custom-model-alias","messages":[{"role":"user","content":"hi"}]}`),
+				tt.model, "custom-model-alias", "", "AI_EDITOR", nil,
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, result.Context.ResponseBrand)
+		})
+	}
+}
+
+func TestParseNonStreamingEventStreamRebrandsResponseStrings(t *testing.T) {
+	tests := []struct {
+		name  string
+		brand string
+	}{
+		{name: "claude", brand: "Claude"},
+		{name: "gpt", brand: "Codex"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := bytes.NewBuffer(nil)
+			_, _ = stream.Write(buildEventStreamFrame(t, "assistantResponseEvent", map[string]any{
+				"assistantResponseEvent": map[string]any{"content": "Kiro response"},
+			}))
+			_, _ = stream.Write(buildEventStreamFrame(t, "toolUseEvent", map[string]any{
+				"toolUseEvent": map[string]any{
+					"toolUseId": "toolu_brand",
+					"name":      "custom_tool",
+					"input":     `{"message":"Kiro","nested":["from Kiro"]}`,
+					"stop":      true,
+				},
+			}))
+
+			result, err := ParseNonStreamingEventStreamWithContext(stream, "custom-model-alias", KiroRequestContext{ResponseBrand: tt.brand})
+			require.NoError(t, err)
+			require.Equal(t, tt.brand+" response", gjson.GetBytes(result.ResponseBody, "content.0.text").String())
+			require.Equal(t, tt.brand, gjson.GetBytes(result.ResponseBody, "content.1.input.message").String())
+			require.Equal(t, "from "+tt.brand, gjson.GetBytes(result.ResponseBody, "content.1.input.nested.0").String())
+			require.NotContains(t, string(result.ResponseBody), "Kiro")
+		})
+	}
+}
+
+func TestStreamEventStreamRebrandsAcrossEventBoundaries(t *testing.T) {
+	stream := bytes.NewBuffer(nil)
+	for _, content := range []string{"Ki", "ro says K", "iro"} {
+		_, _ = stream.Write(buildEventStreamFrame(t, "assistantResponseEvent", map[string]any{
+			"assistantResponseEvent": map[string]any{"content": content},
+		}))
+	}
+
+	var out bytes.Buffer
+	_, err := StreamEventStreamAsAnthropicWithContext(
+		context.Background(), stream, &out, "custom-model-alias", 1, KiroRequestContext{ResponseBrand: "Codex"},
+	)
+	require.NoError(t, err)
+	require.NotContains(t, out.String(), "Kiro")
+	require.Equal(t, 2, strings.Count(out.String(), "Codex"))
+}
+
 func TestBuildKiroPayloadBasic(t *testing.T) {
 	SetCachedWebSearchDescription("")
 	body := []byte(`{

@@ -113,6 +113,9 @@ type KiroRequestContext struct {
 	// 没有对应入口,不兜底会让响应体 usage.input_tokens 输出 0。
 	// 为 0 时不生效（保持原行为）。
 	EstimatedInputTokens int
+	// ResponseBrand is derived from the actual upstream model so client-facing
+	// aliases do not affect response branding.
+	ResponseBrand string
 }
 
 type KiroBuildResult struct {
@@ -360,6 +363,73 @@ func IsKiroGPTModel(modelID string) bool {
 	}
 }
 
+func responseBrandForKiroModel(modelID string) string {
+	if IsKiroGPTModel(modelID) {
+		return "Codex"
+	}
+	if strings.HasPrefix(normalizeModelAlias(modelID), "claude-") {
+		return "Claude"
+	}
+	return ""
+}
+
+func replaceKiroResponseString(value, brand string) string {
+	if brand == "" || !strings.Contains(value, "Kiro") {
+		return value
+	}
+	return strings.ReplaceAll(value, "Kiro", brand)
+}
+
+func replaceKiroResponseValue(value any, brand string) any {
+	switch typed := value.(type) {
+	case string:
+		return replaceKiroResponseString(typed, brand)
+	case map[string]any:
+		for key, item := range typed {
+			typed[key] = replaceKiroResponseValue(item, brand)
+		}
+	case []any:
+		for index, item := range typed {
+			typed[index] = replaceKiroResponseValue(item, brand)
+		}
+	}
+	return value
+}
+
+func replaceKiroResponseMap(value map[string]any, brand string) map[string]any {
+	replaced, _ := replaceKiroResponseValue(value, brand).(map[string]any)
+	return replaced
+}
+
+type kiroResponseStreamRewriter struct {
+	brand   string
+	pending string
+}
+
+func (r *kiroResponseStreamRewriter) Write(value string) string {
+	if r.brand == "" {
+		return value
+	}
+	r.pending += value
+	keep := 0
+	for length := len("Kiro") - 1; length > 0; length-- {
+		if strings.HasSuffix(r.pending, "Kiro"[:length]) {
+			keep = length
+			break
+		}
+	}
+	safeEnd := len(r.pending) - keep
+	result := replaceKiroResponseString(r.pending[:safeEnd], r.brand)
+	r.pending = r.pending[safeEnd:]
+	return result
+}
+
+func (r *kiroResponseStreamRewriter) Flush() string {
+	result := replaceKiroResponseString(r.pending, r.brand)
+	r.pending = ""
+	return result
+}
+
 func kiroMaxOutputTokensForModel(model string) int {
 	normalized := normalizeModelAlias(model)
 	switch normalized {
@@ -392,7 +462,10 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 // BuildKiroPayloadWithRequestModel 使用映射前的客户端模型名构建身份提示词。
 // modelID 仍用于上游模型选择；requestModel 只用于模型身份声明。
 func BuildKiroPayloadWithRequestModel(claudeBody []byte, modelID, requestModel, profileArn, origin string, headers http.Header) (*KiroBuildResult, error) {
-	requestCtx := KiroRequestContext{ToolNameMap: map[string]string{}}
+	requestCtx := KiroRequestContext{
+		ToolNameMap:   map[string]string{},
+		ResponseBrand: responseBrandForKiroModel(modelID),
+	}
 	outputCap := kiroMaxOutputTokensForModel(firstNonEmptyString(gjson.GetBytes(claudeBody, "model").String(), modelID))
 	var maxTokens int64
 	if mt := gjson.GetBytes(claudeBody, "max_tokens"); mt.Exists() {
@@ -549,6 +622,10 @@ func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, reque
 	if usage.InputTokens == 0 && requestCtx.EstimatedInputTokens > 0 {
 		usage.InputTokens = requestCtx.EstimatedInputTokens
 	}
+	content = replaceKiroResponseString(content, requestCtx.ResponseBrand)
+	for index := range toolUses {
+		toolUses[index].Input = replaceKiroResponseMap(toolUses[index].Input, requestCtx.ResponseBrand)
+	}
 	return &ParseResult{
 		ResponseBody: buildClaudeResponse(content, toolUses, model, usage, stopReason, requestCtx),
 		Usage:        usage,
@@ -586,6 +663,8 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	stripThinkingLeadingNewline := false
 	currentMessageID := ""
 	var outputTextBuf strings.Builder
+	contentBrandRewriter := kiroResponseStreamRewriter{brand: requestCtx.ResponseBrand}
+	reasoningBrandRewriter := kiroResponseStreamRewriter{brand: requestCtx.ResponseBrand}
 
 	writeEvent := func(event string, data any) error {
 		payload, err := json.Marshal(data)
@@ -642,6 +721,20 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		if !thinkingBlockOpen {
 			return nil
 		}
+		if text := reasoningBrandRewriter.Flush(); text != "" {
+			_, _ = outputTextBuf.WriteString(text)
+			_, _ = currentThinking.WriteString(text)
+			if err := writeEvent("content_block_delta", map[string]any{
+				"type":  "content_block_delta",
+				"index": thinkingBlockIndex,
+				"delta": map[string]any{
+					"type":     "thinking_delta",
+					"thinking": text,
+				},
+			}); err != nil {
+				return err
+			}
+		}
 		if currentThinking.Len() > 0 {
 			sig := thinkingSignature(currentThinking.String(), model, currentMessageID)
 			currentThinking.Reset()
@@ -692,6 +785,12 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		if !ok {
 			return nil
 		}
+		input = replaceKiroResponseMap(input, requestCtx.ResponseBrand)
+		inputJSONBytes, err := json.Marshal(input)
+		if err != nil {
+			return nil
+		}
+		inputJSON = string(inputJSONBytes)
 		processedIDs[toolUseID] = true
 		tool := KiroToolUse{ToolUseID: toolUseID, Name: responseName, Input: input}
 		contentKey := toolUseContentKey(tool)
@@ -906,6 +1005,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	emitToolUse := func(tool KiroToolUse) error {
 		structuredOutput := isStructuredOutputToolName(tool.Name, requestCtx)
 		tool.Name = normalizeResponseToolName(restoreResponseToolName(tool.Name, requestCtx))
+		tool.Input = replaceKiroResponseMap(tool.Input, requestCtx.ResponseBrand)
 		if !structuredOutput && !isEmittableToolUse(tool) {
 			return nil
 		}
@@ -985,6 +1085,18 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		pendingAssistantText += text
 		return flushPendingAssistantText()
 	}
+	var processThinkingTaggedText func(string) error
+	flushContentBrand := func() error {
+		text := contentBrandRewriter.Flush()
+		if text == "" {
+			return nil
+		}
+		if requestCtx.ThinkingEnabled {
+			return processThinkingTaggedText(text)
+		}
+		pendingAssistantText += text
+		return flushPendingAssistantText()
+	}
 	startThinkingBlock := func() error {
 		if err := closeOpenStreamingTool(); err != nil {
 			return err
@@ -1020,6 +1132,10 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 				return err
 			}
 		}
+		text = reasoningBrandRewriter.Write(text)
+		if text == "" {
+			return nil
+		}
 		if text != "" {
 			_, _ = outputTextBuf.WriteString(text)
 			_, _ = currentThinking.WriteString(text)
@@ -1036,7 +1152,7 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	finishThinkingBlock := func() error {
 		return closeThinking()
 	}
-	processThinkingTaggedText := func(text string) error {
+	processThinkingTaggedText = func(text string) error {
 		if text == "" {
 			return nil
 		}
@@ -1172,12 +1288,19 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			if evt.IsDuplicateContent {
 				return nil
 			}
-			if requestCtx.ThinkingEnabled {
-				return processThinkingTaggedText(evt.Content)
+			content := contentBrandRewriter.Write(evt.Content)
+			if content == "" {
+				return nil
 			}
-			pendingAssistantText += evt.Content
+			if requestCtx.ThinkingEnabled {
+				return processThinkingTaggedText(content)
+			}
+			pendingAssistantText += content
 			return flushPendingAssistantText()
 		case kiroSemanticReasoning:
+			if err := flushContentBrand(); err != nil {
+				return err
+			}
 			if evt.Reasoning == "" || !requestCtx.ThinkingEnabled {
 				return nil
 			}
@@ -1186,6 +1309,9 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			// 不可对每个片段单独包 <thinking></thinking>，否则每片会各自开关一个块导致碎片化。
 			return emitThinkingDelta(evt.Reasoning)
 		case kiroSemanticAssistantTU:
+			if err := flushContentBrand(); err != nil {
+				return err
+			}
 			if evt.ToolUse == nil || processedIDs[evt.ToolUse.ToolUseID] {
 				return nil
 			}
@@ -1200,16 +1326,25 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			}
 			return emitToolUse(*evt.ToolUse)
 		case kiroSemanticToolUse:
+			if err := flushContentBrand(); err != nil {
+				return err
+			}
 			if err := flushThinkingAtBoundary(); err != nil {
 				return err
 			}
 			return processStreamingToolInput(evt.ToolUseID, evt.ToolName, evt.ToolInput, evt.ToolInputMap)
 		case kiroSemanticToolInput:
+			if err := flushContentBrand(); err != nil {
+				return err
+			}
 			if err := flushThinkingAtBoundary(); err != nil {
 				return err
 			}
 			return processStreamingToolInput(evt.ToolUseID, evt.ToolName, evt.ToolInput, evt.ToolInputMap)
 		case kiroSemanticToolStop:
+			if err := flushContentBrand(); err != nil {
+				return err
+			}
 			if err := flushThinkingAtBoundary(); err != nil {
 				return err
 			}
@@ -1279,6 +1414,9 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		}
 	}
 
+	if err := flushContentBrand(); err != nil {
+		return nil, err
+	}
 	if err := closeOpenStreamingTool(); err != nil {
 		return nil, err
 	}
