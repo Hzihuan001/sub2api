@@ -91,6 +91,12 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	"220_clear_non_grok_video_generation_config.sql": newMigrationChecksumCompatibilityRule("85e320b9ec64f2d3fcd8cf705b2b4e76a7b49f7a57140c14bff97f32691c818b", "3da48c8fdffe6390325f43d08b8e353e0a365df43d44a78dbbe655d0deb18402"),
 	"219_group_search_price_per_1k.sql":              newMigrationChecksumCompatibilityRule("e86786ebcc3b14206fd2d321380a4e50e80cdadbfcf4962c639255e6a14008db", "df6ffd71b97e30ec2c8fe7b95e15783042dea58c553e32701ee7c42a5619af80"),
 	"218_group_audio_voice_pricing.sql":              newMigrationChecksumCompatibilityRule("40ee9f3a2af0e0a5e99dabc878fd0fe98be1011f26bcfcefcac7197f7081f0e7", "c2a5e5b4ffd6968ad1c10593289fbc11192cdea19fec3ed9bce3a84eff9a8351"),
+	// 224 重建 user_platform_quotas_platform_check 时漏了 kiro（145 起就在约束内）。
+	// 修复期间有环境直接在 224 文件末尾补 'kiro' 并已应用（db=4de3bf30），随后该文件被
+	// 回滚为已发布版本（file=5227db3c）→ 双向 checksum 冲突。两个版本都只影响同一个
+	// CHECK 约束，且 227_user_platform_quotas_restore_kiro.sql 会把终态统一为全部 9
+	// 平台（DROP + 重建，幂等），故两版互认安全。
+	"224_user_platform_quotas_add_cn_providers.sql": newMigrationChecksumCompatibilityRule("5227db3c1a6a1e2e422a9f9ba9d1f490c708b6c6dd91ce89f3c48115421a3e55", "4de3bf301cd838bbaf85613ce37dd47643165c0e3f36a1075341ff71aa37fae1"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。
