@@ -214,7 +214,6 @@ const GRADIENT_SUBTEXT_DEFAULT = 'text-primary-200'
 // ── Public API ──────────────────────────────────────────────────────
 
 function isPlatform(p: string): p is Platform {
-function isPlatform(p: string): p is Platform {
   return (
     p === 'anthropic' ||
     p === 'openai' ||
