@@ -380,27 +380,6 @@ func replaceKiroResponseString(value, brand string) string {
 	return strings.ReplaceAll(value, "Kiro", brand)
 }
 
-func replaceKiroResponseValue(value any, brand string) any {
-	switch typed := value.(type) {
-	case string:
-		return replaceKiroResponseString(typed, brand)
-	case map[string]any:
-		for key, item := range typed {
-			typed[key] = replaceKiroResponseValue(item, brand)
-		}
-	case []any:
-		for index, item := range typed {
-			typed[index] = replaceKiroResponseValue(item, brand)
-		}
-	}
-	return value
-}
-
-func replaceKiroResponseMap(value map[string]any, brand string) map[string]any {
-	replaced, _ := replaceKiroResponseValue(value, brand).(map[string]any)
-	return replaced
-}
-
 type kiroResponseStreamRewriter struct {
 	brand   string
 	pending string
@@ -622,10 +601,10 @@ func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, reque
 	if usage.InputTokens == 0 && requestCtx.EstimatedInputTokens > 0 {
 		usage.InputTokens = requestCtx.EstimatedInputTokens
 	}
+	// Rebrand assistant prose only. Tool inputs are opaque structured data and
+	// must be passed through unchanged so paths, identifiers, and arguments do
+	// not get corrupted by a presentation-layer substitution.
 	content = replaceKiroResponseString(content, requestCtx.ResponseBrand)
-	for index := range toolUses {
-		toolUses[index].Input = replaceKiroResponseMap(toolUses[index].Input, requestCtx.ResponseBrand)
-	}
 	return &ParseResult{
 		ResponseBody: buildClaudeResponse(content, toolUses, model, usage, stopReason, requestCtx),
 		Usage:        usage,
@@ -785,12 +764,6 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		if !ok {
 			return nil
 		}
-		input = replaceKiroResponseMap(input, requestCtx.ResponseBrand)
-		inputJSONBytes, err := json.Marshal(input)
-		if err != nil {
-			return nil
-		}
-		inputJSON = string(inputJSONBytes)
 		processedIDs[toolUseID] = true
 		tool := KiroToolUse{ToolUseID: toolUseID, Name: responseName, Input: input}
 		contentKey := toolUseContentKey(tool)
@@ -1005,7 +978,6 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	emitToolUse := func(tool KiroToolUse) error {
 		structuredOutput := isStructuredOutputToolName(tool.Name, requestCtx)
 		tool.Name = normalizeResponseToolName(restoreResponseToolName(tool.Name, requestCtx))
-		tool.Input = replaceKiroResponseMap(tool.Input, requestCtx.ResponseBrand)
 		if !structuredOutput && !isEmittableToolUse(tool) {
 			return nil
 		}

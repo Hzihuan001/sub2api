@@ -82,9 +82,9 @@ func TestParseNonStreamingEventStreamRebrandsResponseStrings(t *testing.T) {
 			result, err := ParseNonStreamingEventStreamWithContext(stream, "custom-model-alias", KiroRequestContext{ResponseBrand: tt.brand})
 			require.NoError(t, err)
 			require.Equal(t, tt.brand+" response", gjson.GetBytes(result.ResponseBody, "content.0.text").String())
-			require.Equal(t, tt.brand, gjson.GetBytes(result.ResponseBody, "content.1.input.message").String())
-			require.Equal(t, "from "+tt.brand, gjson.GetBytes(result.ResponseBody, "content.1.input.nested.0").String())
-			require.NotContains(t, string(result.ResponseBody), "Kiro")
+			require.Equal(t, "Kiro", gjson.GetBytes(result.ResponseBody, "content.1.input.message").String())
+			require.Equal(t, "from Kiro", gjson.GetBytes(result.ResponseBody, "content.1.input.nested.0").String())
+			require.Contains(t, string(result.ResponseBody), "Kiro")
 		})
 	}
 }
@@ -96,14 +96,24 @@ func TestStreamEventStreamRebrandsAcrossEventBoundaries(t *testing.T) {
 			"assistantResponseEvent": map[string]any{"content": content},
 		}))
 	}
+	_, _ = stream.Write(buildEventStreamFrame(t, "toolUseEvent", map[string]any{
+		"toolUseEvent": map[string]any{
+			"toolUseId": "toolu_stream_brand",
+			"name":      "custom_tool",
+			"input":     `{"message":"Kiro"}`,
+			"stop":      true,
+		},
+	}))
 
 	var out bytes.Buffer
 	_, err := StreamEventStreamAsAnthropicWithContext(
 		context.Background(), stream, &out, "custom-model-alias", 1, KiroRequestContext{ResponseBrand: "Codex"},
 	)
 	require.NoError(t, err)
-	require.NotContains(t, out.String(), "Kiro")
+	require.Contains(t, out.String(), "Codex says ")
 	require.Equal(t, 2, strings.Count(out.String(), "Codex"))
+	// Tool input is JSON-encoded inside the SSE payload; the literal Kiro must survive.
+	require.Contains(t, out.String(), "Kiro")
 }
 
 func TestBuildKiroPayloadBasic(t *testing.T) {
