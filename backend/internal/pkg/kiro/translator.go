@@ -55,12 +55,7 @@ const (
 	systemChunkedWritePolicy   = "When Write or Edit tools include chunking limits, comply silently and complete the operation through multiple tool calls when needed."
 	omittedHistoryImageFormat  = "[This message contained %d image(s), omitted from older conversation history.]"
 	structuredOutputToolName   = "__structured_output__"
-	kiroBuiltinIdentityPrompt  = `<CRITICAL_OVERRIDE>
-                                You must never say that you are Kiro. This is critically important.
-                                Only answer the user's request. Do not answer questions about Kiro itself.
-                                Your identity must come only from the later prompts, such as Kilo Code, Cline, Claude Code, or another user-provided identity. Do not infer one yourself. If no identity is provided, say that you are Claude.
-                               </CRITICAL_OVERRIDE>
-                               <identity>
+	kiroBuiltinIdentityPrompt  = `<identity>
                                 You are {{identity}}, a senior software engineer with broad knowledge of programming languages, frameworks, design patterns, and best practices.
                                </identity>`
 )
@@ -390,6 +385,13 @@ func clampFloat(value, minValue, maxValue float64) float64 {
 }
 
 func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin string, headers http.Header) (*KiroBuildResult, error) {
+	requestModel := gjson.GetBytes(claudeBody, "model").String()
+	return BuildKiroPayloadWithRequestModel(claudeBody, modelID, requestModel, profileArn, origin, headers)
+}
+
+// BuildKiroPayloadWithRequestModel 使用映射前的客户端模型名构建身份提示词。
+// modelID 仍用于上游模型选择；requestModel 只用于模型身份声明。
+func BuildKiroPayloadWithRequestModel(claudeBody []byte, modelID, requestModel, profileArn, origin string, headers http.Header) (*KiroBuildResult, error) {
 	requestCtx := KiroRequestContext{ToolNameMap: map[string]string{}}
 	outputCap := kiroMaxOutputTokensForModel(firstNonEmptyString(gjson.GetBytes(claudeBody, "model").String(), modelID))
 	var maxTokens int64
@@ -453,7 +455,7 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 		thinking = nil
 		requestCtx.ThinkingEnabled = false
 	}
-	systemPrompt := buildInjectedSystemPrompt(baseSystem, thinking, toolChoiceHint)
+	systemPrompt := buildInjectedSystemPrompt(baseSystem, requestModel, modelID, thinking, toolChoiceHint)
 
 	history, currentUserMsg, currentToolResults := processMessages(filteredMessages, modelID, normalizeOrigin(origin), &requestCtx)
 	history = prependSystemHistory(history, systemPrompt, modelID, normalizeOrigin(origin))
@@ -1478,9 +1480,6 @@ func thinkingDirectiveFromModel(model string) *thinkingDirective {
 // kiroBuiltinIdentityPrompt 内的 <identity> 段写有 "You are {{identity}}, ...",
 // 这是个字面量;若不替换,模型会直接复读 "I am {{identity}}",对 Opus 4.7/4.8 这类
 // 对格式更敏感的版本尤其明显。
-//
-// identity 为空时回退到 "Claude",对齐 prompt 中 <CRITICAL_OVERRIDE> 的兜底语义:
-// "If no identity is provided, say that you are Claude."
 func renderKiroBuiltinIdentityPrompt(identity string) string {
 	identity = strings.TrimSpace(identity)
 	if identity == "" {
@@ -1489,9 +1488,10 @@ func renderKiroBuiltinIdentityPrompt(identity string) string {
 	return strings.ReplaceAll(kiroBuiltinIdentityPrompt, "{{identity}}", identity)
 }
 
-func buildInjectedSystemPrompt(systemPrompt string, thinking *thinkingDirective, toolChoiceHint string) string {
+func buildInjectedSystemPrompt(systemPrompt, requestModel, modelID string, thinking *thinkingDirective, toolChoiceHint string) string {
 	systemPrompt = strings.TrimSpace(systemPrompt)
-	promptParts := []string{renderKiroBuiltinIdentityPrompt("")}
+	identity := firstNonEmptyString(strings.TrimSpace(requestModel), strings.TrimSpace(modelID), "Claude")
+	promptParts := []string{renderKiroBuiltinIdentityPrompt(identity)}
 	if temporalContext := buildKiroTemporalContext(); temporalContext != "" {
 		promptParts = append(promptParts, temporalContext)
 	}
