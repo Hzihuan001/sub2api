@@ -2806,6 +2806,7 @@ func TestGatewayServiceCalculateRecordUsageCost_KiroGPT56UsesOpenAIFallbackInste
 		"gpt-5.6-terra",
 		1.0,
 		1.0,
+		time.Time{},
 		&recordUsageOpts{IsKiroAccount: true},
 	)
 
