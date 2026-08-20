@@ -2,6 +2,7 @@
   <BaseDialog :show="show" :title="t('admin.usage.cleanup.title')" width="wide" @close="handleClose">
     <div class="space-y-4">
       <UsageFilters
+        v-if="!props.readOnly"
         v-model="localFilters"
         v-model:startDate="localStartDate"
         v-model:endDate="localEndDate"
@@ -10,7 +11,7 @@
         @change="noop"
       />
 
-      <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      <div v-if="!props.readOnly" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
         {{ t('admin.usage.cleanup.warning') }}
       </div>
 
@@ -44,7 +45,7 @@
                   </span>
                   <span class="text-xs text-gray-400">#{{ task.id }}</span>
                   <button
-                    v-if="canCancel(task)"
+                    v-if="!props.readOnly && canCancel(task)"
                     type="button"
                     class="btn btn-ghost btn-xs text-rose-600 hover:text-rose-700 dark:text-rose-300"
                     @click="openCancelConfirm(task)"
@@ -87,7 +88,7 @@
         <button type="button" class="btn btn-secondary" @click="handleClose">
           {{ t('common.cancel') }}
         </button>
-        <button type="button" class="btn btn-danger" :disabled="submitting" @click="openConfirm">
+        <button v-if="!props.readOnly" type="button" class="btn btn-danger" :disabled="submitting" @click="openConfirm">
           {{ submitting ? t('admin.usage.cleanup.submitting') : t('admin.usage.cleanup.submit') }}
         </button>
       </div>
@@ -95,6 +96,7 @@
   </BaseDialog>
 
   <ConfirmDialog
+    v-if="!props.readOnly"
     :show="confirmVisible"
     :title="t('admin.usage.cleanup.confirmTitle')"
     :message="t('admin.usage.cleanup.confirmMessage')"
@@ -105,6 +107,7 @@
   />
 
   <ConfirmDialog
+    v-if="!props.readOnly"
     :show="cancelConfirmVisible"
     :title="t('admin.usage.cleanup.cancelConfirmTitle')"
     :message="t('admin.usage.cleanup.cancelConfirmMessage')"
@@ -132,9 +135,10 @@ interface Props {
   filters: AdminUsageQueryParams
   startDate: string
   endDate: string
+  readOnly?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { readOnly: false })
 const emit = defineEmits(['close'])
 
 const { t } = useI18n()
@@ -328,6 +332,7 @@ const buildPayload = (): CreateUsageCleanupTaskRequest | null => {
 }
 
 const submitCleanup = async () => {
+	if (props.readOnly) return
   const payload = buildPayload()
   if (!payload) {
     confirmVisible.value = false
@@ -348,6 +353,7 @@ const submitCleanup = async () => {
 }
 
 const cancelTask = async () => {
+	if (props.readOnly) return
   const task = cancelTarget.value
   if (!task) {
     cancelConfirmVisible.value = false

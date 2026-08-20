@@ -18,6 +18,15 @@ const {
   getBatchUserAttributes: vi.fn()
 }))
 
+const authStore = vi.hoisted(() => ({
+  isAdmin: true,
+  isOperator: false,
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authStore,
+}))
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     users: {
@@ -123,6 +132,8 @@ describe('admin UsersView', () => {
   beforeEach(() => {
     vi.useRealTimers()
     localStorage.clear()
+    authStore.isAdmin = true
+    authStore.isOperator = false
 
     listUsers.mockReset()
     getAllGroups.mockReset()

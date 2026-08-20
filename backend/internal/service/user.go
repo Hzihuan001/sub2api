@@ -68,6 +68,16 @@ func (u *User) IsAdmin() bool {
 	return u.Role == RoleAdmin
 }
 
+func (u *User) IsOperator() bool {
+	return u.Role == RoleOperator
+}
+
+// IsManagement reports whether the user may authenticate to the management
+// surface. Route-level authorization still decides what an operator may do.
+func (u *User) IsManagement() bool {
+	return u.IsAdmin() || u.IsOperator()
+}
+
 func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }

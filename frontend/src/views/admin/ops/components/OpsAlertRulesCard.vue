@@ -14,6 +14,7 @@ import { formatDateTime } from '../utils/opsFormatters'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const props = withDefaults(defineProps<{ readOnly?: boolean }>(), { readOnly: false })
 
 // 与 DataTable 一致：< 768px 切换为卡片视图，避免宽表在移动端被截断。
 const isDesktopViewport = useMediaQuery('(min-width: 768px)')
@@ -301,12 +302,14 @@ function newRuleDraft(): AlertRule {
 }
 
 function openCreate() {
+	if (props.readOnly) return
   editingId.value = null
   draft.value = newRuleDraft()
   showEditor.value = true
 }
 
 function openEdit(rule: AlertRule) {
+	if (props.readOnly) return
   editingId.value = rule.id ?? null
   draft.value = JSON.parse(JSON.stringify(rule))
   showEditor.value = true
@@ -337,6 +340,7 @@ const editorValidation = computed(() => {
 })
 
 async function save() {
+	if (props.readOnly) return
   if (!draft.value) return
   if (!editorValidation.value.valid) {
     appStore.showError(editorValidation.value.errors[0] || t('admin.ops.alertRules.validation.invalid'))
@@ -366,11 +370,13 @@ const showDeleteConfirm = ref(false)
 const pendingDelete = ref<AlertRule | null>(null)
 
 function requestDelete(rule: AlertRule) {
+	if (props.readOnly) return
   pendingDelete.value = rule
   showDeleteConfirm.value = true
 }
 
 async function confirmDelete() {
+	if (props.readOnly) return
   if (!pendingDelete.value?.id) return
   try {
     await opsAPI.deleteAlertRule(pendingDelete.value.id)
@@ -399,7 +405,7 @@ function cancelDelete() {
       </div>
 
       <div class="flex items-center gap-2">
-        <button class="btn btn-sm btn-primary" :disabled="loading" @click="openCreate">
+        <button v-if="!props.readOnly" class="btn btn-sm btn-primary" :disabled="loading" @click="openCreate">
           {{ t('admin.ops.alertRules.create') }}
         </button>
         <button
@@ -445,7 +451,7 @@ function cancelDelete() {
               <span class="text-xs text-gray-700 dark:text-gray-200">
                 {{ row.enabled ? t('common.enabled') : t('common.disabled') }}
               </span>
-              <div class="flex items-center gap-2">
+              <div v-if="!props.readOnly" class="flex items-center gap-2">
                 <button class="btn btn-sm btn-secondary" @click="openEdit(row)">{{ t('common.edit') }}</button>
                 <button class="btn btn-sm btn-danger" @click="requestDelete(row)">{{ t('common.delete') }}</button>
               </div>
@@ -470,7 +476,7 @@ function cancelDelete() {
               <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 {{ t('admin.ops.alertRules.table.enabled') }}
               </th>
-              <th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <th v-if="!props.readOnly" class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                 {{ t('admin.ops.alertRules.table.actions') }}
               </th>
             </tr>
@@ -497,7 +503,7 @@ function cancelDelete() {
               <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-700 dark:text-gray-200">
                 {{ row.enabled ? t('common.enabled') : t('common.disabled') }}
               </td>
-              <td class="whitespace-nowrap px-4 py-3 text-right text-xs">
+              <td v-if="!props.readOnly" class="whitespace-nowrap px-4 py-3 text-right text-xs">
                 <button class="btn btn-sm btn-secondary" @click="openEdit(row)">{{ t('common.edit') }}</button>
                 <button class="ml-2 btn btn-sm btn-danger" @click="requestDelete(row)">{{ t('common.delete') }}</button>
               </td>
@@ -508,6 +514,7 @@ function cancelDelete() {
     </div>
 
     <BaseDialog
+      v-if="!props.readOnly"
       :show="showEditor"
       :title="editingId ? t('admin.ops.alertRules.editTitle') : t('admin.ops.alertRules.createTitle')"
       width="wide"
@@ -621,6 +628,7 @@ function cancelDelete() {
     </BaseDialog>
 
     <ConfirmDialog
+      v-if="!props.readOnly"
       :show="showDeleteConfirm"
       :title="t('admin.ops.alertRules.deleteConfirmTitle')"
       :message="t('admin.ops.alertRules.deleteConfirmMessage')"

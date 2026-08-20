@@ -63,7 +63,7 @@ type CreateUserRequest struct {
 	Password      string   `json:"password" binding:"required,min=6"`
 	Username      string   `json:"username"`
 	Notes         string   `json:"notes"`
-	Role          string   `json:"role" binding:"omitempty,oneof=admin user"`
+	Role          string   `json:"role" binding:"omitempty,oneof=admin operator user"`
 	Balance       *float64 `json:"balance"`
 	Concurrency   int      `json:"concurrency"`
 	RPMLimit      int      `json:"rpm_limit"`
@@ -77,7 +77,7 @@ type UpdateUserRequest struct {
 	Password      string   `json:"password" binding:"omitempty,min=6"`
 	Username      *string  `json:"username"`
 	Notes         *string  `json:"notes"`
-	Role          string   `json:"role" binding:"omitempty,oneof=admin user"`
+	Role          string   `json:"role" binding:"omitempty,oneof=admin operator user"`
 	Balance       *float64 `json:"balance"`
 	Concurrency   *int     `json:"concurrency"`
 	RPMLimit      *int     `json:"rpm_limit"`
@@ -275,9 +275,13 @@ func (h *UserHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if isOperatorContext(c) && req.Role != "" && req.Role != service.RoleUser {
+		response.Forbidden(c, "operators may only create ordinary users")
+		return
+	}
 
-	// 创建管理员账号属权限敏感操作：需最近完成 step-up 2FA 验证。
-	if req.Role == service.RoleAdmin {
+	// 创建特权账号属权限敏感操作：需最近完成 step-up 2FA 验证。
+	if req.Role == service.RoleAdmin || req.Role == service.RoleOperator {
 		if !middleware.EnforceStepUp(c, h.totpService, h.userService, h.settingService) {
 			return
 		}
@@ -318,22 +322,26 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// 防锁死保护：管理员不能把自己降级为普通用户(单管理员场景下会失去后台访问权)。
-	// 与既有"不能禁用/删除 admin"保护一致。降级其他管理员仍然允许。
-	if req.Role == service.RoleUser && userID == getAdminIDFromContext(c) {
-		response.BadRequest(c, "cannot demote yourself from admin")
+	if isOperatorContext(c) && req.Role != "" && req.Role != service.RoleUser {
+		response.Forbidden(c, "operators cannot change user roles")
 		return
 	}
 
-	// 把普通用户提升为管理员属权限敏感操作：需最近完成 step-up 2FA 验证。
-	// 目标已是管理员时（前端编辑表单总是携带 role）不触发，避免日常编辑被打断。
-	if req.Role == service.RoleAdmin {
+	// 防锁死保护：admin 不能把自己降级为 operator 或 user。
+	role, _ := middleware.GetUserRoleFromContext(c)
+	if role == service.RoleAdmin && req.Role != "" && req.Role != service.RoleAdmin && userID == getAdminIDFromContext(c) {
+		response.Forbidden(c, "cannot demote yourself from admin")
+		return
+	}
+
+	// 授予或切换特权角色属敏感操作。目标角色未变化时不触发 step-up。
+	if req.Role == service.RoleAdmin || req.Role == service.RoleOperator {
 		target, err := h.adminService.GetUser(c.Request.Context(), userID)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
-		if target.Role != service.RoleAdmin {
+		if target.Role != req.Role {
 			if !middleware.EnforceStepUp(c, h.totpService, h.userService, h.settingService) {
 				return
 			}
@@ -600,6 +608,9 @@ func (h *UserHandler) BatchUpdateConcurrency(c *gin.Context) {
 		response.Success(c, gin.H{"affected": 0})
 		return
 	}
+	if !h.operatorMayMutateUsers(c, userIDs) {
+		return
+	}
 
 	affected, err := h.adminService.BatchUpdateConcurrency(c.Request.Context(), userIDs, req.Concurrency, req.Mode)
 	if err != nil {
@@ -660,6 +671,9 @@ func (h *UserHandler) BatchUpdateLimits(c *gin.Context) {
 
 	if len(userIDs) == 0 {
 		response.Success(c, gin.H{"affected": 0})
+		return
+	}
+	if !h.operatorMayMutateUsers(c, userIDs) {
 		return
 	}
 

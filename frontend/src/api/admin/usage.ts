@@ -38,6 +38,16 @@ export interface SimpleApiKey {
   user_id: number
 }
 
+export interface UsageFilterOption {
+  id: number
+  name: string
+}
+
+export interface UsageFilterOptions {
+  groups: UsageFilterOption[]
+  accounts: UsageFilterOption[]
+}
+
 export interface UsageCleanupFilters {
   start_time: string
   end_time: string
@@ -169,6 +179,13 @@ export async function searchApiKeys(userId?: number, keyword?: string): Promise<
   return data
 }
 
+export async function getFilterOptions(accountSearch?: string): Promise<UsageFilterOptions> {
+  const { data } = await apiClient.get<UsageFilterOptions>('/admin/usage/filter-options', {
+    params: accountSearch ? { account_search: accountSearch } : undefined
+  })
+  return data
+}
+
 /**
  * List usage cleanup tasks (admin only)
  * @param params - Query parameters for pagination
@@ -211,6 +228,7 @@ export const adminUsageAPI = {
   getStats,
   searchUsers,
   searchApiKeys,
+  getFilterOptions,
   listCleanupTasks,
   createCleanupTask,
   cancelCleanupTask

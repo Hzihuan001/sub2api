@@ -24,6 +24,7 @@ vi.mock('@/stores', () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
   }),
+  useAuthStore: () => ({ isAdmin: true, isOperator: false }),
 }))
 
 vi.mock('vue-i18n', async (importOriginal) => {

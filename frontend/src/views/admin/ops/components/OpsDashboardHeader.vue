@@ -9,7 +9,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api'
 import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary } from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
-import { useAdminSettingsStore } from '@/stores'
+import { useAdminSettingsStore, useAuthStore } from '@/stores'
 import { formatNumber } from '@/utils/format'
 import { formatMemorySizeMB } from '../utils/opsFormatters'
 
@@ -51,6 +51,7 @@ const emit = defineEmits<Emits>()
 
 const { t } = useI18n()
 const adminSettingsStore = useAdminSettingsStore()
+const authStore = useAuthStore()
 
 const realtimeWindow = ref<RealtimeWindow>('1min')
 
@@ -928,7 +929,7 @@ function handleToolbarRefresh() {
         />
 
         <button
-          v-if="!props.fullscreen"
+          v-if="!props.fullscreen && authStore.isAdmin"
           type="button"
           class="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600"
           :disabled="loading"
@@ -963,7 +964,7 @@ function handleToolbarRefresh() {
 
         <!-- Settings Button (hidden in fullscreen) -->
         <button
-          v-if="!props.fullscreen"
+          v-if="!props.fullscreen && authStore.isAdmin"
           type="button"
           class="flex h-8 items-center gap-1.5 rounded-lg bg-gray-100 px-3 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
           :title="t('admin.ops.settings.title')"

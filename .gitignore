@@ -130,6 +130,8 @@ AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
+.gomodcache/
+.golangci-cache/
 vite.config.js
 docs/*
 !docs/PAYMENT.md
@@ -143,6 +145,10 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+.tools/
+.pnpm-store/
+.tmp/
+CODEX_HANDOFF.md
 
 # Vitest / Vite cache at repo root
 .vite/
