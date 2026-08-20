@@ -773,9 +773,9 @@ let abortController: AbortController | null = null
 
 // ── Platform config ──
 const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek']
-// composite 分组覆盖所有可调度的主平台（与后端 isConcreteRequestPlatform 一致，已含国产供应商）；
-// kiro 不是 composite 目标平台，故不在此列。
-const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek']
+// composite 分组覆盖所有可调度的主平台（与后端 isConcreteRequestPlatform 及迁移 229
+// 重建的 composite_model_routes_target_platform_check 一致，已含 kiro 与国产供应商）。
+const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek']
 
 // ── Helpers ──
 function formatDate(value: string): string {

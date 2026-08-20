@@ -437,6 +437,7 @@ export default {
       gemini: 'Gemini',
       grok: 'Grok',
       antigravity: 'Antigravity',
+      kiro: 'Kiro',
       kimi: 'Kimi',
       zhipu: '智谱 GLM',
       deepseek: 'DeepSeek'
