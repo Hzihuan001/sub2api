@@ -408,7 +408,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/DashboardView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'dashboard',
       title: 'Admin Dashboard',
       titleKey: 'admin.dashboard.title',
       descriptionKey: 'admin.dashboard.description'
@@ -420,7 +420,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/ops/OpsDashboard.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'ops',
       title: 'Ops Monitoring',
       titleKey: 'admin.ops.title',
       descriptionKey: 'admin.ops.description'
@@ -444,7 +444,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/UsersView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'users',
       title: 'User Management',
       titleKey: 'admin.users.title',
       descriptionKey: 'admin.users.description'
@@ -543,7 +543,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/AnnouncementsView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'announcements',
       title: 'Announcements',
       titleKey: 'admin.announcements.title',
       descriptionKey: 'admin.announcements.description'
@@ -567,7 +567,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/RedeemView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'redeemCodes',
       title: 'Redeem Code Management',
       titleKey: 'admin.redeem.title',
       descriptionKey: 'admin.redeem.description'
@@ -579,7 +579,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/PromoCodesView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'promoCodes',
       title: 'Promo Code Management',
       titleKey: 'admin.promo.title',
       descriptionKey: 'admin.promo.description'
@@ -629,7 +629,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/UsageView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'usage',
       title: 'Usage Records',
       titleKey: 'admin.usage.title',
       descriptionKey: 'admin.usage.description'
@@ -803,12 +803,13 @@ router.beforeEach(async (to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+  const requiredPermission = to.meta.requiredPermission
 
   if (to.path === '/setup') {
     try {
       const status = await getSetupStatus()
       if (!status.needs_setup) {
-        next(resolveCompletedSetupRedirectPath(authStore.isAuthenticated, authStore.isAdmin))
+        next(resolveCompletedSetupRedirectPath(authStore.isAuthenticated, authStore.isManagement))
         return
       }
     } catch {
@@ -822,12 +823,12 @@ router.beforeEach(async (to, _from, next) => {
     if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
-      if (appStore.backendModeEnabled && !authStore.isAdmin) {
+      if (appStore.backendModeEnabled && !authStore.isManagement) {
         next()
         return
       }
-      // Admin users go to admin dashboard, regular users go to user dashboard
-      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      // Management users go to the management dashboard; regular users use their personal dashboard.
+      next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
       return
     }
     // Model Plaza:公开路由但受「启用开关 + 可选强制登录」双重控制(后端同口径 fail-closed)
@@ -844,7 +845,7 @@ router.beforeEach(async (to, _from, next) => {
       if (appStore.publicSettingsLoaded && plazaSettings?.model_plaza_enabled === false) {
         next(
           authStore.isAuthenticated
-            ? authStore.isAdmin
+            ? authStore.isManagement
               ? '/admin/dashboard'
               : '/dashboard'
             : '/home'
@@ -856,7 +857,7 @@ router.beforeEach(async (to, _from, next) => {
         return
       }
       // Backend mode:登录的非管理员也不可见(匿名由下方公共拦截处理,广场不在白名单)
-      if (appStore.backendModeEnabled && authStore.isAuthenticated && !authStore.isAdmin) {
+      if (appStore.backendModeEnabled && authStore.isAuthenticated && !authStore.isManagement) {
         next('/login')
         return
       }
@@ -885,12 +886,16 @@ router.beforeEach(async (to, _from, next) => {
 
   // Check admin requirement
   if (requiresAdmin && !authStore.isAdmin) {
-    // User is authenticated but not admin, redirect to user dashboard
-    next('/dashboard')
+    next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
     return
   }
 
-  if (requiresAdmin && authStore.isAdmin) {
+  if (requiredPermission && !authStore.can(requiredPermission)) {
+    next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
+    return
+  }
+
+  if ((requiresAdmin || requiredPermission) && authStore.isManagement) {
     const adminComplianceStore = useAdminComplianceStore()
     if (!adminComplianceStore.initialized) {
       try {
@@ -923,7 +928,7 @@ router.beforeEach(async (to, _from, next) => {
     appStore.publicSettingsLoaded &&
     appStore.cachedPublicSettings?.payment_enabled === false
   ) {
-    next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+    next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
     return
   }
 
@@ -947,7 +952,7 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   // 简易模式下限制访问某些页面
-  if (authStore.isSimpleMode) {
+  if (authStore.isSimpleMode && !authStore.isOperator) {
     const restrictedPaths = [
       '/admin/subscriptions',
       '/admin/redeem',
@@ -957,14 +962,14 @@ router.beforeEach(async (to, _from, next) => {
 
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {
       // 简易模式下访问受限页面,重定向到仪表板
-      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
       return
     }
   }
 
-  // Backend mode: admin gets full access, non-admin blocked
+  // Backend mode: management roles can enter their authorized surface.
   if (appStore.backendModeEnabled) {
-    if (authStore.isAuthenticated && authStore.isAdmin) {
+    if (authStore.isAuthenticated && authStore.isManagement) {
       next()
       return
     }

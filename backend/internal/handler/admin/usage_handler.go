@@ -42,6 +42,42 @@ func NewUsageHandler(
 	}
 }
 
+type usageFilterOption struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// GetFilterOptions returns only the IDs and labels needed by usage filters.
+// It deliberately avoids exposing the account or group management payloads.
+func (h *UsageHandler) GetFilterOptions(c *gin.Context) {
+	groups, err := h.adminService.GetAllGroups(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	groupOptions := make([]usageFilterOption, 0, len(groups))
+	for _, group := range groups {
+		groupOptions = append(groupOptions, usageFilterOption{ID: group.ID, Name: group.Name})
+	}
+
+	accountOptions := make([]usageFilterOption, 0)
+	if search := strings.TrimSpace(c.Query("account_search")); search != "" {
+		accounts, _, listErr := h.adminService.ListAccounts(
+			c.Request.Context(), 1, 20, "", "", "", search, 0, "", "", "",
+		)
+		if listErr != nil {
+			response.ErrorFrom(c, listErr)
+			return
+		}
+		accountOptions = make([]usageFilterOption, 0, len(accounts))
+		for _, account := range accounts {
+			accountOptions = append(accountOptions, usageFilterOption{ID: account.ID, Name: account.Name})
+		}
+	}
+
+	response.Success(c, gin.H{"groups": groupOptions, "accounts": accountOptions})
+}
+
 // CreateUsageCleanupTaskRequest represents cleanup task creation request
 type CreateUsageCleanupTaskRequest struct {
 	StartDate   string  `json:"start_date"`

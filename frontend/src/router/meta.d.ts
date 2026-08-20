@@ -4,6 +4,7 @@
  */
 
 import 'vue-router'
+import type { ManagementPermission } from '@/authz/permissions'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -18,6 +19,9 @@ declare module 'vue-router' {
      * @default false
      */
     requiresAdmin?: boolean
+
+    /** Fixed management capability required by admin and operator routes. */
+    requiredPermission?: ManagementPermission
 
     /**
      * Page title for this route

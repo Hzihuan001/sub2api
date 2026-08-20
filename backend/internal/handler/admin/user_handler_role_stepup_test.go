@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -26,6 +27,12 @@ func setupRoleStepUpRouter(t *testing.T) (*gin.Engine, *stubAdminService) {
 		ID:     2,
 		Email:  "admin@example.com",
 		Role:   service.RoleAdmin,
+		Status: service.StatusActive,
+	})
+	adminSvc.users = append(adminSvc.users, service.User{
+		ID:     3,
+		Email:  "operator@example.com",
+		Role:   service.RoleOperator,
 		Status: service.StatusActive,
 	})
 
@@ -53,10 +60,24 @@ func TestUpdateUserPromoteToAdminRequiresStepUp(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
+func TestUpdateUserPromoteToOperatorRequiresStepUp(t *testing.T) {
+	router, _ := setupRoleStepUpRouter(t)
+
+	rec := doJSON(t, router, http.MethodPut, "/api/v1/admin/users/1", map[string]any{"role": "operator"})
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
 func TestUpdateUserKeepAdminRoleSkipsStepUp(t *testing.T) {
 	router, _ := setupRoleStepUpRouter(t)
 
 	rec := doJSON(t, router, http.MethodPut, "/api/v1/admin/users/2", map[string]any{"role": "admin"})
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestUpdateUserKeepOperatorRoleSkipsStepUp(t *testing.T) {
+	router, _ := setupRoleStepUpRouter(t)
+
+	rec := doJSON(t, router, http.MethodPut, "/api/v1/admin/users/3", map[string]any{"role": "operator"})
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
@@ -74,6 +95,58 @@ func TestCreateAdminUserRequiresStepUp(t *testing.T) {
 		"email": "new-admin@example.com", "password": "pass123", "role": "admin",
 	})
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestCreateOperatorUserRequiresStepUp(t *testing.T) {
+	router, _ := setupRoleStepUpRouter(t)
+
+	rec := doJSON(t, router, http.MethodPost, "/api/v1/admin/users", map[string]any{
+		"email": "new-operator@example.com", "password": "pass123", "role": "operator",
+	})
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestOperatorCannotCreateOrAssignPrivilegedRoles(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	base := newStubAdminService()
+	h := NewUserHandler(base, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyUserRole), service.RoleOperator)
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9})
+		c.Next()
+	})
+	router.POST("/api/v1/admin/users", h.Create)
+	router.PUT("/api/v1/admin/users/:id", h.Update)
+
+	for _, role := range []string{service.RoleOperator, service.RoleAdmin} {
+		create := doJSON(t, router, http.MethodPost, "/api/v1/admin/users", map[string]any{
+			"email": "blocked-" + role + "@example.com", "password": "pass123", "role": role,
+		})
+		require.Equal(t, http.StatusForbidden, create.Code)
+
+		update := doJSON(t, router, http.MethodPut, "/api/v1/admin/users/1", map[string]any{"role": role})
+		require.Equal(t, http.StatusForbidden, update.Code)
+	}
+}
+
+func TestAdminCannotDemoteSelfToAnyNonAdminRole(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	base := newStubAdminService()
+	base.users = []service.User{{ID: 1, Role: service.RoleAdmin}}
+	h := NewUserHandler(base, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1})
+		c.Next()
+	})
+	router.PUT("/api/v1/admin/users/:id", h.Update)
+
+	for _, role := range []string{service.RoleOperator, service.RoleUser} {
+		rec := doJSON(t, router, http.MethodPut, "/api/v1/admin/users/1", map[string]any{"role": role})
+		require.Equal(t, http.StatusForbidden, rec.Code)
+	}
 }
 
 func TestCreateRegularUserSkipsStepUp(t *testing.T) {

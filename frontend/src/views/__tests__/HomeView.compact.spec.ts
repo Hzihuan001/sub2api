@@ -15,6 +15,7 @@ const { appStore, authStore } = vi.hoisted(() => ({
   authStore: {
     isAuthenticated: false,
     isAdmin: false,
+    isManagement: false,
     user: null as { email?: string } | null,
     checkAuth: vi.fn(),
   },
@@ -70,6 +71,7 @@ describe('HomeView compact mode', () => {
   beforeEach(() => {
     authStore.isAuthenticated = false
     authStore.isAdmin = false
+    authStore.isManagement = false
     authStore.user = null
     authStore.checkAuth.mockClear()
     appStore.fetchPublicSettings.mockClear()
@@ -124,6 +126,7 @@ describe('HomeView compact mode', () => {
   it('links administrators to the admin dashboard', () => {
     authStore.isAuthenticated = true
     authStore.isAdmin = true
+    authStore.isManagement = true
 
     const wrapper = mountHome({ compact_home_enabled: true })
     expect(compactDestination(wrapper)).toBe('/admin/dashboard')
@@ -180,5 +183,10 @@ describe('HomeView compact mode', () => {
     })
 
     expect(modelPlazaDestination(wrapper)).toBeUndefined()
+  it('links operators to the management dashboard', () => {
+    authStore.isAuthenticated = true
+    authStore.isManagement = true
+
+    expect(compactDestination(mountHome({ compact_home_enabled: true }))).toBe('/admin/dashboard')
   })
 })

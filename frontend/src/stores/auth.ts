@@ -13,6 +13,7 @@ import type {
   AuthResponse,
   ActionCaptchaRequestProof
 } from '@/types'
+import { hasManagementPermission, type ManagementPermission } from '@/authz/permissions'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 const AUTH_USER_KEY = 'auth_user'
@@ -95,6 +96,13 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => {
     return user.value?.role === 'admin'
   })
+
+  const isOperator = computed(() => user.value?.role === 'operator')
+  const isManagement = computed(() => isAdmin.value || isOperator.value)
+
+  function can(permission: ManagementPermission): boolean {
+    return hasManagementPermission(user.value?.role, permission)
+  }
 
   const isSimpleMode = computed(() => runMode.value === 'simple')
   const hasPendingAuthSession = computed(() => pendingAuthSession.value !== null)
@@ -498,6 +506,9 @@ export const useAuthStore = defineStore('auth', () => {
     // Computed
     isAuthenticated,
     isAdmin,
+    isOperator,
+    isManagement,
+    can,
     isSimpleMode,
     hasPendingAuthSession,
 

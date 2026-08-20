@@ -217,7 +217,7 @@
         </div>
 
         <!-- Quick Actions -->
-        <div class="card p-4">
+        <div v-if="canUseBatchImage || authStore.isAdmin" class="card p-4">
           <div class="mb-3 flex items-center justify-between">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
               {{ t('admin.dashboard.quickActions') }}
@@ -244,6 +244,7 @@
               <Icon name="chevronRight" size="sm" class="text-gray-400 group-hover:text-sky-500" />
             </button>
             <button
+              v-if="authStore.isAdmin"
               type="button"
               class="group flex items-center gap-3 rounded-lg bg-gray-50 p-3 text-left transition-colors hover:bg-emerald-50 dark:bg-dark-800/50 dark:hover:bg-emerald-900/20"
               @click="router.push('/admin/groups')"
@@ -345,6 +346,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
@@ -388,6 +390,7 @@ ChartJS.register(
 )
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const router = useRouter()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 const stats = ref<DashboardStats | null>(null)

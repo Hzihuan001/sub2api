@@ -105,10 +105,10 @@
 
       <!-- Settings Dialog (hidden in fullscreen mode) -->
       <template v-if="!isFullscreen">
-        <OpsSettingsDialog :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="onSettingsSaved" />
+        <OpsSettingsDialog v-if="authStore.isAdmin" :show="showSettingsDialog" @close="showSettingsDialog = false" @saved="onSettingsSaved" />
 
         <BaseDialog :show="showAlertRulesCard" :title="t('admin.ops.alertRules.title')" width="extra-wide" @close="showAlertRulesCard = false">
-          <OpsAlertRulesCard />
+          <OpsAlertRulesCard :read-only="authStore.isOperator" />
         </BaseDialog>
 
         <OpsErrorDetailsModal
@@ -156,7 +156,7 @@ import {
   type OpsThroughputTrendResponse,
   type OpsMetricThresholds
 } from '@/api/admin/ops'
-import { useAdminSettingsStore, useAppStore } from '@/stores'
+import { useAdminSettingsStore, useAppStore, useAuthStore } from '@/stores'
 import OpsDashboardHeader from './components/OpsDashboardHeader.vue'
 import OpsDashboardSkeleton from './components/OpsDashboardSkeleton.vue'
 import OpsConcurrencyCard from './components/OpsConcurrencyCard.vue'
@@ -177,6 +177,7 @@ import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const adminSettingsStore = useAdminSettingsStore()
 const { t } = useI18n()
 
@@ -423,6 +424,15 @@ const { pause: pauseCountdown, resume: resumeCountdown } = useIntervalFn(
 
 // Load ops dashboard presentation settings from backend.
 async function loadDashboardAdvancedSettings() {
+  if (!authStore.isAdmin) {
+    showAlertEvents.value = true
+    showOpenAITokenStats.value = false
+    autoRefreshEnabled.value = false
+    autoRefreshIntervalMs.value = 30000
+    autoRefreshCountdown.value = 0
+    return
+  }
+
   try {
     const settings = await opsAPI.getAdvancedSettings()
     showAlertEvents.value = settings.display_alert_events
@@ -807,9 +817,13 @@ onMounted(async () => {
   // Fullscreen mode: listen for ESC key
   window.addEventListener('keydown', handleKeydown)
 
-  await adminSettingsStore.fetch()
+  if (authStore.isAdmin) {
+    await adminSettingsStore.fetch()
+  } else {
+    await adminSettingsStore.fetchOpsCapabilities(true)
+  }
   if (!adminSettingsStore.opsMonitoringEnabled) {
-    await router.replace('/admin/settings')
+    await router.replace(authStore.isAdmin ? '/admin/settings' : '/admin/dashboard')
     return
   }
 

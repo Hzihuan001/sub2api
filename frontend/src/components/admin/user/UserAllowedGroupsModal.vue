@@ -252,9 +252,9 @@ const load = async () => {
   loaded.value = false
   loading.value = true
   try {
-    const res = await adminAPI.groups.list(1, 1000)
+    const allGroups = await adminAPI.groups.getAll()
     // 只显示标准类型且活跃的分组
-    groups.value = res.items.filter((g) => g.subscription_type === 'standard' && g.status === 'active')
+    groups.value = allGroups.filter((g) => g.subscription_type === 'standard' && g.status === 'active')
 
     // 初始化配置
     const userAllowedGroups = props.user?.allowed_groups || []

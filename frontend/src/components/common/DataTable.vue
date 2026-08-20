@@ -39,6 +39,7 @@
             class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
             :checked="allVisibleSelected"
             :indeterminate="someVisibleSelected"
+            :disabled="visibleRowKeys.length === 0"
             data-test="select-all-mobile"
             @change="toggleAllVisible(($event.target as HTMLInputElement).checked)"
           />
@@ -59,8 +60,9 @@
           <div v-if="selectable" class="flex justify-end">
             <input
               type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:bg-dark-800"
               :checked="isRowSelected(row, index)"
+              :disabled="!isRowSelectable(row)"
               :aria-label="getRowSelectionLabel(row, index)"
               data-test="select-row"
               @click.stop
@@ -112,6 +114,7 @@
               class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
               :checked="allVisibleSelected"
               :indeterminate="someVisibleSelected"
+              :disabled="visibleRowKeys.length === 0"
               :aria-label="t('common.selectAll')"
               data-test="select-all"
               @change="toggleAllVisible(($event.target as HTMLInputElement).checked)"
@@ -223,8 +226,9 @@
             <td v-if="selectable" class="w-11 min-w-11 px-3 py-4 text-center">
               <input
                 type="checkbox"
-                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-dark-600 dark:bg-dark-800"
                 :checked="isRowSelected(item.row, item.index)"
+                :disabled="!isRowSelectable(item.row)"
                 :aria-label="getRowSelectionLabel(item.row, item.index)"
                 data-test="select-row"
                 @click.stop
@@ -471,6 +475,8 @@ interface Props {
   selectedKeys?: Array<string | number>
   /** Accessible label for a row selection checkbox. */
   selectionLabel?: string | ((row: any) => string)
+  /** Optional predicate used to disable selection for protected rows. */
+  rowSelectable?: (row: any) => boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -706,8 +712,12 @@ const sortedData = computed(() => {
 
 const tableColumnCount = computed(() => props.columns.length + (props.selectable ? 1 : 0))
 const selectedKeySet = computed(() => new Set(props.selectedKeys))
+const isRowSelectable = (row: any) => !props.rowSelectable || props.rowSelectable(row)
 const visibleRowKeys = computed(() =>
-  (sortedData.value ?? []).map((row, index) => resolveRowKey(row, index))
+  (sortedData.value ?? [])
+    .map((row, index) => ({ row, key: resolveRowKey(row, index) }))
+    .filter(({ row }) => isRowSelectable(row))
+    .map(({ key }) => key)
 )
 const allVisibleSelected = computed(() =>
   visibleRowKeys.value.length > 0
@@ -734,6 +744,7 @@ const getRowSelectionLabel = (row: any, index: number) => {
 }
 
 const toggleRowSelection = (row: any, index: number, checked: boolean) => {
+  if (!isRowSelectable(row)) return
   const next = new Set(props.selectedKeys)
   const key = resolveRowKey(row, index)
   if (checked) next.add(key)

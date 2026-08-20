@@ -309,6 +309,29 @@ describe('DataTable', () => {
     expect(wrapper.emitted('selectionChange')?.at(-1)?.[0]).toEqual([99, 2])
   })
 
+  it('disables protected rows and excludes them from select all', async () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [
+          { id: 1, name: 'Ordinary', protected: false },
+          { id: 2, name: 'Privileged', protected: true }
+        ],
+        rowKey: 'id',
+        selectable: true,
+        selectedKeys: [99],
+        rowSelectable: (row: { protected: boolean }) => !row.protected
+      }
+    })
+
+    const rowCheckboxes = wrapper.findAll<HTMLInputElement>('[data-test="select-row"]')
+    expect(rowCheckboxes[0].element.disabled).toBe(false)
+    expect(rowCheckboxes[1].element.disabled).toBe(true)
+
+    await wrapper.get('[data-test="select-all"]').setValue(true)
+    expect(wrapper.emitted('update:selectedKeys')?.at(-1)?.[0]).toEqual([99, 1])
+  })
+
   it('keeps the single usage field shrinkable in a 320px mobile card', () => {
     stubMobileMatchMedia()
     const viewport = document.createElement('div')
