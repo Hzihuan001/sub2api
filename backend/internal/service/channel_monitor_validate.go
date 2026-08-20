@@ -9,8 +9,10 @@ import (
 // 渠道监控参数校验与归一化辅助函数。
 // 校验失败一律返回 channel_monitor_const.go 中预定义的 Err* 错误，错误信息不含具体 IP/hostname，避免泄露内网拓扑。
 
-// monitorProviders 渠道监控支持的全部 provider（与迁移 226 的 CHECK 约束一致）。
-// 不再以 adapter 表为唯一来源：antigravity 没有探活 adapter，但支持配额模式。
+// monitorProviders 渠道监控支持的全部 provider（单一权威来源）。
+// 与迁移 226 + 229 的 CHECK 约束终态、ent/schema/channel_monitor.go 及
+// channel_monitor_request_template.go 的 provider enum 三者保持同步。
+// 不再以 adapter 表为唯一来源：antigravity 与 kiro 没有探活 adapter，但支持配额模式。
 //
 //nolint:gochecknoglobals // 静态查表，初始化后不变。
 var monitorProviders = map[string]struct{}{
@@ -19,6 +21,7 @@ var monitorProviders = map[string]struct{}{
 	MonitorProviderGemini:      {},
 	MonitorProviderGrok:        {},
 	MonitorProviderAntigravity: {},
+	MonitorProviderKiro:        {},
 	MonitorProviderKimi:        {},
 	MonitorProviderZhipu:       {},
 	MonitorProviderDeepseek:    {},
@@ -26,6 +29,7 @@ var monitorProviders = map[string]struct{}{
 
 // probeCapableProviders 支持探活（probe / quota_probe）的 provider。
 // antigravity 上游无 Chat/Responses 可打（仅 IDE 代理形态），只允许配额模式。
+// kiro 走 AWS CodeWhisperer event-stream 协议，同样无探活 adapter，只允许配额模式。
 //
 //nolint:gochecknoglobals // 静态查表，初始化后不变。
 var probeCapableProviders = map[string]struct{}{
@@ -67,10 +71,10 @@ func monitorCheckModeUsesQuota(checkMode string) bool {
 
 // validateCheckMode 校验 check_mode 与 provider 的组合矩阵：
 //
-//	provider                | probe | quota | quota_probe
-//	------------------------+-------+-------+------------
-//	openai/anthropic/...    |  Y    |  Y    |  Y
-//	antigravity（无 adapter）|  N    |  Y    |  N
+//	provider                     | probe | quota | quota_probe
+//	-----------------------------+-------+-------+------------
+//	openai/anthropic/...         |  Y    |  Y    |  Y
+//	antigravity/kiro（无 adapter）|  N    |  Y    |  N
 func validateCheckMode(provider, checkMode string) error {
 	checkMode = defaultCheckMode(checkMode)
 	switch checkMode {
@@ -190,19 +194,59 @@ func normalizeModels(in []string) []string {
 	return out
 }
 
-// normalizeMonitorPrimaryModel applies provider/check_mode defaults while
-// preserving the existing required-model behavior:
-//   - Grok 探活默认轻量测活模型
-//   - quota 模式占位 "quota"（primary_model 列 NotEmpty；历史行/时间线机制无需特判）
+// normalizeMonitorPrimaryModel applies provider/check_mode defaults:
+//   - pure quota mode never sends requests: placeholder "quota" keeps
+//     primary_model NOT NULL (history rows / timeline need no special-casing)
+//   - quota_probe still sends a real probe request: empty model returns ""
+//     so validateCreateParams / applyMonitorUpdate report
+//     ErrChannelMonitorMissingPrimaryModel instead of probing model="quota"
+//   - Grok probing (probe/quota_probe) defaults to the lightweight check model
 func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 	model = strings.TrimSpace(model)
+	if model == "" && defaultCheckMode(checkMode) == MonitorCheckModeQuota {
+		return MonitorDefaultQuotaModel
+	}
 	if model == "" && provider == MonitorProviderGrok {
 		return MonitorDefaultGrokModel
 	}
-	if model == "" && monitorCheckModeUsesQuota(defaultCheckMode(checkMode)) {
-		return MonitorDefaultQuotaModel
-	}
 	return model
+}
+
+// monitorAccountQuotaCapability 校验关联账号能否充当配额数据源，与
+// fetchUncached 的路由一一对应（coding→CN 额度端点 / payg→CN 余额端点 /
+// 其余→AccountUsageService）。在创建/更新期拦截注定运行期永久 error 的组合：
+//   - kimi/zhipu/deepseek coding：GetCodingPlanProvider 须识别为 kimi/zhipu
+//     （deepseek coding、自定义域名 kimi coding 无法路由额度端点）
+//   - kimi/zhipu/deepseek payg：仅 kimi/deepseek 有公开余额端点（zhipu payg 无）
+//   - anthropic：OAuth / Setup Token（API-Key 型无 usage 通道，永久 error）
+//   - openai：OAuth（API-Key 型无 usage 通道）
+//   - gemini/grok/antigravity：本地统计/值通道降级，不会永久 error，放行
+func monitorAccountQuotaCapability(account *Account) error {
+	switch account.Platform {
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		if account.IsCodingPlan() {
+			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu {
+				return ErrChannelMonitorAccountNotSupportable
+			}
+			return nil
+		}
+		if account.Platform == PlatformZhipu {
+			return ErrChannelMonitorAccountNotSupportable
+		}
+		return nil
+	case PlatformAnthropic:
+		if account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken {
+			return nil
+		}
+		return ErrChannelMonitorAccountNotSupportable
+	case PlatformOpenAI:
+		if account.Type == AccountTypeOAuth {
+			return nil
+		}
+		return ErrChannelMonitorAccountNotSupportable
+	default:
+		return nil
+	}
 }
 
 // defaultAPIMode 空串归一为 chat_completions，保证历史数据与旧客户端兼容。
