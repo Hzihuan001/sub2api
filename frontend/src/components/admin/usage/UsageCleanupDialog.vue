@@ -8,6 +8,7 @@
         v-model:endDate="localEndDate"
         :exporting="false"
         :show-actions="false"
+        :model-options="modelOptions"
         @change="noop"
       />
 
@@ -136,9 +137,13 @@ interface Props {
   startDate: string
   endDate: string
   readOnly?: boolean
+  modelOptions?: string[]
 }
 
-const props = withDefaults(defineProps<Props>(), { readOnly: false })
+const props = withDefaults(defineProps<Props>(), {
+  readOnly: false,
+  modelOptions: () => []
+})
 const emit = defineEmits(['close'])
 
 const { t } = useI18n()

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -14,13 +15,24 @@ import (
 //   - payg 账号不经过额度探测（走余额路径，本测试不放 payg 账号避免真实网络）；
 //   - 非激活账号完全跳过。
 
+// fakeCNQuotaProber 必须并发安全：runOnce 对 coding 目标按 4 并发探测，
+// 无锁 append 会丢记录，导致 ElementsMatch 在负载下偶发少一个账号。
 type fakeCNQuotaProber struct {
+	mu     sync.Mutex
 	probed []int64
 }
 
 func (f *fakeCNQuotaProber) QueryUsage(ctx context.Context, accountID int64) (*CNProviderQuotaProbeResult, error) {
+	f.mu.Lock()
 	f.probed = append(f.probed, accountID)
+	f.mu.Unlock()
 	return &CNProviderQuotaProbeResult{Success: true, Persisted: true}, nil
+}
+
+func (f *fakeCNQuotaProber) probedIDs() []int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int64(nil), f.probed...)
 }
 
 type fakeCNCheckRepo struct {
@@ -57,7 +69,7 @@ func TestCNProviderBalanceCheckRunOnceProbesCodingPlanQuota(t *testing.T) {
 
 	svc.runOnce()
 
-	require.ElementsMatch(t, []int64{1, 2, 4}, prober.probed)
+	require.ElementsMatch(t, []int64{1, 2, 4}, prober.probedIDs())
 }
 
 // runOnceZhipuQuota 在 quotaService 缺失时安全跳过（Start 门控不启动的老部署路径）。

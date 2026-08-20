@@ -27,6 +27,45 @@
 - **📖 免責事項**：本プロジェクトは技術的な学習および研究の目的でのみ提供されます。本プロジェクトの使用により生じたアカウントの停止、サービスの中断、データの損失、その他一切の直接的または間接的な損害について、作者は一切の責任を負いません。
 - **🚫 商用利用の非許諾**：本プロジェクトの開発者は、いかなる個人または組織に対しても、本プロジェクトを利用したいかなる形態の商業運営も一切許諾していません。本プロジェクトの名義で、または本プロジェクトに基づいて行われる商業行為はすべて本プロジェクトおよびその開発者とは無関係であり、それにより生じる一切の紛争、損失、法的責任は行為者自身が負うものとします。
 
+## 概要
+
+Sub2API は、AI 製品のサブスクリプションから API クォータを配分・管理するために設計された AI API ゲートウェイプラットフォームです。ユーザーはプラットフォームが生成した API キーを通じて上流の AI サービスにアクセスでき、プラットフォームは認証、課金、負荷分散、リクエスト転送を処理します。
+
+## Kiro サポート Fork
+
+公式上流プロジェクトでは Kiro チャネルへのメンテナンス優先度が高くないため、このリポジトリでは Kiro を長期的にサポートする fork として、公式ブランチとの安定したマージを継続しています。
+
+この fork で追加されている Kiro 関連機能:
+
+- OAuth / AWS Builder ID / トークンインポート、および API キー互換の上流接続を含む Kiro チャネルサポート。
+- Kiro トラフィック向けの Anthropic Prompt Cache 使用量エミュレーション。
+- グループ単位での Kiro キャッシュエミュレーション設定と、エミュレーション比率の調整。
+
+## Kiro スクリーンショット
+
+<p align="center">
+  <img src="assets/screenshots/kiro-account-management.png" alt="Kiro account management" width="100%">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/kiro-add-account.png" alt="Add Kiro account" width="58%">
+  <img src="assets/screenshots/kiro-cache-emulation.png" alt="Kiro cache emulation group settings" width="35%">
+</p>
+
+## 機能
+
+- **マルチアカウント管理** - 複数の上流アカウントタイプ（OAuth、APIキー）をサポート
+- **APIキー配布** - ユーザー向けの APIキーの生成と管理
+- **精密な課金** - トークンレベルの使用量追跡とコスト計算
+- **スマートスケジューリング** - スティッキーセッション付きのインテリジェントなアカウント選択
+- **同時実行制御** - ユーザーごと・アカウントごとの同時実行数制限
+- **レート制限** - 設定可能なリクエスト数およびトークンレート制限
+- **Kiro チャネルサポート** - Kiro 対応 fork を長期的に保守し、公式ブランチとの安定したマージを継続
+- **Kiro キャッシュエミュレーション** - Kiro グループ向けに Anthropic Prompt Cache 使用量をエミュレートし、グループ単位で比率を調整可能
+- **内蔵決済システム** - EasyPay、Alipay、WeChat Pay、Stripe に対応。ユーザーのセルフサービスチャージが可能で、別途決済サービスのデプロイは不要（[設定ガイド](docs/PAYMENT.md)）
+- **管理ダッシュボード** - 監視・管理のための Web インターフェース
+- **外部システム連携** - 外部システム（チケット管理など）を iframe 経由で管理ダッシュボードに埋め込み可能
+
 ## ❤️ スポンサー
 
 > [こちらに掲載しませんか？](mailto:support@sub2api.org)
@@ -94,6 +133,24 @@
 </tr>
 
 <tr>
+<td width="180"><a href="https://apikl.ai"><img src="assets/partners/logos/apikl.png" alt="apikl" width="150"></a></td>
+<td>Apikl のご支援に感謝します！Sub2API をベースに構築された本プラットフォームは、開発者向けに Codex / Claude シリーズモデルの中継サービスを提供しています。長期安定性、高速直結、高いコストパフォーマンスを重視し、従量課金の残高ベース課金、エンタープライズグレードの正規請求書、1対1の専属サポートを提供します。<a href="https://apikl.ai">今すぐ登録</a>でチャージ 1:1 ボーナス — 残高が倍に！
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://tokeneum.ai"><img src="assets/partners/logos/tokeneum.png" alt="tokeneum" width="150"></a></td>
+<td>TokenEum のご支援に感謝します！<a href="https://tokeneum.ai">TokenEum</a> は総合的な AI モデル集約プラットフォームおよびインテリジェントエージェント開発企業です。Claude、Gemini、OpenAI などの世界トップクラスのモデルに加え、GLM、Qwen、Kimi などの主要なオープンソースモデルも集約しており、品質と価格の異なる豊富な選択肢を提供してあらゆるニーズに対応します。また、Seedance2.0 や Happy Horse などの最先端の動画生成モデルも利用可能です。TokenEum は透明性と誠実なビジネスを重視し、すべてのモデル情報の正確性と信頼性を保証します。<a href="https://tokeneum.ai">tokeneum.ai</a> でぜひお試しください。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://666api.work/sub2api"><img src="assets/partners/logos/666api.jpg" alt="666api" width="150"></a></td>
+<td>666api のご支援に感謝します！<a href="https://666api.work/sub2api">666api</a> はオールインワンプラットフォームで、以下を提供しています：⚡ API 中継 — グローバルモデルへの従量課金アクセス、100% 公式ソースから直接供給、公式価格の最大 75% オフ。独占特典：Zhipu GLM 50% オフ・DeepSeek V4-pro 50% オフ・Seedance2.0 8% オフ（ホワイトリスト）・HappyHorse Overseas 30% オフ（ホワイトリスト）🔑 GPT サブスクリプションアカウント — 同源 IP 込み・グローバル住宅 IP 💰 請求書発行対応
+</td>
+</tr>
+
+<tr>
 <td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
 <td>随想AI ゲートウェイのご支援に感謝します！<a href="https://sui-xiang.com/">随想AI ゲートウェイ</a> は信頼性と効率に優れた API 中継サービスプロバイダーで、Claude、Codex、Gemini などの中継サービスを提供しています。プライバシー重視の中継ステーション・データ転売なし・モデル水増しなし、プライバシー・透明性・超高速アフターサービス。新規アカウント登録後、毎日サインインで 0.5 元のテストクレジットがもらえ、チャージは 1:1、サブスクリプション不要、従量課金。マルチライン冗長、クロスリージョン災害復旧、自動フェイルオーバー、長時間 SSE 接続が途切れません。99.9% の可用性、重要な呼び出しは決して遅れません。
 </td>
@@ -116,18 +173,6 @@
 <tr>
 <td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
 <td>Aimzoon のご支援に感謝します！<a href="http://aimzoon.com">Aimzoon</a> は安定してコストパフォーマンスに優れた AI API 接続サービスを提供し、開発者が主要な AI サービスを Codex、Claude Code、Gemini CLI などのコーディングツールへ素早く接続できるようにします。複雑な設定は不要で、より速い接続、より安定した呼び出し、より低いコストを実現。Codex レート割引や特価レートなどのキャンペーンも随時開催中、登録するだけで無料お試しクレジットをプレゼント。AI コーディングを日常のワークフローへ。<a href="http://aimzoon.com">こちら</a>から登録してお試しください！
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z"><img src="assets/partners/logos/claudeapi.jpg" alt="claudeapi" width="150"></a></td>
-<td>Claude API のご支援に感謝します！<a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z">Claude API</a> は Claude モデルに特化した公式チャネルの API サービスプロバイダーで、Anthropic 公式キーと AWS Bedrock 公式チャネルをベースに、Claude Code や Agent アプリケーションへの安定した接続体験を提供します。Claude 全シリーズのモデルに対応し、Tool Use や長文コンテキストなどの公式機能もそのまま利用可能。リバースエンジニアリングやモデル劣化のないサービスで、Claude Code のヘビーユーザー、Agent エンジニア、企業の技術チームに最適です。<a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z">専用リンク</a>から登録後カスタマーサポートへご連絡いただくと、無料お試しクレジットを受け取れます。請求書発行やチーム導入にも対応しています。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default"><img src="assets/partners/logos/code0.jpg" alt="code0" width="150"></a></td>
-<td>code0.ai のご支援に感謝します！<a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">code0.ai</a> は開発者と技術チーム向けの AI プログラミングワークベンチで、Claude Code や Codex などの主要な Agent コーディング能力を集約し、コード生成、プロジェクト理解、デバッグと修正、コードレビュー、ドキュメント生成といった一般的な開発シーンをサポートします。個人開発者、Agent エンジニア、OSS メンテナー、企業の開発チームに最適で、請求書発行やチーム導入にも対応。<a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">専用リンク</a>から登録後カスタマーサポートへご連絡いただくと、無料お試しクレジットを受け取り、より効率的な AI プログラミングワークフローを体験できます。
 </td>
 </tr>
 
@@ -305,6 +350,8 @@ PostgreSQL と Redis のコンテナを含む Docker Compose でデプロイし�
 
 - Docker 20.10+
 - Docker Compose v2+
+
+Compose ファイルは、アップストリームが公開する `weishaw/sub2api:latest` をデフォルトで使用します。本番環境では `.env` に `SUB2API_IMAGE=weishaw/sub2api:<version>` を設定してリリースを固定できます。
 
 #### クイックスタート（ワンクリックデプロイ）
 

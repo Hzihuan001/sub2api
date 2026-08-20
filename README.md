@@ -27,6 +27,52 @@ Please read the following carefully before using this project:
 - **📖 Disclaimer**: This project is provided for technical learning and research purposes only. The authors assume no liability for account bans, service interruptions, data loss, or any other direct or indirect damages resulting from the use of this project.
 - **🚫 No Commercial Authorization**: The developers of this project have never authorized any individual or organization to conduct any form of commercial operation based on this project. Any commercial activity conducted in the name of or based on this project is unrelated to this project and its developers, and all resulting disputes, losses, and legal liabilities shall be borne solely by the party conducting such activity.
 
+## Community
+
+- **Telegram**: [Join the group](https://t.me/+Pv3T6ncordwxOTZl)
+- **WeChat**: scan the QR code below
+
+<img src="https://github.com/user-attachments/assets/8f2542ce-eda7-49d4-9520-e5f46d9d4bda" alt="WeChat group QR code" width="280">
+
+## Overview
+
+Sub2API is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions. Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
+
+## Kiro Support Fork
+
+The official upstream project currently has limited maintenance focus on the Kiro channel, so this repository is maintained as a long-term Kiro-support fork that keeps stable merges from the official branch.
+
+Additional Kiro-focused features in this fork:
+
+- Kiro channel support, including OAuth / AWS Builder ID / token import and API-key-compatible upstream access.
+- Anthropic Prompt Cache usage emulation for Kiro traffic.
+- Per-group Kiro cache emulation controls, including an adjustable emulation ratio.
+
+## Kiro Screenshots
+
+<p align="center">
+  <img src="assets/screenshots/kiro-add-account.png" alt="Add Kiro account" width="58%">
+  <img src="assets/screenshots/kiro-cache-emulation.png" alt="Kiro cache emulation group settings" width="35%">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/kiro-account-management.png" alt="Kiro account management" width="100%">
+</p>
+
+## Features
+
+- **Multi-Account Management** - Support multiple upstream account types (OAuth, API Key)
+- **API Key Distribution** - Generate and manage API Keys for users
+- **Precise Billing** - Token-level usage tracking and cost calculation
+- **Smart Scheduling** - Intelligent account selection with sticky sessions
+- **Concurrency Control** - Per-user and per-account concurrency limits
+- **Rate Limiting** - Configurable request and token rate limits
+- **Kiro Channel Support** - Long-term Kiro support fork with stable upstream merges
+- **Kiro Cache Emulation** - Simulate Anthropic Prompt Cache usage for Kiro groups with adjustable per-group emulation ratio
+- **Built-in Payment System** - Supports EasyPay, Alipay, WeChat Pay, and Stripe for user self-service top-up, no separate payment service needed ([Configuration Guide](docs/PAYMENT.md))
+- **Admin Dashboard** - Web interface for monitoring and management
+- **External System Integration** - Embed external systems (e.g. ticketing) via iframe to extend the admin dashboard
+
 ## ❤️ Sponsors
 
 > [Want to appear here?](mailto:support@sub2api.org)
@@ -92,6 +138,28 @@ Please read the following carefully before using this project:
 </tr>
 
 <tr>
+<td width="180"><a href="https://apikl.ai"><img src="assets/partners/logos/apikl.png" alt="apikl" width="150"></a></td>
+<td>Thanks to Apikl for sponsoring this project! Built on Sub2API, the platform provides developers with relay services for Codex / Claude series models, focusing on long-term stability, high-speed direct connections, and excellent cost-effectiveness. It offers pay-as-you-go balance billing, enterprise-grade official invoices, and one-on-one dedicated support. <a href="https://apikl.ai">Register now</a> for a 1:1 top-up bonus — double your balance!
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://tokeneum.ai"><img src="assets/partners/logos/tokeneum.png" alt="tokeneum" width="150"></a></td>
+<td>Thanks to TokenEum for sponsoring this project! <a href="https://tokeneum.ai">TokenEum</a> is a comprehensive AI model aggregation platform and intelligent agent development company. It brings together top-tier international models — including Claude, Gemini, and OpenAI — alongside leading open-source models such as GLM, Qwen, and Kimi, offering a wide range of options across different quality and price tiers to suit every need. TokenEum also provides access to cutting-edge video generation models like Seedance2.0 and Happy Horse. Committed to transparency and honest business practices, TokenEum ensures all model information is accurate and reliable. Visit <a href="https://tokeneum.ai">tokeneum.ai</a> to get started.
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://666api.work/sub2api"><img src="assets/partners/logos/666api.jpg" alt="666api" width="150"></a></td>
+<td>Thanks to 666api for sponsoring this project! <a href="https://666api.work/sub2api">666api</a> is an all-in-one platform offering:<br>
+⚡ API Relay — Pay-as-you-go access to global models sourced 100% from official providers, up to 75% off official pricing<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Exclusive: Zhipu GLM 50% off · DeepSeek V4-pro 50% off · Seedance 2.0 8% off (whitelisted) · HappyHorse Overseas 30% off (whitelisted)<br>
+🔑 GPT Subscription Accounts (same-origin IP included) · Global Residential IP <br>
+💰 Invoices supported
+</td>
+</tr>
+
+<tr>
 <td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
 <td>Thanks to Suixiang AI Gateway for sponsoring this project! <a href="https://sui-xiang.com/">Suixiang AI Gateway</a> is a reliable and efficient API relay service provider offering relay services for Claude, Codex, Gemini, and more. A privacy-focused relay — no data reselling, no model dilution; privacy, transparency, and lightning-fast after-sales support. New accounts get ¥0.5 in trial credit daily by signing in; top-ups are 1:1, no subscription required, pay-as-you-go. Multi-line redundancy, cross-region disaster recovery, automatic failover, and uninterrupted long-link SSE. 99.9% availability — critical calls never fall behind.
 </td>
@@ -114,18 +182,6 @@ Please read the following carefully before using this project:
 <tr>
 <td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
 <td>Thanks to Aimzoon for sponsoring this project! <a href="http://aimzoon.com">Aimzoon</a> provides stable, cost-effective AI API access services, enabling developers to quickly connect popular AI services to coding tools such as Codex, Claude Code, and Gemini CLI. No complex configuration — faster onboarding, more stable calls, and lower costs. Ongoing promotions including discounted Codex rates and special pricing, with free trial credits upon registration, bringing AI coding into your daily workflow. <a href="http://aimzoon.com">Click here</a> to register and try it out!
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z"><img src="assets/partners/logos/claudeapi.jpg" alt="claudeapi" width="150"></a></td>
-<td>Thanks to Claude API for sponsoring this project! <a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z">Claude API</a> is an official-channel API provider focused on Claude models. Built on official Anthropic keys and the official AWS Bedrock channel, it delivers a stable integration experience for Claude Code and Agent applications, supports the full Claude model lineup, and retains official capabilities such as Tool Use and long context. The service involves no reverse engineering and no model degradation, making it a great fit for heavy Claude Code users, Agent engineers, and enterprise engineering teams. Register via the <a href="https://console.claudeapi.com/agent/register/drTKjyn6wGLK061Z">exclusive link</a> and contact customer support to receive free trial credits; invoicing and team onboarding are also supported.
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default"><img src="assets/partners/logos/code0.jpg" alt="code0" width="150"></a></td>
-<td>Thanks to code0.ai for sponsoring this project! <a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">code0.ai</a> is an AI coding workbench for developers and engineering teams, aggregating mainstream agent coding capabilities such as Claude Code and Codex, and covering common development scenarios including code generation, project understanding, debugging and fixing, code review, and documentation generation. It suits independent developers, Agent engineers, open-source maintainers, and enterprise R&D teams, with invoicing and team onboarding supported. Register via the <a href="https://code0.ai/agent/register/LgpIgl9JHtVG53V1?utm_source=zcf&utm_medium=partner&utm_campaign=zcf_2026&utm_content=default">exclusive link</a> and contact customer support to receive free trial credits and experience a more efficient AI coding workflow.
 </td>
 </tr>
 
@@ -304,6 +360,8 @@ Deploy with Docker Compose, including PostgreSQL and Redis containers.
 
 - Docker 20.10+
 - Docker Compose v2+
+
+The Compose files use the upstream `weishaw/sub2api:latest` image by default. For production, pin a release with `SUB2API_IMAGE=weishaw/sub2api:<version>` in `.env`.
 
 #### Quick Start (One-Click Deployment)
 
