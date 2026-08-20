@@ -1,0 +1,81 @@
+services:
+  sub2api:
+    image: ${SUB2API_TEST_IMAGE:-sub2api:0.1.178-custom.1}
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VERSION: 0.1.178-custom.1
+        COMMIT: ${SUB2API_TEST_COMMIT:-local}
+        DATE: ${SUB2API_TEST_BUILD_DATE:-local}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SUB2API_TEST_PORT:-18080}:8080"
+    environment:
+      AUTO_SETUP: "true"
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: "8080"
+      SERVER_MODE: release
+      RUN_MODE: standard
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_USER: sub2api_operator_test
+      DATABASE_PASSWORD: operator-test-postgres-only
+      DATABASE_DBNAME: sub2api_operator_test
+      DATABASE_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      ADMIN_EMAIL: admin@operator-test.local
+      ADMIN_PASSWORD: Operator-Test-Admin-Password-2026!
+      JWT_SECRET: 4cc96dc74bfd487e9e69d70c22fd70d5dfe5e6ff11eb4afed2185ea3f18b0378
+      TOTP_ENCRYPTION_KEY: b6239b52a66d1f4675973dc41bc7c71a6af410ea5ac0f6ea9e29ab847703f1b2
+      TZ: Asia/Shanghai
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_USER: sub2api_operator_test
+      POSTGRES_PASSWORD: operator-test-postgres-only
+      POSTGRES_DB: sub2api_operator_test
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sub2api_operator_test -d sub2api_operator_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  app_data:
+  postgres_data:
+  redis_data:

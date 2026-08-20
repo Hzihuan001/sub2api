@@ -9,6 +9,17 @@ import type { PaginatedResponse } from '@/types'
 
 export type OpsQueryMode = 'auto' | 'raw' | 'preagg'
 
+export interface OpsCapabilities {
+  ops_monitoring_enabled: boolean
+  ops_realtime_monitoring_enabled: boolean
+  ops_query_mode_default: OpsQueryMode
+}
+
+export async function getCapabilities(): Promise<OpsCapabilities> {
+  const { data } = await apiClient.get<OpsCapabilities>('/admin/ops/capabilities')
+  return data
+}
+
 export interface OpsRequestOptions {
   signal?: AbortSignal
 }
@@ -1306,6 +1317,7 @@ async function updateMetricThresholds(thresholds: OpsMetricThresholds): Promise<
 }
 
 export const opsAPI = {
+  getCapabilities,
   getDashboardSnapshotV2,
   getDashboardOverview,
   getThroughputTrend,

@@ -85,6 +85,28 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     }
   }
 
+  async function fetchOpsCapabilities(force = false): Promise<void> {
+    if (loaded.value && !force) return
+    if (loading.value) return
+
+    loading.value = true
+    try {
+      const capabilities = await adminAPI.ops.getCapabilities()
+      opsMonitoringEnabled.value = capabilities.ops_monitoring_enabled
+      opsRealtimeMonitoringEnabled.value = capabilities.ops_realtime_monitoring_enabled
+      opsQueryModeDefault.value = capabilities.ops_query_mode_default || 'auto'
+      writeCachedBool('ops_monitoring_enabled_cached', opsMonitoringEnabled.value)
+      writeCachedBool('ops_realtime_monitoring_enabled_cached', opsRealtimeMonitoringEnabled.value)
+      writeCachedString('ops_query_mode_default_cached', opsQueryModeDefault.value)
+      loaded.value = true
+    } catch (err) {
+      loaded.value = true
+      console.error('[adminSettings] Failed to fetch ops capabilities:', err)
+    } finally {
+      loading.value = false
+    }
+  }
+
   function setOpsMonitoringEnabledLocal(value: boolean) {
     opsMonitoringEnabled.value = value
     writeCachedBool('ops_monitoring_enabled_cached', value)
@@ -142,6 +164,7 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     paymentEnabled,
     customMenuItems,
     fetch,
+    fetchOpsCapabilities,
     setOpsMonitoringEnabledLocal,
     setOpsRealtimeMonitoringEnabledLocal,
     setPaymentEnabledLocal,

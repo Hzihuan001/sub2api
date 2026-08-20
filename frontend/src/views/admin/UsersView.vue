@@ -29,6 +29,7 @@
                 :options="[
                   { value: '', label: t('admin.users.allRoles') },
                   { value: 'admin', label: t('admin.users.admin') },
+                  { value: 'operator', label: t('admin.users.operator') },
                   { value: 'user', label: t('admin.users.user') }
                 ]"
                 @change="applyFilter"
@@ -233,6 +234,7 @@
               </div>
               <!-- Attributes Config Button -->
               <button
+                v-if="authStore.isAdmin"
                 @click="showAttributesModal = true"
                 class="btn btn-secondary px-2 md:px-3"
                 :title="t('admin.users.attributes.configButton')"
@@ -269,6 +271,7 @@
           :loading="loading"
           row-key="id"
           selectable
+          :row-selectable="canMutateUser"
           :selected-keys="selectedIds"
           :selection-label="getUserSelectionLabel"
           :actions-count="7"
@@ -326,7 +329,7 @@
           </template>
 
           <template #cell-role="{ value }">
-            <span :class="['badge', value === 'admin' ? 'badge-purple' : 'badge-gray']">
+            <span :class="['badge', value === 'admin' ? 'badge-purple' : value === 'operator' ? 'badge-primary' : 'badge-gray']">
               {{ t('admin.users.roles.' + value) }}
             </span>
           </template>
@@ -337,7 +340,7 @@
               <span
                 v-if="getUserGroups(row).exclusive.length > 0"
                 class="group/ex relative inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs"
-                @click.stop="toggleExpandedGroup(row.id)"
+                @click.stop="canMutateUser(row) && toggleExpandedGroup(row.id)"
               >
                 <Icon name="shield" size="xs" class="h-3.5 w-3.5 text-purple-500 dark:text-purple-400" />
                 <span class="font-medium text-purple-600 dark:text-purple-400">{{ getUserGroups(row).exclusive.length }}</span>
@@ -437,6 +440,7 @@
                 </div>
               </div>
               <button
+                v-if="canMutateUser(row)"
                 @click.stop="handleDeposit(row)"
                 class="rounded px-2 py-0.5 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
                 :title="t('admin.users.deposit')"
@@ -448,6 +452,7 @@
 
           <template #cell-balance_platform_quota="{ row }">
             <button
+              v-if="canMutateUser(row)"
               type="button"
               class="block text-left underline decoration-dashed decoration-gray-300 underline-offset-4 transition-colors hover:decoration-primary-400 dark:decoration-dark-500"
               :title="t('admin.users.platformQuota.cellColumnTooltip')"
@@ -455,6 +460,7 @@
             >
               <UserPlatformQuotaCell :quotas="platformQuotaStats[row.id]" />
             </button>
+            <UserPlatformQuotaCell v-else :quotas="platformQuotaStats[row.id]" />
           </template>
 
           <!-- 用量列自定义表头：列名 + 单个排序图标按钮，点击展开"今日/近30天"菜单。
@@ -603,6 +609,7 @@
             <div class="flex items-center gap-1">
               <!-- Edit Button -->
               <button
+                v-if="canMutateUser(row)"
                 @click="handleEdit(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
               >
@@ -612,7 +619,7 @@
 
               <!-- Toggle Status Button (not for admin) -->
               <button
-                v-if="row.role !== 'admin'"
+                v-if="canMutateUser(row) && row.role !== 'admin'"
                 @click="handleToggleStatus(row)"
                 :class="[
                   'flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors',
@@ -683,6 +690,7 @@
 
               <!-- Allowed Groups -->
               <button
+                v-if="canMutateUser(user)"
                 @click="handleAllowedGroups(user); closeActionMenu()"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
@@ -694,6 +702,7 @@
 
               <!-- Deposit -->
               <button
+                v-if="canMutateUser(user)"
                 @click="handleDeposit(user); closeActionMenu()"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
@@ -703,6 +712,7 @@
 
               <!-- Withdraw -->
               <button
+                v-if="canMutateUser(user)"
                 @click="handleWithdraw(user); closeActionMenu()"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
@@ -714,6 +724,7 @@
 
               <!-- Platform Quotas -->
               <button
+                v-if="canMutateUser(user)"
                 @click="handlePlatformQuota(user); closeActionMenu()"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
@@ -734,7 +745,7 @@
 
               <!-- Delete (not for admin) -->
               <button
-                v-if="user.role !== 'admin'"
+                v-if="canMutateUser(user) && user.role !== 'admin'"
                 @click="handleDelete(user); closeActionMenu()"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
               >
@@ -762,7 +773,12 @@
       @close="closePlatformQuotaModal"
       @success="loadUsers"
     />
-    <UserApiKeysModal :show="showApiKeysModal" :user="viewingUser" @close="closeApiKeysModal" />
+    <UserApiKeysModal
+      :show="showApiKeysModal"
+      :user="viewingUser"
+      :read-only="authStore.isOperator && viewingUser?.role !== 'user'"
+      @close="closeApiKeysModal"
+    />
     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
@@ -775,6 +791,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
@@ -812,6 +829,8 @@ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryM
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
+const canMutateUser = (user: AdminUser) => !authStore.isOperator || user.role === 'user'
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>
@@ -1302,7 +1321,13 @@ const {
 })
 
 const handleSelectedKeysUpdate = (keys: Array<string | number>) => {
-  setSelectedIds(keys.filter((key): key is number => typeof key === 'number'))
+  const numericKeys = keys.filter((key): key is number => typeof key === 'number')
+  if (!authStore.isOperator) {
+    setSelectedIds(numericKeys)
+    return
+  }
+  const ordinaryUserIDs = new Set(users.value.filter(canMutateUser).map((user) => user.id))
+  setSelectedIds(numericKeys.filter((id) => ordinaryUserIDs.has(id)))
 }
 
 const getUserSelectionLabel = (user: AdminUser) =>
@@ -1331,6 +1356,7 @@ const viewingUser = ref<AdminUser | null>(null)
 const platformQuotaUser = ref<AdminUser | null>(null)
 
 const handlePlatformQuota = (user: AdminUser) => {
+	if (!canMutateUser(user)) return
   platformQuotaUser.value = user
   showPlatformQuotaModal.value = true
 }
@@ -1710,6 +1736,7 @@ const applyFilter = () => {
 }
 
 const handleEdit = (user: AdminUser) => {
+	if (!canMutateUser(user)) return
   editingUser.value = user
   showEditModal.value = true
 }
@@ -1720,6 +1747,7 @@ const closeEditModal = () => {
 }
 
 const handleToggleStatus = async (user: AdminUser) => {
+	if (!canMutateUser(user)) return
   const newStatus = user.status === 'active' ? 'disabled' : 'active'
   try {
     await adminAPI.users.toggleStatus(user.id, newStatus)
@@ -1744,6 +1772,7 @@ const closeApiKeysModal = () => {
 }
 
 const handleAllowedGroups = (user: AdminUser) => {
+	if (!canMutateUser(user)) return
   allowedGroupsUser.value = user
   showAllowedGroupsModal.value = true
 }
@@ -1754,6 +1783,7 @@ const closeAllowedGroupsModal = () => {
 }
 
 const openGroupReplace = (user: AdminUser, group: { id: number; name: string }) => {
+	if (!canMutateUser(user)) return
   expandedGroupUserId.value = null
   groupReplaceUser.value = user
   groupReplaceOldGroup.value = group
@@ -1767,6 +1797,7 @@ const closeGroupReplaceModal = () => {
 }
 
 const handleDelete = (user: AdminUser) => {
+	if (!canMutateUser(user)) return
   deletingUser.value = user
   showDeleteDialog.value = true
 }
@@ -1786,12 +1817,14 @@ const confirmDelete = async () => {
 }
 
 const handleDeposit = (user: AdminUser) => {
+	if (!canMutateUser(user)) return
   balanceUser.value = user
   balanceOperation.value = 'add'
   showBalanceModal.value = true
 }
 
 const handleWithdraw = (user: AdminUser) => {
+	if (!canMutateUser(user)) return
   balanceUser.value = user
   balanceOperation.value = 'subtract'
   showBalanceModal.value = true

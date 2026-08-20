@@ -1,0 +1,154 @@
+name: Custom CI and GHCR release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'custom-*'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: custom-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CUSTOM_VERSION: 0.1.178-custom.1
+
+jobs:
+  quality:
+    name: Full quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.26.6
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Verify locked toolchain
+        run: |
+          go version | grep -q 'go1.26.6'
+          node --version | grep -q '^v20\.'
+          test "$(pnpm --version)" = '9.15.9'
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-0.1.178.1 ]; then
+            echo "unexpected custom source tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: make test-unit
+
+      - name: Backend integration tests
+        working-directory: backend
+        run: make test-integration
+
+      - name: Backend lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.9
+          args: --timeout=30m
+          working-directory: backend
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: pnpm run lint:check
+
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: pnpm run typecheck
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: pnpm run test:run
+
+      - name: Frontend production build
+        working-directory: frontend
+        run: pnpm run build
+
+      - name: Repository and Compose validation
+        run: |
+          git diff --check
+          docker compose -f deploy/docker-compose.operator-test.yml config --quiet
+
+  publish:
+    name: Build and publish immutable image
+    needs: quality
+    if: github.ref == 'refs/tags/custom-0.1.178.1'
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: image
+        name: Resolve lowercase image name
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sub2api" >> "$GITHUB_OUTPUT"
+
+      - id: buildmeta
+        name: Resolve build timestamp
+        shell: bash
+        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - id: build
+        name: Build and push linux/amd64 image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ env.CUSTOM_VERSION }}
+          build-args: |
+            NODE_IMAGE=node:20-alpine
+            VERSION=${{ env.CUSTOM_VERSION }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ steps.buildmeta.outputs.date }}
+            SOURCE_REPOSITORY=${{ github.server_url }}/${{ github.repository }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.CUSTOM_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.buildmeta.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Record immutable release coordinates
+        run: |
+          echo "### Custom image" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.image.outputs.name }}:${CUSTOM_VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

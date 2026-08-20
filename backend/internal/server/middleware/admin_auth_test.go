@@ -121,6 +121,30 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, w.Code)
 	})
+
+	t.Run("operator_jwt_allows_management_authentication", func(t *testing.T) {
+		admin.Role = service.RoleOperator
+		defer func() { admin.Role = service.RoleAdmin }()
+		token, err := authService.GenerateToken(context.Background(), admin)
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("ordinary_user_jwt_is_forbidden", func(t *testing.T) {
+		admin.Role = service.RoleUser
+		defer func() { admin.Role = service.RoleAdmin }()
+		token, err := authService.GenerateToken(context.Background(), admin)
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusForbidden, w.Code)
+	})
 }
 
 type stubUserRepo struct {

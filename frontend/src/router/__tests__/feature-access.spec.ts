@@ -14,6 +14,9 @@ const authStore = vi.hoisted(() => ({
   checkAuth: vi.fn(),
   isAuthenticated: true,
   isAdmin: false,
+  isOperator: false,
+  isManagement: false,
+  can: vi.fn(() => false),
   isSimpleMode: false,
   hasPendingAuthSession: false,
 }))
@@ -113,6 +116,10 @@ describe('feature route guard', () => {
   beforeEach(() => {
     authStore.isAuthenticated = true
     authStore.isAdmin = false
+    authStore.isOperator = false
+    authStore.isManagement = false
+    authStore.can.mockReset()
+    authStore.can.mockReturnValue(false)
     authStore.isSimpleMode = false
     appStore.publicSettingsLoaded = false
     appStore.cachedPublicSettings = null
@@ -173,5 +180,36 @@ describe('feature route guard', () => {
     expect(appStore.fetchPublicSettings).not.toHaveBeenCalled()
     expect(next).toHaveBeenCalledOnce()
     expect(next).toHaveBeenCalledWith(target)
+  })
+
+  it('allows an operator to enter an explicitly permitted management route', async () => {
+    authStore.isOperator = true
+    authStore.isManagement = true
+    authStore.can.mockImplementation((permission: string) => permission === 'users')
+
+    const { navigation, next } = runGuard({ requiredPermission: 'users' }, '/admin/users')
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('redirects an operator away from an admin-only route', async () => {
+    authStore.isOperator = true
+    authStore.isManagement = true
+
+    const { navigation, next } = runGuard({ requiresAdmin: true }, '/admin/settings')
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith('/admin/dashboard')
+  })
+
+  it('redirects a regular user away from management permissions', async () => {
+    const { navigation, next } = runGuard({ requiredPermission: 'usage' }, '/admin/usage')
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith('/dashboard')
   })
 })

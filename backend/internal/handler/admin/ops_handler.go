@@ -72,6 +72,16 @@ func NewOpsHandler(opsService *service.OpsService) *OpsHandler {
 	return &OpsHandler{opsService: opsService}
 }
 
+// GetCapabilities returns only the feature switches needed by the ops UI.
+// GET /api/v1/admin/ops/capabilities
+func (h *OpsHandler) GetCapabilities(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	response.Success(c, h.opsService.GetCapabilities(c.Request.Context()))
+}
+
 // GetErrorLogs lists ops error logs.
 // applyOpsErrorSortParams reads sort_by/sort_order query params into the filter.
 // Column whitelist and order normalization live in the repository; unknown

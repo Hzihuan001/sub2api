@@ -4,6 +4,10 @@ import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({ isAdmin: true, isOperator: false }),
+}))
+
 const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
