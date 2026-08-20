@@ -1024,7 +1024,7 @@ const emailPasswordOptionEnabled = computed(
   () => props.showEmailPasswordOption && props.platform === 'grok' && passwordAuthEnabled.value
 )
 
-const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'grok')
+const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'grok' || props.platform === 'cursor')
 
 // Get translation key based on platform
 const getOAuthKey = (key: string) => {
@@ -1033,6 +1033,7 @@ const getOAuthKey = (key: string) => {
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
   if (props.platform === 'kiro') return `admin.accounts.oauth.kiro.${key}`
   if (props.platform === 'grok') return `admin.accounts.oauth.grok.${key}`
+  if (props.platform === 'cursor') return `admin.accounts.oauth.cursor.${key}`
   return `admin.accounts.oauth.${key}`
 }
 
@@ -1052,6 +1053,7 @@ const oauthImportantNotice = computed(() => {
   if (props.platform === 'openai') return t('admin.accounts.oauth.openai.importantNotice')
   if (props.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.importantNotice')
   if (props.platform === 'grok') return t('admin.accounts.oauth.grok.importantNotice')
+  if (props.platform === 'cursor') return t('admin.accounts.oauth.cursor.importantNotice')
   return ''
 })
 
@@ -1189,10 +1191,10 @@ watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
 })
 
-// Auto-extract code from callback URL (OpenAI/Gemini/Antigravity/Kiro/Grok)
+// Auto-extract code from callback URL for supported OAuth platforms.
 // e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'kiro' && props.platform !== 'grok') return
+  if (!['openai', 'gemini', 'antigravity', 'kiro', 'grok', 'cursor'].includes(props.platform)) return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
@@ -1206,7 +1208,7 @@ watch(authCodeInput, (newVal) => {
         oauthCallbackPath.value = url.pathname || ''
         oauthLoginOption.value = url.searchParams.get('login_option') || ''
       }
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'kiro' || props.platform === 'grok') && stateParam) {
+      if (stateParam) {
         oauthState.value = stateParam
       }
       if (code && code !== trimmed) {
@@ -1223,7 +1225,7 @@ watch(authCodeInput, (newVal) => {
         const loginOptionMatch = trimmed.match(/[?&]login_option=([^&]+)/)
         oauthLoginOption.value = loginOptionMatch?.[1] || oauthLoginOption.value
       }
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'kiro' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
+      if (stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       }
       if (match && match[1] && match[1] !== trimmed) {

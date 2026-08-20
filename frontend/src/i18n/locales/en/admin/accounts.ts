@@ -152,6 +152,7 @@ export default {
         balanceLow: 'Insufficient balance',
         noBalanceEndpoint: 'This platform has no balance query endpoint',
         resetSoon: 'reset soon',
+        cursor: 'Cursor',
       },
       types: {
         oauth: 'OAuth',
@@ -164,6 +165,7 @@ export default {
         kiroApikey: 'Connect to AWS directly via API Key',
         kiroApikeyRelay: 'Relay via external API Key + Base URL',
         kiroOauth: 'Social OAuth / AWS Builder ID / Import',
+        cursorOauth: 'Cursor Deep-link Login',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -817,6 +819,21 @@ export default {
         invalidValue: 'Invalid header value (control characters are not allowed; max length 8192)',
         tooManyEntries: 'Too many header override entries (max 64)'
       },
+      cursor: {
+        baseUrlHint: 'Leave empty to use the official endpoint https://api2.cursor.sh.',
+        apiKeyHint: 'Paste a crsr_ User API Key, or paste an access token / WorkosCursorSessionToken (userId::JWT) directly.',
+        oauthOnlyHint: 'Cursor supports OAuth accounts only: a crsr_ User API Key is not a bearer token and must be exchanged for a session token first. To use a crsr_ key or a WorkosCursorSessionToken, choose the paste-credential option in the authorization flow below — it is exchanged automatically and renewed when it expires.',
+      },
+      cursorCustomBaseUrl: {
+        title: 'Custom Upstream URL',
+        hint: 'When enabled, account traffic is forwarded to the specified address. OAuth authorization and token refresh are unaffected and stay on the official endpoints. Empty/disabled defaults to https://api2.cursor.sh.',
+        placeholder: 'https://api2.cursor.sh',
+        required: 'Please enter the custom upstream URL',
+        invalid: 'Invalid upstream address (must be a full http(s):// URL)',
+        presets: {
+          official: 'Official API'
+        }
+      },
       grokCustomBaseUrl: {
         title: 'Custom Upstream URL',
         hint: 'When enabled, account traffic (chat/media/probes) is forwarded to the specified address. OAuth authorization and token refresh are unaffected and stay on the official endpoints.',
@@ -1244,6 +1261,64 @@ export default {
           tokenJsonLabel: 'Kiro Token JSON',
           tokenJsonRequired: 'Please provide the Kiro Token JSON.'
         },
+        cursor: {
+          title: 'Cursor Account Authorization',
+          followSteps: 'Follow these steps to authorize your Cursor account:',
+          step1GenerateUrl: 'Generate the Cursor deep-link login URL',
+          generateAuthUrl: 'Generate Auth URL',
+          step2OpenUrl: 'Open the URL in your browser and confirm the login',
+          openUrlDesc: 'Open the authorization URL in a new tab, sign in to cursor.com, and confirm. The system polls automatically after confirmation; no code needs to be pasted.',
+          importantNotice: 'After generating the URL the system polls the authorization result automatically; just confirm in the browser. If a code is shown, you may paste it below as a fallback.',
+          step3EnterCode: 'Wait for auto-completion (or paste a code as fallback)',
+          authCodeDesc: 'Usually nothing to enter: the account is created automatically after browser confirmation. If polling fails, paste the callback URL or code and exchange manually:',
+          authCode: 'Authorization URL or Code (optional)',
+          authCodePlaceholder: 'Usually not needed; if polling fails, paste the full callback URL, ?code=... query string, or code value',
+          authCodeHint: 'Full callback URLs, query strings, and bare codes are accepted; leave empty to wait for automatic polling.',
+          waitingForAuthorization: 'Waiting for browser confirmation; the account will be created automatically...',
+          refreshTokenAuth: 'Manual RT Input',
+          refreshTokenDesc: 'Enter existing Cursor refresh token(s). Supports batch input, one per line.',
+          refreshTokenPlaceholder: 'Paste your Cursor refresh token...\nSupports multiple, one per line',
+          ssoCookieAuth: 'Session Token Import',
+          ssoCookieDesc: 'Paste one WorkosCursorSessionToken (userId::JWT) per line. The server validates and converts them into Cursor account credentials.',
+          ssoCookieLabel: 'WorkosCursorSessionToken',
+          ssoCookiePlaceholder: 'One session token (userId::JWT) per line\nSupports multiple, one per line',
+          ssoCookieHint: 'One session token per line. Multiple tokens are imported with 3-way concurrency; expect about 90 seconds per batch. Use a matching-region proxy if needed.',
+          pleaseEnterSSOToken: 'Please enter a session token',
+          failedToValidateSSO: 'Failed to validate the Cursor session token',
+          failedToAuthorizePassword: 'Cursor password authorization failed',
+          pleaseEnterPassword: 'Please enter email----password (one per line)',
+          convertingSSO: 'Converting...',
+          convertSSOAndCreate: 'Convert & Create Account',
+          validating: 'Validating...',
+          validateAndCreate: 'Validate & Create Account',
+          pleaseEnterRefreshToken: 'Please enter Refresh Token',
+          failedToGenerateUrl: 'Failed to generate the Cursor auth URL',
+          missingExchangeParams: 'Missing authorization code, state, or OAuth session',
+          failedToExchangeCode: 'Failed to exchange the Cursor authorization code',
+          failedToPoll: 'Failed to poll the Cursor authorization result',
+          pollTimeout: 'Timed out waiting for Cursor authorization. Generate a new auth URL and try again.',
+          failedToValidateRT: 'Failed to validate the Cursor refresh token',
+          failedToConvertSSO: 'Failed to convert the Cursor session token',
+          errors: {
+            CURSOR_OAUTH_SESSION_NOT_FOUND:
+              'The Cursor OAuth session was not found or has expired. Generate a new auth URL and try again.',
+            CURSOR_OAUTH_INVALID_STATE:
+              'The Cursor OAuth state does not match this session. Generate a new auth URL and try again.',
+            CURSOR_OAUTH_STATE_REQUIRED:
+              'The OAuth state is missing. Generate a new auth URL and try again.',
+            CURSOR_OAUTH_CODE_REQUIRED:
+              'The Cursor authorization code is missing. Wait for automatic polling, or paste the full callback URL / code value.',
+            CURSOR_OAUTH_AUTHORIZATION_PENDING:
+              'Authorization is not complete yet. Confirm the login in your browser and wait for polling.',
+            CURSOR_OAUTH_NO_ACCESS_TOKEN:
+              'The Cursor response did not include an access token. Generate a new auth URL and confirm the login again.',
+            CURSOR_OAUTH_PROXY_NOT_AVAILABLE:
+              'Cursor OAuth proxy lookup is unavailable. Check the selected proxy and retry.',
+            CURSOR_OAUTH_PROXY_NOT_FOUND:
+              'The selected proxy could not be found. Choose an available proxy and retry.'
+          },
+          oauthOnlyHint: 'Initial Cursor support covers OAuth deep-link login plus direct crsr_ key / access token input.'
+        },
         // Gemini specific
 	        gemini: {
 	          title: 'Gemini Account Authorization',
@@ -1475,6 +1550,7 @@ export default {
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
       grokAccount: 'Grok Account',
+      cursorAccount: 'Cursor Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal

@@ -358,6 +358,7 @@ func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 func matchingPlatforms(groupPlatform string) []string {
 	if groupPlatform == PlatformComposite {
 		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformKiro, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek}
+		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformCursor}
 	}
 	return []string{groupPlatform}
 }

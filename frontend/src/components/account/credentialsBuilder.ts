@@ -345,6 +345,43 @@ export function cnQuotaCellVisible(platform: string, accountMode: string): boole
 export function cnBalanceCellVisible(platform: string, accountMode: string): boolean {
   return (platform === 'kimi' || platform === 'deepseek') && accountMode !== 'coding'
 }
+// ========== Cursor 自定义转发地址（base_url 仅改写转发端点，凭证生命周期不受影响） ==========
+
+/** Cursor 账号默认上游 host——只有它视同"未定制"（与后端默认 https://api2.cursor.sh 对齐）。 */
+const CURSOR_DEFAULT_GATEWAY_HOST = 'api2.cursor.sh'
+
+/**
+ * 判断 Cursor 账号存储的 base_url 是否为主动指定的上游端点。
+ * 语义与 isCustomGrokBaseUrl 一致：默认官方端点、空值与无法解析的值视为
+ * "未定制"，用于 OAuth 账号编辑时决定开关初始状态。
+ */
+export function isCustomCursorBaseUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return false
+  }
+  return parsed.hostname.toLowerCase() !== CURSOR_DEFAULT_GATEWAY_HOST
+}
+
+export interface CursorBaseUrlPreset {
+  /** i18n 子键：admin.accounts.cursorCustomBaseUrl.presets.<labelKey> */
+  labelKey?: 'official'
+  /** 字面标签，专有名词不参与 i18n */
+  label?: string
+  url: string
+}
+
+/**
+ * Cursor 快捷端点（仅供快速填充，输入框仍可自由填写任意转发地址）。
+ */
+export const CURSOR_BASE_URL_PRESETS: CursorBaseUrlPreset[] = [
+  { labelKey: 'official', url: 'https://api2.cursor.sh' }
+]
 
 /**
  * 将请求头覆写写入 credentials。

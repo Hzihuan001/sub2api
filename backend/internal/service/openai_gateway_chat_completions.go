@@ -129,6 +129,10 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return s.forwardChatCompletionsViaNativeAnthropic(ctx, c, account, body, defaultMappedModel)
 	}
 
+	if account.Platform == PlatformCursor {
+		return s.forwardCursorChatCompletions(ctx, c, account, body, defaultMappedModel)
+	}
+
 	// 固定 chat_completions 的 CN 账号，以及强制或已探测确认不支持 Responses
 	// 的其他 APIKey 账号，均走 CC 直转。
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {

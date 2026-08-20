@@ -67,6 +67,41 @@ func TestRedactText_DefaultPathDoesNotUseExtraCache(t *testing.T) {
 	}
 }
 
+func TestRedactJSON_FoldsCamelAndKebabKeys(t *testing.T) {
+	// Go structs and browser payloads spell the same credential three ways;
+	// only the snake_case form used to be redacted.
+	in := `{"accessToken":"ya29.DUMMY","refresh-token":"1//0gDUMMY",` +
+		`"webSessionToken":"ws-DUMMY","apiKey":"crsr_DUMMY","note":"keep"}`
+	out := RedactJSON([]byte(in))
+
+	for _, leak := range []string{"ya29.DUMMY", "1//0gDUMMY", "ws-DUMMY", "crsr_DUMMY"} {
+		if strings.Contains(out, leak) {
+			t.Fatalf("expected %q redacted, got %q", leak, out)
+		}
+	}
+	if !strings.Contains(out, `"note":"keep"`) {
+		t.Fatalf("expected non-sensitive field preserved, got %q", out)
+	}
+}
+
+func TestRedactText_MatchesCamelCaseKeys(t *testing.T) {
+	out := RedactText("accessToken: ya29.DUMMY, webSessionToken=ws-DUMMY")
+	if strings.Contains(out, "ya29.DUMMY") || strings.Contains(out, "ws-DUMMY") {
+		t.Fatalf("expected camelCase keys redacted, got %q", out)
+	}
+}
+
+func TestRedactText_ExtraSnakeKeyStillMatchesLiteralForm(t *testing.T) {
+	clearExtraTextPatternCache()
+
+	// Callers pass snake_case extras (RedactAuditQuery does); folding must not
+	// stop those from matching their literal spelling.
+	out := RedactText("custom_token=abc", "custom_token")
+	if !strings.Contains(out, "custom_token=***") {
+		t.Fatalf("expected extra key redacted, got %q", out)
+	}
+}
+
 func clearExtraTextPatternCache() {
 	extraTextPatternCache.Range(func(key, value any) bool {
 		extraTextPatternCache.Delete(key)

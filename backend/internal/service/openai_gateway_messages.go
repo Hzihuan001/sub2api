@@ -44,6 +44,15 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return s.forwardAnthropicViaNativeAnthropicEndpoint(ctx, c, account, body, defaultMappedModel)
 	}
 
+	// Cursor 上游只有 Connect/protobuf 聊天 RPC：/v1/messages 经
+	// Anthropic → Chat Completions → cursor 桥转发（与 Responses 桥对称）。
+	// 必须排在下面的 APIKey 分流之前：cursor 账号没有任何 HTTP 版的
+	// /v1/chat/completions 上游，一旦被 CC 直转接走就必然失败（与
+	// ForwardAsChatCompletions 的判定顺序保持一致）。
+	if account.Platform == PlatformCursor {
+		return s.forwardCursorAnthropic(ctx, c, account, body, defaultMappedModel)
+	}
+
 	// 固定 chat_completions 的 CN 账号，以及不支持 Responses 的其他 APIKey
 	// 账号，均将 Messages 转为 CC；固定 responses 的 CN 账号不受探针旧值覆盖。
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {

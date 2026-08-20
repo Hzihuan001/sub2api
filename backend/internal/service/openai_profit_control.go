@@ -236,8 +236,10 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 		}
 		group = loaded
 	}
+	// 门只覆盖本 service 实际调度的平台（openai / grok / cursor）；分组配置侧的
+	// profitControlPlatformSupported 更宽，其余平台由各自网关的门负责。
 	if group == nil || !group.ProfitControlEnabled ||
-		(group.Platform != PlatformOpenAI && group.Platform != PlatformGrok) {
+		(group.Platform != PlatformOpenAI && group.Platform != PlatformGrok && group.Platform != PlatformCursor) {
 		return nil
 	}
 
