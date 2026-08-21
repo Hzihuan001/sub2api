@@ -167,6 +167,25 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		require.False(t, ok)
 	})
 
+	t.Run("145旧Kiro约束与升级安全超集双向兼容", func(t *testing.T) {
+		const (
+			original = "bc174c2b9dd244f10090a322bb685c8fd6c3e8050777a07b3c92c08b1d8cae94"
+			superset = "be170f3bdf21d8843e674c30a99b48bdf7202133b9651a60ec7f7e3d7b1939b8"
+			name     = "145_allow_kiro_user_platform_quotas.sql"
+		)
+		require.True(t, isMigrationChecksumCompatible(name, original, superset))
+		require.True(t, isMigrationChecksumCompatible(name, superset, original))
+	})
+
+	t.Run("145未知checksum不兼容", func(t *testing.T) {
+		const name = "145_allow_kiro_user_platform_quotas.sql"
+		unknown := "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+		require.False(t, isMigrationChecksumCompatible(name,
+			"bc174c2b9dd244f10090a322bb685c8fd6c3e8050777a07b3c92c08b1d8cae94", unknown))
+		require.False(t, isMigrationChecksumCompatible(name, unknown,
+			"be170f3bdf21d8843e674c30a99b48bdf7202133b9651a60ec7f7e3d7b1939b8"))
+	})
+
 	// 224 曾被就地补 'kiro' 并在部分环境应用，随后回滚为已发布版本，
 	// 于是同一迁移在不同环境出现两个方向的 checksum 冲突，两向都需放行。
 	t.Run("224补kiro版与已发布版双向兼容", func(t *testing.T) {
