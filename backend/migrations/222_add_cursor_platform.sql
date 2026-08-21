@@ -10,7 +10,8 @@ ALTER TABLE user_platform_quotas
 
 ALTER TABLE user_platform_quotas
     ADD CONSTRAINT user_platform_quotas_platform_check
-    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'cursor'));
+    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro',
+                        'grok', 'kimi', 'zhipu', 'deepseek', 'cursor'));
 
 -- composite_model_routes.target_platform (see 172_composite_model_routes.sql)
 ALTER TABLE composite_model_routes
@@ -18,7 +19,8 @@ ALTER TABLE composite_model_routes
 
 ALTER TABLE composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
-    CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'cursor'));
+    CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro',
+                               'grok', 'kimi', 'zhipu', 'deepseek', 'cursor'));
 
 -- channel monitor providers (see 176_channel_monitor_grok_provider.sql).
 -- Cursor checks reuse the OpenAI-compatible chat completions protocol.
@@ -39,7 +41,8 @@ BEGIN
             DROP CONSTRAINT IF EXISTS channel_monitors_provider_check;
         ALTER TABLE channel_monitors
             ADD CONSTRAINT channel_monitors_provider_check
-            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'cursor'));
+            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
+                                'antigravity', 'kiro', 'kimi', 'zhipu', 'deepseek', 'cursor'));
     END IF;
 
     SELECT pg_get_constraintdef(c.oid)
@@ -54,6 +57,7 @@ BEGIN
             DROP CONSTRAINT IF EXISTS channel_monitor_request_templates_provider_check;
         ALTER TABLE channel_monitor_request_templates
             ADD CONSTRAINT channel_monitor_request_templates_provider_check
-            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'cursor'));
+            CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok',
+                                'antigravity', 'kiro', 'kimi', 'zhipu', 'deepseek', 'cursor'));
     END IF;
 END $$;

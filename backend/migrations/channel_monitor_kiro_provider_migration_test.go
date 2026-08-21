@@ -44,7 +44,7 @@ func TestChannelMonitorKiroProviderMigration(t *testing.T) {
 		require.Contains(t, sql, constraint)
 	}
 	require.Contains(t, sql,
-		"CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kiro', 'kimi', 'zhipu', 'deepseek'))")
+		"CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kiro', 'kimi', 'zhipu', 'deepseek', 'cursor'))")
 
 	// 幂等守卫按 kiro 探测，不能复用 kimi（226 已写入）。
 	require.Contains(t, sql, "position('kiro' IN monitor_constraint_def) = 0")
