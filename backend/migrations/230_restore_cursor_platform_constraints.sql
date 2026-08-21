@@ -1,0 +1,38 @@
+-- Migration: 230_restore_cursor_platform_constraints
+--
+-- Cursor support was introduced by migration 222, but later CN-provider and Kiro
+-- migrations rebuild several CHECK constraints from explicit lists that omit
+-- Cursor. Rebuild the final constraints as supersets so both integrations remain
+-- usable after every migration has run.
+
+ALTER TABLE user_platform_quotas
+    DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check;
+
+ALTER TABLE user_platform_quotas
+    ADD CONSTRAINT user_platform_quotas_platform_check
+    CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro',
+                        'grok', 'kimi', 'zhipu', 'deepseek', 'cursor'));
+
+ALTER TABLE composite_model_routes
+    DROP CONSTRAINT IF EXISTS composite_model_routes_target_platform_check;
+
+ALTER TABLE composite_model_routes
+    ADD CONSTRAINT composite_model_routes_target_platform_check
+    CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro',
+                               'grok', 'kimi', 'zhipu', 'deepseek', 'cursor'));
+
+ALTER TABLE channel_monitors
+    DROP CONSTRAINT IF EXISTS channel_monitors_provider_check;
+
+ALTER TABLE channel_monitors
+    ADD CONSTRAINT channel_monitors_provider_check
+    CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity',
+                        'kiro', 'kimi', 'zhipu', 'deepseek', 'cursor'));
+
+ALTER TABLE channel_monitor_request_templates
+    DROP CONSTRAINT IF EXISTS channel_monitor_request_templates_provider_check;
+
+ALTER TABLE channel_monitor_request_templates
+    ADD CONSTRAINT channel_monitor_request_templates_provider_check
+    CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity',
+                        'kiro', 'kimi', 'zhipu', 'deepseek', 'cursor'));
