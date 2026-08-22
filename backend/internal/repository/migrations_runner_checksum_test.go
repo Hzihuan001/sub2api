@@ -167,17 +167,25 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		require.False(t, ok)
 	})
 
-	t.Run("145旧Kiro约束与升级安全超集双向兼容", func(t *testing.T) {
-		const (
-			original = "bc174c2b9dd244f10090a322bb685c8fd6c3e8050777a07b3c92c08b1d8cae94"
-			superset = "be170f3bdf21d8843e674c30a99b48bdf7202133b9651a60ec7f7e3d7b1939b8"
-			current  = "2d07a6ec89ce4cb65c241615cac822defe8c48349c397acbd300765be36be912"
-			name     = "145_allow_kiro_user_platform_quotas.sql"
-		)
-		require.True(t, isMigrationChecksumCompatible(name, original, superset))
-		require.True(t, isMigrationChecksumCompatible(name, superset, original))
-		require.True(t, isMigrationChecksumCompatible(name, original, current))
-		require.True(t, isMigrationChecksumCompatible(name, superset, current))
+	t.Run("145已知迁移在LF与CRLF间双向兼容", func(t *testing.T) {
+		const name = "145_allow_kiro_user_platform_quotas.sql"
+		known := []string{
+			"bc174c2b9dd244f10090a322bb685c8fd6c3e8050777a07b3c92c08b1d8cae94",
+			"d109903f1c14a79e3f73e06d5e854701e31a5dd735d8da00f8295c3de772bf12",
+			"be170f3bdf21d8843e674c30a99b48bdf7202133b9651a60ec7f7e3d7b1939b8",
+			"fe05fbfeb557e3f0f76b8a6f3ae5c0ac021e8492f879df0843b4296e503f29e9",
+			"4869c5db57b86d112c5390cd65ac522a75248204e9e927003b3a42b104ef26f7",
+			"750bbcfecb77d8138ed312930f5c140c9119d6ce8194f9300384255b4ce2fcd9",
+		}
+		for _, dbChecksum := range known {
+			for _, fileChecksum := range known {
+				if dbChecksum == fileChecksum {
+					continue
+				}
+				require.Truef(t, isMigrationChecksumCompatible(name, dbChecksum, fileChecksum),
+					"db=%s file=%s", dbChecksum, fileChecksum)
+			}
+		}
 	})
 
 	t.Run("145未知checksum不兼容", func(t *testing.T) {
