@@ -69,17 +69,6 @@ func GrokProviderRefreshPolicy() ProviderRefreshPolicy {
 	}
 }
 
-func CursorProviderRefreshPolicy() ProviderRefreshPolicy {
-	return ProviderRefreshPolicy{
-		OnRefreshError: ProviderRefreshErrorUseExistingToken,
-		// Cursor access tokens are short-lived (~1h) and the account row is the
-		// only other copy, so when a peer holds the refresh lock the useful
-		// answer is the token it is about to publish, not the stale one we hold.
-		OnLockHeld: ProviderLockHeldWaitForCache,
-		FailureTTL: 0,
-	}
-}
-
 // BackgroundSkipAction 定义后台刷新服务在“未实际刷新”场景的计数方式。
 type BackgroundSkipAction int
 

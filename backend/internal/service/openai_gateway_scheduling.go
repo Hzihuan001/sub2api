@@ -250,7 +250,7 @@ func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.C
 // handler 调度入口仍需导出，保持导出名。）
 func NormalizeOpenAICompatiblePlatform(platform string) string {
 	switch platform {
-	case PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformCursor:
+	case PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek:
 		return platform
 	default:
 		return PlatformOpenAI

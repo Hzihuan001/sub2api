@@ -103,8 +103,6 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 		{"platform":"antigravity","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"kiro","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"grok","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null}
-		{"platform":"grok","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
-		{"platform":"cursor","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null}
 	]}`
 	c, w := putReq(t, body)
 	h.UpdateUserPlatformQuotas(c)
@@ -121,7 +119,6 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 	}
 	// 缓存失效：按全部允许平台统一失效（含 kimi/zhipu/deepseek）。
-	// 缓存失效：按全部允许平台统一失效。
 	if len(cache.deleteCalls) != len(service.AllowedQuotaPlatforms) {
 		t.Errorf("expected %d cache delete calls, got %d: %+v", len(service.AllowedQuotaPlatforms), len(cache.deleteCalls), cache.deleteCalls)
 	}

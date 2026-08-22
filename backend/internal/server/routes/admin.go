@@ -64,8 +64,6 @@ func RegisterAdminRoutes(
 
 		// 国产供应商（kimi/zhipu/deepseek）额度与余额
 		registerCNProviderRoutes(admin, h)
-		// Cursor OAuth
-		registerCursorOAuthRoutes(admin, h)
 
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
@@ -531,21 +529,6 @@ func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		cn.GET("/accounts/:id/quota", h.Admin.CNProvider.QueryQuota)
 		// payg 账号余额（kimi/deepseek；zhipu 无余额端点）。
 		cn.GET("/accounts/:id/balance", h.Admin.CNProvider.QueryBalance)
-	}
-}
-
-func registerCursorOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	cursor := admin.Group("/cursor")
-	{
-		cursor.GET("/oauth/capabilities", h.Admin.CursorOAuth.GetCapabilities)
-		cursor.POST("/oauth/auth-url", h.Admin.CursorOAuth.GenerateAuthURL)
-		cursor.POST("/oauth/exchange-code", h.Admin.CursorOAuth.ExchangeCode)
-		cursor.POST("/oauth/poll", h.Admin.CursorOAuth.Poll)
-		cursor.POST("/oauth/refresh-token", h.Admin.CursorOAuth.RefreshToken)
-		cursor.POST("/oauth/sso-token", h.Admin.CursorOAuth.ValidateSSOToken)
-		cursor.POST("/oauth/password", h.Admin.CursorOAuth.AuthorizePassword)
-		cursor.POST("/sso-to-oauth", h.Admin.CursorOAuth.CreateAccountsFromSSO)
-		cursor.POST("/accounts/:id/refresh", h.Admin.CursorOAuth.RefreshAccountToken)
 	}
 }
 

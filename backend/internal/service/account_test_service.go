@@ -28,7 +28,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	cursorpkg "github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -144,7 +143,6 @@ type AccountTestService struct {
 	claudeTokenProvider       *ClaudeTokenProvider
 	kiroTokenProvider         *KiroTokenProvider
 	grokTokenProvider         *GrokTokenProvider
-	cursorTokenProvider       *CursorTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
@@ -320,13 +318,6 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testKiroAccountConnection(c, account, modelID)
 	}
 
-	// Cursor must never reach the Claude probe below. That path sends
-	// credentials["access_token"] to api.anthropic.com, which for a Cursor
-	// account means handing a live Cursor bearer to an unrelated vendor.
-	if account.Platform == PlatformCursor {
-		return s.testCursorAccountConnection(c, account)
-	}
-
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
@@ -349,112 +340,6 @@ func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Cont
 	}
 
 	return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
-}
-
-// testCursorAccountConnection probes a Cursor account against Cursor's own
-// api2 AvailableModels RPC.
-//
-// Connectivity is all this can check: the conversation endpoint (api5
-// AgentService/Run) is a paced bidirectional stream that bills real tokens, so
-// a "test connection" button has no business opening one. AvailableModels
-// exercises the same host, proxy, headers and bearer, which is what a
-// credential test is actually asking about.
-func (s *AccountTestService) testCursorAccountConnection(c *gin.Context, account *Account) error {
-	ctx := c.Request.Context()
-
-	s.prepareGrokTestSSE(c)
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: "cursor/available-models"})
-
-	if s.httpUpstream == nil {
-		return s.sendErrorAndEnd(c, "HTTP upstream not configured")
-	}
-	// A configured-but-unresolved proxy would silently send the credential
-	// direct, which is exactly what the operator asked not to happen.
-	if account.ProxyID != nil && account.Proxy == nil {
-		return s.sendErrorAndEnd(c, "Account has a proxy configured but it could not be resolved")
-	}
-
-	token := ""
-	if s.cursorTokenProvider != nil && account.IsCursorOAuth() {
-		resolved, err := s.cursorTokenProvider.GetAccessToken(ctx, account)
-		if err != nil {
-			return s.sendErrorAndEnd(c, fmt.Sprintf("Cursor credential is unavailable: %s", err.Error()))
-		}
-		token = strings.TrimSpace(resolved)
-	}
-	if token == "" {
-		token = strings.TrimSpace(account.GetCursorAccessToken())
-	}
-	if token == "" {
-		return s.sendErrorAndEnd(c, "No Cursor access token available")
-	}
-
-	baseURL, err := s.validateUpstreamBaseURL(account.GetCursorBaseURL())
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Cursor base URL: %s", err.Error()))
-	}
-	targetURL := strings.TrimRight(baseURL, "/") + cursorpkg.EndpointAvailableModels
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL,
-		bytes.NewReader(cursorpkg.EncodeAvailableModelsRequest(false, false)))
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create Cursor request")
-	}
-	for key, values := range cursorpkg.BuildHeaders(token, cursorpkg.ContentTypeProto) {
-		for _, value := range values {
-			req.Header.Set(key, value)
-		}
-	}
-	account.ApplyHeaderOverrides(req.Header)
-
-	resp, err := s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Cursor AvailableModels request failed: %s", err.Error()))
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read Cursor response: %s", err.Error()))
-	}
-	if resp.StatusCode != http.StatusOK {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Cursor AvailableModels returned %d: %s", resp.StatusCode, truncateForTestEvent(string(body))))
-	}
-
-	models, err := cursorpkg.ParseAvailableModelsResponse(body)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse Cursor AvailableModels response: %s", err.Error()))
-	}
-	ids := cursorObservedModelIDs(models)
-	if len(ids) == 0 {
-		return s.sendErrorAndEnd(c, "Cursor AvailableModels returned no models")
-	}
-
-	// A web-session credential is accepted here and refused by chat, so a green
-	// test on one would be actively misleading.
-	if cursorpkg.IsWebSessionToken(token) {
-		return s.sendErrorAndEnd(c, "Cursor credential is a web session token: accepted by AvailableModels but rejected by chat. Complete the deep-link upgrade.")
-	}
-
-	preview := ids
-	if len(preview) > 8 {
-		preview = preview[:8]
-	}
-	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf(
-		"Cursor credential is valid. %d models available: %s", len(ids), strings.Join(preview, ", "))})
-	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-	return nil
-}
-
-// truncateForTestEvent keeps an upstream error body short enough for an SSE
-// event without splitting a rune.
-func truncateForTestEvent(body string) string {
-	const limit = 512
-	body = strings.TrimSpace(body)
-	if len(body) <= limit {
-		return body
-	}
-	return strings.ToValidUTF8(body[:limit], "")
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection

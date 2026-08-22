@@ -1530,8 +1530,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	modelSet := make(map[string]struct{})
 	hasAnyMapping := false
 
-	for i := range accounts {
-		acc := &accounts[i]
+	for _, acc := range accounts {
 		// Passthrough routing accepts models independently of model_mapping. A stale
 		// mapping on any eligible passthrough account therefore cannot define the
 		// public whitelist; return nil so the handler uses its default model set.
@@ -1542,39 +1541,8 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 			}
 			return nil
 		}
+
 		mapping := acc.GetModelMapping()
-
-		// Cursor enhancement over Grok: each schedulable account's observed
-		// upstream models (extra.cursor_observed_models) drive the public list so
-		// /v1/models reflects what the pooled subscriptions can actually serve.
-		//
-		// The snapshot is authoritative, not additive. A Cursor account with no
-		// operator mapping falls back to the full default catalogue, so unioning
-		// the two made a free-tier account that only ever observed "default"
-		// advertise all thirteen models — every request for one of the other
-		// twelve then failed upstream. With a snapshot present the account
-		// contributes what it observed, and an operator mapping only filters it:
-		// aliases survive when their target is observed.
-		if acc.Platform == PlatformCursor {
-			if observedIDs := CursorObservedModelIDs(acc.Extra); len(observedIDs) > 0 {
-				hasAnyMapping = true
-				for _, model := range observedIDs {
-					if model = strings.TrimSpace(model); model != "" {
-						modelSet[model] = struct{}{}
-					}
-				}
-				if acc.HasExplicitModelMapping() {
-					observed := CursorObservedModelSet(acc.Extra)
-					for name, target := range mapping {
-						if CursorModelObserved(observed, target) {
-							modelSet[name] = struct{}{}
-						}
-					}
-				}
-				continue
-			}
-		}
-
 		if len(mapping) > 0 {
 			hasAnyMapping = true
 			for model := range mapping {

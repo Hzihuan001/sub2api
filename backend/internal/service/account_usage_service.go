@@ -449,15 +449,6 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		return usage, err
 	}
 
-	// Cursor 必须在下面的 CanGetUsage 之前拦下：那条分支会把
-	// credentials["access_token"] 当作 Anthropic OAuth token 发往
-	// api.anthropic.com 的 usage API，对 Cursor 账号就是把有效的 Cursor
-	// bearer 泄露给无关厂商。Cursor 上游没有本网关可调用的额度接口，
-	// 用量只能来自本地 usage_logs 的被动统计。
-	if account.Platform == PlatformCursor {
-		return nil, fmt.Errorf("cursor accounts do not support active usage query; only passive usage statistics are available")
-	}
-
 	// 只有oauth类型账号可以通过API获取usage（有profile scope）
 	if account.CanGetUsage() {
 		var apiResp *ClaudeUsageResponse

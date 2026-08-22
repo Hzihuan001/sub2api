@@ -8,9 +8,8 @@ import {
   type UpdateSettingsRequest,
   type DefaultPlatformQuotasMap,
 } from "@/api/admin/settings";
-import { CONCRETE_PLATFORM_OPTIONS } from "@/constants/platforms";
 
-/** 全 null 的平台 map，用于断言归一化默认值 */
+/** 全 null 的 5 平台 map，用于断言归一化默认值 */
 const allNullQuotas: DefaultPlatformQuotasMap = {
   anthropic: { daily: null, weekly: null, monthly: null },
   openai:    { daily: null, weekly: null, monthly: null },
@@ -18,10 +17,6 @@ const allNullQuotas: DefaultPlatformQuotasMap = {
   antigravity: { daily: null, weekly: null, monthly: null },
   kiro: { daily: null, weekly: null, monthly: null },
   grok: { daily: null, weekly: null, monthly: null },
-  kimi: { daily: null, weekly: null, monthly: null },
-  zhipu: { daily: null, weekly: null, monthly: null },
-  deepseek: { daily: null, weekly: null, monthly: null },
-  cursor: { daily: null, weekly: null, monthly: null },
 }
 
 describe("admin settings auth source defaults helpers", () => {
@@ -247,12 +242,11 @@ describe("normalizePlatformQuotasMap", () => {
     expect(result.antigravity).toEqual({ daily: null, weekly: null, monthly: null });
     expect(result.kiro).toEqual({ daily: null, weekly: null, monthly: null });
     expect(result.grok).toEqual({ daily: null, weekly: null, monthly: null });
-    expect(result.cursor).toEqual({ daily: null, weekly: null, monthly: null });
   });
 
-  it("无参数时返回全部平台全 null", () => {
+  it("无参数时返回全 6 平台全 null", () => {
     const result = normalizePlatformQuotasMap();
-    expect(Object.keys(result)).toHaveLength(CONCRETE_PLATFORM_OPTIONS.length);
+    expect(Object.keys(result)).toHaveLength(6);
     for (const v of Object.values(result)) {
       expect(v).toEqual({ daily: null, weekly: null, monthly: null });
     }
@@ -300,7 +294,7 @@ describe("sanitizePlatformQuotasMap", () => {
 
   it("缺失平台填充为全 null", () => {
     const result = sanitizePlatformQuotasMap({});
-    expect(Object.keys(result)).toHaveLength(CONCRETE_PLATFORM_OPTIONS.length);
+    expect(Object.keys(result)).toHaveLength(6);
     for (const v of Object.values(result)) {
       expect(v).toEqual({ daily: null, weekly: null, monthly: null });
     }

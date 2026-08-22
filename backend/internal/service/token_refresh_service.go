@@ -146,28 +146,6 @@ func NewTokenRefreshService(
 	return s
 }
 
-// RegisterCursorRefresher appends the Cursor platform to the background
-// refresh registry. Kept out of NewTokenRefreshService so the existing
-// positional constructor callers stay unchanged.
-func (s *TokenRefreshService) RegisterCursorRefresher(cursorOAuthService CursorOAuthTokenService) {
-	refresher := NewCursorTokenRefresher(cursorOAuthService)
-	s.registrations = append(s.registrations, tokenRefreshRegistration{
-		platform:  PlatformCursor,
-		refresher: refresher,
-		executor:  refresher,
-	})
-}
-
-// altRefreshCredentialSources lists platforms whose refresh does not need a
-// refresh_token. CursorTokenRefresher.CanRefresh accepts an API key or a web
-// session cookie as well, so limiting candidates to refresh_token holders left
-// those accounts out of background refresh entirely.
-func altRefreshCredentialSources() []AltRefreshCredentialSource {
-	return []AltRefreshCredentialSource{
-		{Platform: PlatformCursor, CredentialKeys: []string{"api_key", "web_session_token"}},
-	}
-}
-
 func (s *TokenRefreshService) eligiblePlatforms() []string {
 	platforms := make([]string, 0, len(s.registrations))
 	for _, registration := range s.registrations {
@@ -552,14 +530,13 @@ func (s *TokenRefreshService) processRefreshContext(parent context.Context) {
 			break
 		}
 		page, err := pager.ListOAuthRefreshCandidatePage(ctx, OAuthRefreshPageOptions{
-			Platforms:                   platforms,
-			AfterID:                     afterID,
-			Limit:                       pageSize,
-			ActiveOnly:                  true,
-			IncludeSetupToken:           true,
-			RequireRefreshToken:         true,
-			ExcludeRetryCooldown:        true,
-			AltRefreshCredentialSources: altRefreshCredentialSources(),
+			Platforms:            platforms,
+			AfterID:              afterID,
+			Limit:                pageSize,
+			ActiveOnly:           true,
+			IncludeSetupToken:    true,
+			RequireRefreshToken:  true,
+			ExcludeRetryCooldown: true,
 		})
 		if err != nil {
 			slog.Error("token_refresh.list_accounts_failed", "error", err, "after_id", afterID)

@@ -21,4 +21,4 @@ ALTER TABLE composite_model_routes
 ALTER TABLE composite_model_routes
     ADD CONSTRAINT composite_model_routes_target_platform_check
     CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro',
-                               'grok', 'kimi', 'zhipu', 'deepseek', 'cursor'));
+                               'grok', 'kimi', 'zhipu', 'deepseek'));

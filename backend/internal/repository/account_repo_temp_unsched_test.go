@@ -270,9 +270,6 @@ func TestAccountRepository_ListOAuthRefreshCandidatePage_SQLFilter(t *testing.T)
 		IncludeSetupToken:    true,
 		RequireRefreshToken:  true,
 		ExcludeRetryCooldown: true,
-		AltRefreshCredentialSources: []service.AltRefreshCredentialSource{
-			{Platform: service.PlatformCursor, CredentialKeys: []string{"api_key", "web_session_token"}},
-		},
 	})
 	require.NoError(t, err)
 	require.Empty(t, page.Accounts)
@@ -297,21 +294,11 @@ func TestAccountRepository_ListOAuthRefreshCandidatePage_SQLFilter(t *testing.T)
 		"plain NOT (...) excludes NULL temp_unschedulable_until rows (the common healthy case)")
 	require.Contains(t, normalized, "id > $2")
 	require.Contains(t, normalized, "ORDER BY id ASC")
+	require.Contains(t, normalized, "LIMIT $3")
 	require.NotContains(t, normalized, "credentials->>'expires_at'")
-
-	// Cursor refreshes from an API key or a browser cookie as well, so those
-	// accounts have to qualify without a refresh_token or background refresh
-	// skips them and their ~1h access tokens expire on a user's request.
-	require.Contains(t, normalized, "btrim(coalesce(credentials->>$3, '')) <> ''")
-	require.Contains(t, normalized, "btrim(coalesce(credentials->>$4, '')) <> ''")
-	require.Contains(t, normalized, "platform = $5")
-	require.Contains(t, normalized, "LIMIT $6")
-	require.Len(t, capturedArgs, 6)
+	require.Len(t, capturedArgs, 3)
 	require.Equal(t, int64(100), capturedArgs[1])
-	require.Equal(t, "api_key", capturedArgs[2])
-	require.Equal(t, "web_session_token", capturedArgs[3])
-	require.Equal(t, service.PlatformCursor, capturedArgs[4])
-	require.Equal(t, 200, capturedArgs[5])
+	require.Equal(t, 200, capturedArgs[2])
 	valuer, ok := capturedArgs[0].(interface{ Value() (driver.Value, error) })
 	require.True(t, ok)
 	platforms, err := valuer.Value()

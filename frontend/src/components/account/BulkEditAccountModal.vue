@@ -226,11 +226,6 @@
           class="mt-2"
           @select="baseUrl = $event; enableBaseUrl = true"
         />
-        <CursorBaseUrlPresets
-          v-if="allTargetsCursor"
-          class="mt-2"
-          @select="baseUrl = $event; enableBaseUrl = true"
-        />
         <p class="input-hint">
           {{ t('admin.accounts.bulkEdit.baseUrlNotice') }}
         </p>
@@ -1512,7 +1507,6 @@ import {
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
-import CursorBaseUrlPresets from '@/components/account/CursorBaseUrlPresets.vue'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -1557,12 +1551,6 @@ const allTargetsGrok = computed(
   () =>
     targetSelectedPlatforms.value.length > 0 &&
     targetSelectedPlatforms.value.every((p) => p === 'grok')
-)
-// Cursor 快捷端点同理：仅当所选账号全部为 cursor 平台时展示
-const allTargetsCursor = computed(
-  () =>
-    targetSelectedPlatforms.value.length > 0 &&
-    targetSelectedPlatforms.value.every((p) => p === 'cursor')
 )
 const isMixedPlatform = computed(() => targetSelectedPlatforms.value.length > 1)
 

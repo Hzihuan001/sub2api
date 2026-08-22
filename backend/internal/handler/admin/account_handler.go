@@ -21,7 +21,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	cursorpkg "github.com/Wei-Shaw/sub2api/internal/pkg/cursor"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
@@ -56,7 +55,6 @@ type AccountHandler struct {
 	antigravityOAuthService *service.AntigravityOAuthService
 	kiroOAuthService        *service.KiroOAuthService
 	grokOAuthService        service.GrokOAuthTokenService
-	cursorOAuthService      service.CursorOAuthTokenService
 	rateLimitService        *service.RateLimitService
 	accountUsageService     *service.AccountUsageService
 	accountTestService      *service.AccountTestService
@@ -77,12 +75,6 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
-}
-
-// SetCursorOAuthService attaches the Cursor token refresh port (kept out of
-// NewAccountHandler so existing positional test constructors stay valid).
-func (h *AccountHandler) SetCursorOAuthService(svc service.CursorOAuthTokenService) {
-	h.cursorOAuthService = svc
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -1324,19 +1316,6 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		}
 
 		newCredentials = service.MergeCredentials(account.Credentials, h.grokOAuthService.BuildAccountCredentials(tokenInfo))
-		if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
-			newCredentials["base_url"] = baseURL
-		}
-	} else if account.Platform == service.PlatformCursor {
-		if h.cursorOAuthService == nil {
-			return nil, "", fmt.Errorf("cursor oauth service is not configured")
-		}
-		tokenInfo, err := h.cursorOAuthService.RefreshAccountToken(ctx, account)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to refresh Cursor credentials: %w", err)
-		}
-
-		newCredentials = service.MergeCredentials(account.Credentials, h.cursorOAuthService.BuildAccountCredentials(tokenInfo))
 		if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
 			newCredentials["base_url"] = baseURL
 		}
@@ -2714,69 +2693,6 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		}
 
 		response.Success(c, buildMappedKiroModels(mapping))
-		return
-	}
-
-	// Handle Cursor accounts: the observed upstream models recorded on the
-	// account are authoritative when present, since they are what this
-	// subscription can actually be asked for. Only without a snapshot does the
-	// explicit mapping (or the fallback catalog) stand in for them — otherwise a
-	// free-tier account, which only observes "auto", would be shown offering
-	// every model in the catalog.
-	if account.Platform == service.PlatformCursor {
-		hasExplicitMapping := false
-		switch rawMapping := account.Credentials["model_mapping"].(type) {
-		case map[string]any:
-			hasExplicitMapping = len(rawMapping) > 0
-		case map[string]string:
-			hasExplicitMapping = len(rawMapping) > 0
-		}
-		observed := service.CursorObservedModelIDs(account.Extra)
-
-		seen := make(map[string]struct{})
-		ids := make([]string, 0)
-		add := func(list []string) {
-			for _, id := range list {
-				id = strings.TrimSpace(id)
-				if id == "" {
-					continue
-				}
-				if _, ok := seen[id]; ok {
-					continue
-				}
-				seen[id] = struct{}{}
-				ids = append(ids, id)
-			}
-		}
-		add(observed)
-		if hasExplicitMapping {
-			mapping := account.GetModelMapping()
-			observedSet := service.CursorObservedModelSet(account.Extra)
-			mappingKeys := make([]string, 0, len(mapping))
-			for requestedModel, target := range mapping {
-				// With a snapshot in hand an alias is only real if its target was
-				// observed; keeping the rest would re-advertise models this
-				// account cannot address, which is the bug being fixed here.
-				if len(observedSet) > 0 && !service.CursorModelObserved(observedSet, target) {
-					continue
-				}
-				mappingKeys = append(mappingKeys, requestedModel)
-			}
-			add(mappingKeys)
-		} else if len(observed) == 0 {
-			add(cursorpkg.DefaultModelIDs())
-		}
-		sort.Strings(ids)
-
-		models := make([]claude.Model, 0, len(ids))
-		for _, id := range ids {
-			models = append(models, claude.Model{
-				ID:          id,
-				Type:        "model",
-				DisplayName: id,
-			})
-		}
-		response.Success(c, models)
 		return
 	}
 

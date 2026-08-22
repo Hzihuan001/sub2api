@@ -1777,8 +1777,6 @@ const qualityTargetLabel = (target: string) => {
       return 'Gemini'
     case 'grok':
       return 'Grok'
-    case 'cursor':
-      return 'Cursor'
     default:
       return target
   }

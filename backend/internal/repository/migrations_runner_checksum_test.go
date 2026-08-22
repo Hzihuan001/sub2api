@@ -171,10 +171,13 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		const (
 			original = "bc174c2b9dd244f10090a322bb685c8fd6c3e8050777a07b3c92c08b1d8cae94"
 			superset = "be170f3bdf21d8843e674c30a99b48bdf7202133b9651a60ec7f7e3d7b1939b8"
+			current  = "2d07a6ec89ce4cb65c241615cac822defe8c48349c397acbd300765be36be912"
 			name     = "145_allow_kiro_user_platform_quotas.sql"
 		)
 		require.True(t, isMigrationChecksumCompatible(name, original, superset))
 		require.True(t, isMigrationChecksumCompatible(name, superset, original))
+		require.True(t, isMigrationChecksumCompatible(name, original, current))
+		require.True(t, isMigrationChecksumCompatible(name, superset, current))
 	})
 
 	t.Run("145未知checksum不兼容", func(t *testing.T) {

@@ -424,7 +424,6 @@ type OpenAIGatewayService struct {
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
 	grokTokenProvider     *GrokTokenProvider
-	cursorTokenProvider   *CursorTokenProvider
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
 	resolver              *ModelPricingResolver
@@ -491,7 +490,6 @@ func NewOpenAIGatewayService(
 	deferredService *DeferredService,
 	openAITokenProvider *OpenAITokenProvider,
 	grokTokenProvider *GrokTokenProvider,
-	cursorTokenProvider *CursorTokenProvider,
 	resolver *ModelPricingResolver,
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
@@ -528,7 +526,6 @@ func NewOpenAIGatewayService(
 		deferredService:       deferredService,
 		openAITokenProvider:   openAITokenProvider,
 		grokTokenProvider:     grokTokenProvider,
-		cursorTokenProvider:   cursorTokenProvider,
 		toolCorrector:         NewCodexToolCorrector(),
 		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
 		resolver:              resolver,
@@ -1183,20 +1180,6 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 				return accessToken, "oauth", nil
 			}
 			accessToken := account.GetGrokAccessToken()
-			if accessToken == "" {
-				return "", "", errors.New("access_token not found in credentials")
-			}
-			return accessToken, "oauth", nil
-		}
-		if account.Platform == PlatformCursor {
-			if s.cursorTokenProvider != nil {
-				accessToken, err := s.cursorTokenProvider.GetAccessToken(ctx, account)
-				if err != nil {
-					return "", "", err
-				}
-				return accessToken, "oauth", nil
-			}
-			accessToken := account.GetCursorAccessToken()
 			if accessToken == "" {
 				return "", "", errors.New("access_token not found in credentials")
 			}

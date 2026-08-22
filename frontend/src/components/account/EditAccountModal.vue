@@ -52,9 +52,7 @@
                       ? 'https://your-relay.example.com'
                     : account.platform === 'grok'
                       ? 'https://api.x.ai/v1'
-                      : account.platform === 'cursor'
-                        ? 'https://api2.cursor.sh'
-                        : 'https://api.anthropic.com'
+                      : 'https://api.anthropic.com'
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
@@ -142,11 +140,6 @@
           />
           <p class="input-hint">{{ t('admin.accounts.kiro.apiRegionHint') }}</p>
         </div>
-        <CursorBaseUrlPresets
-          v-if="account.platform === 'cursor'"
-          class="mt-2"
-          @select="editBaseUrl = $event"
-        />
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
           <input
@@ -170,9 +163,7 @@
                     ? 'sk-...'
                     : account.platform === 'grok'
                       ? 'xai-...'
-                      : account.platform === 'cursor'
-                        ? 'crsr_...'
-                        : 'sk-ant-...'
+                      : 'sk-ant-...'
             "
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
@@ -675,48 +666,6 @@
       </div>
 
       <!-- Header Override Section (eligible API-key platforms + grok OAuth) -->
-      <!-- Cursor OAuth Custom Upstream URL (仅改写转发端点，OAuth 授权/刷新不受影响) -->
-      <div
-        v-if="account.platform === 'cursor' && account.type === 'oauth'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
-        <div class="mb-3 flex items-center justify-between">
-          <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.cursorCustomBaseUrl.title') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.cursorCustomBaseUrl.hint') }}
-            </p>
-          </div>
-          <button
-            type="button"
-            data-testid="cursor-custom-base-url-toggle"
-            @click="cursorOAuthCustomBaseUrlEnabled = !cursorOAuthCustomBaseUrlEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              cursorOAuthCustomBaseUrlEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                cursorOAuthCustomBaseUrlEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
-        </div>
-        <div v-if="cursorOAuthCustomBaseUrlEnabled" class="space-y-2">
-          <input
-            v-model="cursorOAuthBaseUrl"
-            type="text"
-            class="input"
-            data-testid="cursor-custom-base-url-input"
-            :placeholder="t('admin.accounts.cursorCustomBaseUrl.placeholder')"
-          />
-          <CursorBaseUrlPresets @select="cursorOAuthBaseUrl = $event" />
-        </div>
-      </div>
-
-      <!-- Header Override Section (anthropic/openai apikey + grok apikey/oauth) -->
       <div v-if="headerOverrideCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <div>
@@ -757,9 +706,9 @@
         </div>
       </div>
 
-      <!-- OpenAI / Kiro / Grok / Cursor OAuth Model Mapping -->
+      <!-- OpenAI / Kiro / Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立区域) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'kiro' || account.platform === 'grok' || account.platform === 'cursor') && account.type === 'oauth'"
+        v-if="(account.platform === 'openai' || account.platform === 'kiro' || account.platform === 'grok') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3037,7 +2986,6 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
-import CursorBaseUrlPresets from '@/components/account/CursorBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
@@ -3048,7 +2996,6 @@ import {
   buildPlanTypeOptions,
   readPlanType,
   isCustomGrokBaseUrl,
-  isCustomCursorBaseUrl,
   isHeaderOverrideCapable,
   splitHeaderOverridesObject,
   validateHeaderOverrideRows,
@@ -3123,7 +3070,6 @@ const baseUrlHint = computed(() => {
   // Kiro 编辑表单仅对中转账号显示 base_url 字段(直连账号隐藏),故用中转提示文案。
   if (props.account.platform === 'kiro') return t('admin.accounts.kiro.relayBaseUrlHint')
   if (props.account.platform === 'grok') return ''
-  if (props.account.platform === 'cursor') return t('admin.accounts.cursor.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -3345,9 +3291,6 @@ const headerOverrideCapable = computed(
 // Grok OAuth 自定义上游地址（仅转发端点；OAuth 授权/令牌刷新不受影响）
 const grokOAuthCustomBaseUrlEnabled = ref(false)
 const grokOAuthBaseUrl = ref('')
-// Cursor OAuth 自定义上游地址（仅转发端点；默认 https://api2.cursor.sh）
-const cursorOAuthCustomBaseUrlEnabled = ref(false)
-const cursorOAuthBaseUrl = ref('')
 // Grok Free OAuth accounts use client-tool prompt caching by default. Keep an
 // explicit false in the account extra as the opt-out signal.
 const grokClientToolCacheEnabled = ref(true)
@@ -3771,7 +3714,6 @@ const defaultBaseUrl = computed(() => {
   ) {
     return defaultCNBaseUrl(props.account.platform, editAccountMode.value, editApiProtocol.value)
   }
-  if (props.account?.platform === 'cursor') return 'https://api2.cursor.sh'
   return 'https://api.anthropic.com'
 })
 
@@ -4130,17 +4072,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
   }
 
-  // Load Cursor OAuth custom upstream URL state（默认官方地址视同未定制）
-  cursorOAuthCustomBaseUrlEnabled.value = false
-  cursorOAuthBaseUrl.value = ''
-  if (newAccount.platform === 'cursor' && newAccount.type === 'oauth' && newAccount.credentials) {
-    const cursorCreds = newAccount.credentials as Record<string, unknown>
-    if (isCustomCursorBaseUrl(cursorCreds.base_url)) {
-      cursorOAuthCustomBaseUrlEnabled.value = true
-      cursorOAuthBaseUrl.value = (cursorCreds.base_url as string).trim()
-    }
-  }
-
   // Initialize API Key fields for apikey type
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
@@ -4198,15 +4129,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           ? 'https://generativelanguage.googleapis.com'
           : newAccount.platform === 'kiro'
             ? ''
-            : newAccount.platform === 'grok'
-              ? 'https://api.x.ai/v1'
-              : newAccount.platform === 'kimi' ||
-                  newAccount.platform === 'zhipu' ||
-                  newAccount.platform === 'deepseek'
-                ? defaultCNBaseUrl(newAccount.platform, editAccountMode.value, editApiProtocol.value)
-                : newAccount.platform === 'cursor'
-                  ? 'https://api2.cursor.sh'
-                  : 'https://api.anthropic.com'
+          : newAccount.platform === 'grok'
+            ? 'https://api.x.ai/v1'
+            : newAccount.platform === 'kimi' ||
+                newAccount.platform === 'zhipu' ||
+                newAccount.platform === 'deepseek'
+              ? defaultCNBaseUrl(newAccount.platform, editAccountMode.value, editApiProtocol.value)
+              : 'https://api.anthropic.com'
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
       ? editAdaptiveBaseUrls.value.chat_completions
       : (credentials.base_url as string) || platformDefaultUrl
@@ -4298,9 +4227,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           ? 'https://generativelanguage.googleapis.com'
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
-            : newAccount.platform === 'cursor'
-              ? 'https://api2.cursor.sh'
-              : 'https://api.anthropic.com'
+            : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
     // Load model mappings for OpenAI/Kiro/Grok OAuth accounts
@@ -4312,8 +4239,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       } else {
         loadDefaultKiroModelMappings()
       }
-    } else if ((newAccount.platform === 'openai' || newAccount.platform === 'grok' || newAccount.platform === 'cursor') && newAccount.credentials) {
-      // Load model mappings for OpenAI/Grok/Cursor OAuth accounts.
+    } else if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else {
@@ -5179,8 +5105,8 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI/Grok/Cursor OAuth: persist model mapping to credentials
-    if ((props.account.platform === 'openai' || props.account.platform === 'grok' || props.account.platform === 'cursor') && props.account.type === 'oauth') {
+    // OpenAI/Grok OAuth: persist model mapping to credentials
+    if ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'oauth') {
       const currentCredentials = isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||
@@ -5267,32 +5193,6 @@ const handleSubmit = async () => {
       // backend applies the default-enabled policy to missing values.
       newExtra[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY] = grokClientToolCacheEnabled.value
       updatePayload.extra = newExtra
-    }
-
-    // Cursor OAuth: 自定义上游地址。base_url 仅改写转发端点，OAuth 授权与
-    // 令牌刷新链路不读取该值；关闭开关即恢复默认官方端点（api2.cursor.sh）。
-    if (props.account.platform === 'cursor' && props.account.type === 'oauth') {
-      const currentCredentials =
-        (updatePayload.credentials as Record<string, unknown>) ||
-        ((props.account.credentials as Record<string, unknown>) || {})
-      const newCredentials: Record<string, unknown> = { ...currentCredentials }
-
-      if (cursorOAuthCustomBaseUrlEnabled.value) {
-        const trimmedBaseUrl = cursorOAuthBaseUrl.value.trim()
-        if (!trimmedBaseUrl) {
-          appStore.showError(t('admin.accounts.cursorCustomBaseUrl.required'))
-          return
-        }
-        if (!/^https?:\/\//i.test(trimmedBaseUrl)) {
-          appStore.showError(t('admin.accounts.cursorCustomBaseUrl.invalid'))
-          return
-        }
-        newCredentials.base_url = trimmedBaseUrl
-      } else {
-        delete newCredentials.base_url
-      }
-
-      updatePayload.credentials = newCredentials
     }
 
     // OpenAI: 手动覆盖订阅档位 plan_type（Plus/Pro/Free）。仅 OAuth 非影子账号：

@@ -118,10 +118,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return s.forwardResponsesViaNativeAnthropic(ctx, c, account, body, reqModel)
 	}
 
-	if account.Platform == PlatformCursor {
-		return s.forwardCursorResponses(ctx, c, account, body, originalModel, reqStream, startTime)
-	}
-
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}

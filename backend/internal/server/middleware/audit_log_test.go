@@ -146,17 +146,6 @@ func TestPromptAuditMutationAuditRoutesHaveStableActionsAndOmitBodies(t *testing
 	}
 }
 
-// Cursor 深链登录的 poll / exchange-code 请求体只有 session_id + state (+ code)，
-// 三者组合即可替代管理员领走 access token，且键名不含通用敏感子串。
-func TestCursorOAuthDeepLinkRoutesOmitAuditBody(t *testing.T) {
-	for _, route := range []string{
-		"POST /api/v1/admin/cursor/oauth/poll",
-		"POST /api/v1/admin/cursor/oauth/exchange-code",
-	} {
-		require.Contains(t, auditBodyOmittedRoutes, route)
-	}
-}
-
 func TestPasskeyLoginAuditUsesCanonicalLoginActionAndOmitsCredentialBody(t *testing.T) {
 	route := "POST /api/v1/auth/passkey/login/finish"
 	require.Equal(t, service.AuditActionLogin, auditActionOverrides[route])

@@ -29,24 +29,6 @@ type OAuthRefreshPageOptions struct {
 	IncludeSetupToken    bool
 	RequireRefreshToken  bool
 	ExcludeRetryCooldown bool
-
-	// AltRefreshCredentialSources lets a platform qualify as a candidate on
-	// credential keys other than refresh_token. Only consulted when
-	// RequireRefreshToken is set.
-	AltRefreshCredentialSources []AltRefreshCredentialSource
-}
-
-// AltRefreshCredentialSource names the credential keys that make one platform
-// refreshable without a refresh_token.
-//
-// Cursor is the case this exists for: it refreshes from a crsr_ API key or a
-// WorkosCursorSessionToken cookie just as well as from a deep-link refresh
-// token, so a refresh_token-only filter silently excluded every API-key and
-// cookie-imported account from background refresh and left their ~1h access
-// tokens to expire and be refreshed inline on a user's request instead.
-type AltRefreshCredentialSource struct {
-	Platform       string
-	CredentialKeys []string
 }
 
 // OAuthRefreshCandidatePage keeps cursor metadata from the raw SQL ID page.

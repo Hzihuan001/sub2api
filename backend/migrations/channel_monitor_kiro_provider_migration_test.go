@@ -16,7 +16,7 @@ import (
 // 此处硬编码而非 import service：migrations 是叶子包，被 repository 依赖，
 // 反向 import 会成环。
 var expectedChannelMonitorProviders = []string{
-	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
+	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
 }
 
 // channelMonitorProviderConstraints 是承载 provider CHECK 的两个约束名。
@@ -44,7 +44,7 @@ func TestChannelMonitorKiroProviderMigration(t *testing.T) {
 		require.Contains(t, sql, constraint)
 	}
 	require.Contains(t, sql,
-		"CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kiro', 'kimi', 'zhipu', 'deepseek', 'cursor'))")
+		"CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kiro', 'kimi', 'zhipu', 'deepseek'))")
 
 	// 幂等守卫按 kiro 探测，不能复用 kimi（226 已写入）。
 	require.Contains(t, sql, "position('kiro' IN monitor_constraint_def) = 0")

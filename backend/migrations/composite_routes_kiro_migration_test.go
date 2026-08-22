@@ -15,7 +15,7 @@ import (
 // 此处硬编码而非 import service：migrations 是叶子包，被 repository 依赖，
 // 反向 import 会成环。
 var expectedCompositeRouteTargetPlatforms = []string{
-	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
+	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
 }
 
 const compositeRouteTargetPlatformConstraint = "composite_model_routes_target_platform_check"
@@ -32,7 +32,7 @@ func TestCompositeRoutesKiroMigration(t *testing.T) {
 	sql := strings.Join(strings.Fields(string(content)), " ")
 	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS "+compositeRouteTargetPlatformConstraint)
 	require.Contains(t, sql,
-		"CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'cursor'))")
+		"CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek'))")
 }
 
 // TestCompositeRouteTargetPlatformFinalStateCoversAllPlatforms 是防回归护栏：
