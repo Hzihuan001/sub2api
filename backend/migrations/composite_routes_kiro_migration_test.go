@@ -9,13 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// expectedCompositeRouteTargetPlatforms 是 composite_model_routes.target_platform
-// 允许的平台集合，需与 service.isConcreteRequestPlatform
-// （internal/service/composite_platform.go）同步。
-// 此处硬编码而非 import service：migrations 是叶子包，被 repository 依赖，
-// 反向 import 会成环。
+// expectedCompositeRouteTargetPlatforms 是数据库约束允许的平台集合。
+// Cursor 运行时代码已经移除，但约束保留历史值以维持已发布迁移不可变并保护存量数据。
 var expectedCompositeRouteTargetPlatforms = []string{
-	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
+	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
 }
 
 const compositeRouteTargetPlatformConstraint = "composite_model_routes_target_platform_check"
@@ -32,7 +29,7 @@ func TestCompositeRoutesKiroMigration(t *testing.T) {
 	sql := strings.Join(strings.Fields(string(content)), " ")
 	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS "+compositeRouteTargetPlatformConstraint)
 	require.Contains(t, sql,
-		"CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek'))")
+		"CHECK (target_platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'cursor'))")
 }
 
 // TestCompositeRouteTargetPlatformFinalStateCoversAllPlatforms 是防回归护栏：

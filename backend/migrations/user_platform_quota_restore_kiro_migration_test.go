@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// expectedUserPlatformQuotaPlatforms 是 user_platform_quotas.platform 允许的平台集合，
-// 需与 service.AllowedQuotaPlatforms 及 ent/schema/user_platform_quota.go 的 Validate 同步。
-// 此处硬编码而非 import service：migrations 是叶子包，被 repository 依赖，反向 import 会成环。
+// expectedUserPlatformQuotaPlatforms 是数据库约束允许的平台集合。
+// Cursor 运行时代码已经移除，但已发布迁移必须保持不可变，约束继续接受历史 Cursor 行，
+// 避免升级时删除用户数据或触发 checksum mismatch。
 var expectedUserPlatformQuotaPlatforms = []string{
-	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
+	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
 }
 
 // TestUserPlatformQuotasRestoreKiroMigration 校验 227 号迁移把 224 漏掉的 kiro
@@ -29,7 +29,7 @@ func TestUserPlatformQuotasRestoreKiroMigration(t *testing.T) {
 	sql := strings.Join(strings.Fields(string(content)), " ")
 	require.Contains(t, sql, "DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check")
 	require.Contains(t, sql,
-		"CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek'))")
+		"CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'kimi', 'zhipu', 'deepseek', 'cursor'))")
 }
 
 // TestUserPlatformQuotaPlatformCheckFinalStateCoversAllPlatforms 是防回归护栏：

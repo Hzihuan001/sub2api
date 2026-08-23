@@ -5,7 +5,7 @@
 --
 -- This migration can also be discovered for the first time by an already
 -- upgraded database. Keep the replacement constraint as the complete platform
--- superset so existing Grok/CN quota rows never make the migration fail.
+-- superset so existing Grok/CN/Cursor quota rows never make the migration fail.
 
 ALTER TABLE user_platform_quotas
   DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check;
@@ -13,4 +13,4 @@ ALTER TABLE user_platform_quotas
 ALTER TABLE user_platform_quotas
   ADD CONSTRAINT user_platform_quotas_platform_check
   CHECK (platform IN ('anthropic', 'openai', 'gemini', 'antigravity', 'kiro',
-                      'grok', 'kimi', 'zhipu', 'deepseek'));
+                      'grok', 'kimi', 'zhipu', 'deepseek', 'cursor'));

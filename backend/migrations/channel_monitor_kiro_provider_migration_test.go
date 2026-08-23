@@ -9,14 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// expectedChannelMonitorProviders 是渠道监控 provider 允许的集合，需与
-// service.monitorProviders（internal/service/channel_monitor_validate.go）及
-// ent/schema/channel_monitor.go、channel_monitor_request_template.go 的
-// provider enum 同步。
-// 此处硬编码而非 import service：migrations 是叶子包，被 repository 依赖，
-// 反向 import 会成环。
+// expectedChannelMonitorProviders 是数据库约束允许的平台集合。
+// Cursor 运行时代码已经移除，但约束保留历史值以维持已发布迁移不可变并保护存量数据。
 var expectedChannelMonitorProviders = []string{
-	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
+	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
 }
 
 // channelMonitorProviderConstraints 是承载 provider CHECK 的两个约束名。
@@ -44,7 +40,7 @@ func TestChannelMonitorKiroProviderMigration(t *testing.T) {
 		require.Contains(t, sql, constraint)
 	}
 	require.Contains(t, sql,
-		"CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kiro', 'kimi', 'zhipu', 'deepseek'))")
+		"CHECK (provider IN ('openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'kiro', 'kimi', 'zhipu', 'deepseek', 'cursor'))")
 
 	// 幂等守卫按 kiro 探测，不能复用 kimi（226 已写入）。
 	require.Contains(t, sql, "position('kiro' IN monitor_constraint_def) = 0")
