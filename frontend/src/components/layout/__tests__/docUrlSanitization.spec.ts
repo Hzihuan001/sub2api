@@ -33,4 +33,10 @@ describe('doc_url sanitization', () => {
   it('KeyUsageView applies sanitizeUrl to docUrl', () => {
     expect(keyUsageViewSource).toContain('sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl')
   })
+
+  it('falls back to the built-in documentation when no safe external URL exists', () => {
+    expect(headerSource).toContain("sanitizeUrl(appStore.docUrl) || '/docs'")
+    expect(homeViewSource).toContain("sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '') || '/docs'")
+    expect(keyUsageViewSource).toContain("sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '') || '/docs'")
+  })
 })
