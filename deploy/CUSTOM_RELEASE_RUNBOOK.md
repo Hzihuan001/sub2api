@@ -2,11 +2,11 @@
 
 ## Fixed release coordinates
 
-- Upstream baseline: `v0.1.179` / `75f88be5`
-- Development branch: `custom/v0.1.179`
-- Application version: `0.1.179-custom.1`
-- Source tag: `custom-0.1.179.1`
-- Container tag: `ghcr.io/<fork-owner>/sub2api:0.1.179-custom.1`
+- Upstream baseline: `v0.1.182` / `5a7d46962`
+- Development branch: `feature/kiro-v0.1.182`
+- Application version: `0.1.182-custom.1`
+- Source tag: `custom-0.1.182.1`
+- Container tag: `ghcr.io/<fork-owner>/sub2api:0.1.182-custom.1`
 - Initial target platform: `linux/amd64`
 
 Never create a `v*` tag for this custom build. Never put passwords, tokens, SSH
@@ -14,7 +14,7 @@ keys, server addresses, or the contents of `CODEX_HANDOFF.md` in Git.
 
 ## Local quality and isolated container gate
 
-Use Go 1.26.6, Node 20.20.2, pnpm 9.15.9, and golangci-lint 2.9.0. Run:
+Use Go 1.27.0, Node 20.20.2, pnpm 9.15.9, and golangci-lint 2.13. Run:
 
 ```powershell
 cd backend
@@ -58,7 +58,7 @@ locally rebuilt image.
 ## Fork and GHCR gate
 
 1. Set the personal Fork as `origin`; keep the official repository as `upstream`.
-2. Push only `custom/v0.1.179` and tag `custom-0.1.179.1`.
+2. Push only `feature/kiro-v0.1.182` and tag `custom-0.1.182.1`.
 3. The `Custom CI and GHCR release` workflow runs all tests before publishing.
 4. Record both the mutable tag and immutable `sha256` digest from the workflow summary.
 5. Pull and run that exact digest through the local container test above.
@@ -89,7 +89,7 @@ docker compose exec -T redis redis-cli ping
 Also record the Compose/1Panel ownership model, app version, current digest,
 environment variable names (not values), bind mounts, named volumes, networks,
 OpenResty upstream, and migration state. Stop immediately if the installed
-Sub2API version is newer than `v0.1.179`; this release must never downgrade it.
+Sub2API version is newer than `v0.1.182`; this release must never downgrade it.
 
 ## Backup gate
 

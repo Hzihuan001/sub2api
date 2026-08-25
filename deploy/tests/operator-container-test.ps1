@@ -2,7 +2,7 @@
 param(
   [string]$Project = "sub2api-operator-test-$PID",
   [int]$Port = 18080,
-  [string]$Image = 'sub2api:0.1.179-custom.1',
+  [string]$Image = 'sub2api:0.1.182-custom.1',
   [switch]$UsePublishedImage,
   [switch]$Keep
 )
@@ -219,6 +219,7 @@ try {
     '/admin/channels',
     '/admin/subscriptions',
     '/admin/accounts',
+    '/admin/plugins',
     '/admin/proxies',
     '/admin/audit-logs',
     '/admin/ops/advanced-settings',

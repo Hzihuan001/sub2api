@@ -7,8 +7,8 @@
 # Stage 3: Final minimal image
 # =============================================================================
 
-ARG NODE_IMAGE=node:20-alpine
-ARG GOLANG_IMAGE=golang:1.26.6-alpine
+ARG NODE_IMAGE=node:24-alpine
+ARG GOLANG_IMAGE=golang:1.27.0-alpine
 ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://goproxy.cn,direct
@@ -108,7 +108,7 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
 
-ARG VERSION=0.1.179-custom.1
+ARG VERSION=0.1.182-custom.1
 ARG COMMIT=unknown
 ARG DATE=unknown
 ARG SOURCE_REPOSITORY=https://github.com/Wei-Shaw/sub2api

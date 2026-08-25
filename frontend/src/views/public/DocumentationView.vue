@@ -18,9 +18,14 @@
     <div class="mx-auto grid max-w-[1440px] grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]">
       <aside class="border-b border-slate-200 bg-white px-4 py-4 dark:border-dark-700 dark:bg-dark-900 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:border-b-0 lg:border-r lg:px-5 lg:py-8">
         <label class="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400 lg:hidden">选择文档</label>
-        <select :value="activeTopic" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-dark-700 dark:bg-dark-800 lg:hidden" @change="selectFromEvent">
-          <option v-for="item in topics" :key="item.id" :value="item.id">{{ item.label }}</option>
-        </select>
+        <Select
+          :model-value="activeTopic"
+          :options="topicOptions"
+          :searchable="false"
+          class="lg:hidden"
+          aria-label="选择文档"
+          @update:model-value="selectTopic"
+        />
         <nav class="hidden space-y-1 lg:block" aria-label="文档目录">
           <p class="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">使用指南</p>
           <router-link v-for="item in topics" :key="item.id" :to="topicPath(item.id)" class="block rounded-lg px-3 py-2.5 text-sm transition-colors" :class="activeTopic === item.id ? 'bg-primary-50 font-medium text-primary-700 dark:bg-primary-900/20 dark:text-primary-300' : 'text-slate-600 hover:bg-slate-100 dark:text-dark-300 dark:hover:bg-dark-800'">
@@ -184,6 +189,7 @@ import { computed, defineComponent, h, type PropType } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import createKeyImage from '@/assets/docs/token/create-key.png'
 import keyFormImage from '@/assets/docs/token/key-form.png'
 import keyManagementImage from '@/assets/docs/token/key-management.png'
@@ -212,6 +218,10 @@ const topics: Array<{ id: TopicId; label: string }> = [
   { id: 'ccswitch', label: 'CCSwitch 的使用' },
   { id: 'tools', label: '接入其他工具' }
 ]
+const topicOptions: SelectOption[] = topics.map((item) => ({
+  value: item.id,
+  label: item.label
+}))
 
 const route = useRoute()
 const router = useRouter()
@@ -227,9 +237,11 @@ function topicPath(id: TopicId) {
   return '/docs/' + id
 }
 
-function selectFromEvent(event: Event) {
-  const value = (event.target as HTMLSelectElement).value as TopicId
-  router.push(topicPath(value))
+function selectTopic(value: string | number | boolean | null) {
+  const topic = String(value) as TopicId
+  if (topics.some((item) => item.id === topic)) {
+    void router.push(topicPath(topic))
+  }
 }
 
 const modelsCommand = 'curl.exe https://ai.moshu.cloud/v1/models -H "Authorization: Bearer sk-xxxxxxxx"'

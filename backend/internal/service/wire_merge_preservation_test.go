@@ -24,11 +24,13 @@ func TestProvideAccountUsageServicePreservesKiroAndAgentIdentityDependencies(t *
 func TestProvideAccountTestServicePreservesKiroAndAgentIdentityDependencies(t *testing.T) {
 	kiro := &KiroTokenProvider{}
 	gateway := &OpenAIGatewayService{}
+	pluginManager := &PluginManager{}
 
 	svc := ProvideAccountTestService(
-		nil, nil, nil, kiro, nil, nil, nil, nil, nil, gateway, nil,
+		nil, nil, nil, kiro, nil, nil, nil, nil, nil, gateway, nil, pluginManager,
 	)
 
 	require.Equal(t, kiro, svc.kiroTokenProvider)
 	require.Equal(t, gateway, svc.agentIdentityWS)
+	require.Equal(t, pluginManager, svc.pluginManager)
 }

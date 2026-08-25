@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.1.179-custom.1
+  CUSTOM_VERSION: 0.1.182-custom.1
 
 jobs:
   quality:
@@ -28,7 +28,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: 1.26.6
+          go-version-file: backend/go.mod
           check-latest: false
           cache: true
           cache-dependency-path: backend/go.sum
@@ -45,10 +45,10 @@ jobs:
 
       - name: Verify locked toolchain
         run: |
-          go version | grep -q 'go1.26.6'
+          go version | grep -q 'go1.27.0'
           node --version | grep -q '^v20\.'
           test "$(pnpm --version)" = '9.15.9'
-          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-0.1.179.1 ]; then
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-0.1.182.1 ]; then
             echo "unexpected custom source tag: $GITHUB_REF_NAME" >&2
             exit 1
           fi
@@ -68,7 +68,7 @@ jobs:
       - name: Backend lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.9
+          version: v2.13
           args: --timeout=30m
           working-directory: backend
 
@@ -96,7 +96,7 @@ jobs:
   publish:
     name: Build and publish immutable image
     needs: quality
-    if: github.ref == 'refs/tags/custom-0.1.179.1'
+    if: github.ref == 'refs/tags/custom-0.1.182.1'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.name }}
@@ -132,7 +132,7 @@ jobs:
           push: true
           tags: ${{ steps.image.outputs.name }}:${{ env.CUSTOM_VERSION }}
           build-args: |
-            NODE_IMAGE=node:20-alpine
+            NODE_IMAGE=node:24-alpine
             VERSION=${{ env.CUSTOM_VERSION }}
             COMMIT=${{ github.sha }}
             DATE=${{ steps.buildmeta.outputs.date }}

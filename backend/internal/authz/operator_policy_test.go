@@ -39,6 +39,8 @@ func TestOperatorPolicyExplicitAllowAndDefaultDeny(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/usage/cleanup-tasks/:id/cancel"},
 		{http.MethodGet, "/api/v1/admin/settings"},
 		{http.MethodGet, "/api/v1/admin/accounts"},
+		{http.MethodGet, "/api/v1/admin/plugins"},
+		{http.MethodPost, "/api/v1/admin/plugins/:id/enable"},
 		{http.MethodGet, "/api/v1/admin/audit-logs"},
 		{http.MethodGet, "/api/v1/admin/future-upstream-route"},
 	}
