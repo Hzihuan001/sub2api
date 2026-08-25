@@ -1,12 +1,12 @@
 services:
   sub2api:
-    image: ${SUB2API_TEST_IMAGE:-sub2api:0.1.182-custom.1}
+    image: ${SUB2API_TEST_IMAGE:-sub2api:0.1.183-custom.1}
     platform: linux/amd64
     build:
       context: ..
       dockerfile: Dockerfile
       args:
-        VERSION: 0.1.182-custom.1
+        VERSION: 0.1.183-custom.1
         COMMIT: ${SUB2API_TEST_COMMIT:-local}
         DATE: ${SUB2API_TEST_BUILD_DATE:-local}
     restart: unless-stopped
