@@ -534,6 +534,7 @@ export default {
       cacheCreation5mTokens: 'Cache Write',
       cacheCreation1hTokens: 'Cache Write',
       cacheReadTokens: 'Cache Read Tokens',
+      cacheHitRate: 'Cache Hit Rate',
       failedToLoad: 'Failed to load usage records',
       billingType: 'Billing Type',
       allBillingTypes: 'All Billing Types',

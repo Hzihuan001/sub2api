@@ -25,6 +25,7 @@ const messages: Record<string, string> = {
   'admin.usage.outputCost': 'Output Cost',
   'admin.usage.cacheCreationCost': 'Cache Creation Cost',
   'admin.usage.cacheReadCost': 'Cache Read Cost',
+  'admin.usage.cacheHitRate': 'Cache Hit Rate',
   'usage.inputTokenPrice': 'Input price',
   'usage.outputTokenPrice': 'Output price',
   'usage.perMillionTokens': '/ 1M tokens',
@@ -166,6 +167,74 @@ describe('admin UsageTable tooltip', () => {
 
     expect(wrapper.findAll('[data-testid="long-context-billing-marker"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
+  })
+
+  it('shows the normalized cache hit rate in the token cell and tooltip', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-cache-hit-rate',
+          billing_mode: 'token',
+          input_tokens: 1_107,
+          output_tokens: 130,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 205_440,
+          image_count: 0,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-testid="cache-hit-rate"]').text()).toBe('99.46%')
+
+    await wrapper.find('.group.relative').trigger('mouseenter')
+    await nextTick()
+
+    expect(wrapper.text()).toContain('Cache Hit Rate')
+    expect(wrapper.text()).toContain('99.46%')
+  })
+
+  it('shows unavailable in the tooltip when a historical row has no cache evidence', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-cache-unavailable',
+          billing_mode: 'token',
+          input_tokens: 100,
+          output_tokens: 20,
+          image_count: 0,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="cache-hit-rate"]').exists()).toBe(false)
+
+    await wrapper.find('.group.relative').trigger('mouseenter')
+    await nextTick()
+
+    expect(wrapper.text()).toContain('Cache Hit Rate')
+    expect(wrapper.text()).toContain('--')
   })
 
   it('shows service tier and billing breakdown in cost tooltip', async () => {

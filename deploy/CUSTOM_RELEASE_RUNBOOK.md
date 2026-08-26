@@ -3,10 +3,10 @@
 ## Fixed release coordinates
 
 - Upstream baseline: `v0.1.183` / `e8cb019fa`
-- Development branch: `feature/kiro-v0.1.183`
-- Application version: `0.1.183-custom.1`
-- Source tag: `custom-0.1.183.1`
-- Container tag: `ghcr.io/<fork-owner>/sub2api:0.1.183-custom.1`
+- Development branch: `codex/cache-hit-rate-v0.1.183`
+- Application version: `0.1.183-custom.2`
+- Source tag: `custom-0.1.183.2`
+- Container tag: `ghcr.io/<fork-owner>/sub2api:0.1.183-custom.2`
 - Initial target platform: `linux/amd64`
 
 Never create a `v*` tag for this custom build. Never put passwords, tokens, SSH
@@ -58,7 +58,7 @@ locally rebuilt image.
 ## Fork and GHCR gate
 
 1. Set the personal Fork as `origin`; keep the official repository as `upstream`.
-2. Push only `feature/kiro-v0.1.183` and tag `custom-0.1.183.1`.
+2. Push only `codex/cache-hit-rate-v0.1.183` and tag `custom-0.1.183.2`.
 3. The `Custom CI and GHCR release` workflow runs all tests before publishing.
 4. Record both the mutable tag and immutable `sha256` digest from the workflow summary.
 5. Pull and run that exact digest through the local container test above.
