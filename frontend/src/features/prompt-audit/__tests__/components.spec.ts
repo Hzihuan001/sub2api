@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import EndpointPool from '../components/EndpointPool.vue'
 import PolicyPanel from '../components/PolicyPanel.vue'
 import EventWorkspace from '../components/EventWorkspace.vue'
@@ -8,6 +8,15 @@ import EventDetailDialog from '../components/EventDetailDialog.vue'
 import FilterDeleteDialog from '../components/FilterDeleteDialog.vue'
 import type { PromptAuditDraft, PromptAuditEndpointDraft, PromptAuditEvent, PromptEventFilters } from '../types'
 import { emptyEventFilters, resolveDeleteRangeFilters, SCANNER_CATALOG } from '../viewModel'
+
+const { searchUsersMock, searchApiKeysMock } = vi.hoisted(() => ({
+  searchUsersMock: vi.fn(),
+  searchApiKeysMock: vi.fn(),
+}))
+
+vi.mock('@/api/admin', () => ({
+  adminAPI: { usage: { searchUsers: searchUsersMock, searchApiKeys: searchApiKeysMock } },
+}))
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -45,7 +54,11 @@ const endpoint = (): PromptAuditEndpointDraft => ({
 })
 
 describe('Prompt Audit components', () => {
-  beforeEach(() => vi.restoreAllMocks())
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    searchUsersMock.mockReset()
+    searchApiKeysMock.mockReset()
+  })
 
   it('edits a saved endpoint with blank-secret keep, explicit clear, replacement, and probe actions', async () => {
     const wrapper = mount(EndpointPool, {
@@ -112,7 +125,7 @@ describe('Prompt Audit components', () => {
       snapshot: { request_id: 'req-1', user_id: 1, username: 'alice', user_email: 'alice@example.test', api_key_id: 2, api_key_name: 'alice-key', group_id: 3, group_name: 'Alpha', provider: 'openai', endpoint: '/v1/chat/completions', protocol: 'openai_chat', model: 'gpt-test', prompt_hash: 'a'.repeat(64), redacted_preview: 'redacted preview', full_prompt: 'full prompt text', prompt_length: 10, message_count: 1, stage: 'http' },
     }
     const wrapper = mount(EventWorkspace, {
-      props: { events: [event], total: 1, page: 1, pageSize: 20, filters: emptyEventFilters(), selectedIds: [], loading: false, error: '' },
+      props: { events: [event], total: 1, page: 1, pageSize: 20, filters: emptyEventFilters(), groups: [], selectedIds: [], loading: false, error: '' },
       global: { stubs: { Pagination: PaginationStub, Select: SelectStub } },
     })
     expect(wrapper.text()).toContain('alice')
@@ -125,6 +138,40 @@ describe('Prompt Audit components', () => {
     expect(wrapper.emitted('preview-delete')).toHaveLength(1)
     await wrapper.get('[aria-label="admin.promptAudit.events.selectEvent"]').setValue(true)
     expect(wrapper.emitted('selection')?.at(-1)?.[0]).toEqual([1])
+  })
+
+  it('selects users, API Keys, and groups by human-readable names while emitting exact IDs', async () => {
+    searchUsersMock.mockResolvedValue([{ id: 7, email: 'alice@example.test', deleted: false }])
+    searchApiKeysMock.mockResolvedValue([{ id: 9, name: 'alice-production', user_id: 7 }])
+    const wrapper = mount(EventWorkspace, {
+      props: {
+        events: [], total: 0, page: 1, pageSize: 20, filters: emptyEventFilters(),
+        groups: [{ id: 3, name: 'Alpha Production', platform: 'openai', status: 'active' }],
+        selectedIds: [], loading: false, error: '',
+      },
+      global: { stubs: { Pagination: PaginationStub, Select: SelectStub } },
+    })
+
+    await wrapper.get<HTMLInputElement>('[data-test="event-user-search"]').setValue('alice')
+    await new Promise((resolve) => setTimeout(resolve, 320))
+    await flushPromises()
+    expect(searchUsersMock).toHaveBeenCalledWith('alice')
+    expect(wrapper.emitted('filters-change')).toBeUndefined()
+    expect(wrapper.text()).toContain('alice@example.test')
+    await wrapper.findAll('button').find((button) => button.text().includes('alice@example.test'))!.trigger('click')
+
+    await wrapper.get<HTMLInputElement>('[data-test="event-api-key-search"]').setValue('production')
+    await new Promise((resolve) => setTimeout(resolve, 320))
+    await flushPromises()
+    expect(searchApiKeysMock).toHaveBeenCalledWith(7, 'production')
+    await wrapper.findAll('button').find((button) => button.text().includes('alice-production'))!.trigger('click')
+
+    await wrapper.get<HTMLSelectElement>('[data-test="event-group-select"]').setValue('3')
+    await wrapper.get('form').trigger('submit')
+    const applied = wrapper.emitted('search')?.at(-1)?.[0] as PromptEventFilters
+    expect(applied).toMatchObject({ user_id: '7', api_key_id: '9', group_id: '3' })
+    expect(wrapper.text()).not.toContain('#7')
+    expect(wrapper.text()).not.toContain('#9')
   })
 
   it('resolves delete range presets to an epoch start and a cutoff end', () => {

@@ -70,7 +70,7 @@ export default {
       confirm: 'I understand; enable it',
     },
     events: {
-      title: 'Prompt events', description: 'Review records by identity, route, source, hash, and time; details show the full prompt.', captureMode: 'Source', captureOnly: 'Record only', guardAudit: 'Guard audit', decision: 'Decision', risk: 'Risk level', endpoint: 'Endpoint', groupId: 'Group ID', userId: 'User ID', apiKeyId: 'API Key ID', keyword: 'Keyword',
+      title: 'Prompt events', description: 'Review records by identity, route, source, hash, and time; details show the full prompt.', captureMode: 'Source', captureOnly: 'Record only', guardAudit: 'Guard audit', decision: 'Decision', risk: 'Risk level', endpoint: 'Endpoint', groupId: 'Group ID', userId: 'User ID', apiKeyId: 'API Key ID', userAccount: 'User account', searchUserPlaceholder: 'Search by partial email or username', noUserMatches: 'No matching users', deletedUser: 'Deleted', searchApiKeyPlaceholder: 'Search by API Key name', noApiKeyMatches: 'No matching API Keys', keyword: 'Keyword',
       exportCsv: 'Export CSV', exportJsonl: 'Export JSONL',
       startAt: 'Start time', endAt: 'End time', deleteSelected: 'Delete selected ({count})', deleteByFilter: 'Delete by filter',
       filterDeleteDialogTitle: 'Delete audit events by filter', filterDeleteDialogDesc: 'Choose the time range and risk criteria, then delete directly. Deletion is permanent. Generate a preview first if you want to see the match count.',

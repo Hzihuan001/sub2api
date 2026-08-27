@@ -52,9 +52,50 @@
         />
       </label>
       <FilterInput v-model="localFilters.endpoint" :label="t('admin.promptAudit.events.endpoint')" @change="filtersChanged" />
-      <FilterInput v-model="localFilters.group_id" :label="t('admin.promptAudit.events.groupId')" type="number" @change="filtersChanged" />
-      <FilterInput v-model="localFilters.user_id" :label="t('admin.promptAudit.events.userId')" type="number" @change="filtersChanged" />
-      <FilterInput v-model="localFilters.api_key_id" :label="t('admin.promptAudit.events.apiKeyId')" type="number" @change="filtersChanged" />
+      <div ref="userSearchRef" class="relative text-xs text-gray-600 dark:text-dark-200">
+        <span>{{ t('admin.promptAudit.events.userAccount') }}</span>
+        <input
+          v-model="userKeyword"
+          type="text"
+          autocomplete="off"
+          class="input mt-1 w-full pr-8"
+          data-test="event-user-search"
+          :placeholder="t('admin.promptAudit.events.searchUserPlaceholder')"
+          @input="debounceUserSearch"
+          @focus="showUserDropdown = !localFilters.user_id"
+        />
+        <button v-if="localFilters.user_id" type="button" class="absolute right-2 top-7 text-gray-400" data-test="clear-event-user" @click="clearUser">✕</button>
+        <div v-if="showUserDropdown && userKeyword.trim()" class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-700 dark:bg-dark-800">
+          <button v-for="user in userResults" :key="user.id" type="button" class="block w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-dark-700" @click="selectUser(user)">
+            {{ user.email }}<span v-if="user.deleted" class="ml-1 text-gray-400">({{ t('admin.promptAudit.events.deletedUser') }})</span>
+          </button>
+          <p v-if="!searchingUsers && userResults.length === 0" class="px-3 py-2 text-gray-400">{{ t('admin.promptAudit.events.noUserMatches') }}</p>
+        </div>
+      </div>
+      <div ref="apiKeySearchRef" class="relative text-xs text-gray-600 dark:text-dark-200">
+        <span>{{ t('admin.promptAudit.events.apiKey') }}</span>
+        <input
+          v-model="apiKeyKeyword"
+          type="text"
+          autocomplete="off"
+          class="input mt-1 w-full pr-8"
+          data-test="event-api-key-search"
+          :placeholder="t('admin.promptAudit.events.searchApiKeyPlaceholder')"
+          @input="debounceApiKeySearch"
+          @focus="showAPIKeyDropdown = !localFilters.api_key_id"
+        />
+        <button v-if="localFilters.api_key_id" type="button" class="absolute right-2 top-7 text-gray-400" data-test="clear-event-api-key" @click="clearAPIKey()">✕</button>
+        <div v-if="showAPIKeyDropdown && apiKeyKeyword.trim()" class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-700 dark:bg-dark-800">
+          <button v-for="apiKey in apiKeyResults" :key="apiKey.id" type="button" class="block w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-dark-700" @click="selectAPIKey(apiKey)">
+            {{ apiKey.name }}
+          </button>
+          <p v-if="!searchingAPIKeys && apiKeyResults.length === 0" class="px-3 py-2 text-gray-400">{{ t('admin.promptAudit.events.noApiKeyMatches') }}</p>
+        </div>
+      </div>
+      <label class="text-xs text-gray-600 dark:text-dark-200">
+        <span>{{ t('admin.promptAudit.events.group') }}</span>
+        <Select v-model="localFilters.group_id" :options="groupOptions" searchable size="sm" class="mt-1" data-test="event-group-select" @change="filtersChanged" />
+      </label>
       <FilterInput v-model="localFilters.request_id" :label="t('admin.promptAudit.events.requestId')" @change="filtersChanged" />
       <FilterInput v-model="localFilters.prompt_hash" :label="t('admin.promptAudit.events.promptHash')" @change="filtersChanged" />
       <FilterInput v-model="localFilters.keyword" :label="t('admin.promptAudit.events.keyword')" @change="filtersChanged" />
@@ -121,17 +162,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, reactive, watch } from 'vue'
+import { computed, defineComponent, h, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { adminAPI } from '@/api/admin'
+import type { SimpleApiKey, SimpleUser } from '@/api/admin/usage'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
-import type { PromptAuditEvent, PromptEventFilters } from '../types'
+import type { PromptAuditEvent, PromptAuditGroup, PromptEventFilters } from '../types'
 import { cloneData, emptyEventFilters, SCANNER_CATALOG } from '../viewModel'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   events: PromptAuditEvent[]; total: number; page: number; pageSize: number
-  filters: PromptEventFilters; selectedIds: number[]; loading: boolean; error: string
-}>()
+  filters: PromptEventFilters; groups: PromptAuditGroup[]; selectedIds: number[]; loading: boolean; error: string
+}>(), { groups: () => [] })
 const emit = defineEmits<{
   (event: 'filters-change', value: PromptEventFilters): void
   (event: 'search', value: PromptEventFilters): void
@@ -165,8 +208,31 @@ const riskLevelOptions = computed(() => [
   { value: 'high', label: t('admin.promptAudit.riskLevels.high') },
   { value: 'critical', label: t('admin.promptAudit.riskLevels.critical') },
 ])
+const groupOptions = computed(() => [
+  { value: '', label: t('common.all') },
+  ...props.groups.map((group) => ({ value: String(group.id), label: group.name })),
+])
 const localFilters = reactive<PromptEventFilters>(cloneData(props.filters))
-watch(() => props.filters, (value) => Object.assign(localFilters, cloneData(value)), { deep: true })
+const userSearchRef = ref<HTMLElement | null>(null)
+const apiKeySearchRef = ref<HTMLElement | null>(null)
+const userKeyword = ref('')
+const apiKeyKeyword = ref('')
+const userResults = ref<SimpleUser[]>([])
+const apiKeyResults = ref<SimpleApiKey[]>([])
+const showUserDropdown = ref(false)
+const showAPIKeyDropdown = ref(false)
+const searchingUsers = ref(false)
+const searchingAPIKeys = ref(false)
+let userSearchTimer: ReturnType<typeof setTimeout> | null = null
+let apiKeySearchTimer: ReturnType<typeof setTimeout> | null = null
+let userSearchSequence = 0
+let apiKeySearchSequence = 0
+
+watch(() => props.filters, (value) => {
+  Object.assign(localFilters, cloneData(value))
+  if (!value.user_id) userKeyword.value = ''
+  if (!value.api_key_id) apiKeyKeyword.value = ''
+}, { deep: true })
 const allSelected = computed(() => props.events.length > 0 && props.events.every((event) => props.selectedIds.includes(event.id)))
 
 const FilterInput = defineComponent({
@@ -201,6 +267,96 @@ const CopyLine = defineComponent({
 function filtersChanged() {
   emit('filters-change', cloneData(localFilters))
 }
+function debounceUserSearch() {
+  if (userSearchTimer) clearTimeout(userSearchTimer)
+  const query = userKeyword.value.trim()
+  localFilters.user_id = ''
+  clearAPIKey(false)
+  userResults.value = []
+  showUserDropdown.value = true
+  const sequence = ++userSearchSequence
+  if (!query) return
+  searchingUsers.value = true
+  userSearchTimer = setTimeout(async () => {
+    try {
+      const results = await adminAPI.usage.searchUsers(query)
+      if (sequence === userSearchSequence) userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
+    } catch {
+      if (sequence === userSearchSequence) userResults.value = []
+    } finally {
+      if (sequence === userSearchSequence) searchingUsers.value = false
+    }
+  }, 300)
+}
+function selectUser(user: SimpleUser) {
+  userSearchSequence++
+  if (userSearchTimer) clearTimeout(userSearchTimer)
+  userKeyword.value = user.email
+  localFilters.user_id = String(user.id)
+  userResults.value = []
+  searchingUsers.value = false
+  showUserDropdown.value = false
+  clearAPIKey(false)
+  filtersChanged()
+}
+function clearUser() {
+  userSearchSequence++
+  if (userSearchTimer) clearTimeout(userSearchTimer)
+  userKeyword.value = ''
+  userResults.value = []
+  searchingUsers.value = false
+  showUserDropdown.value = false
+  localFilters.user_id = ''
+  clearAPIKey(false)
+  filtersChanged()
+}
+function debounceApiKeySearch() {
+  if (apiKeySearchTimer) clearTimeout(apiKeySearchTimer)
+  const query = apiKeyKeyword.value.trim()
+  localFilters.api_key_id = ''
+  apiKeyResults.value = []
+  showAPIKeyDropdown.value = true
+  const sequence = ++apiKeySearchSequence
+  if (!query) return
+  searchingAPIKeys.value = true
+  apiKeySearchTimer = setTimeout(async () => {
+    try {
+      const userID = Number(localFilters.user_id) || undefined
+      const results = await adminAPI.usage.searchApiKeys(userID, query)
+      if (sequence === apiKeySearchSequence) apiKeyResults.value = results
+    } catch {
+      if (sequence === apiKeySearchSequence) apiKeyResults.value = []
+    } finally {
+      if (sequence === apiKeySearchSequence) searchingAPIKeys.value = false
+    }
+  }, 300)
+}
+function selectAPIKey(apiKey: SimpleApiKey) {
+  apiKeySearchSequence++
+  if (apiKeySearchTimer) clearTimeout(apiKeySearchTimer)
+  apiKeyKeyword.value = apiKey.name
+  localFilters.api_key_id = String(apiKey.id)
+  apiKeyResults.value = []
+  searchingAPIKeys.value = false
+  showAPIKeyDropdown.value = false
+  filtersChanged()
+}
+function clearAPIKey(shouldEmit = true) {
+  apiKeySearchSequence++
+  if (apiKeySearchTimer) clearTimeout(apiKeySearchTimer)
+  apiKeyKeyword.value = ''
+  apiKeyResults.value = []
+  searchingAPIKeys.value = false
+  showAPIKeyDropdown.value = false
+  localFilters.api_key_id = ''
+  if (shouldEmit) filtersChanged()
+}
+function onDocumentClick(event: MouseEvent) {
+  const target = event.target as Node | null
+  if (!target) return
+  if (!userSearchRef.value?.contains(target)) showUserDropdown.value = false
+  if (!apiKeySearchRef.value?.contains(target)) showAPIKeyDropdown.value = false
+}
 function applyFilters() {
   const value = cloneData(localFilters)
   emit('filters-change', value)
@@ -208,6 +364,10 @@ function applyFilters() {
 }
 function resetFilters() {
   Object.assign(localFilters, emptyEventFilters())
+  userKeyword.value = ''
+  apiKeyKeyword.value = ''
+  userResults.value = []
+  apiKeyResults.value = []
   applyFilters()
 }
 function toggleOne(id: number) {
@@ -248,4 +408,11 @@ function formatCategories(categories: string[]): string {
   if (!categories.length) return '—'
   return categories.map(translateCategory).join(', ')
 }
+
+onMounted(() => document.addEventListener('click', onDocumentClick))
+onUnmounted(() => {
+  if (userSearchTimer) clearTimeout(userSearchTimer)
+  if (apiKeySearchTimer) clearTimeout(apiKeySearchTimer)
+  document.removeEventListener('click', onDocumentClick)
+})
 </script>

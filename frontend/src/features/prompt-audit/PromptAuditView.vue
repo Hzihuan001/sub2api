@@ -89,6 +89,7 @@
               :page="events.page"
               :page-size="events.page_size"
               :filters="filters"
+              :groups="groups"
               :selected-ids="selectedEventIds"
               :loading="loading.events"
               :error="loadErrors.events"
