@@ -88,7 +88,8 @@ describe('Prompt Audit components', () => {
 
   it('supports group search, stale configured groups, nine scanners, and bounded worker inputs', async () => {
     const draft: PromptAuditDraft = {
-      enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',
+      enabled: true, capture_only_enabled: false, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false,
+      retention_days: 7, max_storage_mb: 512, effective_mode: 'async_audit', strategy: 'priority',
       worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: false, group_ids: [1, 99],
       endpoints: [endpoint()], config_version: 1, updated_at: '', updated_by: 0, change_summary: '',
     }
@@ -107,7 +108,7 @@ describe('Prompt Audit components', () => {
 
   it('keeps identity fields separate, supports selection, and opens filter deletion from the toolbar', async () => {
     const event: PromptAuditEvent = {
-      id: 1, job_id: 1, decision: 'critical', risk_level: 'critical', action: 'Block', categories: ['pii'], matched_scanners: ['pii'], scanner_scores: { pii: 1 }, scanner_evidence: { pii: 'redacted' }, scanner_backend: 'qwen3guard-openai', scanner_version: '1', guard_endpoint_id: 'guard-1', policy_id: 'priority', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 10, issue_summaries: [], created_at: '2026-07-16T00:00:00Z',
+      id: 1, job_id: 1, decision: 'critical', risk_level: 'critical', action: 'Block', categories: ['pii'], matched_scanners: ['pii'], scanner_scores: { pii: 1 }, scanner_evidence: { pii: 'redacted' }, scanner_backend: 'qwen3guard-openai', scanner_version: '1', guard_endpoint_id: 'guard-1', policy_id: 'priority', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 10, capture_mode: 'guard_audit', prompt_bytes: 16, issue_summaries: [], created_at: '2026-07-16T00:00:00Z',
       snapshot: { request_id: 'req-1', user_id: 1, username: 'alice', user_email: 'alice@example.test', api_key_id: 2, api_key_name: 'alice-key', group_id: 3, group_name: 'Alpha', provider: 'openai', endpoint: '/v1/chat/completions', protocol: 'openai_chat', model: 'gpt-test', prompt_hash: 'a'.repeat(64), redacted_preview: 'redacted preview', full_prompt: 'full prompt text', prompt_length: 10, message_count: 1, stage: 'http' },
     }
     const wrapper = mount(EventWorkspace, {
@@ -229,7 +230,7 @@ describe('Prompt Audit components', () => {
       scanner_scores: { sexual_content_or_sexual_acts: 1 },
       scanner_evidence: { sexual_content_or_sexual_acts: 'Sexual Content or Sexual Acts' },
       scanner_backend: 'qwen3guard-openai', scanner_version: 'qwen3guard', guard_endpoint_id: 'guard-1',
-      policy_id: 'priority', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 12,
+      policy_id: 'priority', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 12, capture_mode: 'guard_audit', prompt_bytes: 29,
       issue_summaries: [{
         category: 'sexual_content_or_sexual_acts', scanner_id: 'sexual_content_or_sexual_acts',
         title: '性内容或性行为', description: 'Sexual content or sexual acts', severity: 'critical',
@@ -266,12 +267,39 @@ describe('Prompt Audit components', () => {
     expect(wrapper.get('[data-test="risk-issue"]').text()).toContain('admin.promptAudit.scanners.sexual_content_or_sexual_acts')
   })
 
+  it('shows capture_only events as unreviewed records without a Guard risk tab', () => {
+    const event: PromptAuditEvent = {
+      id: 3, job_id: 3, decision: 'unreviewed', risk_level: 'unknown', action: 'Allow',
+      categories: [], matched_scanners: [], scanner_scores: {}, scanner_evidence: {},
+      scanner_backend: 'capture-only', scanner_version: '1', guard_endpoint_id: '', policy_id: '',
+      policy_version: 0, config_version: 2, chunk_total: 0, latency_ms: 0,
+      capture_mode: 'capture_only', prompt_bytes: 21, issue_summaries: [], created_at: '2026-08-27T00:00:00Z',
+      snapshot: {
+        request_id: 'capture-3', user_id: 7, username: 'alice', user_email: 'alice@example.test',
+        api_key_id: 8, api_key_name: 'desktop-key', group_id: 9, group_name: 'Default', provider: 'openai',
+        endpoint: '/v1/chat/completions', protocol: 'openai_chat_completions', model: 'gpt-test',
+        prompt_hash: 'c'.repeat(64), redacted_preview: 'captured preview', full_prompt: 'captured full prompt',
+        prompt_length: 20, message_count: 1, stage: 'http',
+      },
+    }
+    const wrapper = mount(EventDetailDialog, {
+      props: { show: true, event, loading: false },
+      global: { stubs: { BaseDialog: DialogStub, Select: SelectStub } },
+    })
+
+    expect(wrapper.text()).toContain('captured full prompt')
+    expect(wrapper.text()).toContain('admin.promptAudit.events.captureOnly')
+    expect(wrapper.text()).toContain('admin.promptAudit.decisions.unreviewed · admin.promptAudit.riskLevels.unknown')
+    expect(wrapper.findAll('[role="tab"]')).toHaveLength(2)
+    expect(wrapper.text()).not.toContain('admin.promptAudit.events.tabs.risks')
+  })
+
   it('falls back to the redacted preview for events stored before full prompts were kept', async () => {
     const event: PromptAuditEvent = {
       id: 2, job_id: 2, decision: 'flag', risk_level: 'medium', action: 'Warn',
       categories: ['pii'], matched_scanners: ['pii'], scanner_scores: {}, scanner_evidence: {},
       scanner_backend: 'qwen3guard-openai', scanner_version: '1', guard_endpoint_id: 'guard-1',
-      policy_id: 'priority', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 5,
+      policy_id: 'priority', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 5, capture_mode: 'guard_audit', prompt_bytes: 0,
       issue_summaries: [], created_at: '2026-07-16T00:00:00Z',
       snapshot: {
         request_id: 'req-2', user_id: 1, username: 'bob', user_email: '', api_key_id: 2,

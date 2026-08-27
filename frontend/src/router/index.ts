@@ -639,8 +639,7 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Prompt Audit',
       titleKey: 'admin.promptAudit.title',
-      descriptionKey: 'admin.promptAudit.description',
-      requiresRiskControl: true
+      descriptionKey: 'admin.promptAudit.description'
     }
   },
   {

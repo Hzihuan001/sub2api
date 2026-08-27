@@ -6,6 +6,8 @@
         <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">{{ t('admin.promptAudit.events.description') }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-secondary btn-sm" @click="$emit('export', 'csv')">{{ t('admin.promptAudit.events.exportCsv') }}</button>
+        <button type="button" class="btn btn-secondary btn-sm" @click="$emit('export', 'jsonl')">{{ t('admin.promptAudit.events.exportJsonl') }}</button>
         <button type="button" class="btn btn-secondary btn-sm" :disabled="selectedIds.length === 0" @click="$emit('batch-delete')">
           {{ t('admin.promptAudit.events.deleteSelected', { count: selectedIds.length }) }}
         </button>
@@ -16,6 +18,17 @@
     </div>
 
     <form class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" @submit.prevent="applyFilters">
+      <label class="text-xs text-gray-600 dark:text-dark-200">
+        <span>{{ t('admin.promptAudit.events.captureMode') }}</span>
+        <Select
+          v-model="localFilters.capture_mode"
+          :options="captureModeOptions"
+          size="sm"
+          class="mt-1"
+          :aria-label="t('admin.promptAudit.events.captureMode')"
+          @change="filtersChanged"
+        />
+      </label>
       <label class="text-xs text-gray-600 dark:text-dark-200">
         <span>{{ t('admin.promptAudit.events.decision') }}</span>
         <Select
@@ -90,8 +103,9 @@
               <p class="mt-1 text-xs text-gray-500">{{ event.snapshot.model }} · {{ event.snapshot.protocol }} · {{ event.snapshot.stage || 'http' }}</p>
             </td>
             <td class="px-3 py-3">
-              <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="decisionClass(event.decision)">{{ formatDecisionRisk(event.decision, event.risk_level) }}</span>
-              <p class="mt-2 max-w-48 truncate text-xs text-gray-500" :title="formatCategories(event.categories)">{{ formatCategories(event.categories) }}</p>
+              <span v-if="event.capture_mode === 'capture_only'" class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">{{ t('admin.promptAudit.events.captureOnly') }}</span>
+              <span v-else class="rounded-full px-2 py-0.5 text-xs font-medium" :class="decisionClass(event.decision)">{{ formatDecisionRisk(event.decision, event.risk_level) }}</span>
+              <p v-if="event.capture_mode !== 'capture_only'" class="mt-2 max-w-48 truncate text-xs text-gray-500" :title="formatCategories(event.categories)">{{ formatCategories(event.categories) }}</p>
             </td>
             <td class="max-w-xs px-3 py-3"><p class="line-clamp-2 break-words text-gray-600 dark:text-dark-300">{{ event.snapshot.redacted_preview || '—' }}</p></td>
             <td class="whitespace-nowrap px-3 py-3 text-right">
@@ -128,16 +142,24 @@ const emit = defineEmits<{
   (event: 'delete', id: number): void
   (event: 'batch-delete'): void
   (event: 'preview-delete'): void
+  (event: 'export', format: 'csv' | 'jsonl'): void
 }>()
 const { t, locale } = useI18n()
+const captureModeOptions = computed(() => [
+  { value: '', label: t('common.all') },
+  { value: 'capture_only', label: t('admin.promptAudit.events.captureOnly') },
+  { value: 'guard_audit', label: t('admin.promptAudit.events.guardAudit') },
+])
 const decisionOptions = computed(() => [
   { value: '', label: t('common.all') },
+  { value: 'unreviewed', label: t('admin.promptAudit.decisions.unreviewed') },
   { value: 'pass', label: t('admin.promptAudit.decisions.pass') },
   { value: 'flag', label: t('admin.promptAudit.decisions.flag') },
   { value: 'critical', label: t('admin.promptAudit.decisions.critical') },
 ])
 const riskLevelOptions = computed(() => [
   { value: '', label: t('common.all') },
+  { value: 'unknown', label: t('admin.promptAudit.riskLevels.unknown') },
   { value: 'low', label: t('admin.promptAudit.riskLevels.low') },
   { value: 'medium', label: t('admin.promptAudit.riskLevels.medium') },
   { value: 'high', label: t('admin.promptAudit.riskLevels.high') },
@@ -205,8 +227,8 @@ function decisionClass(decision: string): string {
   if (decision === 'flag') return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
   return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
 }
-const DECISIONS = new Set(['pass', 'flag', 'critical'])
-const RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical'])
+const DECISIONS = new Set(['unreviewed', 'pass', 'flag', 'critical'])
+const RISK_LEVELS = new Set(['unknown', 'low', 'medium', 'high', 'critical'])
 
 function translateDecision(decision: string): string {
   return DECISIONS.has(decision) ? t(`admin.promptAudit.decisions.${decision}`) : decision

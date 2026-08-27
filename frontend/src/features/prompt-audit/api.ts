@@ -11,6 +11,9 @@ import type {
   PromptEventPage,
   PromptProbeResult,
   PromptAuditEndpointDraft,
+	PromptRecordingStats,
+	PromptRecordingCleanupResult,
+	PromptExportResult,
 } from './types'
 import { eventFilterPayload, eventQueryParams } from './viewModel'
 
@@ -46,6 +49,31 @@ export async function probeEndpoint(endpoint: PromptAuditEndpointDraft): Promise
 export async function getRuntime(): Promise<PromptAuditRuntime> {
   const { data } = await apiClient.get<PromptAuditRuntime>(`${basePath}/runtime`)
   return data
+}
+
+export async function getRecordingStats(): Promise<PromptRecordingStats> {
+  const { data } = await apiClient.get<PromptRecordingStats>(`${basePath}/recording/stats`)
+  return data
+}
+
+export async function cleanupRecording(): Promise<PromptRecordingCleanupResult> {
+  const { data } = await apiClient.post<PromptRecordingCleanupResult>(`${basePath}/recording/cleanup`)
+  return data
+}
+
+export async function exportEvents(format: 'csv' | 'jsonl', filters: PromptEventFilters): Promise<PromptExportResult> {
+  const response = await apiClient.post<Blob>(`${basePath}/events/export`, eventFilterPayload(filters), {
+    params: { format },
+    responseType: 'blob',
+  })
+  const disposition = String(response.headers?.['content-disposition'] || '')
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] || `prompt-events.${format}`
+  return {
+    blob: response.data,
+    filename,
+    total: Number(response.headers?.['x-export-total'] || 0),
+    truncated: String(response.headers?.['x-export-truncated'] || '') === 'true',
+  }
 }
 
 export async function listEvents(
@@ -108,6 +136,9 @@ export const promptAuditAPI = {
   updateConfig,
   probeEndpoint,
   getRuntime,
+	getRecordingStats,
+	cleanupRecording,
+	exportEvents,
   listEvents,
   getEvent,
   deleteEvent,

@@ -23,13 +23,14 @@ type PromptService struct {
 	metrics   *AtomicMetrics
 	clock     Clock
 
-	lifecycleMu  sync.Mutex
-	cancel       context.CancelFunc
-	background   context.Context
-	enqueueWG    sync.WaitGroup
-	enqueueSlots chan struct{}
-	probeMu      sync.RWMutex
-	probes       map[string]ProbeResult
+	lifecycleMu   sync.Mutex
+	cancel        context.CancelFunc
+	background    context.Context
+	enqueueWG     sync.WaitGroup
+	maintenanceWG sync.WaitGroup
+	enqueueSlots  chan struct{}
+	probeMu       sync.RWMutex
+	probes        map[string]ProbeResult
 }
 
 func NewPromptService(
@@ -63,6 +64,8 @@ func (s *PromptService) Start(ctx context.Context) error {
 	s.lifecycleMu.Unlock()
 	configErr := s.config.Start(background)
 	workerErr := s.runner.Start(background)
+	s.maintenanceWG.Add(1)
+	go s.recordingMaintenanceLoop(background)
 	return errors.Join(configErr, workerErr)
 }
 
@@ -82,7 +85,11 @@ func (s *PromptService) Shutdown(ctx context.Context) error {
 		workerErr = s.runner.Shutdown(ctx)
 	}
 	done := make(chan struct{})
-	go func() { s.enqueueWG.Wait(); close(done) }()
+	go func() {
+		s.enqueueWG.Wait()
+		s.maintenanceWG.Wait()
+		close(done)
+	}()
 	select {
 	case <-done:
 	case <-ctx.Done():
@@ -108,7 +115,8 @@ func (s *PromptService) EffectiveMode() Mode {
 }
 
 func (s *PromptService) Enqueue(_ context.Context, req Request) error {
-	if s == nil || s.enqueuer == nil || s.EffectiveMode() != ModeAsync {
+	mode := s.EffectiveMode()
+	if s == nil || s.enqueuer == nil || (mode != ModeAsync && mode != ModeCaptureOnly) {
 		return nil
 	}
 	select {
@@ -197,7 +205,7 @@ func (s *PromptService) Runtime(ctx context.Context) RuntimeSnapshot {
 	} else {
 		runtime.DatabaseStatus = "error"
 	}
-	if s.payload == nil || s.payload.Ping(ctx) != nil {
+	if mode != ModeCaptureOnly && (s.payload == nil || s.payload.Ping(ctx) != nil) {
 		runtime.RedisStatus = "error"
 		if runtime.LastErrorCode == "" {
 			runtime.LastErrorCode = "payload_store_unavailable"
@@ -218,11 +226,62 @@ func (s *PromptService) Runtime(ctx context.Context) RuntimeSnapshot {
 		if loadError != "" || runtime.DatabaseStatus != "ok" || runtime.RedisStatus != "ok" || activeVersion != expected {
 			runtime.ProcessStatus = "degraded"
 		}
-		if heartbeat == nil || s.clock.Now().Sub(*heartbeat) > 10*time.Second {
+		if mode != ModeCaptureOnly && (heartbeat == nil || s.clock.Now().Sub(*heartbeat) > 10*time.Second) {
 			runtime.ProcessStatus = "degraded"
 		}
 	}
 	return runtime
+}
+
+func (s *PromptService) RecordingStats(ctx context.Context) (RecordingStats, error) {
+	if s == nil || s.repo == nil {
+		return RecordingStats{}, errors.New("prompt recording database unavailable")
+	}
+	return s.repo.RecordingStats(ctx)
+}
+
+func (s *PromptService) CleanupRecording(ctx context.Context) (*RecordingCleanupResult, error) {
+	if s == nil || s.repo == nil || s.config == nil {
+		return nil, errors.New("prompt recording cleanup unavailable")
+	}
+	cfg, ok := s.config.Active()
+	if !ok {
+		return nil, errors.New("prompt recording config unavailable")
+	}
+	return s.repo.CleanupRecording(ctx, cfg.RetentionDays, cfg.MaxStorageMB, 500)
+}
+
+func (s *PromptService) CountEvents(ctx context.Context, filter EventFilter) (int64, error) {
+	return s.repo.CountEvents(ctx, filter)
+}
+
+func (s *PromptService) StreamEvents(ctx context.Context, filter EventFilter, limit int, consume func(*Event) error) (int64, error) {
+	return s.repo.StreamEvents(ctx, filter, limit, consume)
+}
+
+func (s *PromptService) recordingMaintenanceLoop(ctx context.Context) {
+	defer s.maintenanceWG.Done()
+	timer := time.NewTimer(time.Minute)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			cleanupCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+			result, err := s.CleanupRecording(cleanupCtx)
+			cancel()
+			if err != nil {
+				LogWarn(EventRecordingCleanupFailed, map[string]any{"status": "failed", "error_code": "cleanup_failed"})
+			} else if result.DeletedEvents > 0 {
+				LogInfo(EventRecordingCleanupCompleted, map[string]any{
+					"status": "completed", "deleted_events": result.DeletedEvents,
+					"remaining_events": result.Remaining.EventCount, "remaining_prompt_bytes": result.Remaining.PromptBytes,
+				})
+			}
+			timer.Reset(time.Hour)
+		}
+	}
 }
 
 type ProbeRequest struct {

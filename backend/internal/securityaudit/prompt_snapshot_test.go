@@ -64,6 +64,32 @@ func TestSnapshotFullPromptKeepsUnredactedText(t *testing.T) {
 	require.Equal(t, snapshot.FullPrompt, snapshot.Redacted().FullPrompt)
 }
 
+func TestCaptureOnlySnapshotKeepsLatestUserInputAndIdentityMetadata(t *testing.T) {
+	groupID := int64(17)
+	req := Request{
+		RequestID: "req-capture", UserID: 42, Username: "captured-user", UserEmail: "user@example.test",
+		APIKeyID: 81, APIKeyName: "desktop-key", GroupID: &groupID, GroupName: "capture-group",
+		Provider: "openai", Endpoint: "/v1/chat/completions", Protocol: "openai_chat_completions", Model: "gpt-test",
+		Body: []byte(`{"messages":[{"role":"system","content":"do not retain system"},{"role":"user","content":"old input"},{"role":"assistant","content":"do not retain output"},{"role":"user","content":[{"type":"text","text":"latest one"},{"type":"text","text":"latest two"}]}]}`),
+	}
+	snapshot, err := ExtractLatestUserPromptSnapshot(req)
+	require.NoError(t, err)
+	require.Equal(t, "latest one\n\nlatest two", snapshot.FullPrompt)
+	require.Equal(t, snapshot.FullPrompt, snapshot.ScanText)
+	require.NotContains(t, snapshot.FullPrompt, "system")
+	require.NotContains(t, snapshot.FullPrompt, "output")
+	require.NotContains(t, snapshot.FullPrompt, "old input")
+	require.Equal(t, "req-capture", snapshot.RequestID)
+	require.Equal(t, int64(42), snapshot.UserID)
+	require.Equal(t, "user@example.test", snapshot.UserEmailSnapshot)
+	require.Equal(t, int64(81), snapshot.APIKeyID)
+	require.Equal(t, "desktop-key", snapshot.APIKeyNameSnapshot)
+	require.Equal(t, &groupID, snapshot.GroupID)
+	require.Equal(t, "/v1/chat/completions", snapshot.Endpoint)
+	require.Equal(t, "gpt-test", snapshot.Model)
+	require.Len(t, snapshot.PromptHash, 64)
+}
+
 func TestBuildFullPromptStripsNULAndTruncates(t *testing.T) {
 	require.Equal(t, "abcd", BuildFullPrompt("ab\x00cd", 0))
 	long := strings.Repeat("长", DefaultFullPromptMaxRunes+10)

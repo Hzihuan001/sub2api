@@ -8,6 +8,7 @@ import PromptAuditView from '../PromptAuditView.vue'
 const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(), updateConfig: vi.fn(), probeEndpoint: vi.fn(), getRuntime: vi.fn(), listEvents: vi.fn(),
   getEvent: vi.fn(), deleteEvent: vi.fn(), batchDeleteEvents: vi.fn(), previewDelete: vi.fn(), deleteEventsByFilter: vi.fn(), listGroups: vi.fn(),
+  getRecordingStats: vi.fn(), cleanupRecording: vi.fn(), exportEvents: vi.fn(),
   showSuccess: vi.fn(), showError: vi.fn(),
 }))
 
@@ -19,7 +20,8 @@ vi.mock('vue-i18n', async () => {
 })
 
 const baseConfig = (): PromptAuditConfig => ({
-  enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',
+  enabled: true, capture_only_enabled: false, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false,
+  retention_days: 7, max_storage_mb: 512, effective_mode: 'async_audit', strategy: 'priority',
   worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: true, group_ids: [],
   endpoints: [{ id: 'guard-1', name: 'Guard One', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000', model: 'guard-model', timeout_ms: 3000, input_limit: 4000, enabled: true, has_token: true, token_status: 'configured' }],
   config_version: 7, updated_at: '2026-07-16T00:00:00Z', updated_by: 1, change_summary: '{}',
@@ -65,6 +67,8 @@ describe('PromptAuditView', () => {
     mocks.getRuntime.mockResolvedValue(runtime())
     mocks.listGroups.mockResolvedValue([])
     mocks.listEvents.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+    mocks.getRecordingStats.mockResolvedValue({ event_count: 0, prompt_bytes: 0 })
+    mocks.cleanupRecording.mockResolvedValue({ deleted_events: 0, deleted_jobs: 0, remaining: { event_count: 0, prompt_bytes: 0 } })
     mocks.updateConfig.mockImplementation(async () => ({ ...baseConfig(), config_version: 8 }))
     mocks.probeEndpoint.mockResolvedValue({ ok: true, status: 'healthy', message: 'ok', latency_ms: 2, http_status: 200, retryable: false, checked_at: '2026-07-16T00:00:00Z', token_applied: true })
     mocks.previewDelete.mockResolvedValue({ matched_count: 2, filter_summary: {}, snapshot_max_id: 10, filter_hash: 'a'.repeat(64), confirmation_token: 'opaque-confirmation', expires_at: '2026-07-16T00:05:00Z' })
@@ -118,21 +122,38 @@ describe('PromptAuditView', () => {
     expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').not.toContain('display: none')
   })
 
-  it('requires confirmation for blocking and disables it when audit is turned off', async () => {
+  it('offers exactly four mutually exclusive modes and confirms blocking', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="tab-config"]').trigger('click')
-    await wrapper.get('[data-test="blocking-toggle"]').trigger('click')
+    expect(wrapper.findAll('[name="prompt-audit-mode"]')).toHaveLength(4)
+    expect(wrapper.get<HTMLInputElement>('[data-test="mode-async_audit"]').element.checked).toBe(true)
+    await wrapper.get('[data-test="mode-blocking"]').trigger('change')
     expect(wrapper.find('[data-test="confirm"]').exists()).toBe(true)
     await wrapper.get('[data-test="confirm-action"]').trigger('click')
-    expect(wrapper.get('[data-test="blocking-toggle"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get<HTMLInputElement>('[data-test="mode-blocking"]').element.checked).toBe(true)
     await wrapper.get('[data-test="blocking-latest-turn-only-toggle"]').trigger('click')
     expect(wrapper.get('[data-test="blocking-latest-turn-only-toggle"]').attributes('aria-checked')).toBe('true')
-    await wrapper.get('[data-test="enabled-toggle"]').trigger('click')
-    expect(wrapper.get('[data-test="enabled-toggle"]').attributes('aria-checked')).toBe('false')
-    expect(wrapper.get('[data-test="blocking-toggle"]').attributes('aria-checked')).toBe('false')
-    expect(wrapper.get('[data-test="blocking-toggle"]').attributes()).toHaveProperty('disabled')
+    await wrapper.get('[data-test="mode-off"]').trigger('change')
+    expect(wrapper.get<HTMLInputElement>('[data-test="mode-off"]').element.checked).toBe(true)
     expect(wrapper.get('[data-test="blocking-latest-turn-only-toggle"]').attributes()).toHaveProperty('disabled')
+  })
+
+  it('selects capture_only without a Guard node and saves its retention policy', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+    await wrapper.get('[data-test="mode-capture_only"]').trigger('change')
+    expect(wrapper.get<HTMLInputElement>('[data-test="mode-capture_only"]').element.checked).toBe(true)
+    expect(wrapper.find('[data-test="endpoint"]').exists()).toBe(false)
+    await wrapper.get('[data-test="save-config"]').trigger('click')
+    await flushPromises()
+    expect(mocks.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: false,
+      capture_only_enabled: true,
+      blocking_enabled: false,
+      retention_days: 7,
+    }))
   })
 
   it('clears plaintext token state after a successful save', async () => {
@@ -173,13 +194,14 @@ describe('PromptAuditView', () => {
     expect(wrapper.get('[data-test="dialog-preview-state"]').text()).toBe('none')
   })
 
-  it('uses native labeled switches and a responsive fixed save surface', async () => {
+  it('uses labeled mode radios and a responsive fixed save surface', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="tab-config"]').trigger('click')
     const switches = wrapper.findAll('[role="switch"]')
-    expect(switches).toHaveLength(4)
+    expect(switches).toHaveLength(2)
     expect(switches.every((item) => Boolean(item.attributes('aria-label')))).toBe(true)
+    expect(wrapper.findAll('[name="prompt-audit-mode"]')).toHaveLength(4)
     expect(wrapper.html()).toContain('fixed inset-x-0 bottom-0')
     expect(wrapper.html()).toContain('flex-wrap')
   })

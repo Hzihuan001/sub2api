@@ -89,6 +89,10 @@ type fakeJobRepository struct {
 	recordBlockingSnapshot PromptSnapshot
 	recordBlockingResult   *NormalizedResult
 	recordBlockingErr      error
+
+	captureOnlyCalls    int
+	captureOnlySnapshot PromptSnapshot
+	captureOnlyErr      error
 }
 
 func (r *fakeJobRepository) record(value string) {
@@ -177,6 +181,16 @@ func (r *fakeJobRepository) RecordBlocking(_ context.Context, snapshot PromptSna
 	r.recordBlockingCalls++
 	r.recordBlockingSnapshot, r.recordBlockingResult = snapshot, result
 	return nil, r.recordBlockingErr
+}
+func (r *fakeJobRepository) CaptureOnly(_ context.Context, snapshot PromptSnapshot, _ int64) (*Event, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.captureOnlyCalls++
+	r.captureOnlySnapshot = snapshot
+	if r.captureOnlyErr != nil {
+		return nil, r.captureOnlyErr
+	}
+	return &Event{ID: 100, Snapshot: snapshot, CaptureMode: "capture_only", Decision: EventUnreviewed, RiskLevel: RiskUnknown}, nil
 }
 
 type fakePayloadStore struct {
@@ -287,6 +301,24 @@ func TestEnqueuerStagingPayloadPublishProtocolAndFailureCleanup(t *testing.T) {
 		require.Equal(t, "queue_publish_failed", repo.markedCode)
 		require.NotContains(t, payload.values, int64(43))
 	})
+}
+
+func TestCaptureOnlyEnqueuerWritesLatestUserInputWithoutGuardOrRedis(t *testing.T) {
+	cfg := ActiveConfig{CaptureOnlyEnabled: true, AllGroups: true, ConfigVersion: 12}
+	repo := &fakeJobRepository{}
+	req := Request{
+		RequestID: "capture-request", UserID: 7, UserEmail: "seven@example.test", APIKeyID: 9, APIKeyName: "key-nine",
+		Endpoint: "/v1/chat/completions", Protocol: "openai_chat_completions", Model: "gpt-capture",
+		Body: []byte(`{"messages":[{"role":"system","content":"system secret"},{"role":"user","content":"old"},{"role":"assistant","content":"model output"},{"role":"user","content":"latest only"}]}`),
+	}
+
+	err := NewEnqueuer(&fakeConfigStore{cfg: cfg, active: true}, repo, nil).Enqueue(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, 1, repo.captureOnlyCalls)
+	require.Equal(t, "latest only", repo.captureOnlySnapshot.FullPrompt)
+	require.Equal(t, "seven@example.test", repo.captureOnlySnapshot.UserEmailSnapshot)
+	require.Equal(t, "key-nine", repo.captureOnlySnapshot.APIKeyNameSnapshot)
+	require.Zero(t, repo.createJob, "capture_only must not create a Guard audit queue job")
 }
 
 func TestEnqueuerSkipsOffOutOfScopeAndNoText(t *testing.T) {

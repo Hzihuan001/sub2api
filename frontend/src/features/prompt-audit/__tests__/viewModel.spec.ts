@@ -12,9 +12,12 @@ import {
 
 const config = (): PromptAuditConfig => ({
   enabled: true,
+  capture_only_enabled: false,
   blocking_enabled: false,
   blocking_latest_turn_only: false,
   store_pass_events: false,
+  retention_days: 7,
+  max_storage_mb: 512,
   effective_mode: 'async_audit',
   strategy: 'priority',
   worker_count: 4,
@@ -61,6 +64,21 @@ describe('Prompt Audit view model', () => {
     const draft = configToDraft(config())
     draft.blocking_latest_turn_only = true
     expect(buildUpdateRequest(draft)).toMatchObject({ blocking_latest_turn_only: true })
+  })
+
+  it('preserves the exact capture_only mode fields and retention policy', () => {
+    const draft = configToDraft(config())
+    draft.enabled = false
+    draft.capture_only_enabled = true
+    draft.retention_days = 14
+    draft.max_storage_mb = 256
+    expect(buildUpdateRequest(draft)).toMatchObject({
+      enabled: false,
+      capture_only_enabled: true,
+      blocking_enabled: false,
+      retention_days: 14,
+      max_storage_mb: 256,
+    })
   })
 
   it('tracks dirty state from the full normalized save payload', () => {

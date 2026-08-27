@@ -16,7 +16,8 @@
             <pre class="mt-2 max-h-[min(46vh,26rem)] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-4 text-sm text-gray-700 dark:bg-dark-900 dark:text-dark-200" data-test="summary-prompt-full">{{ displayPrompt(event) }}</pre>
           </div>
           <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt class="text-gray-500">{{ t('admin.promptAudit.events.decision') }}</dt><dd class="font-medium text-gray-900 dark:text-white">{{ formatDecisionAction(event.decision, event.action) }}</dd>
+            <dt class="text-gray-500">{{ t('admin.promptAudit.events.captureMode') }}</dt><dd>{{ event.capture_mode === 'capture_only' ? t('admin.promptAudit.events.captureOnly') : t('admin.promptAudit.events.guardAudit') }}</dd>
+            <dt class="text-gray-500">{{ t('admin.promptAudit.events.decision') }}</dt><dd class="font-medium text-gray-900 dark:text-white">{{ formatDecisionAction(event) }}</dd>
             <dt class="text-gray-500">{{ t('admin.promptAudit.events.user') }}</dt><dd>{{ event.snapshot.username || '—' }}</dd>
             <dt class="text-gray-500">{{ t('admin.promptAudit.events.email') }}</dt><dd>{{ event.snapshot.user_email || '—' }}</dd>
             <dt class="text-gray-500">{{ t('admin.promptAudit.events.apiKey') }}</dt><dd>{{ event.snapshot.api_key_name || '—' }}</dd>
@@ -76,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PromptAuditEvent, PromptIssueSummary } from '../types'
@@ -85,21 +86,25 @@ import { SCANNER_CATALOG } from '../viewModel'
 const props = defineProps<{ show: boolean; event: PromptAuditEvent | null; loading: boolean }>()
 defineEmits<{ (event: 'close'): void }>()
 const { t } = useI18n()
-const tabs = ['summary', 'risks', 'technical'] as const
-const activeTab = ref<(typeof tabs)[number]>('summary')
+const tabs = computed(() => props.event?.capture_mode === 'capture_only' ? ['summary', 'technical'] as const : ['summary', 'risks', 'technical'] as const)
+const activeTab = ref<'summary' | 'risks' | 'technical'>('summary')
 watch(() => props.event?.id, () => { activeTab.value = 'summary' })
 
-const DECISIONS = new Set(['pass', 'flag', 'critical'])
+const DECISIONS = new Set(['unreviewed', 'pass', 'flag', 'critical'])
 const ACTIONS = new Set(['Allow', 'Warn', 'Block'])
-const RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical'])
+const RISK_LEVELS = new Set(['unknown', 'low', 'medium', 'high', 'critical'])
 
 function displayPrompt(event: PromptAuditEvent): string {
   return event.snapshot.full_prompt || event.snapshot.redacted_preview || '—'
 }
 
-function formatDecisionAction(decision: string, action: string): string {
-  const decisionLabel = DECISIONS.has(decision) ? t(`admin.promptAudit.decisions.${decision}`) : decision
-  const actionLabel = ACTIONS.has(action) ? t(`admin.promptAudit.actions.${action}`) : action
+function formatDecisionAction(event: PromptAuditEvent): string {
+  const decisionLabel = DECISIONS.has(event.decision) ? t(`admin.promptAudit.decisions.${event.decision}`) : event.decision
+  if (event.capture_mode === 'capture_only') {
+    const riskLabel = RISK_LEVELS.has(event.risk_level) ? t(`admin.promptAudit.riskLevels.${event.risk_level}`) : event.risk_level
+    return `${decisionLabel} · ${riskLabel}`
+  }
+  const actionLabel = ACTIONS.has(event.action) ? t(`admin.promptAudit.actions.${event.action}`) : event.action
   return `${decisionLabel} · ${actionLabel}`
 }
 function translateCategory(category: string): string {

@@ -59,6 +59,8 @@ type Event struct {
 	ConfigVersion   int64              `json:"config_version"`
 	ChunkTotal      int                `json:"chunk_total"`
 	LatencyMS       int                `json:"latency_ms"`
+	CaptureMode     string             `json:"capture_mode"`
+	PromptBytes     int64              `json:"prompt_bytes"`
 	IssueSummaries  []IssueSummary     `json:"issue_summaries"`
 	CreatedAt       time.Time          `json:"created_at"`
 }
@@ -187,7 +189,7 @@ func (r *PostgreSQLRepository) Complete(ctx context.Context, job *Job, result *N
 	}
 	var event *Event
 	if shouldStorePromptAuditEvent(result.Decision, storePassEvents) {
-		event, err = insertEvent(ctx, tx, job.ID, job.Snapshot.Redacted(), job.ConfigVersion, result)
+		event, err = insertEvent(ctx, tx, job.ID, job.Snapshot.Redacted(), job.ConfigVersion, "guard_audit", result)
 		if err != nil {
 			return nil, err
 		}
@@ -293,10 +295,42 @@ func (r *PostgreSQLRepository) RecordBlocking(ctx context.Context, snapshot Prom
 	}
 	var event *Event
 	if shouldStorePromptAuditEvent(result.Decision, storePassEvents) {
-		event, err = insertEvent(ctx, tx, job.ID, snapshot.Redacted(), configVersion, result)
+		event, err = insertEvent(ctx, tx, job.ID, snapshot.Redacted(), configVersion, "guard_audit", result)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return event, nil
+}
+
+// CaptureOnly persists an unreviewed event without invoking a
+// scanner or Redis. It is called from PromptService's bounded background queue,
+// never from the request goroutine itself.
+func (r *PostgreSQLRepository) CaptureOnly(ctx context.Context, snapshot PromptSnapshot, configVersion int64) (*Event, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("prompt recording database unavailable")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	job, err := insertJob(ctx, tx, snapshot.Redacted(), ModeCaptureOnly, configVersion, "done", 1)
+	if err != nil {
+		return nil, err
+	}
+	result := &NormalizedResult{
+		Decision: EventUnreviewed, RiskLevel: RiskUnknown, Action: ActionAllow,
+		Categories: []string{}, MatchedScanners: []string{}, ScannerScores: map[string]float64{},
+		ScannerEvidence: map[string]string{},
+		ScannerBackend:  "capture-only", ScannerVersion: "1",
+	}
+	event, err := insertEvent(ctx, tx, job.ID, snapshot.Redacted(), configVersion, "capture_only", result)
+	if err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -334,7 +368,7 @@ func insertJob(ctx context.Context, queryer sqlQueryer, snapshot PromptSnapshot,
 	return scanJob(row)
 }
 
-func insertEvent(ctx context.Context, queryer sqlQueryer, jobID int64, snapshot PromptSnapshot, configVersion int64, result *NormalizedResult) (*Event, error) {
+func insertEvent(ctx context.Context, queryer sqlQueryer, jobID int64, snapshot PromptSnapshot, configVersion int64, captureMode string, result *NormalizedResult) (*Event, error) {
 	categories, _ := json.Marshal(result.Categories)
 	matched, _ := json.Marshal(result.MatchedScanners)
 	scores, _ := json.Marshal(result.ScannerScores)
@@ -349,9 +383,9 @@ func insertEvent(ctx context.Context, queryer sqlQueryer, jobID int64, snapshot 
 			group_id,group_name,provider,endpoint,protocol,model,prompt_hash,redacted_preview,stage,
 			decision,risk_level,action,categories,matched_scanners,scanner_scores,scanner_evidence,
 			scanner_backend,scanner_version,guard_endpoint_id,policy_id,policy_version,config_version,chunk_total,latency_ms,
-			full_prompt
+			full_prompt,capture_mode,prompt_bytes
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-			$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+			$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)
 		RETURNING `+eventDetailColumns("prompt_audit_events"),
 		jobID, snapshot.RequestID, nullableID(snapshot.UserID), snapshot.UsernameSnapshot, snapshot.UserEmailSnapshot,
 		nullableID(snapshot.APIKeyID), snapshot.APIKeyNameSnapshot, snapshot.GroupID, snapshot.GroupName,
@@ -359,7 +393,7 @@ func insertEvent(ctx context.Context, queryer sqlQueryer, jobID int64, snapshot 
 		snapshot.RedactedPreview, normalizeStage(snapshot.Stage), string(result.Decision), string(result.RiskLevel),
 		string(result.Action), categories, matched, scores, evidenceJSON, result.ScannerBackend, result.ScannerVersion,
 		result.GuardEndpointID, result.PolicyID, result.PolicyVersion, configVersion, result.ChunkTotal, result.LatencyMS,
-		snapshot.FullPrompt)
+		snapshot.FullPrompt, captureMode, int64(len([]byte(snapshot.FullPrompt))))
 	return scanEvent(row, true)
 }
 

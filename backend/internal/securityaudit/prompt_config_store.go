@@ -349,7 +349,9 @@ func (m *ConfigManager) buildNextStorage(current storageConfig, req UpdateConfig
 		currentByID[endpoint.ID] = endpoint
 	}
 	next := storageConfig{
-		Enabled: req.Enabled, BlockingEnabled: req.BlockingEnabled, BlockingLatestTurnOnly: req.BlockingLatestTurnOnly, StorePassEvents: req.StorePassEvents,
+		Enabled: req.Enabled, CaptureOnlyEnabled: req.CaptureOnlyEnabled, BlockingEnabled: req.BlockingEnabled,
+		BlockingLatestTurnOnly: req.BlockingLatestTurnOnly, StorePassEvents: req.StorePassEvents,
+		RetentionDays: req.RetentionDays, MaxStorageMB: req.MaxStorageMB,
 		Strategy: strings.TrimSpace(req.Strategy), WorkerCount: req.WorkerCount,
 		QueueCapacity: req.QueueCapacity, Scanners: append([]string(nil), req.Scanners...),
 		AllGroups: req.AllGroups, GroupIDs: append([]int64(nil), req.GroupIDs...),

@@ -261,16 +261,27 @@ func TestBuildNextStorageRejectsNewTokenWithoutConfiguredEncryptionKey(t *testin
 
 func TestEffectiveModeTruthTable(t *testing.T) {
 	tests := []struct {
-		risk, enabled, blocking bool
-		want                    Mode
+		risk, enabled, captureOnly, blocking bool
+		want                                 Mode
 	}{
-		{false, false, false, ModeOff}, {false, true, true, ModeOff}, {true, false, false, ModeOff},
-		{true, true, false, ModeAsync}, {true, true, true, ModeBlocking},
+		{false, false, false, false, ModeOff}, {false, true, false, true, ModeOff}, {true, false, false, false, ModeOff},
+		{true, true, false, false, ModeAsync}, {true, true, false, true, ModeBlocking},
+		{false, false, true, false, ModeCaptureOnly}, {true, false, true, false, ModeCaptureOnly},
 	}
 	for _, tt := range tests {
-		cfg := ActiveConfig{RiskControlEnabled: tt.risk, Enabled: tt.enabled, BlockingEnabled: tt.blocking}
+		cfg := ActiveConfig{RiskControlEnabled: tt.risk, Enabled: tt.enabled, CaptureOnlyEnabled: tt.captureOnly, BlockingEnabled: tt.blocking}
 		require.Equal(t, tt.want, cfg.EffectiveMode())
 	}
+}
+
+func TestCaptureOnlyConfigDoesNotRequireGuardEndpoint(t *testing.T) {
+	req := UpdateConfigRequest{
+		ExpectedConfigVersion: 1, CaptureOnlyEnabled: true,
+		RetentionDays: DefaultRetentionDays, MaxStorageMB: DefaultMaxStorageMB,
+		Strategy: "priority", WorkerCount: 1, QueueCapacity: 8,
+		AllGroups: true,
+	}
+	require.NoError(t, validateUpdateConfigRequest(req))
 }
 
 func TestConfigManagerColdStartOnlyFailsClosedForExplicitBlockingIntent(t *testing.T) {

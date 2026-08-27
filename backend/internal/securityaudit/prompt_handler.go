@@ -2,9 +2,13 @@ package securityaudit
 
 import (
 	"context"
+	"encoding/csv"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -26,6 +30,13 @@ type PromptAdminService interface {
 }
 
 type PromptAdminHandler struct{ service PromptAdminService }
+
+type promptRecordingAdminService interface {
+	RecordingStats(context.Context) (RecordingStats, error)
+	CleanupRecording(context.Context) (*RecordingCleanupResult, error)
+	CountEvents(context.Context, EventFilter) (int64, error)
+	StreamEvents(context.Context, EventFilter, int, func(*Event) error) (int64, error)
+}
 
 func NewPromptAdminHandler(service PromptAdminService) *PromptAdminHandler {
 	return &PromptAdminHandler{service: service}
@@ -78,6 +89,118 @@ func (h *PromptAdminHandler) ProbeEndpoint(c *gin.Context) {
 
 func (h *PromptAdminHandler) GetRuntime(c *gin.Context) {
 	response.Success(c, h.service.Runtime(c.Request.Context()))
+}
+
+func (h *PromptAdminHandler) GetRecordingStats(c *gin.Context) {
+	service, ok := h.service.(promptRecordingAdminService)
+	if !ok {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("prompt_recording_unavailable", "提示词记录服务暂不可用"))
+		return
+	}
+	stats, err := service.RecordingStats(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, stats)
+}
+
+func (h *PromptAdminHandler) CleanupRecording(c *gin.Context) {
+	service, ok := h.service.(promptRecordingAdminService)
+	if !ok {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("prompt_recording_unavailable", "提示词记录服务暂不可用"))
+		return
+	}
+	result, err := service.CleanupRecording(c.Request.Context())
+	if err != nil {
+		setPromptAdminAudit(c, "failed", "prompt_recording_cleanup_failed", nil)
+		response.ErrorFrom(c, err)
+		return
+	}
+	setPromptAdminAudit(c, "success", "", map[string]any{
+		"deleted_events": result.DeletedEvents, "deleted_jobs": result.DeletedJobs,
+		"remaining_events": result.Remaining.EventCount, "remaining_prompt_bytes": result.Remaining.PromptBytes,
+	})
+	response.Success(c, result)
+}
+
+func (h *PromptAdminHandler) ExportEvents(c *gin.Context) {
+	service, ok := h.service.(promptRecordingAdminService)
+	if !ok {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("prompt_recording_unavailable", "提示词记录服务暂不可用"))
+		return
+	}
+	var filter EventFilter
+	if err := c.ShouldBindJSON(&filter); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("prompt_recording_invalid_export_filter", "导出筛选条件无效"))
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(c.DefaultQuery("format", "csv")))
+	if format != "csv" && format != "jsonl" {
+		response.ErrorFrom(c, infraerrors.BadRequest("prompt_recording_invalid_export_format", "导出格式仅支持 csv 或 jsonl"))
+		return
+	}
+	const exportLimit = 10000
+	total, err := service.CountEvents(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	extension := format
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="prompt-events-%s.%s"`, time.Now().UTC().Format("20060102T150405Z"), extension))
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("X-Export-Total", strconv.FormatInt(total, 10))
+	c.Header("X-Export-Limit", strconv.Itoa(exportLimit))
+	if total > exportLimit {
+		c.Header("X-Export-Truncated", "true")
+	}
+	var exported int64
+	if format == "jsonl" {
+		c.Header("Content-Type", "application/x-ndjson; charset=utf-8")
+		encoder := json.NewEncoder(c.Writer)
+		exported, err = service.StreamEvents(c.Request.Context(), filter, exportLimit, func(event *Event) error {
+			return encoder.Encode(event)
+		})
+	} else {
+		c.Header("Content-Type", "text/csv; charset=utf-8")
+		_, _ = c.Writer.Write([]byte{0xEF, 0xBB, 0xBF})
+		writer := csv.NewWriter(c.Writer)
+		_ = writer.Write([]string{"id", "created_at", "capture_mode", "user_id", "username", "user_email", "api_key_id", "api_key_name", "group_id", "group_name", "provider", "endpoint", "protocol", "model", "request_id", "prompt_hash", "prompt_length", "prompt_bytes", "full_prompt"})
+		exported, err = service.StreamEvents(c.Request.Context(), filter, exportLimit, func(event *Event) error {
+			groupID := ""
+			if event.Snapshot.GroupID != nil {
+				groupID = strconv.FormatInt(*event.Snapshot.GroupID, 10)
+			}
+			return writer.Write([]string{
+				strconv.FormatInt(event.ID, 10), event.CreatedAt.UTC().Format(time.RFC3339Nano), event.CaptureMode,
+				strconv.FormatInt(event.Snapshot.UserID, 10), safeCSVCell(event.Snapshot.UsernameSnapshot), safeCSVCell(event.Snapshot.UserEmailSnapshot),
+				strconv.FormatInt(event.Snapshot.APIKeyID, 10), safeCSVCell(event.Snapshot.APIKeyNameSnapshot), groupID,
+				safeCSVCell(event.Snapshot.GroupName), event.Snapshot.Provider, event.Snapshot.Endpoint, event.Snapshot.Protocol,
+				safeCSVCell(event.Snapshot.Model), event.Snapshot.RequestID, event.Snapshot.PromptHash,
+				strconv.Itoa(event.Snapshot.PromptLength), strconv.FormatInt(event.PromptBytes, 10), safeCSVCell(event.Snapshot.FullPrompt),
+			})
+		})
+		writer.Flush()
+		if err == nil {
+			err = writer.Error()
+		}
+	}
+	resultStatus, errorCode := "success", ""
+	if err != nil {
+		resultStatus, errorCode = "failed", infraerrors.Reason(err)
+	}
+	setPromptAdminAudit(c, resultStatus, errorCode, map[string]any{
+		"format": format, "matched_count": total, "exported_count": exported, "truncated": total > exportLimit,
+	})
+}
+
+func safeCSVCell(value string) string {
+	trimmed := strings.TrimLeft(value, " \t\r\n")
+	if trimmed != "" && strings.ContainsRune("=+-@", rune(trimmed[0])) {
+		return "'" + value
+	}
+	return value
 }
 
 func (h *PromptAdminHandler) ListEvents(c *gin.Context) {
@@ -227,7 +350,9 @@ func configAuditFields(request UpdateConfigRequest, saved *PublicConfig) map[str
 		version = saved.ConfigVersion
 	}
 	return map[string]any{
-		"enabled": request.Enabled, "blocking_enabled": request.BlockingEnabled,
+		"enabled": request.Enabled, "capture_only_enabled": request.CaptureOnlyEnabled,
+		"retention_days": request.RetentionDays, "max_storage_mb": request.MaxStorageMB,
+		"blocking_enabled":          request.BlockingEnabled,
 		"blocking_latest_turn_only": request.BlockingLatestTurnOnly,
 		"config_version":            version, "endpoint_count": len(request.Endpoints),
 		"scanner_count": len(request.Scanners), "all_groups": request.AllGroups,
@@ -269,7 +394,7 @@ func eventFilterFromQuery(c *gin.Context) (EventFilter, error) {
 		return EventFilter{}, err
 	}
 	filter := EventFilter{
-		Decision: c.Query("decision"), RiskLevel: c.Query("risk_level"), Endpoint: c.Query("endpoint"),
+		CaptureMode: c.Query("capture_mode"), Decision: c.Query("decision"), RiskLevel: c.Query("risk_level"), Endpoint: c.Query("endpoint"),
 		GroupID: groupID, UserID: userID, APIKeyID: apiKeyID, RequestID: c.Query("request_id"),
 		PromptHash: c.Query("prompt_hash"), Keyword: c.Query("keyword"),
 	}

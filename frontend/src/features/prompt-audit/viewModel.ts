@@ -61,9 +61,12 @@ export function buildUpdateRequest(draft: PromptAuditDraft): PromptAuditUpdateRe
   return {
     expected_config_version: draft.config_version,
     enabled: draft.enabled,
+		capture_only_enabled: draft.capture_only_enabled,
     blocking_enabled: draft.enabled && draft.blocking_enabled,
     blocking_latest_turn_only: draft.blocking_latest_turn_only,
     store_pass_events: draft.store_pass_events,
+		retention_days: Number(draft.retention_days),
+		max_storage_mb: Number(draft.max_storage_mb),
     strategy: 'priority',
     worker_count: Number(draft.worker_count),
     queue_capacity: Number(draft.queue_capacity),
@@ -92,6 +95,7 @@ export function draftFingerprint(draft: PromptAuditDraft | null): string {
 
 export function emptyEventFilters(): PromptEventFilters {
   return {
+		capture_mode: '',
     decision: '',
     risk_level: '',
     endpoint: '',
@@ -114,7 +118,7 @@ function toISO(value: string): string | undefined {
 
 export function eventQueryParams(filters: PromptEventFilters): Record<string, string | number> {
   const result: Record<string, string | number> = {}
-  for (const key of ['decision', 'risk_level', 'endpoint', 'request_id', 'prompt_hash', 'keyword'] as const) {
+  for (const key of ['capture_mode', 'decision', 'risk_level', 'endpoint', 'request_id', 'prompt_hash', 'keyword'] as const) {
     const value = filters[key].trim()
     if (value) result[key] = value
   }

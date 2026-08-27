@@ -42,7 +42,7 @@
           <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.policy.selectedCount', { count: draft.group_ids.length }) }}</p>
         </div>
 
-        <fieldset class="mt-5 border-t border-gray-100 pt-5 dark:border-dark-800">
+        <fieldset v-if="!draft.capture_only_enabled" class="mt-5 border-t border-gray-100 pt-5 dark:border-dark-800">
           <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.scanners') }}</legend>
           <div class="mt-3 grid gap-2 sm:grid-cols-2">
             <label v-for="scanner in SCANNER_CATALOG" :key="scanner.id" class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-dark-200 dark:hover:bg-dark-800">
@@ -53,7 +53,7 @@
         </fieldset>
       </div>
 
-      <div class="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-dark-700/60 dark:bg-dark-900/20 sm:p-5">
+      <div v-if="!draft.capture_only_enabled" class="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-dark-700/60 dark:bg-dark-900/20 sm:p-5">
         <label class="block text-sm text-gray-700 dark:text-dark-200">
           <span>{{ t('admin.promptAudit.policy.workerCount') }}</span>
           <input :value="draft.worker_count" type="number" min="1" max="32" class="input mt-1.5 w-full" :aria-label="t('admin.promptAudit.policy.workerCount')" @input="patch({ worker_count: Number(($event.target as HTMLInputElement).value) })" />
@@ -66,6 +66,20 @@
           <p class="font-medium text-gray-800 dark:text-dark-100">{{ t('admin.promptAudit.policy.strategy') }}</p>
           <p class="mt-1">priority · {{ t('admin.promptAudit.policy.strategyHint') }}</p>
         </div>
+      </div>
+
+      <div v-else class="space-y-4 rounded-xl border border-primary-200 bg-primary-50/60 p-4 dark:border-primary-900/60 dark:bg-primary-950/20 sm:p-5">
+        <p class="text-sm font-medium text-primary-900 dark:text-primary-100">{{ t('admin.promptAudit.recording.latestOnlyTitle') }}</p>
+        <p class="text-sm text-primary-800/80 dark:text-primary-200/80">{{ t('admin.promptAudit.recording.latestOnlyHint') }}</p>
+        <label class="block text-sm text-gray-700 dark:text-dark-200">
+          <span>{{ t('admin.promptAudit.recording.retentionDays') }}</span>
+          <input :value="draft.retention_days" type="number" min="1" max="365" class="input mt-1.5 w-full" :aria-label="t('admin.promptAudit.recording.retentionDays')" @input="patch({ retention_days: Number(($event.target as HTMLInputElement).value) })" />
+        </label>
+        <label class="block text-sm text-gray-700 dark:text-dark-200">
+          <span>{{ t('admin.promptAudit.recording.maxStorageMB') }}</span>
+          <input :value="draft.max_storage_mb" type="number" min="16" max="10240" class="input mt-1.5 w-full" :aria-label="t('admin.promptAudit.recording.maxStorageMB')" @input="patch({ max_storage_mb: Number(($event.target as HTMLInputElement).value) })" />
+        </label>
+        <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.recording.cleanupPolicyHint') }}</p>
       </div>
     </div>
   </section>

@@ -27,6 +27,9 @@ type fakePromptAdminService struct {
 	deleteIDs    func(context.Context, []int64) (*DeleteResult, error)
 	preview      func(context.Context, EventFilter, int64) (*DeletePreview, error)
 	deleteFilter func(context.Context, DeleteByFilterRequest, int64) (*DeleteResult, error)
+	recording    RecordingStats
+	cleanup      *RecordingCleanupResult
+	exportEvents []*Event
 }
 
 func (s *fakePromptAdminService) GetConfig() (PublicConfig, error) {
@@ -81,6 +84,31 @@ func (s *fakePromptAdminService) DeleteByFilter(ctx context.Context, req DeleteB
 	}
 	return s.deleteFilter(ctx, req, actorID)
 }
+func (s *fakePromptAdminService) RecordingStats(context.Context) (RecordingStats, error) {
+	return s.recording, nil
+}
+func (s *fakePromptAdminService) CleanupRecording(context.Context) (*RecordingCleanupResult, error) {
+	if s.cleanup == nil {
+		return &RecordingCleanupResult{}, nil
+	}
+	return s.cleanup, nil
+}
+func (s *fakePromptAdminService) CountEvents(context.Context, EventFilter) (int64, error) {
+	return int64(len(s.exportEvents)), nil
+}
+func (s *fakePromptAdminService) StreamEvents(_ context.Context, _ EventFilter, limit int, consume func(*Event) error) (int64, error) {
+	var count int64
+	for _, event := range s.exportEvents {
+		if count >= int64(limit) {
+			break
+		}
+		if err := consume(event); err != nil {
+			return count, err
+		}
+		count++
+	}
+	return count, nil
+}
 
 func promptAdminRouter(service PromptAdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -96,7 +124,10 @@ func promptAdminRouter(service PromptAdminService) *gin.Engine {
 	group.PUT("/config", handler.UpdateConfig)
 	group.POST("/endpoints/probe", handler.ProbeEndpoint)
 	group.GET("/runtime", handler.GetRuntime)
+	group.GET("/recording/stats", handler.GetRecordingStats)
+	group.POST("/recording/cleanup", handler.CleanupRecording)
 	group.GET("/events", handler.ListEvents)
+	group.POST("/events/export", handler.ExportEvents)
 	group.GET("/events/:id", handler.GetEvent)
 	group.DELETE("/events/:id", handler.DeleteEvent)
 	group.POST("/events/batch-delete", handler.BatchDelete)
@@ -217,6 +248,38 @@ func TestPromptAdminRejectsInvalidEventIDsTimesAndPagination(t *testing.T) {
 		require.Equalf(t, http.StatusBadRequest, response.Code, "%s %s", tc.method, tc.path)
 		require.Contains(t, response.Body.String(), tc.reason)
 	}
+}
+
+func TestPromptAdminCaptureStatsCleanupAndSensitiveExport(t *testing.T) {
+	event := &Event{
+		ID: 9, CaptureMode: "capture_only", PromptBytes: 15, Decision: EventUnreviewed, RiskLevel: RiskUnknown,
+		Snapshot: PromptSnapshot{
+			RequestID: "request-9", UserID: 7, UserEmailSnapshot: "seven@example.test",
+			APIKeyID: 8, APIKeyNameSnapshot: "=unsafe-sheet-cell", Model: "gpt-test",
+			FullPrompt: "full prompt body", PromptHash: strings.Repeat("a", 64),
+		},
+	}
+	service := &fakePromptAdminService{
+		recording:    RecordingStats{EventCount: 1, PromptBytes: 15},
+		cleanup:      &RecordingCleanupResult{DeletedEvents: 1, DeletedJobs: 1},
+		exportEvents: []*Event{event},
+	}
+	router := promptAdminRouter(service)
+
+	stats := promptAdminRequest(t, router, http.MethodGet, "/admin/prompt-audit/recording/stats", nil)
+	require.Equal(t, http.StatusOK, stats.Code)
+	require.Contains(t, stats.Body.String(), `"event_count":1`)
+
+	cleanup := promptAdminRequest(t, router, http.MethodPost, "/admin/prompt-audit/recording/cleanup", nil)
+	require.Equal(t, http.StatusOK, cleanup.Code)
+	require.Contains(t, cleanup.Body.String(), `"deleted_events":1`)
+
+	exported := promptAdminRequest(t, router, http.MethodPost, "/admin/prompt-audit/events/export?format=csv", EventFilter{CaptureMode: "capture_only"})
+	require.Equal(t, http.StatusOK, exported.Code)
+	require.Equal(t, "no-store", exported.Header().Get("Cache-Control"))
+	require.Equal(t, "1", exported.Header().Get("X-Export-Total"))
+	require.Contains(t, exported.Body.String(), "full prompt body")
+	require.Contains(t, exported.Body.String(), "'=unsafe-sheet-cell", "CSV formula-like identity fields must be neutralized")
 }
 
 func validHandlerUpdateRequest(token string) UpdateConfigRequest {

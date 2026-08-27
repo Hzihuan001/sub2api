@@ -25,6 +25,12 @@ const (
 	MinInputLimit        = 128
 	MaxInputLimit        = 100000
 	DefaultPayloadTTL    = 30 * time.Minute
+	DefaultRetentionDays = 7
+	MinRetentionDays     = 1
+	MaxRetentionDays     = 365
+	DefaultMaxStorageMB  = 512
+	MinMaxStorageMB      = 16
+	MaxMaxStorageMB      = 10240
 )
 
 type SecretEncryptor interface {
@@ -65,9 +71,12 @@ type StorageEndpoint struct {
 
 type storageConfig struct {
 	Enabled                bool              `json:"enabled"`
+	CaptureOnlyEnabled     bool              `json:"capture_only_enabled"`
 	BlockingEnabled        bool              `json:"blocking_enabled"`
 	BlockingLatestTurnOnly bool              `json:"blocking_latest_turn_only"`
 	StorePassEvents        bool              `json:"store_pass_events"`
+	RetentionDays          int               `json:"retention_days"`
+	MaxStorageMB           int               `json:"max_storage_mb"`
 	Strategy               string            `json:"strategy"`
 	WorkerCount            int               `json:"worker_count"`
 	QueueCapacity          int               `json:"queue_capacity"`
@@ -101,9 +110,12 @@ type ActiveEndpoint struct {
 type ActiveConfig struct {
 	RiskControlEnabled     bool
 	Enabled                bool
+	CaptureOnlyEnabled     bool
 	BlockingEnabled        bool
 	BlockingLatestTurnOnly bool
 	StorePassEvents        bool
+	RetentionDays          int
+	MaxStorageMB           int
 	Strategy               string
 	WorkerCount            int
 	QueueCapacity          int
@@ -132,9 +144,12 @@ type PublicEndpoint struct {
 
 type PublicConfig struct {
 	Enabled                bool             `json:"enabled"`
+	CaptureOnlyEnabled     bool             `json:"capture_only_enabled"`
 	BlockingEnabled        bool             `json:"blocking_enabled"`
 	BlockingLatestTurnOnly bool             `json:"blocking_latest_turn_only"`
 	StorePassEvents        bool             `json:"store_pass_events"`
+	RetentionDays          int              `json:"retention_days"`
+	MaxStorageMB           int              `json:"max_storage_mb"`
 	EffectiveMode          Mode             `json:"effective_mode"`
 	Strategy               string           `json:"strategy"`
 	WorkerCount            int              `json:"worker_count"`
@@ -165,9 +180,12 @@ type UpdateEndpoint struct {
 type UpdateConfigRequest struct {
 	ExpectedConfigVersion  int64            `json:"expected_config_version" binding:"required"`
 	Enabled                bool             `json:"enabled"`
+	CaptureOnlyEnabled     bool             `json:"capture_only_enabled"`
 	BlockingEnabled        bool             `json:"blocking_enabled"`
 	BlockingLatestTurnOnly bool             `json:"blocking_latest_turn_only"`
 	StorePassEvents        bool             `json:"store_pass_events"`
+	RetentionDays          int              `json:"retention_days"`
+	MaxStorageMB           int              `json:"max_storage_mb"`
 	Strategy               string           `json:"strategy"`
 	WorkerCount            int              `json:"worker_count"`
 	QueueCapacity          int              `json:"queue_capacity"`
@@ -180,9 +198,12 @@ type UpdateConfigRequest struct {
 func DefaultStorageConfig() storageConfig {
 	return storageConfig{
 		Enabled:                false,
+		CaptureOnlyEnabled:     false,
 		BlockingEnabled:        false,
 		BlockingLatestTurnOnly: false,
 		StorePassEvents:        false,
+		RetentionDays:          DefaultRetentionDays,
+		MaxStorageMB:           DefaultMaxStorageMB,
 		Strategy:               "priority",
 		WorkerCount:            DefaultWorkerCount,
 		QueueCapacity:          DefaultQueueCapacity,
@@ -225,6 +246,12 @@ func normalizeStorageConfig(cfg *storageConfig) {
 	if cfg.QueueCapacity == 0 {
 		cfg.QueueCapacity = DefaultQueueCapacity
 	}
+	if cfg.RetentionDays == 0 {
+		cfg.RetentionDays = DefaultRetentionDays
+	}
+	if cfg.MaxStorageMB == 0 {
+		cfg.MaxStorageMB = DefaultMaxStorageMB
+	}
 	if len(cfg.Scanners) == 0 {
 		cfg.Scanners = append([]string(nil), AllScannerIDs...)
 	}
@@ -255,8 +282,17 @@ func normalizeStorageConfig(cfg *storageConfig) {
 }
 
 func validateStorageConfig(cfg storageConfig) error {
+	if cfg.CaptureOnlyEnabled && cfg.Enabled {
+		return infraerrors.BadRequest("prompt_recording_mode_conflict", "仅记录模式不能与 Guard 提示词审计同时开启")
+	}
 	if cfg.BlockingEnabled && !cfg.Enabled {
 		return infraerrors.BadRequest(ErrorCodeRequiresEnabled, "开启同步阻止前必须先启用提示词审计")
+	}
+	if cfg.RetentionDays != 0 && (cfg.RetentionDays < MinRetentionDays || cfg.RetentionDays > MaxRetentionDays) {
+		return infraerrors.BadRequest("prompt_recording_invalid_retention", "提示词保留天数超出允许范围")
+	}
+	if cfg.MaxStorageMB != 0 && (cfg.MaxStorageMB < MinMaxStorageMB || cfg.MaxStorageMB > MaxMaxStorageMB) {
+		return infraerrors.BadRequest("prompt_recording_invalid_storage", "提示词存储上限超出允许范围")
 	}
 	if cfg.Strategy != "priority" {
 		return infraerrors.BadRequest("prompt_audit_invalid_strategy", "提示词审计策略仅支持 priority")
@@ -270,7 +306,7 @@ func validateStorageConfig(cfg storageConfig) error {
 	if !cfg.AllGroups && len(cfg.GroupIDs) == 0 {
 		return infraerrors.BadRequest("prompt_audit_groups_required", "指定分组模式至少需要选择一个分组")
 	}
-	if len(cfg.Scanners) == 0 {
+	if cfg.Enabled && len(cfg.Scanners) == 0 {
 		return infraerrors.BadRequest("prompt_audit_scanners_required", "至少需要启用一个风险分类")
 	}
 	seen := make(map[string]struct{}, len(cfg.Endpoints))
@@ -306,6 +342,15 @@ func validateStorageConfig(cfg storageConfig) error {
 }
 
 func validateUpdateConfigRequest(req UpdateConfigRequest) error {
+	if req.CaptureOnlyEnabled && req.Enabled {
+		return infraerrors.BadRequest("prompt_recording_mode_conflict", "仅记录模式不能与 Guard 提示词审计同时开启")
+	}
+	if req.RetentionDays != 0 && (req.RetentionDays < MinRetentionDays || req.RetentionDays > MaxRetentionDays) {
+		return infraerrors.BadRequest("prompt_recording_invalid_retention", "提示词保留天数超出允许范围")
+	}
+	if req.MaxStorageMB != 0 && (req.MaxStorageMB < MinMaxStorageMB || req.MaxStorageMB > MaxMaxStorageMB) {
+		return infraerrors.BadRequest("prompt_recording_invalid_storage", "提示词存储上限超出允许范围")
+	}
 	if strings.TrimSpace(req.Strategy) != "priority" {
 		return infraerrors.BadRequest("prompt_audit_invalid_strategy", "提示词审计策略仅支持 priority")
 	}
@@ -315,7 +360,7 @@ func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 	if req.QueueCapacity < 1 || req.QueueCapacity > MaxQueueCapacity {
 		return infraerrors.BadRequest("prompt_audit_invalid_queue_capacity", "队列容量超出允许范围")
 	}
-	if len(req.Scanners) == 0 {
+	if req.Enabled && len(req.Scanners) == 0 {
 		return infraerrors.BadRequest("prompt_audit_scanners_required", "至少需要启用一个风险分类")
 	}
 	for _, scanner := range req.Scanners {
@@ -345,6 +390,9 @@ func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 }
 
 func (cfg ActiveConfig) EffectiveMode() Mode {
+	if cfg.CaptureOnlyEnabled {
+		return ModeCaptureOnly
+	}
 	if !cfg.RiskControlEnabled || !cfg.Enabled {
 		return ModeOff
 	}
@@ -410,9 +458,10 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 			Enabled: ep.Enabled, HasToken: hasToken, TokenStatus: status,
 		})
 	}
-	active := ActiveConfig{RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled}
+	active := ActiveConfig{RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, CaptureOnlyEnabled: cfg.CaptureOnlyEnabled, BlockingEnabled: cfg.BlockingEnabled}
 	return PublicConfig{
-		Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled, BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly, StorePassEvents: cfg.StorePassEvents,
+		Enabled: cfg.Enabled, CaptureOnlyEnabled: cfg.CaptureOnlyEnabled, BlockingEnabled: cfg.BlockingEnabled, BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly, StorePassEvents: cfg.StorePassEvents,
+		RetentionDays: cfg.RetentionDays, MaxStorageMB: cfg.MaxStorageMB,
 		EffectiveMode: active.EffectiveMode(), Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: scanners, AllGroups: cfg.AllGroups,
 		GroupIDs: groupIDs, Endpoints: endpoints, ConfigVersion: cfg.ConfigVersion,
@@ -422,9 +471,10 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 
 func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor SecretEncryptor) (ActiveConfig, error) {
 	active := ActiveConfig{
-		RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled,
+		RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, CaptureOnlyEnabled: cfg.CaptureOnlyEnabled, BlockingEnabled: cfg.BlockingEnabled,
 		BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly,
-		StorePassEvents:        cfg.StorePassEvents, Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
+		StorePassEvents:        cfg.StorePassEvents, RetentionDays: cfg.RetentionDays, MaxStorageMB: cfg.MaxStorageMB,
+		Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: append([]string(nil), cfg.Scanners...), AllGroups: cfg.AllGroups,
 		GroupIDs: append([]int64(nil), cfg.GroupIDs...), ConfigVersion: cfg.ConfigVersion,
 		UpdatedAt: cfg.UpdatedAt, UpdatedBy: cfg.UpdatedBy, ChangeSummary: cfg.ChangeSummary,
@@ -461,15 +511,19 @@ func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor Sec
 func changeSummary(cfg storageConfig) string {
 	summary := struct {
 		Enabled                bool   `json:"enabled"`
+		CaptureOnlyEnabled     bool   `json:"capture_only_enabled"`
 		BlockingEnabled        bool   `json:"blocking_enabled"`
 		BlockingLatestTurnOnly bool   `json:"blocking_latest_turn_only"`
 		StorePassEvents        bool   `json:"store_pass_events"`
+		RetentionDays          int    `json:"retention_days"`
+		MaxStorageMB           int    `json:"max_storage_mb"`
 		EndpointCount          int    `json:"endpoint_count"`
 		ScannerCount           int    `json:"scanner_count"`
 		AllGroups              bool   `json:"all_groups"`
 		GroupCount             int    `json:"group_count"`
 		GroupHash              string `json:"group_hash"`
-	}{cfg.Enabled, cfg.BlockingEnabled, cfg.BlockingLatestTurnOnly, cfg.StorePassEvents, len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), ""}
+	}{cfg.Enabled, cfg.CaptureOnlyEnabled, cfg.BlockingEnabled, cfg.BlockingLatestTurnOnly, cfg.StorePassEvents,
+		cfg.RetentionDays, cfg.MaxStorageMB, len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), ""}
 	rawGroups, _ := json.Marshal(cfg.GroupIDs)
 	digest := sha256.Sum256(rawGroups)
 	summary.GroupHash = hex.EncodeToString(digest[:])

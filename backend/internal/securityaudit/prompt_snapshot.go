@@ -33,6 +33,41 @@ func ExtractPromptSnapshot(req Request) (PromptSnapshot, error) {
 	return extractPromptSnapshot(req, false)
 }
 
+// ExtractLatestUserPromptSnapshot keeps only the newest logical user turn.
+// Passive recording must not duplicate an entire growing conversation on every
+// request, and it must never retain system/developer prompts or tool output.
+func ExtractLatestUserPromptSnapshot(req Request) (PromptSnapshot, error) {
+	var document any
+	if err := json.Unmarshal(req.Body, &document); err != nil {
+		return PromptSnapshot{}, errors.New("prompt recording request JSON is invalid")
+	}
+	normalized := normalizedPromptSegments(extractProtocolSegments(req.Protocol, document))
+	start := latestUserSegmentStart(normalized)
+	if start < 0 {
+		return PromptSnapshot{}, ErrNoPromptText
+	}
+	end := start
+	for end < len(normalized) && isUserSegment(normalized[end]) {
+		end++
+	}
+	segments := promptSegmentTexts(normalized[start:end])
+	text := strings.Join(segments, "\n\n")
+	digest := sha256.Sum256([]byte(text))
+	stage := strings.TrimSpace(req.Stage)
+	if stage == "" {
+		stage = "http"
+	}
+	return PromptSnapshot{
+		RequestID: req.RequestID, UserID: req.UserID, UsernameSnapshot: req.Username,
+		UserEmailSnapshot: req.UserEmail, APIKeyID: req.APIKeyID, APIKeyNameSnapshot: req.APIKeyName,
+		GroupID: cloneInt64Ptr(req.GroupID), GroupName: req.GroupName, Provider: req.Provider,
+		Endpoint: req.Endpoint, Protocol: req.Protocol, Model: req.Model,
+		PromptHash: hex.EncodeToString(digest[:]), RedactedPreview: BuildPromptPreview(text, DefaultPromptPreviewMaxRunes),
+		FullPrompt: BuildFullPrompt(text, DefaultFullPromptMaxRunes), PromptLength: utf8.RuneCountInString(text),
+		MessageCount: len(segments), Stage: stage, ScanText: text,
+	}, nil
+}
+
 // ExtractBlockingPromptSnapshot builds the narrow, low-latency blocking input
 // when configured. Asynchronous auditing always uses ExtractPromptSnapshot so
 // the complete client-controlled transcript is retained for review.

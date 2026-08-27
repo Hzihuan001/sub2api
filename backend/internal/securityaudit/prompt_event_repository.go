@@ -15,17 +15,31 @@ import (
 )
 
 type EventFilter struct {
-	Decision   string     `json:"decision,omitempty"`
-	RiskLevel  string     `json:"risk_level,omitempty"`
-	Endpoint   string     `json:"endpoint,omitempty"`
-	GroupID    *int64     `json:"group_id,omitempty"`
-	UserID     *int64     `json:"user_id,omitempty"`
-	APIKeyID   *int64     `json:"api_key_id,omitempty"`
-	RequestID  string     `json:"request_id,omitempty"`
-	PromptHash string     `json:"prompt_hash,omitempty"`
-	Keyword    string     `json:"keyword,omitempty"`
-	StartAt    *time.Time `json:"start_at,omitempty"`
-	EndAt      *time.Time `json:"end_at,omitempty"`
+	CaptureMode string     `json:"capture_mode,omitempty"`
+	Decision    string     `json:"decision,omitempty"`
+	RiskLevel   string     `json:"risk_level,omitempty"`
+	Endpoint    string     `json:"endpoint,omitempty"`
+	GroupID     *int64     `json:"group_id,omitempty"`
+	UserID      *int64     `json:"user_id,omitempty"`
+	APIKeyID    *int64     `json:"api_key_id,omitempty"`
+	RequestID   string     `json:"request_id,omitempty"`
+	PromptHash  string     `json:"prompt_hash,omitempty"`
+	Keyword     string     `json:"keyword,omitempty"`
+	StartAt     *time.Time `json:"start_at,omitempty"`
+	EndAt       *time.Time `json:"end_at,omitempty"`
+}
+
+type RecordingStats struct {
+	EventCount  int64      `json:"event_count"`
+	PromptBytes int64      `json:"prompt_bytes"`
+	OldestAt    *time.Time `json:"oldest_at,omitempty"`
+	NewestAt    *time.Time `json:"newest_at,omitempty"`
+}
+
+type RecordingCleanupResult struct {
+	DeletedEvents int64          `json:"deleted_events"`
+	DeletedJobs   int64          `json:"deleted_jobs"`
+	Remaining     RecordingStats `json:"remaining"`
 }
 
 type EventPage struct {
@@ -108,6 +122,129 @@ func (r *PostgreSQLRepository) GetEvent(ctx context.Context, id int64) (*Event, 
 		return nil, ErrEventNotFound
 	}
 	return event, err
+}
+
+func (r *PostgreSQLRepository) CountEvents(ctx context.Context, filter EventFilter) (int64, error) {
+	where, args := buildEventWhere(filter, 1)
+	var total int64
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM prompt_audit_events e`+where, args...).Scan(&total)
+	return total, err
+}
+
+// StreamEvents reads full prompt bodies one row at a time so exports do not
+// scale process memory with the amount of sensitive text being exported.
+func (r *PostgreSQLRepository) StreamEvents(ctx context.Context, filter EventFilter, limit int, consume func(*Event) error) (int64, error) {
+	if limit < 1 || limit > 10000 {
+		limit = 10000
+	}
+	where, args := buildEventWhere(filter, 1)
+	args = append(args, limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+eventDetailColumns("e")+` FROM prompt_audit_events e`+where+
+		fmt.Sprintf(` ORDER BY e.created_at DESC, e.id DESC LIMIT $%d`, len(args)), args...)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	var exported int64
+	for rows.Next() {
+		event, err := scanEvent(rows, true)
+		if err != nil {
+			return exported, err
+		}
+		if err := consume(event); err != nil {
+			return exported, err
+		}
+		exported++
+	}
+	return exported, rows.Err()
+}
+
+func (r *PostgreSQLRepository) RecordingStats(ctx context.Context) (RecordingStats, error) {
+	var stats RecordingStats
+	var oldest, newest sql.NullTime
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE(SUM(prompt_bytes),0), MIN(created_at), MAX(created_at)
+		FROM prompt_audit_events WHERE capture_mode='capture_only'`).Scan(
+		&stats.EventCount, &stats.PromptBytes, &oldest, &newest)
+	if err != nil {
+		return RecordingStats{}, err
+	}
+	if oldest.Valid {
+		value := oldest.Time
+		stats.OldestAt = &value
+	}
+	if newest.Valid {
+		value := newest.Time
+		stats.NewestAt = &value
+	}
+	return stats, nil
+}
+
+// CleanupRecording enforces both age and prompt-content byte limits. Oldest
+// passive records are deleted first in bounded transactions.
+func (r *PostgreSQLRepository) CleanupRecording(ctx context.Context, retentionDays, maxStorageMB, batchSize int) (*RecordingCleanupResult, error) {
+	if retentionDays < MinRetentionDays || retentionDays > MaxRetentionDays {
+		retentionDays = DefaultRetentionDays
+	}
+	if maxStorageMB < MinMaxStorageMB || maxStorageMB > MaxMaxStorageMB {
+		maxStorageMB = DefaultMaxStorageMB
+	}
+	if batchSize < 1 || batchSize > 1000 {
+		batchSize = 500
+	}
+	cutoff := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour)
+	maxBytes := int64(maxStorageMB) * 1024 * 1024
+	result := &RecordingCleanupResult{}
+	for batch := 0; batch < 1000; batch++ {
+		tx, err := r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := tx.QueryContext(ctx, `
+			WITH ranked AS (
+				SELECT id, created_at,
+					SUM(prompt_bytes) OVER (ORDER BY created_at DESC, id DESC) AS newest_bytes
+				FROM prompt_audit_events WHERE capture_mode='capture_only'
+			), selected AS (
+				SELECT id FROM ranked
+				WHERE created_at < $1 OR newest_bytes > $2
+				ORDER BY created_at, id LIMIT $3
+			), deleted AS (
+				DELETE FROM prompt_audit_events e USING selected s
+				WHERE e.id=s.id RETURNING e.job_id
+			) SELECT job_id FROM deleted`, cutoff, maxBytes, batchSize)
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		jobIDs, err := scanReturnedJobIDs(rows)
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		deletedJobs, err := deleteOrphanJobs(ctx, tx, jobIDs)
+		if err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		result.DeletedEvents += int64(len(jobIDs))
+		result.DeletedJobs += deletedJobs
+		if len(jobIDs) < batchSize {
+			break
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+	remaining, err := r.RecordingStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result.Remaining = remaining
+	return result, nil
 }
 
 func (r *PostgreSQLRepository) DeleteEvent(ctx context.Context, id int64) (*DeleteResult, error) {
@@ -245,6 +382,7 @@ func validateDeleteFilter(filter EventFilter) error {
 }
 
 func canonicalEventFilter(filter EventFilter) EventFilter {
+	filter.CaptureMode = strings.TrimSpace(strings.ToLower(filter.CaptureMode))
 	filter.Decision = strings.TrimSpace(strings.ToLower(filter.Decision))
 	filter.RiskLevel = strings.TrimSpace(strings.ToLower(filter.RiskLevel))
 	filter.Endpoint = strings.TrimSpace(filter.Endpoint)
@@ -269,6 +407,9 @@ func buildEventWhere(filter EventFilter, firstIndex int) (string, []any) {
 	add := func(clause string, value any) {
 		clauses = append(clauses, fmt.Sprintf(clause, firstIndex+len(args)))
 		args = append(args, value)
+	}
+	if filter.CaptureMode != "" {
+		add(" AND e.capture_mode=$%d", filter.CaptureMode)
 	}
 	if filter.Decision != "" {
 		add(" AND e.decision=$%d", filter.Decision)
@@ -296,10 +437,12 @@ func buildEventWhere(filter EventFilter, firstIndex int) (string, []any) {
 	}
 	if filter.Keyword != "" {
 		add(` AND (e.request_id ILIKE $%d OR e.prompt_hash ILIKE $%d OR e.redacted_preview ILIKE $%d
-			OR e.username_snapshot ILIKE $%d OR e.user_email_snapshot ILIKE $%d OR e.api_key_name_snapshot ILIKE $%d)`, "%"+TrimRunes(filter.Keyword, 128)+"%")
-		// The clause has six placeholders but add only supplied one. Rebuild it with one shared placeholder.
+			OR e.username_snapshot ILIKE $%d OR e.user_email_snapshot ILIKE $%d OR e.api_key_name_snapshot ILIKE $%d
+			OR e.model ILIKE $%d)`, "%"+TrimRunes(filter.Keyword, 128)+"%")
+		// Rebuild the clause with one shared placeholder.
 		clauses[len(clauses)-1] = fmt.Sprintf(` AND (e.request_id ILIKE $%[1]d OR e.prompt_hash ILIKE $%[1]d OR e.redacted_preview ILIKE $%[1]d
-			OR e.username_snapshot ILIKE $%[1]d OR e.user_email_snapshot ILIKE $%[1]d OR e.api_key_name_snapshot ILIKE $%[1]d)`, firstIndex+len(args)-1)
+			OR e.username_snapshot ILIKE $%[1]d OR e.user_email_snapshot ILIKE $%[1]d OR e.api_key_name_snapshot ILIKE $%[1]d
+			OR e.model ILIKE $%[1]d)`, firstIndex+len(args)-1)
 	}
 	if filter.StartAt != nil {
 		add(" AND e.created_at >= $%d", filter.StartAt.UTC())
@@ -317,7 +460,7 @@ func eventColumns(alias string) string {
 		%[1]s.stage,%[1]s.decision,%[1]s.risk_level,%[1]s.action,%[1]s.categories,%[1]s.matched_scanners,
 		%[1]s.scanner_scores,%[1]s.scanner_evidence,%[1]s.scanner_backend,%[1]s.scanner_version,
 		%[1]s.guard_endpoint_id,%[1]s.policy_id,%[1]s.policy_version,%[1]s.config_version,
-		%[1]s.chunk_total,%[1]s.latency_ms,%[1]s.created_at`, alias)
+		%[1]s.chunk_total,%[1]s.latency_ms,%[1]s.capture_mode,%[1]s.prompt_bytes,%[1]s.created_at`, alias)
 }
 
 // eventDetailColumns adds the full prompt, which can be large, so it is only
@@ -337,7 +480,7 @@ func scanEvent(row rowScanner, withFullPrompt ...bool) (*Event, error) {
 		&event.Snapshot.PromptHash, &event.Snapshot.RedactedPreview, &event.Snapshot.Stage, &event.Decision,
 		&event.RiskLevel, &event.Action, &categories, &matched, &scores, &evidence, &event.ScannerBackend,
 		&event.ScannerVersion, &event.GuardEndpointID, &event.PolicyID, &event.PolicyVersion,
-		&event.ConfigVersion, &event.ChunkTotal, &event.LatencyMS, &event.CreatedAt}
+		&event.ConfigVersion, &event.ChunkTotal, &event.LatencyMS, &event.CaptureMode, &event.PromptBytes, &event.CreatedAt}
 	if len(withFullPrompt) > 0 && withFullPrompt[0] {
 		dest = append(dest, &event.Snapshot.FullPrompt)
 	}

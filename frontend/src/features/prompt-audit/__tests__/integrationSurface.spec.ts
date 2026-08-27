@@ -9,13 +9,13 @@ const here = dirname(fileURLToPath(import.meta.url))
 const read = (path: string) => readFileSync(resolve(here, path), 'utf8')
 
 describe('Prompt Audit integration surface', () => {
-  it('registers an admin and risk-control guarded route', () => {
+  it('registers an admin route that remains available when Guard risk control is off', () => {
     const router = read('../../../router/index.ts')
     expect(router).toContain("path: '/admin/prompt-audit'")
     const route = router.slice(router.indexOf("path: '/admin/prompt-audit'"), router.indexOf("path: '/admin/usage'"))
     expect(route).toContain('requiresAuth: true')
     expect(route).toContain('requiresAdmin: true')
-    expect(route).toContain('requiresRiskControl: true')
+    expect(route).not.toContain('requiresRiskControl: true')
   })
 
   it('keeps the legacy content moderation route and adds both pages under an expand-only security group', () => {
@@ -36,5 +36,9 @@ describe('Prompt Audit integration surface', () => {
     expect(events).toContain('aria-label')
     expect(events).toContain('overflow-x-auto')
     expect(events).toContain('sm:grid-cols-2')
+    const view = read('../PromptAuditView.vue')
+    for (const mode of ['off', 'capture_only', 'async_audit', 'blocking']) {
+      expect(view).toContain(`value: '${mode}'`)
+    }
   })
 })

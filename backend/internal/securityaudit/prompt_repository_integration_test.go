@@ -43,7 +43,7 @@ func openPromptAuditIntegrationDB(t *testing.T) *sql.DB {
 		);
 	`)
 	require.NoError(t, err)
-	for _, name := range []string{"181_prompt_audit.sql", "182_prompt_audit_full_prompt.sql"} {
+	for _, name := range []string{"181_prompt_audit.sql", "182_prompt_audit_full_prompt.sql", "231_prompt_capture.sql"} {
 		migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", name))
 		require.NoError(t, err)
 		// The migration runner can retry an interrupted deployment; the migration
@@ -137,6 +137,7 @@ func TestPromptAuditMigrationSchemaAndLeakageGate(t *testing.T) {
 		"idx_prompt_audit_events_decision_created", "idx_prompt_audit_events_risk_created",
 		"idx_prompt_audit_events_user_created", "idx_prompt_audit_events_api_key_created",
 		"idx_prompt_audit_events_group_created", "idx_prompt_audit_events_prompt_hash", "idx_prompt_audit_events_created",
+		"idx_prompt_audit_events_capture_created",
 	} {
 		require.Truef(t, indexes[name], "missing index %s", name)
 	}
@@ -149,6 +150,48 @@ func TestPromptAuditMigrationSchemaAndLeakageGate(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO prompt_audit_jobs DEFAULT VALUES RETURNING id`).Scan(&jobID))
 	_, err = db.ExecContext(ctx, `INSERT INTO prompt_audit_events(job_id,chunk_total) VALUES ($1,-1)`, jobID)
 	require.Error(t, err)
+}
+
+func TestCaptureOnlyPersistsUnreviewedUserInputAndCleanupLeavesGuardEvents(t *testing.T) {
+	db := openPromptAuditIntegrationDB(t)
+	repo := NewPostgreSQLRepository(db)
+	ctx := context.Background()
+
+	captureSnapshot := integrationSnapshot("capture")
+	captureSnapshot.UserID = insertIdentity(t, db, "users")
+	captureSnapshot.APIKeyID = insertIdentity(t, db, "api_keys")
+	groupID := insertIdentity(t, db, "groups")
+	captureSnapshot.GroupID = &groupID
+	captureSnapshot.FullPrompt = "latest user input only"
+	captured, err := repo.CaptureOnly(ctx, captureSnapshot, 12)
+	require.NoError(t, err)
+	require.Equal(t, "capture_only", captured.CaptureMode)
+	require.Equal(t, EventUnreviewed, captured.Decision)
+	require.Equal(t, RiskUnknown, captured.RiskLevel)
+	require.Equal(t, captureSnapshot.FullPrompt, captured.Snapshot.FullPrompt)
+	require.Equal(t, int64(len([]byte(captureSnapshot.FullPrompt))), captured.PromptBytes)
+	require.Equal(t, captureSnapshot.UserEmailSnapshot, captured.Snapshot.UserEmailSnapshot)
+	require.Equal(t, captureSnapshot.APIKeyNameSnapshot, captured.Snapshot.APIKeyNameSnapshot)
+
+	byModel, err := repo.ListEvents(ctx, EventFilter{Keyword: captureSnapshot.Model}, 1, 10)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), byModel.Total, "keyword search must include model")
+
+	guardSnapshot := integrationSnapshot("guard")
+	guardSnapshot.FullPrompt = "guard event must survive capture cleanup"
+	guardEvent, err := repo.RecordBlocking(ctx, guardSnapshot, 12, integrationResult(EventCritical), true)
+	require.NoError(t, err)
+
+	old := time.Now().UTC().Add(-8 * 24 * time.Hour)
+	_, err = db.ExecContext(ctx, `UPDATE prompt_audit_events SET created_at=$1 WHERE id IN ($2,$3)`, old, captured.ID, guardEvent.ID)
+	require.NoError(t, err)
+	result, err := repo.CleanupRecording(ctx, 7, 16, 100)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), result.DeletedEvents)
+	_, err = repo.GetEvent(ctx, captured.ID)
+	require.ErrorIs(t, err, ErrEventNotFound)
+	_, err = repo.GetEvent(ctx, guardEvent.ID)
+	require.NoError(t, err, "retention applies only to capture_only events")
 }
 
 func TestPromptAuditDatabasePersistsFullPromptOnEventsOnly(t *testing.T) {

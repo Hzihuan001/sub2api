@@ -53,6 +53,7 @@ func TestCoordinatorModesAndPriority(t *testing.T) {
 		wantEvaluation int64
 	}{
 		{name: "off", mode: ModeOff, wantKind: DecisionAllow},
+		{name: "capture only enqueues without evaluation", mode: ModeCaptureOnly, wantKind: DecisionAllow, wantEnqueue: 1},
 		{name: "async only enqueues", mode: ModeAsync, wantKind: DecisionAllow, wantEnqueue: 1},
 		{name: "prompt block", mode: ModeBlocking, prompt: &PromptDecision{Kind: DecisionBlock}, wantKind: DecisionBlock, wantCode: ErrorCodeBlocked, wantEvaluation: 1},
 		{name: "prompt unavailable", mode: ModeBlocking, promptErr: errors.New("down"), wantKind: DecisionUnavailable, wantCode: ErrorCodeUnavailable, wantEvaluation: 1},
@@ -81,6 +82,27 @@ func TestCoordinatorDoesNotMutateRequestBody(t *testing.T) {
 	decision := NewCoordinator(&fakeLegacyEngine{}, prompt).Check(context.Background(), Request{Body: body})
 	require.True(t, decision.AllowNextStage)
 	require.Equal(t, original, body)
+}
+
+func TestCaptureOnlyNeverCallsPromptGuardScannerPath(t *testing.T) {
+	var scannerCalls atomic.Int64
+	scanner := PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
+		scannerCalls.Add(1)
+		return integrationResult(EventCritical), nil
+	})
+	prompt := &PromptService{
+		config: &fakeConfigStore{active: true, cfg: ActiveConfig{
+			CaptureOnlyEnabled: true, AllGroups: true, ConfigVersion: 1,
+		}},
+		evaluator: newGuardEvaluator(scanner, nil, NewAtomicMetrics(), 1, 1),
+	}
+	decision := NewCoordinator(&fakeLegacyEngine{}, prompt).Check(context.Background(), Request{
+		Protocol: "openai_chat_completions",
+		Body:     []byte(`{"messages":[{"role":"user","content":"capture this"}]}`),
+	})
+
+	require.True(t, decision.AllowNextStage)
+	require.Zero(t, scannerCalls.Load(), "capture_only must never invoke Qwen3Guard or OpenAI-compatible Guard scanners")
 }
 
 func TestCoordinatorBlockingPriorityCoversBothEngineDecisionMatrix(t *testing.T) {
@@ -155,22 +177,24 @@ func TestCoordinatorPreservesIndependentEngineFactsAndMapsOnlyGatewayOutcome(t *
 }
 
 func TestCoordinatorAsyncEnqueueFailuresNeverChangeResponseOrDownstreamDispatch(t *testing.T) {
-	for _, enqueueErr := range []error{ErrQueueFull, ErrQueueAdmissionBusy, errors.New("redis unavailable"), errors.New("publish failed")} {
-		prompt := &fakePromptEngine{mode: ModeAsync, err: enqueueErr}
-		decision := NewCoordinator(&fakeLegacyEngine{decision: &LegacyDecision{Allowed: true}}, prompt).Check(context.Background(), Request{})
-		downstreamDispatches := 0
-		status := http.StatusOK
-		responseBody := "unchanged-upstream-response"
-		if decision.AllowNextStage {
-			downstreamDispatches++
-		} else {
-			status = decision.HTTPStatus
-			responseBody = decision.ClientMessage
+	for _, mode := range []Mode{ModeAsync, ModeCaptureOnly} {
+		for _, enqueueErr := range []error{ErrQueueFull, ErrQueueAdmissionBusy, errors.New("database unavailable"), errors.New("publish failed")} {
+			prompt := &fakePromptEngine{mode: mode, err: enqueueErr}
+			decision := NewCoordinator(&fakeLegacyEngine{decision: &LegacyDecision{Allowed: true}}, prompt).Check(context.Background(), Request{})
+			downstreamDispatches := 0
+			status := http.StatusOK
+			responseBody := "unchanged-upstream-response"
+			if decision.AllowNextStage {
+				downstreamDispatches++
+			} else {
+				status = decision.HTTPStatus
+				responseBody = decision.ClientMessage
+			}
+			require.Equal(t, http.StatusOK, status)
+			require.Equal(t, "unchanged-upstream-response", responseBody)
+			require.Equal(t, 1, downstreamDispatches)
+			require.Equal(t, int64(1), prompt.enqueues.Load())
+			require.Zero(t, prompt.evaluates.Load(), "capture_only must never invoke the Prompt Guard scanner path")
 		}
-		require.Equal(t, http.StatusOK, status)
-		require.Equal(t, "unchanged-upstream-response", responseBody)
-		require.Equal(t, 1, downstreamDispatches)
-		require.Equal(t, int64(1), prompt.enqueues.Load())
-		require.Zero(t, prompt.evaluates.Load())
 	}
 }

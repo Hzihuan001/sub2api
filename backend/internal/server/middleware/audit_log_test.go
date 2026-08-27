@@ -138,6 +138,8 @@ func TestPromptAuditMutationAuditRoutesHaveStableActionsAndOmitBodies(t *testing
 		"POST /api/v1/admin/prompt-audit/events/batch-delete":     "admin.prompt_audit.events.batch_delete",
 		"POST /api/v1/admin/prompt-audit/events/delete-preview":   "admin.prompt_audit.events.delete_preview",
 		"POST /api/v1/admin/prompt-audit/events/delete-by-filter": "admin.prompt_audit.events.filter_delete",
+		"POST /api/v1/admin/prompt-audit/recording/cleanup":       "admin.prompt_audit.recording.cleanup",
+		"POST /api/v1/admin/prompt-audit/events/export":           "admin.prompt_audit.events.export",
 	}
 	for route, action := range expected {
 		require.Equal(t, action, auditActionOverrides[route])

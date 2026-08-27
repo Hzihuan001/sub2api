@@ -26,9 +26,10 @@ const (
 type Mode string
 
 const (
-	ModeOff      Mode = "off"
-	ModeAsync    Mode = "async_audit"
-	ModeBlocking Mode = "blocking"
+	ModeOff         Mode = "off"
+	ModeCaptureOnly Mode = "capture_only"
+	ModeAsync       Mode = "async_audit"
+	ModeBlocking    Mode = "blocking"
 )
 
 type DecisionKind string
@@ -44,14 +45,16 @@ const (
 type EventDecision string
 
 const (
-	EventPass     EventDecision = "pass"
-	EventFlag     EventDecision = "flag"
-	EventCritical EventDecision = "critical"
+	EventUnreviewed EventDecision = "unreviewed"
+	EventPass       EventDecision = "pass"
+	EventFlag       EventDecision = "flag"
+	EventCritical   EventDecision = "critical"
 )
 
 type RiskLevel string
 
 const (
+	RiskUnknown  RiskLevel = "unknown"
 	RiskLow      RiskLevel = "low"
 	RiskMedium   RiskLevel = "medium"
 	RiskHigh     RiskLevel = "high"

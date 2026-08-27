@@ -1,6 +1,6 @@
-export type PromptAuditMode = 'off' | 'async_audit' | 'blocking'
-export type PromptDecision = 'pass' | 'flag' | 'critical'
-export type PromptRiskLevel = 'low' | 'medium' | 'high' | 'critical'
+export type PromptAuditMode = 'off' | 'capture_only' | 'async_audit' | 'blocking'
+export type PromptDecision = 'unreviewed' | 'pass' | 'flag' | 'critical'
+export type PromptRiskLevel = 'unknown' | 'low' | 'medium' | 'high' | 'critical'
 
 export interface PromptAuditEndpoint {
   id: string
@@ -22,9 +22,12 @@ export interface PromptAuditEndpointDraft extends PromptAuditEndpoint {
 
 export interface PromptAuditConfig {
   enabled: boolean
+  capture_only_enabled: boolean
   blocking_enabled: boolean
   blocking_latest_turn_only: boolean
   store_pass_events: boolean
+  retention_days: number
+  max_storage_mb: number
   effective_mode: PromptAuditMode
   strategy: 'priority'
   worker_count: number
@@ -46,9 +49,12 @@ export interface PromptAuditDraft extends Omit<PromptAuditConfig, 'endpoints'> {
 export interface PromptAuditUpdateRequest {
   expected_config_version: number
   enabled: boolean
+  capture_only_enabled: boolean
   blocking_enabled: boolean
   blocking_latest_turn_only: boolean
   store_pass_events: boolean
+  retention_days: number
+  max_storage_mb: number
   strategy: 'priority'
   worker_count: number
   queue_capacity: number
@@ -191,11 +197,14 @@ export interface PromptAuditEvent {
   config_version: number
   chunk_total: number
   latency_ms: number
+  capture_mode: 'guard_audit' | 'capture_only' | string
+  prompt_bytes: number
   issue_summaries: PromptIssueSummary[]
   created_at: string
 }
 
 export interface PromptEventFilters {
+  capture_mode: string
   decision: string
   risk_level: string
   endpoint: string
@@ -207,6 +216,26 @@ export interface PromptEventFilters {
   keyword: string
   start_at: string
   end_at: string
+}
+
+export interface PromptRecordingStats {
+  event_count: number
+  prompt_bytes: number
+  oldest_at?: string
+  newest_at?: string
+}
+
+export interface PromptRecordingCleanupResult {
+  deleted_events: number
+  deleted_jobs: number
+  remaining: PromptRecordingStats
+}
+
+export interface PromptExportResult {
+  blob: Blob
+  filename: string
+  total: number
+  truncated: boolean
 }
 
 export interface PromptEventPage {

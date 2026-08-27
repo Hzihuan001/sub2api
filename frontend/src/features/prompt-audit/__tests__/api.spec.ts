@@ -17,6 +17,14 @@ describe('Prompt Audit API', () => {
     client.get.mockResolvedValue({ data: { process_status: 'running' } })
     await promptAuditAPI.getRuntime()
     expect(client.get).toHaveBeenCalledWith('/admin/prompt-audit/runtime')
+
+    client.get.mockResolvedValue({ data: { event_count: 2, prompt_bytes: 128 } })
+    await promptAuditAPI.getRecordingStats()
+    expect(client.get).toHaveBeenCalledWith('/admin/prompt-audit/recording/stats')
+
+    client.post.mockResolvedValue({ data: { deleted_events: 1, deleted_jobs: 1 } })
+    await promptAuditAPI.cleanupRecording()
+    expect(client.post).toHaveBeenCalledWith('/admin/prompt-audit/recording/cleanup')
   })
 
   it('sends a temporary probe token only in the request and never invents response credentials', async () => {
