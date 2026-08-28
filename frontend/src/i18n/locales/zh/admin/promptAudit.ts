@@ -71,7 +71,7 @@ export default {
     },
     events: {
       title: '提示词事件', description: '按身份、入口、来源、Hash 和时间查看记录，详情中可查看完整提示词。', captureMode: '记录来源', captureOnly: '仅记录', guardAudit: 'Guard 审计', decision: '判定', risk: '风险等级', endpoint: '入口', groupId: '分组 ID', userId: '用户 ID', apiKeyId: 'API Key ID', userAccount: '用户账号', searchUserPlaceholder: '输入部分邮箱或用户名搜索', noUserMatches: '没有匹配用户', deletedUser: '已删除', searchApiKeyPlaceholder: '输入 API Key 名称搜索', noApiKeyMatches: '没有匹配的 API Key', keyword: '关键词',
-      exportCsv: '导出 CSV', exportJsonl: '导出 JSONL',
+      exportCsv: '导出 CSV', exportJsonl: '导出 JSONL', collapseRepeats: '合并重复记录', collapseRepeatsHint: '仅在当前页合并 5 分钟内连续出现的相同记录，不改变原始记录和导出结果。', repeatCount: '重复 ×{count}',
       startAt: '开始时间', endAt: '结束时间', deleteSelected: '删除选中项（{count}）', deleteByFilter: '按筛选删除',
       filterDeleteDialogTitle: '按筛选删除审计事件', filterDeleteDialogDesc: '选择删除的时间范围与风险条件后即可执行删除；删除不可恢复。如需提前查看匹配数量，可先获取删除预览。',
       filterTimeRange: '删除时间范围', filterTimeRangeHint: '将删除所选截止时间之前产生的事件；预览后新产生的事件不受影响。',

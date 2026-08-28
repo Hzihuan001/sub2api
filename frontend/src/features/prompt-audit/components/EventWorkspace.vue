@@ -6,6 +6,13 @@
         <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">{{ t('admin.promptAudit.events.description') }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
+        <label
+          class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 dark:border-dark-700 dark:text-dark-200"
+          :title="t('admin.promptAudit.events.collapseRepeatsHint')"
+        >
+          <input v-model="collapseRepeats" type="checkbox" data-test="collapse-repeats" />
+          <span>{{ t('admin.promptAudit.events.collapseRepeats') }}</span>
+        </label>
         <button type="button" class="btn btn-secondary btn-sm" @click="$emit('export', 'csv')">{{ t('admin.promptAudit.events.exportCsv') }}</button>
         <button type="button" class="btn btn-secondary btn-sm" @click="$emit('export', 'jsonl')">{{ t('admin.promptAudit.events.exportJsonl') }}</button>
         <button type="button" class="btn btn-secondary btn-sm" :disabled="selectedIds.length === 0" @click="$emit('batch-delete')">
@@ -130,9 +137,14 @@
         <tbody class="divide-y divide-gray-100 bg-white dark:divide-dark-700 dark:bg-transparent">
           <tr v-if="loading"><td colspan="8" class="px-4 py-12 text-center text-gray-500" aria-busy="true">{{ t('common.loading') }}</td></tr>
           <tr v-else-if="events.length === 0"><td colspan="8" class="px-4 py-12 text-center text-gray-500">{{ t('admin.promptAudit.events.empty') }}</td></tr>
-          <tr v-for="event in events" v-else :key="event.id" :data-test="`event-${event.id}`" class="align-top hover:bg-gray-50/70 dark:hover:bg-dark-800/70">
-            <td class="px-3 py-3"><input type="checkbox" :checked="selectedIds.includes(event.id)" :aria-label="t('admin.promptAudit.events.selectEvent', { id: event.id })" @change="toggleOne(event.id)" /></td>
-            <td class="whitespace-nowrap px-3 py-3 text-xs text-gray-600 dark:text-dark-300">{{ formatDate(event.created_at) }}</td>
+          <tr v-for="event in displayedEvents" v-else :key="event.id" :data-test="`event-${event.id}`" class="align-top hover:bg-gray-50/70 dark:hover:bg-dark-800/70">
+            <td class="px-3 py-3"><input type="checkbox" :checked="isRowSelected(event)" :indeterminate="isRowPartiallySelected(event)" :aria-label="t('admin.promptAudit.events.selectEvent', { id: event.id })" @change="toggleIDs(event.collapsedIds)" /></td>
+            <td class="whitespace-nowrap px-3 py-3 text-xs text-gray-600 dark:text-dark-300">
+              <p>{{ formatDate(event.created_at) }}</p>
+              <span v-if="event.repeatCount > 1" data-test="event-repeat-count" :data-repeat-count="event.repeatCount" class="mt-1 inline-flex rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-200">
+                {{ t('admin.promptAudit.events.repeatCount', { count: event.repeatCount }) }}
+              </span>
+            </td>
             <td class="px-3 py-3">
               <CopyLine :label="t('admin.promptAudit.events.user')" :value="event.snapshot.username" />
               <CopyLine :label="t('admin.promptAudit.events.email')" :value="event.snapshot.user_email" />
@@ -151,7 +163,7 @@
             <td class="max-w-xs px-3 py-3"><p class="line-clamp-2 break-words text-gray-600 dark:text-dark-300">{{ event.snapshot.redacted_preview || '—' }}</p></td>
             <td class="whitespace-nowrap px-3 py-3 text-right">
               <button type="button" class="btn btn-ghost btn-sm" @click="$emit('view', event.id)">{{ t('common.view') }}</button>
-              <button type="button" class="btn btn-ghost btn-sm text-red-600" @click="$emit('delete', event.id)">{{ t('common.delete') }}</button>
+              <button type="button" class="btn btn-ghost btn-sm text-red-600" :data-test="`delete-event-${event.id}`" @click="requestDelete(event)">{{ t('common.delete') }}</button>
             </td>
           </tr>
         </tbody>
@@ -183,11 +195,15 @@ const emit = defineEmits<{
   (event: 'page-size', value: number): void
   (event: 'view', id: number): void
   (event: 'delete', id: number): void
+  (event: 'delete-group', ids: number[]): void
   (event: 'batch-delete'): void
   (event: 'preview-delete'): void
   (event: 'export', format: 'csv' | 'jsonl'): void
 }>()
 const { t, locale } = useI18n()
+const collapseRepeats = ref(true)
+const repeatWindowMS = 5 * 60 * 1000
+type DisplayPromptAuditEvent = PromptAuditEvent & { collapsedIds: number[]; repeatCount: number }
 const captureModeOptions = computed(() => [
   { value: '', label: t('common.all') },
   { value: 'capture_only', label: t('admin.promptAudit.events.captureOnly') },
@@ -234,6 +250,22 @@ watch(() => props.filters, (value) => {
   if (!value.api_key_id) apiKeyKeyword.value = ''
 }, { deep: true })
 const allSelected = computed(() => props.events.length > 0 && props.events.every((event) => props.selectedIds.includes(event.id)))
+const displayedEvents = computed<DisplayPromptAuditEvent[]>(() => {
+  if (!collapseRepeats.value) {
+    return props.events.map((event) => ({ ...event, collapsedIds: [event.id], repeatCount: 1 }))
+  }
+  const rows: DisplayPromptAuditEvent[] = []
+  for (const event of props.events) {
+    const previous = rows.at(-1)
+    if (previous && canCollapseEvents(previous, event)) {
+      previous.collapsedIds.push(event.id)
+      previous.repeatCount += 1
+      continue
+    }
+    rows.push({ ...event, collapsedIds: [event.id], repeatCount: 1 })
+  }
+  return rows
+})
 
 const FilterInput = defineComponent({
   props: { modelValue: { type: String, required: true }, label: { type: String, required: true }, type: { type: String, default: 'text' } },
@@ -370,14 +402,35 @@ function resetFilters() {
   apiKeyResults.value = []
   applyFilters()
 }
-function toggleOne(id: number) {
+function canCollapseEvents(newest: PromptAuditEvent, candidate: PromptAuditEvent): boolean {
+  if (!newest.snapshot.prompt_hash || newest.snapshot.prompt_hash !== candidate.snapshot.prompt_hash) return false
+  if (newest.capture_mode !== candidate.capture_mode) return false
+  if (newest.snapshot.user_id !== candidate.snapshot.user_id || newest.snapshot.api_key_id !== candidate.snapshot.api_key_id || newest.snapshot.group_id !== candidate.snapshot.group_id) return false
+  if (newest.snapshot.endpoint !== candidate.snapshot.endpoint || newest.snapshot.protocol !== candidate.snapshot.protocol || newest.snapshot.model !== candidate.snapshot.model) return false
+  if (newest.capture_mode !== 'capture_only' && (newest.decision !== candidate.decision || newest.risk_level !== candidate.risk_level || newest.action !== candidate.action)) return false
+  const newestAt = Date.parse(newest.created_at)
+  const candidateAt = Date.parse(candidate.created_at)
+  return Number.isFinite(newestAt) && Number.isFinite(candidateAt) && Math.abs(newestAt - candidateAt) <= repeatWindowMS
+}
+function isRowSelected(event: DisplayPromptAuditEvent): boolean {
+  return event.collapsedIds.every((id) => props.selectedIds.includes(id))
+}
+function isRowPartiallySelected(event: DisplayPromptAuditEvent): boolean {
+  const selectedCount = event.collapsedIds.filter((id) => props.selectedIds.includes(id)).length
+  return selectedCount > 0 && selectedCount < event.collapsedIds.length
+}
+function toggleIDs(ids: number[]) {
   const selected = new Set(props.selectedIds)
-  if (selected.has(id)) selected.delete(id)
-  else selected.add(id)
+  if (ids.every((id) => selected.has(id))) ids.forEach((id) => selected.delete(id))
+  else ids.forEach((id) => selected.add(id))
   emit('selection', [...selected])
 }
 function toggleAll() {
   emit('selection', allSelected.value ? [] : props.events.map((event) => event.id))
+}
+function requestDelete(event: DisplayPromptAuditEvent) {
+  if (event.collapsedIds.length > 1) emit('delete-group', [...event.collapsedIds])
+  else emit('delete', event.id)
 }
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value))

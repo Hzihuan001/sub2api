@@ -140,6 +140,34 @@ describe('Prompt Audit components', () => {
     expect(wrapper.emitted('selection')?.at(-1)?.[0]).toEqual([1])
   })
 
+  it('collapses consecutive duplicate events without changing their raw selection or deletion IDs', async () => {
+    const makeEvent = (id: number, createdAt: string, promptHash: string): PromptAuditEvent => ({
+      id, job_id: id, decision: 'unreviewed', risk_level: 'unknown', action: 'Allow', categories: [], matched_scanners: [], scanner_scores: {}, scanner_evidence: {}, scanner_backend: '', scanner_version: '', guard_endpoint_id: '', policy_id: '', policy_version: 0, config_version: 1, chunk_total: 0, latency_ms: 0, capture_mode: 'capture_only', prompt_bytes: 16, issue_summaries: [], created_at: createdAt,
+      snapshot: { request_id: `req-${id}`, user_id: 1, username: 'alice', user_email: 'alice@example.test', api_key_id: 2, api_key_name: 'alice-key', group_id: 3, group_name: 'Alpha', provider: 'openai', endpoint: '/v1/chat/completions', protocol: 'openai_chat', model: 'gpt-test', prompt_hash: promptHash, redacted_preview: '请总结这段内容', full_prompt: '', prompt_length: 8, message_count: 1, stage: 'http' },
+    })
+    const events = [
+      makeEvent(3, '2026-07-16T00:04:00Z', 'a'.repeat(64)),
+      makeEvent(2, '2026-07-16T00:02:00Z', 'a'.repeat(64)),
+      makeEvent(1, '2026-07-16T00:01:00Z', 'b'.repeat(64)),
+    ]
+    const wrapper = mount(EventWorkspace, {
+      props: { events, total: 3, page: 1, pageSize: 20, filters: emptyEventFilters(), groups: [], selectedIds: [], loading: false, error: '' },
+      global: { stubs: { Pagination: PaginationStub, Select: SelectStub } },
+    })
+
+    expect(wrapper.findAll('tbody tr[data-test^="event-"]')).toHaveLength(2)
+    expect(wrapper.get('[data-test="event-repeat-count"]').attributes('data-repeat-count')).toBe('2')
+
+    await wrapper.get('[aria-label="admin.promptAudit.events.selectEvent"]').setValue(true)
+    expect(wrapper.emitted('selection')?.at(-1)?.[0]).toEqual([3, 2])
+
+    await wrapper.get('[data-test="delete-event-3"]').trigger('click')
+    expect(wrapper.emitted('delete-group')?.at(-1)?.[0]).toEqual([3, 2])
+
+    await wrapper.get<HTMLInputElement>('[data-test="collapse-repeats"]').setValue(false)
+    expect(wrapper.findAll('tbody tr[data-test^="event-"]')).toHaveLength(3)
+  })
+
   it('selects users, API Keys, and groups by human-readable names while emitting exact IDs', async () => {
     searchUsersMock.mockResolvedValue([{ id: 7, email: 'alice@example.test', deleted: false }])
     searchApiKeysMock.mockResolvedValue([{ id: 9, name: 'alice-production', user_id: 7 }])

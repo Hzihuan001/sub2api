@@ -92,7 +92,7 @@ func (r *PostgreSQLRepository) ListEvents(ctx context.Context, filter EventFilte
 	queryArgs := append([]any(nil), args...)
 	limitIndex := len(queryArgs) + 1
 	queryArgs = append(queryArgs, pageSize, (page-1)*pageSize)
-	rows, err := r.db.QueryContext(ctx, `SELECT `+eventColumns("e")+` FROM prompt_audit_events e`+where+
+	rows, err := r.db.QueryContext(ctx, `SELECT `+eventListColumns("e")+` FROM prompt_audit_events e`+where+
 		fmt.Sprintf(` ORDER BY e.created_at DESC, e.id DESC LIMIT $%d OFFSET $%d`, limitIndex, limitIndex+1), queryArgs...)
 	if err != nil {
 		return nil, err
@@ -100,10 +100,11 @@ func (r *PostgreSQLRepository) ListEvents(ctx context.Context, filter EventFilte
 	defer func() { _ = rows.Close() }()
 	items := make([]*Event, 0, pageSize)
 	for rows.Next() {
-		event, err := scanEvent(rows)
+		event, err := scanEvent(rows, true)
 		if err != nil {
 			return nil, err
 		}
+		prepareEventForList(event)
 		items = append(items, event)
 	}
 	if err := rows.Err(); err != nil {
@@ -463,10 +464,34 @@ func eventColumns(alias string) string {
 		%[1]s.chunk_total,%[1]s.latency_ms,%[1]s.capture_mode,%[1]s.prompt_bytes,%[1]s.created_at`, alias)
 }
 
-// eventDetailColumns adds the full prompt, which can be large, so it is only
-// loaded for single-event detail reads and never for list pages.
+// eventListColumns conditionally loads the full prompt only for legacy
+// capture-only rows whose old preview policy stored a bare "***" marker. Those
+// prompts are shorter than the withholding threshold, so this avoids loading
+// ordinary large prompt bodies while letting the server derive a useful,
+// sanitized preview without a production backfill.
+func eventListColumns(alias string) string {
+	return eventColumns(alias) + fmt.Sprintf(`,CASE
+		WHEN %[1]s.capture_mode='capture_only' AND %[1]s.redacted_preview IN ('***','***…')
+		THEN %[1]s.full_prompt ELSE '' END`, alias)
+}
+
+// eventDetailColumns adds the full prompt, which can be large, for explicit
+// single-event detail reads. ListEvents uses eventListColumns instead and only
+// conditionally reads legacy short masked capture-only rows.
 func eventDetailColumns(alias string) string {
 	return eventColumns(alias) + fmt.Sprintf(",%[1]s.full_prompt", alias)
+}
+
+func prepareEventForList(event *Event) {
+	if event == nil {
+		return
+	}
+	legacyMaskedPreview := event.Snapshot.RedactedPreview == "***" || event.Snapshot.RedactedPreview == "***…"
+	if event.CaptureMode == "capture_only" && legacyMaskedPreview && event.Snapshot.FullPrompt != "" {
+		event.Snapshot.RedactedPreview = BuildCaptureOnlyPreview(event.Snapshot.FullPrompt, DefaultCaptureOnlyPreviewMaxRunes)
+	}
+	// List responses must never expose the unredacted detail field.
+	event.Snapshot.FullPrompt = ""
 }
 
 func scanEvent(row rowScanner, withFullPrompt ...bool) (*Event, error) {

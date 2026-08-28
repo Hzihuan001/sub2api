@@ -100,6 +100,7 @@
               @page-size="changePageSize"
               @view="openEvent"
               @delete="requestSingleDelete"
+              @delete-group="requestGroupDelete"
               @batch-delete="requestBatchDelete"
               @preview-delete="requestFilterDeletePreview"
               @export="exportFilteredEvents"
@@ -439,6 +440,11 @@ async function openEvent(id: number) {
 }
 function closeEventDetail() { showEventDetail.value = false; activeEvent.value = null }
 function requestSingleDelete(id: number) { deleteRequest.mode = 'single'; deleteRequest.ids = [id] }
+function requestGroupDelete(ids: number[]) {
+  if (!ids.length) return
+  deleteRequest.mode = ids.length === 1 ? 'single' : 'batch'
+  deleteRequest.ids = [...ids]
+}
 function requestBatchDelete() { if (selectedEventIds.value.length) { deleteRequest.mode = 'batch'; deleteRequest.ids = [...selectedEventIds.value] } }
 function clearDeleteRequest() { deleteRequest.mode = ''; deleteRequest.ids = [] }
 async function confirmIDDelete() {

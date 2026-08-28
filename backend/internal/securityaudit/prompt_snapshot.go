@@ -62,7 +62,7 @@ func ExtractLatestUserPromptSnapshot(req Request) (PromptSnapshot, error) {
 		UserEmailSnapshot: req.UserEmail, APIKeyID: req.APIKeyID, APIKeyNameSnapshot: req.APIKeyName,
 		GroupID: cloneInt64Ptr(req.GroupID), GroupName: req.GroupName, Provider: req.Provider,
 		Endpoint: req.Endpoint, Protocol: req.Protocol, Model: req.Model,
-		PromptHash: hex.EncodeToString(digest[:]), RedactedPreview: BuildPromptPreview(text, DefaultPromptPreviewMaxRunes),
+		PromptHash: hex.EncodeToString(digest[:]), RedactedPreview: BuildCaptureOnlyPreview(text, DefaultCaptureOnlyPreviewMaxRunes),
 		FullPrompt: BuildFullPrompt(text, DefaultFullPromptMaxRunes), PromptLength: utf8.RuneCountInString(text),
 		MessageCount: len(segments), Stage: stage, ScanText: text,
 	}, nil
@@ -109,6 +109,12 @@ func extractPromptSnapshot(req Request, latestTurnOnly bool) (PromptSnapshot, er
 // DefaultPromptPreviewMaxRunes caps how much sanitized prompt text may be
 // considered before BuildPromptPreview withholds the majority for storage/UI.
 const DefaultPromptPreviewMaxRunes = 96
+
+// DefaultCaptureOnlyPreviewMaxRunes keeps passive-recording list rows useful
+// to an authorized administrator while RedactPreview still removes common
+// credentials and personal identifiers. Guard audit previews retain the
+// stronger non-recoverable withholding policy in BuildPromptPreview.
+const DefaultCaptureOnlyPreviewMaxRunes = 80
 
 // DefaultFullPromptMaxRunes caps how much unredacted prompt text is persisted
 // on an audit event for admin review. It is deliberately generous so realistic
@@ -648,6 +654,17 @@ func BuildPromptPreview(value string, maxRunes int) string {
 		preview += "…"
 	}
 	return preview
+}
+
+// BuildCaptureOnlyPreview returns a readable, bounded, sanitized preview for
+// passive recording. The full prompt is already available behind the explicit
+// event-detail action, so replacing every short ordinary prompt with "***"
+// makes the list unusable without adding meaningful access control.
+func BuildCaptureOnlyPreview(value string, maxRunes int) string {
+	if maxRunes <= 0 {
+		maxRunes = DefaultCaptureOnlyPreviewMaxRunes
+	}
+	return strings.TrimSpace(RedactPreview(value, maxRunes))
 }
 
 // BuildFullPrompt returns the complete prompt text for audit-event storage and

@@ -428,6 +428,27 @@ func TestBuildPromptPreviewFullyMasksShortUnlabelledSecrets(t *testing.T) {
 	require.Contains(t, partial, "***")
 }
 
+func TestBuildCaptureOnlyPreviewKeepsShortChineseReadable(t *testing.T) {
+	prompt := "请帮我总结这段内容"
+	require.Equal(t, prompt, BuildCaptureOnlyPreview(prompt, DefaultCaptureOnlyPreviewMaxRunes))
+}
+
+func TestBuildCaptureOnlyPreviewRedactsSensitiveValues(t *testing.T) {
+	preview := BuildCaptureOnlyPreview("联系 email@example.com 或 13800138000，Authorization: Bearer secret-token", DefaultCaptureOnlyPreviewMaxRunes)
+	require.NotContains(t, preview, "email@example.com")
+	require.NotContains(t, preview, "13800138000")
+	require.NotContains(t, preview, "secret-token")
+	require.Contains(t, preview, "***@***")
+	require.Contains(t, preview, "***PHONE***")
+	require.Contains(t, preview, "Bearer ***")
+}
+
+func TestBuildCaptureOnlyPreviewTruncatesAtConfiguredLimit(t *testing.T) {
+	preview := BuildCaptureOnlyPreview(strings.Repeat("中", 90), DefaultCaptureOnlyPreviewMaxRunes)
+	require.Equal(t, DefaultCaptureOnlyPreviewMaxRunes+1, utf8.RuneCountInString(preview))
+	require.True(t, strings.HasSuffix(preview, "…"))
+}
+
 func mustJSON(t *testing.T, value string) []byte {
 	t.Helper()
 	raw, err := json.Marshal(value)
