@@ -199,6 +199,17 @@
         <button type="button" class="btn btn-primary" @click="previewItem && downloadItem(previewItem)"><Icon name="download" size="sm" class="mr-1.5" />{{ t('common.download') }}</button>
       </template>
     </BaseDialog>
+
+    <ConfirmDialog
+      :show="showClearLibraryDialog"
+      :title="t('imageStudio.clearLibrary')"
+      :message="t('imageStudio.clearConfirm')"
+      :confirm-text="t('imageStudio.clearLibrary')"
+      :cancel-text="t('common.cancel')"
+      danger
+      @confirm="confirmClearLibrary"
+      @cancel="showClearLibraryDialog = false"
+    />
   </AppLayout>
 </template>
 
@@ -207,6 +218,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -259,6 +271,7 @@ const generationError = ref('')
 const storedGallery = ref<GalleryItem[]>([])
 const temporaryGallery = ref<GalleryItem[]>([])
 const previewItem = ref<GalleryItem | null>(null)
+const showClearLibraryDialog = ref(false)
 let generationController: AbortController | null = null
 let modelController: AbortController | null = null
 
@@ -523,10 +536,18 @@ async function deleteItem(item: GalleryItem): Promise<void> {
   if (previewItem.value?.id === item.id) previewItem.value = null
 }
 
-async function clearLibrary(): Promise<void> {
-  if (!window.confirm(t('imageStudio.clearConfirm'))) return
-  await clearStoredStudioImages()
-  await loadLibrary()
+function clearLibrary(): void {
+  showClearLibraryDialog.value = true
+}
+
+async function confirmClearLibrary(): Promise<void> {
+  showClearLibraryDialog.value = false
+  try {
+    await clearStoredStudioImages()
+    await loadLibrary()
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('imageStudio.errors.clearLibrary')))
+  }
 }
 
 function extensionFor(item: GalleryItem): string {

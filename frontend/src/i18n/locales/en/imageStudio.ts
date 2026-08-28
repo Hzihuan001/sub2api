@@ -65,6 +65,7 @@ export default {
       imageTooLarge: '{name} is larger than 10 MB.',
       generate: 'Image generation failed.',
       loadLibrary: 'Unable to read the local image library in this browser.',
+      clearLibrary: 'Unable to clear the local image library in this browser.',
     },
   },
 }
