@@ -3,10 +3,10 @@
 ## Fixed release coordinates
 
 - Upstream baseline: `v0.1.183` / `e8cb019fa`
-- Development branch: `codex/cache-hit-rate-v0.1.183`
-- Application version: `0.1.183-custom.2`
-- Source tag: `custom-0.1.183.2`
-- Container tag: `ghcr.io/<fork-owner>/sub2api:0.1.183-custom.2`
+- Development branch: `codex/image-studio-v0.1.183`
+- Application version: `0.1.183-custom.5`
+- Source tag: `custom-0.1.183.5`
+- Container tag: `ghcr.io/<fork-owner>/sub2api:0.1.183-custom.5`
 - Initial target platform: `linux/amd64`
 
 Never create a `v*` tag for this custom build. Never put passwords, tokens, SSH
@@ -58,7 +58,7 @@ locally rebuilt image.
 ## Fork and GHCR gate
 
 1. Set the personal Fork as `origin`; keep the official repository as `upstream`.
-2. Push only `codex/cache-hit-rate-v0.1.183` and tag `custom-0.1.183.2`.
+2. Push only `codex/image-studio-v0.1.183` and tag `custom-0.1.183.5`.
 3. The `Custom CI and GHCR release` workflow runs all tests before publishing.
 4. Record both the mutable tag and immutable `sha256` digest from the workflow summary.
 5. Pull and run that exact digest through the local container test above.
@@ -134,9 +134,10 @@ minutes and perform a 24-hour error-rate/audit follow-up.
 ## Rollback
 
 Set the application image back to the recorded previous digest and recreate
-only Sub2API. This customization has no schema migration. An older binary will
-treat residual `operator` rows as non-admin; those users temporarily lose
-management access while admin remains available.
+only Sub2API. This release adds no migration beyond the already deployed
+`231_prompt_capture.sql`. An older binary will treat residual `operator` rows
+as non-admin; those users temporarily lose management access while admin
+remains available.
 
 If any official irreversible migration ran during the release, restore the
 verified pre-release PostgreSQL backup together with the old image. Never run
