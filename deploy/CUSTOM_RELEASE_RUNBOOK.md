@@ -4,9 +4,9 @@
 
 - Upstream baseline: `v0.1.183` / `e8cb019fa`
 - Development branch: `codex/image-studio-v0.1.183`
-- Application version: `0.1.183-custom.5`
-- Source tag: `custom-0.1.183.5`
-- Container tag: `ghcr.io/<fork-owner>/sub2api:0.1.183-custom.5`
+- Application version: `0.1.183-custom.6`
+- Source tag: `custom-0.1.183.6`
+- Container tag: `ghcr.io/<fork-owner>/sub2api:0.1.183-custom.6`
 - Initial target platform: `linux/amd64`
 
 Never create a `v*` tag for this custom build. Never put passwords, tokens, SSH
@@ -58,7 +58,7 @@ locally rebuilt image.
 ## Fork and GHCR gate
 
 1. Set the personal Fork as `origin`; keep the official repository as `upstream`.
-2. Push only `codex/image-studio-v0.1.183` and tag `custom-0.1.183.5`.
+2. Push only `codex/image-studio-v0.1.183` and tag `custom-0.1.183.6`.
 3. The `Custom CI and GHCR release` workflow runs all tests before publishing.
 4. Record both the mutable tag and immutable `sha256` digest from the workflow summary.
 5. Pull and run that exact digest through the local container test above.

@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.1.183-custom.5
+  CUSTOM_VERSION: 0.1.183-custom.6
 
 jobs:
   quality:
@@ -48,7 +48,7 @@ jobs:
           go version | grep -q 'go1.27.0'
           node --version | grep -q '^v20\.'
           test "$(pnpm --version)" = '9.15.9'
-          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-0.1.183.5 ]; then
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-0.1.183.6 ]; then
             echo "unexpected custom source tag: $GITHUB_REF_NAME" >&2
             exit 1
           fi
@@ -96,7 +96,7 @@ jobs:
   publish:
     name: Build and publish immutable image
     needs: quality
-    if: github.ref == 'refs/tags/custom-0.1.183.5'
+    if: github.ref == 'refs/tags/custom-0.1.183.6'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.name }}

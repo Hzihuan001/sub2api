@@ -65,6 +65,7 @@ export default {
       imageTooLarge: '图片 {name} 超过 10 MB。',
       generate: '生图请求失败。',
       loadLibrary: '无法读取当前浏览器的本地作品库。',
+      clearLibrary: '无法清空当前浏览器的本地作品库。',
     },
   },
 }
