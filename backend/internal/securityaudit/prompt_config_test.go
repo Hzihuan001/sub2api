@@ -284,6 +284,20 @@ func TestCaptureOnlyConfigDoesNotRequireGuardEndpoint(t *testing.T) {
 	require.NoError(t, validateUpdateConfigRequest(req))
 }
 
+func TestCaptureExcludedUsersAreCanonicalAndOnlyAffectCaptureLookup(t *testing.T) {
+	cfg, err := ParseStorageConfig(`{"capture_excluded_user_ids":[11,7,11,-1]}`)
+	require.NoError(t, err)
+	require.Equal(t, []int64{7, 11}, cfg.CaptureExcludedUserIDs)
+
+	active, err := ActiveFromStorage(cfg, true, nil)
+	require.NoError(t, err)
+	require.True(t, active.ExcludesCaptureUser(7))
+	require.True(t, active.ExcludesCaptureUser(11))
+	require.False(t, active.ExcludesCaptureUser(8))
+	require.False(t, active.ExcludesCaptureUser(0))
+	require.Equal(t, []int64{7, 11}, PublicFromStorage(cfg, true, nil).CaptureExcludedUserIDs)
+}
+
 func TestConfigManagerColdStartOnlyFailsClosedForExplicitBlockingIntent(t *testing.T) {
 	manager := &ConfigManager{}
 

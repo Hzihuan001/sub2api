@@ -15,7 +15,10 @@ const { searchUsersMock, searchApiKeysMock } = vi.hoisted(() => ({
 }))
 
 vi.mock('@/api/admin', () => ({
-  adminAPI: { usage: { searchUsers: searchUsersMock, searchApiKeys: searchApiKeysMock } },
+  adminAPI: {
+    usage: { searchUsers: searchUsersMock, searchApiKeys: searchApiKeysMock },
+    users: { getById: vi.fn().mockRejectedValue(new Error('not found')) },
+  },
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -102,7 +105,7 @@ describe('Prompt Audit components', () => {
   it('supports group search, stale configured groups, nine scanners, and bounded worker inputs', async () => {
     const draft: PromptAuditDraft = {
       enabled: true, capture_only_enabled: false, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false,
-      retention_days: 7, max_storage_mb: 512, effective_mode: 'async_audit', strategy: 'priority',
+      retention_days: 7, max_storage_mb: 512, capture_excluded_user_ids: [], effective_mode: 'async_audit', strategy: 'priority',
       worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: false, group_ids: [1, 99],
       endpoints: [endpoint()], config_version: 1, updated_at: '', updated_by: 0, change_summary: '',
     }
@@ -117,6 +120,25 @@ describe('Prompt Audit components', () => {
     await wrapper.get('[aria-label="admin.promptAudit.policy.workerCount"]').setValue('6')
     const emitted = wrapper.emitted('update:draft')?.at(-1)?.[0] as PromptAuditDraft
     expect(emitted.worker_count).toBe(6)
+  })
+
+  it('searches and selects exact users excluded from capture-only recording', async () => {
+    searchUsersMock.mockResolvedValue([{ id: 7, email: 'owner@example.test', deleted: false }])
+    const draft: PromptAuditDraft = {
+      enabled: false, capture_only_enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false,
+      retention_days: 7, max_storage_mb: 512, capture_excluded_user_ids: [], effective_mode: 'capture_only', strategy: 'priority',
+      worker_count: 4, queue_capacity: 100, scanners: [], all_groups: true, group_ids: [], endpoints: [],
+      config_version: 1, updated_at: '', updated_by: 0, change_summary: '',
+    }
+    const wrapper = mount(PolicyPanel, { props: { draft, groups: [] } })
+
+    await wrapper.get<HTMLInputElement>('[data-test="capture-excluded-user-search"]').setValue('owner')
+    await new Promise((resolve) => setTimeout(resolve, 320))
+    await flushPromises()
+    expect(searchUsersMock).toHaveBeenCalledWith('owner')
+    await wrapper.findAll('button').find((button) => button.text().includes('owner@example.test'))!.trigger('click')
+    const selected = wrapper.emitted('update:draft')?.at(-1)?.[0] as PromptAuditDraft
+    expect(selected.capture_excluded_user_ids).toEqual([7])
   })
 
   it('keeps identity fields separate, supports selection, and opens filter deletion from the toolbar', async () => {

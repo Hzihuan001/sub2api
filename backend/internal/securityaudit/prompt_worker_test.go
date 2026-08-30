@@ -321,6 +321,23 @@ func TestCaptureOnlyEnqueuerWritesLatestUserInputWithoutGuardOrRedis(t *testing.
 	require.Zero(t, repo.createJob, "capture_only must not create a Guard audit queue job")
 }
 
+func TestCaptureOnlyEnqueuerSkipsExcludedUserBeforePromptParsingOrStorage(t *testing.T) {
+	cfg := ActiveConfig{
+		CaptureOnlyEnabled: true, AllGroups: true, ConfigVersion: 12,
+		CaptureExcludedUserIDs: []int64{7, 11},
+	}
+	repo := &fakeJobRepository{}
+	req := Request{
+		RequestID: "excluded-capture-request", UserID: 7,
+		Protocol: "openai_chat_completions", Body: []byte(`not-json-and-must-not-be-parsed`),
+	}
+
+	err := NewEnqueuer(&fakeConfigStore{cfg: cfg, active: true}, repo, nil).Enqueue(context.Background(), req)
+	require.NoError(t, err)
+	require.Zero(t, repo.captureOnlyCalls)
+	require.Zero(t, repo.createJob)
+}
+
 func TestEnqueuerSkipsOffOutOfScopeAndNoText(t *testing.T) {
 	tests := []struct {
 		name string

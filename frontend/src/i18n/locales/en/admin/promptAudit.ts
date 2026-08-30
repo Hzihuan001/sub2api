@@ -58,6 +58,9 @@ export default {
     recording: {
       latestOnlyTitle: 'Record only the latest user input',
       latestOnlyHint: 'System/developer prompts, assistant replies, and tool output are excluded. Full conversation history is not duplicated. A busy local queue drops records instead of delaying requests.',
+      excludedUsers: 'Do not record these users', excludedUsersSearch: 'Search by partial email or username',
+      excludedUsersHint: 'Applies only to capture-only mode. Selected users and all of their API keys create no prompt events; async audit and blocking remain unchanged.',
+      removeExcludedUser: 'Remove {user}', unknownExcludedUser: 'Loading user',
       retentionDays: 'Automatic retention (days)', maxStorageMB: 'Prompt body limit (MB)',
       cleanupPolicyHint: 'Cleanup runs hourly: expired records are removed first, then the oldest records are removed if the size limit is exceeded. Each body is capped at 65,536 characters.',
       storageTitle: 'Capture-only storage', storageSummary: '{count} events · approximately {size} of prompt bodies', storageRange: '{oldest} to {newest}',

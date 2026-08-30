@@ -28,6 +28,7 @@ export interface PromptAuditConfig {
   store_pass_events: boolean
   retention_days: number
   max_storage_mb: number
+  capture_excluded_user_ids: number[]
   effective_mode: PromptAuditMode
   strategy: 'priority'
   worker_count: number
@@ -55,6 +56,7 @@ export interface PromptAuditUpdateRequest {
   store_pass_events: boolean
   retention_days: number
   max_storage_mb: number
+  capture_excluded_user_ids: number[]
   strategy: 'priority'
   worker_count: number
   queue_capacity: number

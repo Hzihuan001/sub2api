@@ -58,6 +58,9 @@ export default {
     recording: {
       latestOnlyTitle: '只记录最新用户输入',
       latestOnlyHint: '不保存 system/developer 提示词、助手回复或工具输出，也不重复保存整段历史会话。后台队列繁忙时会丢弃记录而不会阻塞用户请求。',
+      excludedUsers: '不记录这些用户', excludedUsersSearch: '输入部分邮箱或用户名搜索',
+      excludedUsersHint: '仅作用于“仅记录提示词”模式。所选用户及其全部 API Key 不会生成提示词事件；异步审计和同步阻止不受影响。',
+      removeExcludedUser: '移除 {user}', unknownExcludedUser: '用户信息加载中',
       retentionDays: '自动保留天数', maxStorageMB: '提示词正文容量上限（MB）',
       cleanupPolicyHint: '后台每小时清理一次：先删除过期记录；超过容量时再从最旧记录开始删除。单条正文最多保存 65,536 个字符。',
       storageTitle: '仅记录模式存储', storageSummary: '{count} 条 · 正文约 {size}', storageRange: '{oldest} 至 {newest}',

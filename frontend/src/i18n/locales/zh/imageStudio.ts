@@ -39,7 +39,6 @@ export default {
     generate: '开始生成',
     editImage: '开始编辑',
     generating: '生成中…',
-    billingHint: '请求直接进入 Sub2API 现有网关，继续使用原有分组权限、模型映射、限流、计费及使用记录。',
     libraryTitle: '本地作品库',
     libraryHint: '当前显示 {count} 张；作品只保存在此浏览器，最多 200 张或 512 MB。',
     clearLibrary: '清空本地作品',

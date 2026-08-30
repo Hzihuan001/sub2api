@@ -31,6 +31,7 @@ export function configToDraft(config: PromptAuditConfig): PromptAuditDraft {
   return {
     ...cloneData(config),
     group_ids: [...(config.group_ids ?? [])],
+    capture_excluded_user_ids: [...(config.capture_excluded_user_ids ?? [])],
     scanners: [...(config.scanners ?? [])],
     endpoints: (config.endpoints ?? []).map((endpoint) => ({
       ...endpoint,
@@ -67,6 +68,7 @@ export function buildUpdateRequest(draft: PromptAuditDraft): PromptAuditUpdateRe
     store_pass_events: draft.store_pass_events,
 		retention_days: Number(draft.retention_days),
 		max_storage_mb: Number(draft.max_storage_mb),
+    capture_excluded_user_ids: [...draft.capture_excluded_user_ids].sort((a, b) => a - b),
     strategy: 'priority',
     worker_count: Number(draft.worker_count),
     queue_capacity: Number(draft.queue_capacity),

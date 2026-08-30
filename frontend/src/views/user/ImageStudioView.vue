@@ -123,7 +123,6 @@
               </button>
               <button v-if="generating" type="button" class="btn btn-secondary" @click="cancelGeneration">{{ t('common.cancel') }}</button>
             </div>
-            <p class="text-xs leading-5 text-gray-500 dark:text-dark-300">{{ t('imageStudio.billingHint') }}</p>
           </form>
 
           <div class="min-w-0 p-5 md:p-6">

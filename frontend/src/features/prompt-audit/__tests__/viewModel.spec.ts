@@ -18,6 +18,7 @@ const config = (): PromptAuditConfig => ({
   store_pass_events: false,
   retention_days: 7,
   max_storage_mb: 512,
+  capture_excluded_user_ids: [],
   effective_mode: 'async_audit',
   strategy: 'priority',
   worker_count: 4,
@@ -72,12 +73,14 @@ describe('Prompt Audit view model', () => {
     draft.capture_only_enabled = true
     draft.retention_days = 14
     draft.max_storage_mb = 256
+    draft.capture_excluded_user_ids = [11, 7]
     expect(buildUpdateRequest(draft)).toMatchObject({
       enabled: false,
       capture_only_enabled: true,
       blocking_enabled: false,
       retention_days: 14,
       max_storage_mb: 256,
+      capture_excluded_user_ids: [7, 11],
     })
   })
 

@@ -39,7 +39,6 @@ export default {
     generate: 'Generate',
     editImage: 'Edit image',
     generating: 'Generating…',
-    billingHint: 'Requests use the existing Sub2API gateway, including group permissions, model mapping, rate limits, billing, and usage records.',
     libraryTitle: 'Local library',
     libraryHint: 'Showing {count} images. Works are stored only in this browser, up to 200 images or 512 MB.',
     clearLibrary: 'Clear local library',

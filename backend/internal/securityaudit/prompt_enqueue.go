@@ -40,6 +40,10 @@ func (e *Enqueuer) Enqueue(ctx context.Context, req Request) error {
 		return nil
 	}
 	if cfg.EffectiveMode() == ModeCaptureOnly {
+		if cfg.ExcludesCaptureUser(req.UserID) {
+			LogInfo(EventEnqueueSkipped, mergeLogFields(baseFields, map[string]any{"status": "skipped", "error_code": "capture_user_excluded"}))
+			return nil
+		}
 		snapshot, err := ExtractLatestUserPromptSnapshot(req)
 		if errors.Is(err, ErrNoPromptText) {
 			LogInfo(EventEnqueueSkipped, mergeLogFields(baseFields, map[string]any{"status": "skipped", "error_code": "no_user_text"}))

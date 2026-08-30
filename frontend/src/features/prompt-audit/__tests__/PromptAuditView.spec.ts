@@ -21,7 +21,7 @@ vi.mock('vue-i18n', async () => {
 
 const baseConfig = (): PromptAuditConfig => ({
   enabled: true, capture_only_enabled: false, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false,
-  retention_days: 7, max_storage_mb: 512, effective_mode: 'async_audit', strategy: 'priority',
+  retention_days: 7, max_storage_mb: 512, capture_excluded_user_ids: [], effective_mode: 'async_audit', strategy: 'priority',
   worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: true, group_ids: [],
   endpoints: [{ id: 'guard-1', name: 'Guard One', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000', model: 'guard-model', timeout_ms: 3000, input_limit: 4000, enabled: true, has_token: true, token_status: 'configured' }],
   config_version: 7, updated_at: '2026-07-16T00:00:00Z', updated_by: 1, change_summary: '{}',

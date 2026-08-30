@@ -77,6 +77,7 @@ type storageConfig struct {
 	StorePassEvents        bool              `json:"store_pass_events"`
 	RetentionDays          int               `json:"retention_days"`
 	MaxStorageMB           int               `json:"max_storage_mb"`
+	CaptureExcludedUserIDs []int64           `json:"capture_excluded_user_ids"`
 	Strategy               string            `json:"strategy"`
 	WorkerCount            int               `json:"worker_count"`
 	QueueCapacity          int               `json:"queue_capacity"`
@@ -116,6 +117,7 @@ type ActiveConfig struct {
 	StorePassEvents        bool
 	RetentionDays          int
 	MaxStorageMB           int
+	CaptureExcludedUserIDs []int64
 	Strategy               string
 	WorkerCount            int
 	QueueCapacity          int
@@ -150,6 +152,7 @@ type PublicConfig struct {
 	StorePassEvents        bool             `json:"store_pass_events"`
 	RetentionDays          int              `json:"retention_days"`
 	MaxStorageMB           int              `json:"max_storage_mb"`
+	CaptureExcludedUserIDs []int64          `json:"capture_excluded_user_ids"`
 	EffectiveMode          Mode             `json:"effective_mode"`
 	Strategy               string           `json:"strategy"`
 	WorkerCount            int              `json:"worker_count"`
@@ -186,6 +189,7 @@ type UpdateConfigRequest struct {
 	StorePassEvents        bool             `json:"store_pass_events"`
 	RetentionDays          int              `json:"retention_days"`
 	MaxStorageMB           int              `json:"max_storage_mb"`
+	CaptureExcludedUserIDs []int64          `json:"capture_excluded_user_ids"`
 	Strategy               string           `json:"strategy"`
 	WorkerCount            int              `json:"worker_count"`
 	QueueCapacity          int              `json:"queue_capacity"`
@@ -204,6 +208,7 @@ func DefaultStorageConfig() storageConfig {
 		StorePassEvents:        false,
 		RetentionDays:          DefaultRetentionDays,
 		MaxStorageMB:           DefaultMaxStorageMB,
+		CaptureExcludedUserIDs: []int64{},
 		Strategy:               "priority",
 		WorkerCount:            DefaultWorkerCount,
 		QueueCapacity:          DefaultQueueCapacity,
@@ -257,6 +262,7 @@ func normalizeStorageConfig(cfg *storageConfig) {
 	}
 	cfg.Scanners = canonicalScannerIDs(cfg.Scanners)
 	cfg.GroupIDs = canonicalInt64s(cfg.GroupIDs)
+	cfg.CaptureExcludedUserIDs = canonicalInt64s(cfg.CaptureExcludedUserIDs)
 	// Preserve an invalid blocking-without-audit combination so validation can
 	// reject it instead of silently changing administrator intent.
 	for i := range cfg.Endpoints {
@@ -413,6 +419,19 @@ func (cfg ActiveConfig) IncludesGroup(groupID *int64) bool {
 	return i < len(cfg.GroupIDs) && cfg.GroupIDs[i] == *groupID
 }
 
+// ExcludesCaptureUser reports whether capture-only recording is disabled for
+// this exact user. Guard-backed async and blocking modes intentionally ignore
+// this list so a recording preference cannot weaken risk-control enforcement.
+func (cfg ActiveConfig) ExcludesCaptureUser(userID int64) bool {
+	if userID <= 0 {
+		return false
+	}
+	i := sort.Search(len(cfg.CaptureExcludedUserIDs), func(i int) bool {
+		return cfg.CaptureExcludedUserIDs[i] >= userID
+	})
+	return i < len(cfg.CaptureExcludedUserIDs) && cfg.CaptureExcludedUserIDs[i] == userID
+}
+
 func (cfg ActiveConfig) EnabledEndpoints() []ActiveEndpoint {
 	result := make([]ActiveEndpoint, 0, len(cfg.Endpoints))
 	for _, ep := range cfg.Endpoints {
@@ -442,6 +461,7 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 	}
 	scanners := append([]string{}, cfg.Scanners...)
 	groupIDs := append([]int64{}, cfg.GroupIDs...)
+	captureExcludedUserIDs := append([]int64{}, cfg.CaptureExcludedUserIDs...)
 	endpoints := make([]PublicEndpoint, 0, len(cfg.Endpoints))
 	for _, ep := range cfg.Endpoints {
 		hasToken := strings.TrimSpace(ep.TokenCiphertext) != ""
@@ -461,7 +481,7 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 	active := ActiveConfig{RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, CaptureOnlyEnabled: cfg.CaptureOnlyEnabled, BlockingEnabled: cfg.BlockingEnabled}
 	return PublicConfig{
 		Enabled: cfg.Enabled, CaptureOnlyEnabled: cfg.CaptureOnlyEnabled, BlockingEnabled: cfg.BlockingEnabled, BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly, StorePassEvents: cfg.StorePassEvents,
-		RetentionDays: cfg.RetentionDays, MaxStorageMB: cfg.MaxStorageMB,
+		RetentionDays: cfg.RetentionDays, MaxStorageMB: cfg.MaxStorageMB, CaptureExcludedUserIDs: captureExcludedUserIDs,
 		EffectiveMode: active.EffectiveMode(), Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: scanners, AllGroups: cfg.AllGroups,
 		GroupIDs: groupIDs, Endpoints: endpoints, ConfigVersion: cfg.ConfigVersion,
@@ -474,7 +494,8 @@ func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor Sec
 		RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, CaptureOnlyEnabled: cfg.CaptureOnlyEnabled, BlockingEnabled: cfg.BlockingEnabled,
 		BlockingLatestTurnOnly: cfg.BlockingLatestTurnOnly,
 		StorePassEvents:        cfg.StorePassEvents, RetentionDays: cfg.RetentionDays, MaxStorageMB: cfg.MaxStorageMB,
-		Strategy: cfg.Strategy, WorkerCount: cfg.WorkerCount,
+		CaptureExcludedUserIDs: append([]int64(nil), cfg.CaptureExcludedUserIDs...),
+		Strategy:               cfg.Strategy, WorkerCount: cfg.WorkerCount,
 		QueueCapacity: cfg.QueueCapacity, Scanners: append([]string(nil), cfg.Scanners...), AllGroups: cfg.AllGroups,
 		GroupIDs: append([]int64(nil), cfg.GroupIDs...), ConfigVersion: cfg.ConfigVersion,
 		UpdatedAt: cfg.UpdatedAt, UpdatedBy: cfg.UpdatedBy, ChangeSummary: cfg.ChangeSummary,
@@ -517,13 +538,14 @@ func changeSummary(cfg storageConfig) string {
 		StorePassEvents        bool   `json:"store_pass_events"`
 		RetentionDays          int    `json:"retention_days"`
 		MaxStorageMB           int    `json:"max_storage_mb"`
+		CaptureExcludedUsers   int    `json:"capture_excluded_users"`
 		EndpointCount          int    `json:"endpoint_count"`
 		ScannerCount           int    `json:"scanner_count"`
 		AllGroups              bool   `json:"all_groups"`
 		GroupCount             int    `json:"group_count"`
 		GroupHash              string `json:"group_hash"`
 	}{cfg.Enabled, cfg.CaptureOnlyEnabled, cfg.BlockingEnabled, cfg.BlockingLatestTurnOnly, cfg.StorePassEvents,
-		cfg.RetentionDays, cfg.MaxStorageMB, len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), ""}
+		cfg.RetentionDays, cfg.MaxStorageMB, len(cfg.CaptureExcludedUserIDs), len(cfg.Endpoints), len(cfg.Scanners), cfg.AllGroups, len(cfg.GroupIDs), ""}
 	rawGroups, _ := json.Marshal(cfg.GroupIDs)
 	digest := sha256.Sum256(rawGroups)
 	summary.GroupHash = hex.EncodeToString(digest[:])
