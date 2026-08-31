@@ -1149,6 +1149,7 @@ import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
+import { sortGroupsForKeySelection } from './keyGroupOrder'
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -1409,7 +1410,7 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
 
 // Convert groups to Select options format with rate multiplier and subscription type
 const groupOptions = computed(() =>
-  groups.value.map((group) => ({
+  sortGroupsForKeySelection(groups.value).map((group) => ({
     value: group.id,
     label: group.name,
     description: group.description,
