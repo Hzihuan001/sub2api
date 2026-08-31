@@ -192,7 +192,7 @@ describe('user UsageView', () => {
   })
 
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
-    mountUsageView()
+    const wrapper = mountUsageView()
     await flushPromises()
 
     expect(query).toHaveBeenCalled()
@@ -205,6 +205,7 @@ describe('user UsageView', () => {
     }))
     expect(list).toHaveBeenCalledWith(1, 100)
     expect(getAvailable).toHaveBeenCalled()
+    expect(wrapper.findComponent({ name: 'Pagination' }).props('showJump')).toBe(true)
   })
 
   it('exports csv with current filters and without admin-only fields', async () => {

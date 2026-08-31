@@ -218,6 +218,14 @@ describe('admin UsageView route filters', () => {
     expect(wrapper.find('[data-test="user-filter-label"]').text()).toBe('route-user@test.com')
   })
 
+  it('enables direct page jumping for usage logs', async () => {
+    list.mockResolvedValue({ items: [{}], total: 200, pages: 10 })
+    const wrapper = mountRouteFilteredUsageView()
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'Pagination' }).props('showJump')).toBe(true)
+  })
+
   it('does not apply a stale routed user label after user_id changes', async () => {
     routeQuery.user_id = '42'
     let resolveLookup!: (user: { id: number; email: string }) => void
