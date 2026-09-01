@@ -218,12 +218,22 @@ describe('admin UsageView route filters', () => {
     expect(wrapper.find('[data-test="user-filter-label"]').text()).toBe('route-user@test.com')
   })
 
-  it('enables direct page jumping for usage logs', async () => {
-    list.mockResolvedValue({ items: [{}], total: 200, pages: 10 })
+  it('passes direct jumps through when the admin total only exposes the next page', async () => {
+    list.mockResolvedValue({ items: [{}], total: 21, pages: 2 })
     const wrapper = mountRouteFilteredUsageView()
     await flushPromises()
 
-    expect(wrapper.findComponent({ name: 'Pagination' }).props('showJump')).toBe(true)
+    const pagination = wrapper.findComponent({ name: 'Pagination' })
+    expect(pagination.props('showJump')).toBe(true)
+    expect(pagination.props('allowJumpBeyondTotal')).toBe(true)
+
+    pagination.vm.$emit('update:page', 7)
+    await flushPromises()
+
+    expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 7, page_size: 20, exact_total: false }),
+      expect.anything()
+    )
   })
 
   it('does not apply a stale routed user label after user_id changes', async () => {

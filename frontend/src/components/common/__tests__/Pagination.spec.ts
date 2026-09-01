@@ -28,6 +28,24 @@ const createWrapper = () => {
   })
 }
 
+const createFastTotalWrapper = () => {
+  return mount(Pagination, {
+    props: {
+      total: 21,
+      page: 1,
+      pageSize: 20,
+      showJump: true,
+      allowJumpBeyondTotal: true
+    },
+    global: {
+      stubs: {
+        Icon: true,
+        Select: true
+      }
+    }
+  })
+}
+
 describe('Pagination', () => {
   it('jumps when a number input updates the model with a numeric value', async () => {
     const wrapper = createWrapper()
@@ -47,5 +65,15 @@ describe('Pagination', () => {
     await input.trigger('keyup.enter')
 
     expect(wrapper.emitted('update:page')).toEqual([[25]])
+  })
+
+  it('allows direct jumps beyond an approximate fast-pagination total', async () => {
+    const wrapper = createFastTotalWrapper()
+    const input = wrapper.get('input[type="number"]')
+
+    await input.setValue('7')
+    await wrapper.get('button.btn-ghost').trigger('click')
+
+    expect(wrapper.emitted('update:page')).toEqual([[7]])
   })
 })

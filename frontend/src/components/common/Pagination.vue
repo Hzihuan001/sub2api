@@ -56,7 +56,7 @@
             v-model="jumpPage"
             type="number"
             min="1"
-            :max="totalPages"
+            :max="allowJumpBeyondTotal ? undefined : totalPages"
             class="input w-20 text-sm"
             :placeholder="t('pagination.jumpPlaceholder')"
             @keyup.enter="submitJump"
@@ -134,6 +134,7 @@ interface Props {
   pageSizeOptions?: number[]
   showPageSizeSelector?: boolean
   showJump?: boolean
+  allowJumpBeyondTotal?: boolean
 }
 
 interface Emits {
@@ -144,7 +145,8 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
   pageSizeOptions: () => getConfiguredTablePageSizeOptions(),
   showPageSizeSelector: true,
-  showJump: false
+  showJump: false,
+  allowJumpBeyondTotal: false
 })
 
 const emit = defineEmits<Emits>()
@@ -234,8 +236,14 @@ const submitJump = () => {
   if (!value) return
   const pageNum = Number.parseInt(value, 10)
   if (Number.isNaN(pageNum)) return
-  const nextPage = Math.min(Math.max(pageNum, 1), totalPages.value)
+  const nextPage = props.allowJumpBeyondTotal
+    ? Math.max(pageNum, 1)
+    : Math.min(Math.max(pageNum, 1), totalPages.value)
   jumpPage.value = ''
+  if (props.allowJumpBeyondTotal && nextPage > totalPages.value) {
+    if (nextPage !== props.page) emit('update:page', nextPage)
+    return
+  }
   goToPage(nextPage)
 }
 </script>
