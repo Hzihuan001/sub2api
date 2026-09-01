@@ -673,6 +673,9 @@ export default {
         visibility: '可见角色',
         visibilityUser: '普通用户',
         visibilityAdmin: '管理员',
+        passAuthContext: '向嵌入页面传递登录信息',
+        passAuthContextHint:
+          '会把当前用户 ID 和登录令牌加入页面 URL。仅对你完全信任并自行控制的页面开启；第三方店铺请保持关闭。',
         add: '添加菜单项',
         remove: '删除',
         moveUp: '上移',

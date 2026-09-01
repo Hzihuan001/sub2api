@@ -56,6 +56,23 @@ describe('embedded-url', () => {
     expect(url.searchParams.has('lang')).toBe(false)
   })
 
+  it('never sends user ID or auth token when auth context forwarding is disabled', () => {
+    const result = buildEmbeddedUrl(
+      'https://catfk.com/shop/9Y18MT8C',
+      42,
+      'sensitive-token',
+      'light',
+      'zh-CN',
+      false,
+    )
+
+    const url = new URL(result)
+    expect(url.searchParams.has('user_id')).toBe(false)
+    expect(url.searchParams.has('token')).toBe(false)
+    expect(url.searchParams.get('theme')).toBe('light')
+    expect(url.searchParams.get('lang')).toBe('zh-CN')
+  })
+
   it('returns original string for invalid url input', () => {
     expect(buildEmbeddedUrl('not a url', 1, 'token')).toBe('not a url')
   })

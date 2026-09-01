@@ -19,14 +19,15 @@ export function buildEmbeddedUrl(
   authToken?: string | null,
   theme: 'light' | 'dark' = 'light',
   lang?: string,
+  passAuthContext = true,
 ): string {
   if (!baseUrl) return baseUrl
   try {
     const url = new URL(baseUrl)
-    if (userId) {
+    if (passAuthContext && userId) {
       url.searchParams.set(EMBEDDED_USER_ID_QUERY_KEY, String(userId))
     }
-    if (authToken) {
+    if (passAuthContext && authToken) {
       url.searchParams.set(EMBEDDED_AUTH_TOKEN_QUERY_KEY, authToken)
     }
     url.searchParams.set(EMBEDDED_THEME_QUERY_KEY, theme)

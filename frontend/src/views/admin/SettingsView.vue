@@ -6713,6 +6713,25 @@
                     />
                   </div>
 
+                  <!-- Authentication context forwarding -->
+                  <div
+                    v-if="!item.url?.startsWith('md:')"
+                    class="flex items-start justify-between gap-4 rounded-lg bg-gray-50 px-3 py-2.5 sm:col-span-2 dark:bg-dark-700/50"
+                  >
+                    <div>
+                      <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t("admin.settings.customMenu.passAuthContext") }}
+                      </p>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.customMenu.passAuthContextHint") }}
+                      </p>
+                    </div>
+                    <Toggle
+                      :model-value="item.pass_auth_context !== false"
+                      @update:model-value="(value: boolean) => (item.pass_auth_context = value)"
+                    />
+                  </div>
+
                   <!-- SVG Icon (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -9608,6 +9627,8 @@ const form = reactive<SettingsForm>({
     label: string;
     icon_svg: string;
     url: string;
+    page_slug?: string;
+    pass_auth_context: boolean;
     visibility: "user" | "admin";
     sort_order: number;
   }>,
@@ -10587,6 +10608,7 @@ function addMenuItem() {
     label: "",
     icon_svg: "",
     url: "",
+    pass_auth_context: false,
     visibility: "user",
     sort_order: form.custom_menu_items.length,
   });
@@ -10787,6 +10809,11 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.custom_menu_items = form.custom_menu_items.map((item) => ({
+      ...item,
+      // Existing entries historically forwarded auth; keep that behavior until changed.
+      pass_auth_context: item.pass_auth_context !== false,
+    }));
     syncCaptchaProviderSelection();
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =

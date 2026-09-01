@@ -189,6 +189,8 @@ export interface CustomMenuItem {
   icon_svg: string
   url: string
   page_slug?: string
+  /** Missing means enabled for compatibility with existing custom pages. */
+  pass_auth_context?: boolean
   visibility: 'user' | 'admin'
   sort_order: number
 }

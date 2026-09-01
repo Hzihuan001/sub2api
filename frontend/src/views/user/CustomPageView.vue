@@ -107,6 +107,7 @@
           <iframe
             :src="embeddedUrl"
             class="custom-embed-frame"
+            referrerpolicy="strict-origin-when-cross-origin"
             allowfullscreen
           ></iframe>
         </div>
@@ -181,6 +182,7 @@ const embeddedUrl = computed(() => {
     authStore.token,
     pageTheme.value,
     locale.value,
+    menuItem.value.pass_auth_context !== false,
   )
 })
 

@@ -678,6 +678,9 @@ export default {
         visibility: 'Visible To',
         visibilityUser: 'Regular Users',
         visibilityAdmin: 'Administrators',
+        passAuthContext: 'Pass sign-in context to embedded page',
+        passAuthContextHint:
+          'Adds the current user ID and sign-in token to the page URL. Enable only for fully trusted pages you control; keep it off for third-party stores.',
         add: 'Add Menu Item',
         remove: 'Remove',
         moveUp: 'Move Up',
