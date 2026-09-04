@@ -21,6 +21,7 @@ const {
 const authStore = vi.hoisted(() => ({
   isAdmin: true,
   isOperator: false,
+  canOperator: vi.fn(() => true),
 }))
 
 vi.mock('@/stores/auth', () => ({

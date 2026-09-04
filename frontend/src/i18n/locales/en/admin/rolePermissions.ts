@@ -1,0 +1,41 @@
+export default {
+  rolePermissions: {
+    title: 'Role Permissions',
+    description: 'Control which admin modules, actions, and financial data operators can access.',
+    operatorTitle: 'Operator permission template',
+    operatorHint: 'Changes apply to every operator. Admin access is unaffected; disabled APIs are denied or redacted by the backend.',
+    menuSection: 'Menus and pages',
+    menuDescription: 'Disabled pages disappear from the operator sidebar and are blocked when opened directly.',
+    actionSection: 'Actions',
+    actionDescription: 'Keep a page read-only while separately disabling edits, dispositions, or balance changes.',
+    financeSection: 'Sensitive financial data',
+    financeDescription: 'Disabled values are hidden in the UI and removed from API responses. All are off by default.',
+    save: 'Save permissions',
+    reset: 'Restore recommended defaults',
+    saved: 'Operator permissions saved',
+    loadFailed: 'Failed to load operator permissions',
+    saveFailed: 'Failed to save operator permissions',
+    defaultRestored: 'Recommended defaults restored; save to apply them',
+    permissions: {
+      dashboardRead: { label: 'Dashboard', description: 'View global requests, token totals, and trends.' },
+      opsRead: { label: 'Operations', description: 'View alerts, errors, live traffic, and runtime status.' },
+      usersRead: { label: 'Users', description: 'View regular users and their usage information.' },
+      announcementsRead: { label: 'Announcements', description: 'View announcement management.' },
+      redeemCodesRead: { label: 'Redeem codes', description: 'View redeem codes, statistics, and exports.' },
+      promoCodesRead: { label: 'Promo codes', description: 'View promo codes and usage history.' },
+      usageRead: { label: 'Usage records', description: 'View, filter, and export global usage records.' },
+      opsDisposition: { label: 'Resolve operational events', description: 'Update alert/error status and create alert silences.' },
+      usersWrite: { label: 'Modify regular users', description: 'Create, edit, delete, and change limits for regular users.' },
+      usersBalanceWrite: { label: 'Adjust user balances', description: 'Credit or debit regular-user balances.' },
+      usersSupport: { label: 'User-page support data', description: 'Read groups and attributes required by the user page.' },
+      announcementsWrite: { label: 'Manage announcements', description: 'Create, edit, and delete announcements.' },
+      redeemCodesWrite: { label: 'Manage redeem codes', description: 'Generate, update, expire, and delete redeem codes.' },
+      promoCodesWrite: { label: 'Manage promo codes', description: 'Create, edit, and delete promo codes.' },
+      userBalanceRead: { label: 'User balances', description: 'Show balances, frozen balances, and balance history.' },
+      userChargeRead: { label: 'Actual user charges', description: 'Show amounts actually paid or deducted from users.' },
+      standardCostRead: { label: 'Standard cost', description: 'Show cost calculated from standard model pricing.' },
+      upstreamCostRead: { label: 'Upstream/account cost', description: 'Show service-account and upstream costs.' },
+      profitRead: { label: 'Profit and margin', description: 'Show profit, gross margin, and derived metrics.' }
+    }
+  }
+}

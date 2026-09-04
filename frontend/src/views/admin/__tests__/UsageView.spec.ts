@@ -5,7 +5,7 @@ import { defineComponent, ref } from 'vue'
 import UsageView from '../UsageView.vue'
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isAdmin: true, isOperator: false }),
+  useAuthStore: () => ({ isAdmin: true, isOperator: false, canOperator: () => true }),
 }))
 
 const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, clearErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {

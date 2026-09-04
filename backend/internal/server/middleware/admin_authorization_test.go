@@ -38,7 +38,7 @@ func TestAdminRouteAuthorization(t *testing.T) {
 				c.Set(string(ContextKeyUserRole), test.role)
 				c.Next()
 			})
-			router.Use(AdminRouteAuthorization())
+			router.Use(AdminRouteAuthorization(nil))
 			router.Handle(test.method, test.route, func(c *gin.Context) { c.Status(http.StatusOK) })
 
 			recorder := httptest.NewRecorder()

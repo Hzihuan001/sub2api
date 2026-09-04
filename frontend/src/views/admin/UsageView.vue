@@ -1,7 +1,12 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <UsageStatsCards :stats="usageStats" />
+      <UsageStatsCards
+        :stats="usageStats"
+        :show-user-charge="canSeeUserCharge"
+        :show-account-cost="canSeeUpstreamCost"
+        :show-standard-cost="canSeeStandardCost"
+      />
       <!-- Charts Section -->
       <div class="space-y-4">
         <div class="card p-4">
@@ -31,7 +36,7 @@
             :mapping-model-stats="mappingModelStats"
             :loading="modelStatsLoading"
             :show-source-toggle="true"
-            :show-metric-toggle="true"
+            :show-metric-toggle="canSeeUserCharge"
             :start-date="startDate"
             :end-date="endDate"
             :filters="breakdownFilters"
@@ -40,7 +45,7 @@
             v-model:metric="groupDistributionMetric"
             :group-stats="groupStats"
             :loading="chartsLoading"
-            :show-metric-toggle="true"
+            :show-metric-toggle="canSeeUserCharge"
             :start-date="startDate"
             :end-date="endDate"
             :filters="breakdownFilters"
@@ -131,6 +136,9 @@
             :server-side-sort="true"
             :default-sort-key="'created_at'"
             :default-sort-order="'desc'"
+            :show-user-charge="canSeeUserCharge"
+            :show-standard-cost="canSeeStandardCost"
+            :show-account-cost="canSeeUpstreamCost"
             @sort="handleSort"
             @userClick="handleUserClick"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
@@ -222,6 +230,10 @@ import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat,
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const canSeeUserCharge = computed(() => authStore.canOperator('finance.user_charge.read'))
+const canSeeStandardCost = computed(() => authStore.canOperator('finance.standard_cost.read'))
+const canSeeUpstreamCost = computed(() => authStore.canOperator('finance.upstream_cost.read'))
+const canSeeAnyCost = computed(() => canSeeUserCharge.value || canSeeStandardCost.value || canSeeUpstreamCost.value)
 type DistributionMetric = 'tokens' | 'actual_cost'
 type EndpointSource = 'inbound' | 'upstream' | 'path'
 type ModelDistributionSource = 'requested' | 'upstream' | 'mapping'
@@ -689,12 +701,12 @@ const allColumns = computed(() => [
 const hiddenColumns = reactive<Set<string>>(new Set())
 
 const toggleableColumns = computed(() =>
-  allColumns.value.filter(col => !ALWAYS_VISIBLE.includes(col.key))
+  allColumns.value.filter(col => !ALWAYS_VISIBLE.includes(col.key) && (col.key !== 'cost' || canSeeAnyCost.value))
 )
 
 const visibleColumns = computed(() =>
   allColumns.value.filter(col =>
-    ALWAYS_VISIBLE.includes(col.key) || !hiddenColumns.has(col.key)
+    (col.key !== 'cost' || canSeeAnyCost.value) && (ALWAYS_VISIBLE.includes(col.key) || !hiddenColumns.has(col.key))
   )
 )
 
@@ -813,7 +825,7 @@ const activeTab = ref<DetailTab>('usage')
 const detailTabs = computed(() => [
   { key: 'usage' as const, label: t('usage.tabs.usage'), icon: 'document' as const },
   { key: 'errors' as const, label: t('usage.tabs.errors'), icon: 'exclamationTriangle' as const },
-  { key: 'ranking' as const, label: t('usage.tabs.ranking'), icon: 'chart' as const },
+  ...(canSeeUserCharge.value ? [{ key: 'ranking' as const, label: t('usage.tabs.ranking'), icon: 'chart' as const }] : []),
 ])
 const usageFiltersRef = ref<InstanceType<typeof UsageFilters> | null>(null)
 const rankingMounted = ref(false)

@@ -29,10 +29,17 @@ func RegisterAdminRoutes(
 	admin.Use(panelRateLimiter.Global())
 	// 审计中间件挂在认证之后：所有管理面变更类操作 + 敏感读取入审计日志
 	admin.Use(gin.HandlerFunc(auditLog))
-	// operator 使用固定、默认拒绝的路由权限表；admin 保持原有完整权限。
-	admin.Use(middleware.AdminRouteAuthorization())
+	// operator 使用可配置、默认拒绝的路由权限表；admin 保持原有完整权限。
+	admin.Use(middleware.AdminRouteAuthorization(settingService))
+	admin.Use(middleware.OperatorFinancialResponseFilter(settingService))
 	admin.Use(middleware.AdminComplianceGuard(settingService))
 	{
+		// Global operator role policy. Operators may read their effective policy;
+		// only admins can update it because PUT is absent from the operator route table.
+		roles := admin.Group("/roles")
+		roles.GET("/operator/permissions", h.Admin.Setting.GetOperatorRolePolicy)
+		roles.PUT("/operator/permissions", h.Admin.Setting.UpdateOperatorRolePolicy)
+
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)
 

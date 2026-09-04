@@ -110,24 +110,11 @@
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
                   {{ formatTokens(stats.today_tokens) }}
                 </p>
-                <p class="text-xs">
-                  <span
-                    class="text-green-600 dark:text-green-400"
-                    :title="t('admin.dashboard.actual')"
-                    >${{ formatCost(stats.today_actual_cost) }}</span
-                  >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
-                  <span
-                    class="text-orange-500 dark:text-orange-400"
-                    :title="t('admin.dashboard.accountCost')"
-                    >${{ formatCost(stats.today_account_cost) }}</span
-                  >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
-                  <span
-                    class="text-gray-400 dark:text-gray-500"
-                    :title="t('admin.dashboard.standard')"
-                    >${{ formatCost(stats.today_cost) }}</span
-                  >
+                <p v-if="todayCostItems.length" class="text-xs">
+                  <template v-for="(entry, index) in todayCostItems" :key="entry.title">
+                    <span v-if="index" class="text-gray-400 dark:text-gray-500"> / </span>
+                    <span :class="entry.className" :title="entry.title">${{ formatCost(entry.value) }}</span>
+                  </template>
                 </p>
               </div>
             </div>
@@ -146,24 +133,11 @@
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
                   {{ formatTokens(stats.total_tokens) }}
                 </p>
-                <p class="text-xs">
-                  <span
-                    class="text-green-600 dark:text-green-400"
-                    :title="t('admin.dashboard.actual')"
-                    >${{ formatCost(stats.total_actual_cost) }}</span
-                  >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
-                  <span
-                    class="text-orange-500 dark:text-orange-400"
-                    :title="t('admin.dashboard.accountCost')"
-                    >${{ formatCost(stats.total_account_cost) }}</span
-                  >
-                  <span class="text-gray-400 dark:text-gray-500"> / </span>
-                  <span
-                    class="text-gray-400 dark:text-gray-500"
-                    :title="t('admin.dashboard.standard')"
-                    >${{ formatCost(stats.total_cost) }}</span
-                  >
+                <p v-if="totalCostItems.length" class="text-xs">
+                  <template v-for="(entry, index) in totalCostItems" :key="entry.title">
+                    <span v-if="index" class="text-gray-400 dark:text-gray-500"> / </span>
+                    <span :class="entry.className" :title="entry.title">${{ formatCost(entry.value) }}</span>
+                  </template>
                 </p>
               </div>
             </div>
@@ -302,7 +276,7 @@
           <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <ModelDistributionChart
               :model-stats="modelStats"
-              :enable-ranking-view="true"
+              :enable-ranking-view="canSeeUserCharge"
               :ranking-items="rankingItems"
               :ranking-total-actual-cost="rankingTotalActualCost"
               :ranking-total-requests="rankingTotalRequests"
@@ -412,6 +386,34 @@ let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
 let rankingLoadSeq = 0
 const rankingLimit = 12
+
+const canSeeUserCharge = computed(() => authStore.canOperator('finance.user_charge.read'))
+const canSeeUpstreamCost = computed(() => authStore.canOperator('finance.upstream_cost.read'))
+const canSeeStandardCost = computed(() => authStore.canOperator('finance.standard_cost.read'))
+
+type CostLineItem = { title: string; value: number; className: string }
+const buildCostItems = (period: 'today' | 'total'): CostLineItem[] => {
+  if (!stats.value) return []
+  const result: CostLineItem[] = []
+  if (canSeeUserCharge.value) result.push({
+    title: t('admin.dashboard.actual'),
+    value: period === 'today' ? stats.value.today_actual_cost : stats.value.total_actual_cost,
+    className: 'text-green-600 dark:text-green-400'
+  })
+  if (canSeeUpstreamCost.value) result.push({
+    title: t('admin.dashboard.accountCost'),
+    value: period === 'today' ? stats.value.today_account_cost : stats.value.total_account_cost,
+    className: 'text-orange-500 dark:text-orange-400'
+  })
+  if (canSeeStandardCost.value) result.push({
+    title: t('admin.dashboard.standard'),
+    value: period === 'today' ? stats.value.today_cost : stats.value.total_cost,
+    className: 'text-gray-400 dark:text-gray-500'
+  })
+  return result
+}
+const todayCostItems = computed(() => buildCostItems('today'))
+const totalCostItems = computed(() => buildCostItems('total'))
 
 // Helper function to format date in local timezone
 const formatLocalDate = (date: Date): string => {
@@ -706,6 +708,13 @@ const loadUsersTrend = async () => {
 }
 
 const loadUserSpendingRanking = async () => {
+  if (!canSeeUserCharge.value) {
+    rankingItems.value = []
+    rankingTotalActualCost.value = 0
+    rankingTotalRequests.value = 0
+    rankingTotalTokens.value = 0
+    return
+  }
   const currentSeq = ++rankingLoadSeq
   rankingLoading.value = true
   rankingError.value = false

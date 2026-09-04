@@ -1,4 +1,4 @@
-// Package authz contains the fixed, default-deny management authorization policy.
+// Package authz contains the explicit, default-deny management authorization policy.
 package authz
 
 import (
@@ -10,17 +10,28 @@ import (
 type Permission string
 
 const (
-	PermissionCompliance     Permission = "compliance"
-	PermissionDashboardRead  Permission = "dashboard.read"
-	PermissionOpsRead        Permission = "ops.read"
-	PermissionOpsDisposition Permission = "ops.disposition"
-	PermissionUsersRead      Permission = "users.read"
-	PermissionUsersWrite     Permission = "users.write"
-	PermissionUsersSupport   Permission = "users.support"
-	PermissionAnnouncements  Permission = "announcements.manage"
-	PermissionRedeemCodes    Permission = "redeem_codes.manage"
-	PermissionPromoCodes     Permission = "promo_codes.manage"
-	PermissionUsageRead      Permission = "usage.read"
+	PermissionCompliance         Permission = "compliance"
+	PermissionRolePolicyRead     Permission = "role_policy.read"
+	PermissionDashboardRead      Permission = "dashboard.read"
+	PermissionOpsRead            Permission = "ops.read"
+	PermissionOpsDisposition     Permission = "ops.disposition"
+	PermissionUsersRead          Permission = "users.read"
+	PermissionUsersWrite         Permission = "users.write"
+	PermissionUsersBalanceWrite  Permission = "users.balance.write"
+	PermissionUsersSupport       Permission = "users.support"
+	PermissionAnnouncementsRead  Permission = "announcements.read"
+	PermissionAnnouncementsWrite Permission = "announcements.write"
+	PermissionRedeemCodesRead    Permission = "redeem_codes.read"
+	PermissionRedeemCodesWrite   Permission = "redeem_codes.write"
+	PermissionPromoCodesRead     Permission = "promo_codes.read"
+	PermissionPromoCodesWrite    Permission = "promo_codes.write"
+	PermissionUsageRead          Permission = "usage.read"
+
+	PermissionFinanceUserBalanceRead  Permission = "finance.user_balance.read"
+	PermissionFinanceUserChargeRead   Permission = "finance.user_charge.read"
+	PermissionFinanceStandardCostRead Permission = "finance.standard_cost.read"
+	PermissionFinanceUpstreamCostRead Permission = "finance.upstream_cost.read"
+	PermissionFinanceProfitRead       Permission = "finance.profit.read"
 )
 
 type routeKey struct {
@@ -28,11 +39,115 @@ type routeKey struct {
 	path   string
 }
 
-var operatorPermissions = map[Permission]struct{}{
-	PermissionCompliance: {}, PermissionDashboardRead: {}, PermissionOpsRead: {},
-	PermissionOpsDisposition: {}, PermissionUsersRead: {}, PermissionUsersWrite: {},
-	PermissionUsersSupport: {}, PermissionAnnouncements: {}, PermissionRedeemCodes: {},
-	PermissionPromoCodes: {}, PermissionUsageRead: {},
+var configurableOperatorPermissions = []Permission{
+	PermissionDashboardRead,
+	PermissionOpsRead,
+	PermissionOpsDisposition,
+	PermissionUsersRead,
+	PermissionUsersWrite,
+	PermissionUsersBalanceWrite,
+	PermissionUsersSupport,
+	PermissionAnnouncementsRead,
+	PermissionAnnouncementsWrite,
+	PermissionRedeemCodesRead,
+	PermissionRedeemCodesWrite,
+	PermissionPromoCodesRead,
+	PermissionPromoCodesWrite,
+	PermissionUsageRead,
+	PermissionFinanceUserBalanceRead,
+	PermissionFinanceUserChargeRead,
+	PermissionFinanceStandardCostRead,
+	PermissionFinanceUpstreamCostRead,
+	PermissionFinanceProfitRead,
+}
+
+var knownOperatorPermissions = func() map[Permission]struct{} {
+	out := make(map[Permission]struct{}, len(configurableOperatorPermissions)+2)
+	out[PermissionCompliance] = struct{}{}
+	out[PermissionRolePolicyRead] = struct{}{}
+	for _, permission := range configurableOperatorPermissions {
+		out[permission] = struct{}{}
+	}
+	return out
+}()
+
+// OperatorPolicy is the persisted, global permission template for every
+// operator. Admin authorization remains unconditional and is not affected by
+// this policy.
+type OperatorPolicy struct {
+	Permissions map[string]bool `json:"permissions"`
+}
+
+func DefaultOperatorPolicy() OperatorPolicy {
+	permissions := make(map[string]bool, len(configurableOperatorPermissions))
+	for _, permission := range configurableOperatorPermissions {
+		permissions[string(permission)] = true
+	}
+	// Financial data is opt-in. A fresh upgrade therefore keeps the current
+	// operational pages available without exposing monetary information.
+	permissions[string(PermissionFinanceUserBalanceRead)] = false
+	permissions[string(PermissionFinanceUserChargeRead)] = false
+	permissions[string(PermissionFinanceStandardCostRead)] = false
+	permissions[string(PermissionFinanceUpstreamCostRead)] = false
+	permissions[string(PermissionFinanceProfitRead)] = false
+	return OperatorPolicy{Permissions: permissions}
+}
+
+// FailClosedOperatorPolicy is used only when the persisted policy cannot be
+// read and no previously cached value exists. Immutable bootstrap permissions
+// such as compliance and reading one's effective policy remain available via
+// Allows, while every configurable permission is denied.
+func FailClosedOperatorPolicy() OperatorPolicy {
+	permissions := make(map[string]bool, len(configurableOperatorPermissions))
+	for _, permission := range configurableOperatorPermissions {
+		permissions[string(permission)] = false
+	}
+	return OperatorPolicy{Permissions: permissions}
+}
+
+func NormalizeOperatorPolicy(input OperatorPolicy) OperatorPolicy {
+	normalized := DefaultOperatorPolicy()
+	for key, enabled := range input.Permissions {
+		permission := Permission(key)
+		if _, ok := knownOperatorPermissions[permission]; !ok || permission == PermissionCompliance || permission == PermissionRolePolicyRead {
+			continue
+		}
+		normalized.Permissions[key] = enabled
+	}
+	return normalized
+}
+
+func IsConfigurableOperatorPermission(permission Permission) bool {
+	if permission == PermissionCompliance || permission == PermissionRolePolicyRead {
+		return false
+	}
+	_, ok := knownOperatorPermissions[permission]
+	return ok
+}
+
+func (p OperatorPolicy) Allows(permission Permission) bool {
+	if permission == PermissionCompliance || permission == PermissionRolePolicyRead {
+		return true
+	}
+	if !p.Permissions[string(permission)] {
+		return false
+	}
+	switch permission {
+	case PermissionOpsDisposition:
+		return p.Permissions[string(PermissionOpsRead)]
+	case PermissionUsersWrite, PermissionUsersSupport:
+		return p.Permissions[string(PermissionUsersRead)]
+	case PermissionUsersBalanceWrite:
+		return p.Permissions[string(PermissionUsersRead)] && p.Permissions[string(PermissionUsersWrite)]
+	case PermissionAnnouncementsWrite:
+		return p.Permissions[string(PermissionAnnouncementsRead)]
+	case PermissionRedeemCodesWrite:
+		return p.Permissions[string(PermissionRedeemCodesRead)]
+	case PermissionPromoCodesWrite:
+		return p.Permissions[string(PermissionPromoCodesRead)]
+	default:
+		return true
+	}
 }
 
 var operatorRoutes = buildOperatorRoutes()
@@ -47,6 +162,7 @@ func buildOperatorRoutes() map[routeKey]Permission {
 
 	add(PermissionCompliance, http.MethodGet, "/api/v1/admin/compliance")
 	add(PermissionCompliance, http.MethodPost, "/api/v1/admin/compliance/accept")
+	add(PermissionRolePolicyRead, http.MethodGet, "/api/v1/admin/roles/operator/permissions")
 
 	add(PermissionDashboardRead, http.MethodGet,
 		"/api/v1/admin/dashboard/snapshot-v2", "/api/v1/admin/dashboard/stats",
@@ -90,9 +206,10 @@ func buildOperatorRoutes() map[routeKey]Permission {
 		"/api/v1/admin/users/:id/attributes", "/api/v1/admin/users/:id/subscriptions")
 	add(PermissionUsersWrite, http.MethodPost,
 		"/api/v1/admin/users", "/api/v1/admin/users/:id/auth-identities",
-		"/api/v1/admin/users/:id/balance", "/api/v1/admin/users/:id/replace-group",
+		"/api/v1/admin/users/:id/replace-group",
 		"/api/v1/admin/users/batch-concurrency", "/api/v1/admin/users/batch-limits",
 		"/api/v1/admin/users/:id/platform-quotas/reset")
+	add(PermissionUsersBalanceWrite, http.MethodPost, "/api/v1/admin/users/:id/balance")
 	add(PermissionUsersWrite, http.MethodPut,
 		"/api/v1/admin/users/:id", "/api/v1/admin/users/:id/platform-quotas",
 		"/api/v1/admin/users/:id/attributes")
@@ -102,28 +219,28 @@ func buildOperatorRoutes() map[routeKey]Permission {
 	add(PermissionUsersSupport, http.MethodPost, "/api/v1/admin/user-attributes/batch")
 	add(PermissionUsersWrite, http.MethodPut, "/api/v1/admin/api-keys/:id")
 
-	add(PermissionAnnouncements, http.MethodGet,
+	add(PermissionAnnouncementsRead, http.MethodGet,
 		"/api/v1/admin/announcements", "/api/v1/admin/announcements/:id",
 		"/api/v1/admin/announcements/:id/read-status")
-	add(PermissionAnnouncements, http.MethodPost, "/api/v1/admin/announcements")
-	add(PermissionAnnouncements, http.MethodPut, "/api/v1/admin/announcements/:id")
-	add(PermissionAnnouncements, http.MethodDelete, "/api/v1/admin/announcements/:id")
+	add(PermissionAnnouncementsWrite, http.MethodPost, "/api/v1/admin/announcements")
+	add(PermissionAnnouncementsWrite, http.MethodPut, "/api/v1/admin/announcements/:id")
+	add(PermissionAnnouncementsWrite, http.MethodDelete, "/api/v1/admin/announcements/:id")
 
-	add(PermissionRedeemCodes, http.MethodGet,
+	add(PermissionRedeemCodesRead, http.MethodGet,
 		"/api/v1/admin/redeem-codes", "/api/v1/admin/redeem-codes/stats",
 		"/api/v1/admin/redeem-codes/export", "/api/v1/admin/redeem-codes/:id")
-	add(PermissionRedeemCodes, http.MethodPost,
+	add(PermissionRedeemCodesWrite, http.MethodPost,
 		"/api/v1/admin/redeem-codes/create-and-redeem", "/api/v1/admin/redeem-codes/generate",
 		"/api/v1/admin/redeem-codes/batch-delete", "/api/v1/admin/redeem-codes/batch-update",
 		"/api/v1/admin/redeem-codes/:id/expire")
-	add(PermissionRedeemCodes, http.MethodDelete, "/api/v1/admin/redeem-codes/:id")
+	add(PermissionRedeemCodesWrite, http.MethodDelete, "/api/v1/admin/redeem-codes/:id")
 
-	add(PermissionPromoCodes, http.MethodGet,
+	add(PermissionPromoCodesRead, http.MethodGet,
 		"/api/v1/admin/promo-codes", "/api/v1/admin/promo-codes/:id",
 		"/api/v1/admin/promo-codes/:id/usages")
-	add(PermissionPromoCodes, http.MethodPost, "/api/v1/admin/promo-codes")
-	add(PermissionPromoCodes, http.MethodPut, "/api/v1/admin/promo-codes/:id")
-	add(PermissionPromoCodes, http.MethodDelete, "/api/v1/admin/promo-codes/:id")
+	add(PermissionPromoCodesWrite, http.MethodPost, "/api/v1/admin/promo-codes")
+	add(PermissionPromoCodesWrite, http.MethodPut, "/api/v1/admin/promo-codes/:id")
+	add(PermissionPromoCodesWrite, http.MethodDelete, "/api/v1/admin/promo-codes/:id")
 
 	add(PermissionUsageRead, http.MethodGet,
 		"/api/v1/admin/usage", "/api/v1/admin/usage/stats",
@@ -140,8 +257,7 @@ func HasPermission(role string, permission Permission) bool {
 	if role != domain.RoleOperator {
 		return false
 	}
-	_, ok := operatorPermissions[permission]
-	return ok
+	return DefaultOperatorPolicy().Allows(permission)
 }
 
 // PermissionForRoute returns the explicit operator permission for a Gin route
@@ -152,9 +268,13 @@ func PermissionForRoute(method, fullPath string) (Permission, bool) {
 }
 
 func CanAccessRoute(role, method, fullPath string) bool {
+	return CanAccessRouteWithPolicy(role, method, fullPath, DefaultOperatorPolicy())
+}
+
+func CanAccessRouteWithPolicy(role, method, fullPath string, policy OperatorPolicy) bool {
 	if role == domain.RoleAdmin {
 		return true
 	}
 	permission, ok := PermissionForRoute(method, fullPath)
-	return ok && HasPermission(role, permission)
+	return role == domain.RoleOperator && ok && policy.Allows(permission)
 }

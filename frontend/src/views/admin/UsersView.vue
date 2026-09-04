@@ -245,7 +245,7 @@
             </div>
 
             <button
-              v-if="selectedCount > 0"
+              v-if="selectedCount > 0 && canWriteUsers"
               class="btn btn-secondary flex-1 md:flex-initial"
               data-test="bulk-edit-limits"
               @click="showBulkEditModal = true"
@@ -255,7 +255,7 @@
             </button>
 
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
-            <button @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
+            <button v-if="canWriteUsers" @click="showCreateModal = true" class="btn btn-primary flex-1 md:flex-initial">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.users.createUser') }}
             </button>
@@ -440,7 +440,7 @@
                 </div>
               </div>
               <button
-                v-if="canMutateUser(row)"
+                v-if="canAdjustBalance(row)"
                 @click.stop="handleDeposit(row)"
                 class="rounded px-2 py-0.5 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
                 :title="t('admin.users.deposit')"
@@ -698,7 +698,7 @@
 
               <!-- Allowed Groups -->
               <button
-                v-if="canMutateUser(user)"
+                v-if="canAdjustBalance(user)"
                 @click="handleAllowedGroups(user); closeActionMenu()"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
@@ -710,7 +710,7 @@
 
               <!-- Deposit -->
               <button
-                v-if="canMutateUser(user)"
+                v-if="canAdjustBalance(user)"
                 @click="handleDeposit(user); closeActionMenu()"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
@@ -742,6 +742,7 @@
 
               <!-- Balance History -->
               <button
+                v-if="canSeeUserBalance"
                 @click="handleBalanceHistory(user); closeActionMenu()"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
@@ -838,7 +839,11 @@ import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
-const canMutateUser = (user: AdminUser) => !authStore.isOperator || user.role === 'user'
+const canWriteUsers = computed(() => authStore.canOperator('users.write'))
+const canSeeUserBalance = computed(() => authStore.canOperator('finance.user_balance.read'))
+const canSeeUserCharge = computed(() => authStore.canOperator('finance.user_charge.read'))
+const canMutateUser = (user: AdminUser) => canWriteUsers.value && (!authStore.isOperator || user.role === 'user')
+const canAdjustBalance = (user: AdminUser) => canMutateUser(user) && authStore.canOperator('users.balance.write')
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>
@@ -897,15 +902,17 @@ const allColumns = computed<Column[]>(() => [
   { key: 'role', label: t('admin.users.columns.role'), sortable: true },
   { key: 'groups', label: t('admin.users.columns.groups'), sortable: false },
   { key: 'subscriptions', label: t('admin.users.columns.subscriptions'), sortable: false },
-  { key: 'balance', label: t('admin.users.columns.balance'), sortable: true },
+  ...(canSeeUserBalance.value ? [{ key: 'balance', label: t('admin.users.columns.balance'), sortable: true }] : []),
   { key: 'balance_platform_quota', label: t('admin.users.columns.balancePlatformQuota'), sortable: false },
-  { key: 'usage', label: t('admin.users.columns.usage'), sortable: false },
-  { key: 'usage_anthropic', label: t('admin.users.columns.usageAnthropic'), sortable: false },
-  { key: 'usage_openai', label: t('admin.users.columns.usageOpenAI'), sortable: false },
-  { key: 'usage_gemini', label: t('admin.users.columns.usageGemini'), sortable: false },
-  { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
-  { key: 'usage_kiro', label: t('admin.users.columns.usageKiro'), sortable: false },
-  { key: 'usage_grok', label: t('admin.users.columns.usageGrok'), sortable: false },
+  ...(canSeeUserCharge.value ? [
+    { key: 'usage', label: t('admin.users.columns.usage'), sortable: false },
+    { key: 'usage_anthropic', label: t('admin.users.columns.usageAnthropic'), sortable: false },
+    { key: 'usage_openai', label: t('admin.users.columns.usageOpenAI'), sortable: false },
+    { key: 'usage_gemini', label: t('admin.users.columns.usageGemini'), sortable: false },
+    { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
+    { key: 'usage_kiro', label: t('admin.users.columns.usageKiro'), sortable: false },
+    { key: 'usage_grok', label: t('admin.users.columns.usageGrok'), sortable: false }
+  ] : []),
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
@@ -1832,14 +1839,14 @@ const confirmDelete = async () => {
 }
 
 const handleDeposit = (user: AdminUser) => {
-	if (!canMutateUser(user)) return
+	if (!canAdjustBalance(user)) return
   balanceUser.value = user
   balanceOperation.value = 'add'
   showBalanceModal.value = true
 }
 
 const handleWithdraw = (user: AdminUser) => {
-	if (!canMutateUser(user)) return
+	if (!canAdjustBalance(user)) return
   balanceUser.value = user
   balanceOperation.value = 'subtract'
   showBalanceModal.value = true
@@ -1851,6 +1858,7 @@ const closeBalanceModal = () => {
 }
 
 const handleBalanceHistory = (user: AdminUser) => {
+  if (!canSeeUserBalance.value) return
   balanceHistoryUser.value = user
   showBalanceHistoryModal.value = true
 }

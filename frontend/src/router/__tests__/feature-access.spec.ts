@@ -17,6 +17,7 @@ const authStore = vi.hoisted(() => ({
   isOperator: false,
   isManagement: false,
   can: vi.fn(() => false),
+  ensureOperatorRolePolicy: vi.fn().mockResolvedValue(undefined),
   isSimpleMode: false,
   hasPendingAuthSession: false,
 }))
@@ -202,7 +203,7 @@ describe('feature route guard', () => {
     await navigation
 
     expect(next).toHaveBeenCalledOnce()
-    expect(next).toHaveBeenCalledWith('/admin/dashboard')
+    expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
   it('redirects a regular user away from management permissions', async () => {

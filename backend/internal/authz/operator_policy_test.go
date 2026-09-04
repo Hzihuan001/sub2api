@@ -54,3 +54,29 @@ func TestAdminBypassesRouteTableAndUserCannotUseIt(t *testing.T) {
 	require.True(t, CanAccessRoute(domain.RoleAdmin, http.MethodPatch, unknown))
 	require.False(t, CanAccessRoute(domain.RoleUser, http.MethodGet, "/api/v1/admin/dashboard/stats"))
 }
+
+func TestCanAccessRouteWithPolicyHonorsConfiguredPermission(t *testing.T) {
+	policy := DefaultOperatorPolicy()
+	policy.Permissions[string(PermissionDashboardRead)] = false
+
+	require.False(t, CanAccessRouteWithPolicy(domain.RoleOperator, http.MethodGet, "/api/v1/admin/dashboard/stats", policy))
+	require.True(t, CanAccessRouteWithPolicy(domain.RoleOperator, http.MethodGet, "/api/v1/admin/usage", policy))
+	require.True(t, CanAccessRouteWithPolicy(domain.RoleAdmin, http.MethodGet, "/api/v1/admin/dashboard/stats", policy))
+}
+
+func TestDefaultOperatorPolicyKeepsFinancialDataOptIn(t *testing.T) {
+	policy := DefaultOperatorPolicy()
+	require.False(t, policy.Allows(PermissionFinanceUserBalanceRead))
+	require.False(t, policy.Allows(PermissionFinanceUserChargeRead))
+	require.False(t, policy.Allows(PermissionFinanceStandardCostRead))
+	require.False(t, policy.Allows(PermissionFinanceUpstreamCostRead))
+	require.False(t, policy.Allows(PermissionFinanceProfitRead))
+	require.True(t, policy.Allows(PermissionUsersRead))
+}
+
+func TestOperatorWritePermissionAlsoRequiresItsReadPermission(t *testing.T) {
+	policy := DefaultOperatorPolicy()
+	policy.Permissions[string(PermissionUsersRead)] = false
+	require.False(t, policy.Allows(PermissionUsersWrite))
+	require.False(t, CanAccessRouteWithPolicy(domain.RoleOperator, http.MethodPost, "/api/v1/admin/users", policy))
+}

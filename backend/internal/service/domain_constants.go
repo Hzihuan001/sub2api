@@ -411,6 +411,9 @@ const (
 
 	// 管理员 API Key
 	SettingKeyAdminAPIKey = "admin_api_key" // 全局管理员 API Key（用于外部系统集成）
+	// SettingKeyOperatorRolePolicy stores the global, dynamically configurable
+	// operator authorization template as JSON.
+	SettingKeyOperatorRolePolicy = "operator_role_policy"
 
 	// Gemini 配额策略（JSON）
 	SettingKeyGeminiQuotaPolicy = "gemini_quota_policy"

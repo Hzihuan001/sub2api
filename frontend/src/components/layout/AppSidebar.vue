@@ -254,7 +254,18 @@ const isManagement = computed(() => authStore.isManagement)
 const sidebarNavRef = ref<HTMLElement | null>(null)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
-const homePath = computed(() => (isManagement.value ? '/admin/dashboard' : '/dashboard'))
+const homePath = computed(() => {
+  if (authStore.isAdmin) return '/admin/dashboard'
+  if (!authStore.isOperator) return '/dashboard'
+  if (authStore.can('dashboard')) return '/admin/dashboard'
+  if (authStore.can('ops')) return '/admin/ops'
+  if (authStore.can('users')) return '/admin/users'
+  if (authStore.can('announcements')) return '/admin/announcements'
+  if (authStore.can('redeemCodes')) return '/admin/redeem'
+  if (authStore.can('promoCodes')) return '/admin/promo-codes'
+  if (authStore.can('usage')) return '/admin/usage'
+  return '/dashboard'
+})
 
 // Track which parent nav groups are expanded
 const expandedGroups = ref<Set<string>>(new Set())
@@ -796,6 +807,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, permission: 'dashboard' },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring, permission: 'ops' },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true, permission: 'users' },
+    { path: '/admin/roles', label: t('nav.rolePermissions'), icon: ShieldIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
     {
       path: '/admin/channels',
