@@ -451,6 +451,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/roles',
+    name: 'AdminRolePermissions',
+    component: () => import('@/views/admin/RolePermissionsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Role Permissions',
+      titleKey: 'admin.rolePermissions.title',
+      descriptionKey: 'admin.rolePermissions.description'
+    }
+  },
+  {
     path: '/admin/groups',
     name: 'AdminGroups',
     component: () => import('@/views/admin/GroupsView.vue'),
@@ -747,6 +759,19 @@ const router = createRouter({
  */
 let authInitialized = false
 
+function managementHomePath(authStore: ReturnType<typeof useAuthStore>): string {
+  if (authStore.isAdmin) return '/admin/dashboard'
+  if (!authStore.isOperator) return '/dashboard'
+  if (authStore.can('dashboard')) return '/admin/dashboard'
+  if (authStore.can('ops')) return '/admin/ops'
+  if (authStore.can('users')) return '/admin/users'
+  if (authStore.can('announcements')) return '/admin/announcements'
+  if (authStore.can('redeemCodes')) return '/admin/redeem'
+  if (authStore.can('promoCodes')) return '/admin/promo-codes'
+  if (authStore.can('usage')) return '/admin/usage'
+  return '/dashboard'
+}
+
 // 初始化导航加载状态和预加载
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
@@ -791,6 +816,14 @@ router.beforeEach(async (to, _from, next) => {
     authInitialized = true
   }
 
+  if (authStore.isOperator) {
+    try {
+      await authStore.ensureOperatorRolePolicy()
+    } catch (error) {
+      console.warn('Failed to load operator role permissions', error)
+    }
+  }
+
   // Set page title
   const appStore = useAppStore()
   const adminSettingsStore = useAdminSettingsStore()
@@ -828,7 +861,7 @@ router.beforeEach(async (to, _from, next) => {
         return
       }
       // Management users go to the management dashboard; regular users use their personal dashboard.
-      next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
+      next(managementHomePath(authStore))
       return
     }
     // Model Plaza:公开路由但受「启用开关 + 可选强制登录」双重控制(后端同口径 fail-closed)
@@ -886,12 +919,12 @@ router.beforeEach(async (to, _from, next) => {
 
   // Check admin requirement
   if (requiresAdmin && !authStore.isAdmin) {
-    next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
+    next(managementHomePath(authStore))
     return
   }
 
   if (requiredPermission && !authStore.can(requiredPermission)) {
-    next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
+    next(managementHomePath(authStore))
     return
   }
 
@@ -928,7 +961,7 @@ router.beforeEach(async (to, _from, next) => {
     appStore.publicSettingsLoaded &&
     appStore.cachedPublicSettings?.payment_enabled === false
   ) {
-    next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
+    next(managementHomePath(authStore))
     return
   }
 
@@ -962,7 +995,7 @@ router.beforeEach(async (to, _from, next) => {
 
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {
       // 简易模式下访问受限页面,重定向到仪表板
-      next(authStore.isManagement ? '/admin/dashboard' : '/dashboard')
+      next(managementHomePath(authStore))
       return
     }
   }

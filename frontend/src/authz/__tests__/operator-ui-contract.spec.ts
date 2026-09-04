@@ -32,7 +32,8 @@ describe('operator UI contract', () => {
     const createModal = read('../../components/admin/user/UserCreateModal.vue')
     const editModal = read('../../components/admin/user/UserEditModal.vue')
 
-    expect(users).toContain("!authStore.isOperator || user.role === 'user'")
+    expect(users).toContain("authStore.canOperator('users.write')")
+    expect(users).toContain("authStore.canOperator('users.balance.write')")
     expect(users).toContain(':row-selectable="canMutateUser"')
     expect(users).toContain('v-if="canMutateUser(row)"')
     expect(users).toContain('v-if="canMutateUser(user)"')
@@ -48,6 +49,7 @@ describe('operator UI contract', () => {
 
     expect(dashboard).toContain('v-if="authStore.isAdmin"')
     expect(dashboard).toContain(':read-only="authStore.isOperator"')
+    expect(dashboard).toContain(":read-only=\"!authStore.canOperator('ops.disposition')\"")
     expect(dashboard).toContain('if (!authStore.isAdmin)')
     expect(logs).toContain('v-if="authStore.isAdmin"')
     expect(alertRules).toContain('v-if="!props.readOnly"')

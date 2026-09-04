@@ -1,0 +1,41 @@
+export default {
+  rolePermissions: {
+    title: '角色权限',
+    description: '配置所有运维员可访问的后台模块、可执行操作和可见金额。',
+    operatorTitle: '运维员权限模板',
+    operatorHint: '此处修改对所有 operator 角色生效。管理员权限不受影响；关闭的接口会由后端直接拒绝或脱敏。',
+    menuSection: '菜单与页面',
+    menuDescription: '关闭后，运维员侧边栏不显示该菜单，直接访问页面和接口也会被拒绝。',
+    actionSection: '操作权限',
+    actionDescription: '页面可保留只读访问，同时单独关闭修改、处置或余额调整能力。',
+    financeSection: '敏感金额',
+    financeDescription: '关闭后不仅隐藏界面，接口响应中的对应金额字段也会被移除。新安装及升级默认全部关闭。',
+    save: '保存权限',
+    reset: '恢复推荐默认值',
+    saved: '运维员权限已保存',
+    loadFailed: '加载运维员权限失败',
+    saveFailed: '保存运维员权限失败',
+    defaultRestored: '已恢复推荐默认值，点击保存后生效',
+    permissions: {
+      dashboardRead: { label: '仪表盘', description: '查看全局请求、Token 和趋势统计。' },
+      opsRead: { label: '运维监控', description: '查看告警、错误、实时流量与系统运行状态。' },
+      usersRead: { label: '用户管理', description: '查看普通用户及其使用信息。' },
+      announcementsRead: { label: '公告', description: '查看公告管理页面。' },
+      redeemCodesRead: { label: '兑换码', description: '查看兑换码、统计和导出。' },
+      promoCodesRead: { label: '优惠码', description: '查看优惠码及使用记录。' },
+      usageRead: { label: '使用记录', description: '查看、筛选和导出全局使用记录。' },
+      opsDisposition: { label: '处置运维事件', description: '更新告警或错误状态，并创建告警静默。' },
+      usersWrite: { label: '修改普通用户', description: '创建、编辑、删除普通用户及调整其限制。' },
+      usersBalanceWrite: { label: '调整用户余额', description: '给普通用户增加或扣减余额。' },
+      usersSupport: { label: '用户页辅助数据', description: '读取分组和用户属性，以支持用户管理页面。' },
+      announcementsWrite: { label: '管理公告', description: '创建、编辑和删除公告。' },
+      redeemCodesWrite: { label: '管理兑换码', description: '生成、更新、作废和删除兑换码。' },
+      promoCodesWrite: { label: '管理优惠码', description: '创建、编辑和删除优惠码。' },
+      userBalanceRead: { label: '用户余额', description: '显示用户余额、冻结余额和余额变动记录。' },
+      userChargeRead: { label: '用户实际扣费', description: '显示用户实际支付或扣除的金额。' },
+      standardCostRead: { label: '标准成本', description: '显示按模型标准价格计算的成本。' },
+      upstreamCostRead: { label: '上游/账号成本', description: '显示服务账号和上游侧成本。' },
+      profitRead: { label: '利润与毛利率', description: '显示利润、毛利率和相关派生指标。' }
+    }
+  }
+}

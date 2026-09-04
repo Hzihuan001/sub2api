@@ -13,7 +13,16 @@ import type {
   AuthResponse,
   ActionCaptchaRequestProof
 } from '@/types'
-import { hasManagementPermission, type ManagementPermission } from '@/authz/permissions'
+import {
+  defaultOperatorRolePolicy,
+  failClosedOperatorRolePolicy,
+  hasManagementPermission,
+  hasOperatorPermission,
+  type ManagementPermission,
+  type OperatorPermission,
+  type OperatorRolePolicy
+} from '@/authz/permissions'
+import operatorRolesAPI from '@/api/admin/roles'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 const AUTH_USER_KEY = 'auth_user'
@@ -84,6 +93,9 @@ export const useAuthStore = defineStore('auth', () => {
   const tokenExpiresAt = ref<number | null>(null) // 过期时间戳（毫秒）
   const runMode = ref<'standard' | 'simple'>('standard')
   const pendingAuthSession = ref<PendingAuthSessionSummary | null>(null)
+  const operatorRolePolicy = ref<OperatorRolePolicy>(defaultOperatorRolePolicy())
+  const operatorRolePolicyLoaded = ref(false)
+  let operatorRolePolicyPromise: Promise<void> | null = null
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null
   let tokenRefreshTimeoutId: ReturnType<typeof setTimeout> | null = null
 
@@ -101,7 +113,36 @@ export const useAuthStore = defineStore('auth', () => {
   const isManagement = computed(() => isAdmin.value || isOperator.value)
 
   function can(permission: ManagementPermission): boolean {
-    return hasManagementPermission(user.value?.role, permission)
+    return hasManagementPermission(user.value?.role, permission, operatorRolePolicy.value)
+  }
+
+  function canOperator(permission: OperatorPermission): boolean {
+    return hasOperatorPermission(user.value?.role, permission, operatorRolePolicy.value)
+  }
+
+  async function ensureOperatorRolePolicy(force = false): Promise<void> {
+    if (!isOperator.value) {
+      operatorRolePolicyLoaded.value = true
+      return
+    }
+    if (!force && operatorRolePolicyLoaded.value) return
+    if (operatorRolePolicyPromise) return operatorRolePolicyPromise
+
+    operatorRolePolicyPromise = operatorRolesAPI
+      .getOperatorPermissions()
+      .then((policy) => {
+        operatorRolePolicy.value = policy
+        operatorRolePolicyLoaded.value = true
+      })
+      .catch((error) => {
+        operatorRolePolicy.value = failClosedOperatorRolePolicy()
+        operatorRolePolicyLoaded.value = false
+        throw error
+      })
+      .finally(() => {
+        operatorRolePolicyPromise = null
+      })
+    return operatorRolePolicyPromise
   }
 
   const isSimpleMode = computed(() => runMode.value === 'simple')
@@ -320,10 +361,16 @@ export const useAuthStore = defineStore('auth', () => {
     }
     const { run_mode: _run_mode, ...userData } = response.user
     user.value = userData
+    operatorRolePolicyLoaded.value = false
 
     // Persist to localStorage
     localStorage.setItem(AUTH_TOKEN_KEY, response.access_token)
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData))
+    if (userData.role === 'operator') {
+      void ensureOperatorRolePolicy(true).catch((error) => {
+        console.warn('Failed to load operator role permissions after login', error)
+      })
+    }
     clearPendingAuthSession()
 
     // Start auto-refresh interval for user data
@@ -452,6 +499,11 @@ export const useAuthStore = defineStore('auth', () => {
       }
       const { run_mode: _run_mode, ...userData } = response.data
       user.value = userData
+      if (userData.role === 'operator') {
+        void ensureOperatorRolePolicy(true).catch((error) => {
+          console.warn('Failed to refresh operator role permissions', error)
+        })
+      }
 
       // Update localStorage
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(userData))
@@ -480,6 +532,9 @@ export const useAuthStore = defineStore('auth', () => {
     refreshTokenValue.value = null
     tokenExpiresAt.value = null
     user.value = null
+    operatorRolePolicy.value = defaultOperatorRolePolicy()
+    operatorRolePolicyLoaded.value = false
+    operatorRolePolicyPromise = null
     localStorage.removeItem(AUTH_TOKEN_KEY)
     localStorage.removeItem(AUTH_USER_KEY)
     localStorage.removeItem(REFRESH_TOKEN_KEY)
@@ -502,6 +557,8 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     runMode: readonly(runMode),
     pendingAuthSession: readonly(pendingAuthSession),
+    operatorRolePolicy: readonly(operatorRolePolicy),
+    operatorRolePolicyLoaded: readonly(operatorRolePolicyLoaded),
 
     // Computed
     isAuthenticated,
@@ -509,6 +566,7 @@ export const useAuthStore = defineStore('auth', () => {
     isOperator,
     isManagement,
     can,
+    canOperator,
     isSimpleMode,
     hasPendingAuthSession,
 
@@ -521,6 +579,7 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     checkAuth,
     refreshUser,
+    ensureOperatorRolePolicy,
     setPendingAuthSession,
     clearPendingAuthSession
   }

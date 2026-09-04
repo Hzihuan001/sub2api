@@ -12,6 +12,7 @@ import { formatDateTime } from '../utils/opsFormatters'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const props = withDefaults(defineProps<{ readOnly?: boolean }>(), { readOnly: false })
 
 // 与 DataTable 一致：< 768px 切换为卡片视图，避免宽表在移动端被截断。
 const isDesktopViewport = useMediaQuery('(min-width: 768px)')
@@ -582,7 +583,7 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
               </div>
             </div>
 
-            <div class="flex flex-wrap gap-2">
+            <div v-if="!props.readOnly" class="flex flex-wrap gap-2">
               <div class="flex items-center gap-2 rounded-lg bg-white px-2 py-1 ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-700">
                 <span class="text-[11px] font-bold text-gray-600 dark:text-gray-300">{{ t('admin.ops.alertEvents.detail.silence') }}</span>
                 <Select
@@ -692,4 +693,3 @@ const empty = computed(() => events.value.length === 0 && !loading.value)
     </BaseDialog>
   </div>
 </template>
-

@@ -94,7 +94,10 @@
       </div>
 
       <!-- Alert Events -->
-      <OpsAlertEventsCard v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce)" />
+      <OpsAlertEventsCard
+        v-if="opsEnabled && showAlertEvents && !(loading && !hasLoadedOnce)"
+        :read-only="!authStore.canOperator('ops.disposition')"
+      />
 
       <!-- System Logs -->
       <OpsSystemLogTable

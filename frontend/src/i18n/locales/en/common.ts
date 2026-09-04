@@ -176,6 +176,7 @@ export default {
     affiliateTransferRecords: 'Transfer Records',
     profile: 'Profile',
     users: 'Users',
+    rolePermissions: 'Role Permissions',
     groups: 'Groups',
     channels: 'Channels',
     availableChannels: 'Available Channels',
