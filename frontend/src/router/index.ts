@@ -452,7 +452,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/admin/groups',
     name: 'AdminGroups',
-    component: () => import('@/views/admin/GroupsView.vue'),
+    component: () => import('@/views/admin/GroupsRouteView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
@@ -515,7 +515,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/admin/accounts',
     name: 'AdminAccounts',
-    component: () => import('@/views/admin/AccountsView.vue'),
+    component: () => import('@/views/admin/AccountsRouteView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
@@ -533,7 +533,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Plugin Management',
       titleKey: 'admin.plugins.title',
-      descriptionKey: 'admin.plugins.description'
+      descriptionKey: 'admin.plugins.description',
+      blockedInMoshuOnly: true
     }
   },
   {
@@ -557,7 +558,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Proxy Management',
       titleKey: 'admin.proxies.title',
-      descriptionKey: 'admin.proxies.description'
+      descriptionKey: 'admin.proxies.description',
+      blockedInMoshuOnly: true
     }
   },
   {
@@ -907,7 +909,7 @@ router.beforeEach(async (to, _from, next) => {
   // 公共设置可能尚未加载（App.vue 的 onMounted 异步拉取晚于首次导航，且纯静态部署
   // 无 __APP_CONFIG__ 注入）。此时 cachedPublicSettings 为空会把 payment/risk_control
   // 误判为“未启用”而错误拦截，故这里先确保设置加载完成。
-  if ((to.meta.requiresPayment || to.meta.requiresRiskControl) && !appStore.publicSettingsLoaded) {
+  if ((to.meta.requiresPayment || to.meta.requiresRiskControl || to.meta.blockedInMoshuOnly) && !appStore.publicSettingsLoaded) {
     try {
       await appStore.fetchPublicSettings()
     } catch (error) {
@@ -932,6 +934,11 @@ router.beforeEach(async (to, _from, next) => {
     appStore.cachedPublicSettings?.risk_control_enabled === false
   ) {
     next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+    return
+  }
+
+  if (to.meta.blockedInMoshuOnly && appStore.cachedPublicSettings?.moshu_only_mode === true) {
+    next('/admin/accounts')
     return
   }
 

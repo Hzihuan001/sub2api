@@ -55,6 +55,9 @@ declare module 'vue-router' {
      */
     requiresRiskControl?: boolean
 
+    /** Whether this standalone-upstream page is unavailable in Moshu-only mode. */
+    blockedInMoshuOnly?: boolean
+
     /**
      * i18n key for the page title
      */

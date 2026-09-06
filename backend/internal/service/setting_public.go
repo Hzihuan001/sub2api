@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,15 @@ func normalizeLoginAgreementMode(raw string) string {
 		return "checkbox"
 	default:
 		return defaultLoginAgreementMode
+	}
+}
+
+func moshuOnlyModeEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("MOSHU_ONLY_MODE"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -343,6 +353,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		WeChatOAuthMPEnabled:                weChatMPEnabled,
 		WeChatOAuthMobileEnabled:            weChatMobileEnabled,
 		BackendModeEnabled:                  settings[SettingKeyBackendModeEnabled] == "true",
+		MoshuOnlyMode:                       moshuOnlyModeEnabled(),
 		PaymentEnabled:                      settings[SettingPaymentEnabled] == "true",
 		OIDCOAuthEnabled:                    oidcEnabled,
 		OIDCOAuthProviderName:               oidcProviderName,
@@ -597,6 +608,7 @@ type PublicSettingsInjectionPayload struct {
 	GitHubOAuthEnabled                  bool                     `json:"github_oauth_enabled"`
 	GoogleOAuthEnabled                  bool                     `json:"google_oauth_enabled"`
 	BackendModeEnabled                  bool                     `json:"backend_mode_enabled"`
+	MoshuOnlyMode                       bool                     `json:"moshu_only_mode"`
 	PaymentEnabled                      bool                     `json:"payment_enabled"`
 	Version                             string                   `json:"version"`
 	// 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用
@@ -686,6 +698,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		GitHubOAuthEnabled:                  settings.GitHubOAuthEnabled,
 		GoogleOAuthEnabled:                  settings.GoogleOAuthEnabled,
 		BackendModeEnabled:                  settings.BackendModeEnabled,
+		MoshuOnlyMode:                       settings.MoshuOnlyMode,
 		PaymentEnabled:                      settings.PaymentEnabled,
 		Version:                             s.version,
 		ServerTimezone:                      timezone.Name(),

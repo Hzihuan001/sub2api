@@ -326,6 +326,11 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	groups := admin.Group("/groups")
+	if moshuOnlyEnabled() {
+		// L1 may adjust the retail multiplier on existing Moshu products, but
+		// cannot create/delete/duplicate products or composite routes.
+		groups.Use(moshuOnlyGroupGuard)
+	}
 	{
 		groups.GET("", h.Admin.Group.List)
 		groups.GET("/all", h.Admin.Group.GetAll)
@@ -356,6 +361,9 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
 	accounts := admin.Group("/accounts")
+	if moshuOnlyEnabled() {
+		accounts.Use(moshuOnlyAccountGuard)
+	}
 	{
 		accounts.GET("", h.Admin.Account.List)
 		accounts.GET("/upstream-billing-rates", h.Admin.Account.GetUpstreamBillingRates)
@@ -442,6 +450,9 @@ func registerAnnouncementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	openai := admin.Group("/openai")
+	if moshuOnlyEnabled() {
+		openai.Use(moshuOnlyMutationGuard)
+	}
 	{
 		openai.POST("/generate-auth-url", h.Admin.OpenAIOAuth.GenerateAuthURL)
 		openai.POST("/exchange-code", h.Admin.OpenAIOAuth.ExchangeCode)
@@ -457,6 +468,9 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerGeminiOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	gemini := admin.Group("/gemini")
+	if moshuOnlyEnabled() {
+		gemini.Use(moshuOnlyMutationGuard)
+	}
 	{
 		gemini.POST("/oauth/auth-url", h.Admin.GeminiOAuth.GenerateAuthURL)
 		gemini.POST("/oauth/exchange-code", h.Admin.GeminiOAuth.ExchangeCode)
@@ -466,6 +480,9 @@ func registerGeminiOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	antigravity := admin.Group("/antigravity")
+	if moshuOnlyEnabled() {
+		antigravity.Use(moshuOnlyMutationGuard)
+	}
 	{
 		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
 		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
@@ -475,6 +492,9 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 
 func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	grok := admin.Group("/grok")
+	if moshuOnlyEnabled() {
+		grok.Use(moshuOnlyMutationGuard)
+	}
 	{
 		grok.GET("/oauth/capabilities", h.Admin.GrokOAuth.GetCapabilities)
 		grok.POST("/oauth/auth-url", h.Admin.GrokOAuth.GenerateAuthURL)
@@ -505,6 +525,9 @@ func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
 	proxies := admin.Group("/proxies")
+	if moshuOnlyEnabled() {
+		proxies.Use(moshuOnlyMutationGuard)
+	}
 	{
 		proxies.GET("", h.Admin.Proxy.List)
 		proxies.GET("/all", h.Admin.Proxy.GetAll)
@@ -623,6 +646,10 @@ func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 
 func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
 	backup := admin.Group("/backups")
+	if moshuOnlyEnabled() {
+		// A full database restore could re-introduce arbitrary upstream accounts.
+		backup.Use(moshuOnlyBackupGuard)
+	}
 	{
 		// S3 存储配置
 		backup.GET("/s3-config", h.Admin.Backup.GetS3Config)
@@ -655,6 +682,10 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 
 func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	system := admin.Group("/system")
+	if moshuOnlyEnabled() {
+		// Binary self-update/rollback would replace the Moshu-only enforcement.
+		system.Use(moshuOnlyReadOnlyGuard)
+	}
 	{
 		system.GET("/version", h.Admin.System.GetVersion)
 		system.GET("/check-updates", h.Admin.System.CheckUpdates)
@@ -748,6 +779,9 @@ func registerTLSFingerprintProfileRoutes(admin *gin.RouterGroup, h *handler.Hand
 
 func registerPluginRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
 	plugins := admin.Group("/plugins")
+	if moshuOnlyEnabled() {
+		plugins.Use(moshuOnlyReadOnlyGuard)
+	}
 	{
 		plugins.GET("", h.Admin.Plugin.List)
 		plugins.GET("/:id", h.Admin.Plugin.Get)
