@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 23 // v23: v22 custom billing/Kiro fields + OpenAI Fast and reasoning-effort limit policy
+const apiKeyAuthSnapshotVersion = 24 // v24: v23 custom billing/Kiro/Fast/reasoning fields + group codex_models_manifest_config
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -429,6 +429,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			DefaultMappedModel:              groupForSnapshot.DefaultMappedModel,
 			MessagesDispatchModelConfig:     groupForSnapshot.MessagesDispatchModelConfig,
 			ModelsListConfig:                groupForSnapshot.ModelsListConfig,
+			CodexModelsManifestConfig:       groupForSnapshot.CodexModelsManifestConfig,
 			RPMLimit:                        groupForSnapshot.RPMLimit,
 			MaxReasoningEffort:              groupForSnapshot.MaxReasoningEffort,
 			MaxReasoningEffortOverLimit:     groupForSnapshot.MaxReasoningEffortOverLimit,
@@ -538,6 +539,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			ModelsListConfig:                snapshot.Group.ModelsListConfig,
+			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			MaxReasoningEffort:              snapshot.Group.MaxReasoningEffort,
 			MaxReasoningEffortOverLimit:     snapshot.Group.MaxReasoningEffortOverLimit,
