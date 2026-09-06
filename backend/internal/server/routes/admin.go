@@ -34,6 +34,9 @@ func RegisterAdminRoutes(
 	admin.Use(middleware.OperatorFinancialResponseFilter(settingService))
 	admin.Use(middleware.AdminComplianceGuard(settingService))
 	{
+		// Moshu 下游代理商协议。operator 默认无权访问这些未登记路由。
+		registerResellerAdminRoutes(admin, h.Reseller)
+
 		// Global operator role policy. Operators may read their effective policy;
 		// only admins can update it because PUT is absent from the operator route table.
 		roles := admin.Group("/roles")

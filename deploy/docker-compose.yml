@@ -55,6 +55,9 @@ services:
       - SUB2API_KIRO_CONVERSATION_ID_MODE=${SUB2API_KIRO_CONVERSATION_ID_MODE:-stable}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
       - ALIPAY_MOBILE_PRECREATE_DEEP_LINK=${ALIPAY_MOBILE_PRECREATE_DEEP_LINK:-}
+      # Main-reseller protocol server. Disabled by default so legacy API keys
+      # and existing gateway behavior remain unchanged until explicitly enabled.
+      - MOSHU_RESELLER_SERVER_ENABLED=${MOSHU_RESELLER_SERVER_ENABLED:-false}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)

@@ -483,6 +483,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/resellers',
+    name: 'AdminResellers',
+    component: () => import('@/views/admin/ResellersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Resellers',
+      titleKey: 'admin.resellers.title',
+      descriptionKey: 'admin.resellers.description'
+    }
+  },
+  {
     path: '/admin/groups',
     name: 'AdminGroups',
     component: () => import('@/views/admin/GroupsView.vue'),

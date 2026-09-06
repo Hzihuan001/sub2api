@@ -1,0 +1,101 @@
+<template>
+  <AppLayout>
+    <div class="space-y-6">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('admin.resellers.title') }}</h1>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.resellers.description') }}</p>
+      </div>
+
+      <section class="card p-5">
+        <h2 class="font-semibold text-gray-900 dark:text-white">新建代理商</h2>
+        <div class="mt-4 grid gap-3 md:grid-cols-3">
+          <input v-model.number="newTenant.user_id" class="input" type="number" min="1" placeholder="绑定的 Moshu 用户 ID" />
+          <input v-model.trim="newTenant.name" class="input" placeholder="代理商名称" />
+          <input v-model.trim="newTenant.cidrs" class="input" placeholder="允许 IP/CIDR，逗号分隔（可选）" />
+        </div>
+        <div class="mt-3 flex justify-end"><button class="btn btn-primary" :disabled="busy || !newTenant.user_id || !newTenant.name" @click="createTenant">创建</button></div>
+      </section>
+
+      <div v-if="loading" class="flex justify-center py-12"><LoadingSpinner /></div>
+      <div v-else class="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <section class="card overflow-hidden self-start">
+          <button v-for="tenant in tenants" :key="tenant.id" class="block w-full border-b border-gray-100 px-4 py-3 text-left last:border-0 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800" :class="selectedID === tenant.id ? 'bg-primary-50 dark:bg-primary-950/20' : ''" @click="selectTenant(tenant.id)">
+            <div class="flex items-center justify-between gap-2"><span class="font-medium text-gray-900 dark:text-white">{{ tenant.name }}</span><span class="rounded px-2 py-0.5 text-xs" :class="tenant.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'">{{ tenant.status }}</span></div>
+            <p class="mt-1 text-xs text-gray-500">User #{{ tenant.user_id }} · {{ tenant.protocol_version }}</p>
+          </button>
+          <p v-if="!tenants.length" class="p-8 text-center text-sm text-gray-500">暂无代理商</p>
+        </section>
+
+        <div v-if="selected" class="space-y-5">
+          <section class="card p-5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div><h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ selected.name }}</h2><p class="mt-1 text-xs text-gray-500">实例：{{ selected.instance_id || '尚未兑换授权码' }}</p></div>
+              <select v-model="selected.status" class="input w-36" @change="saveTenantStatus"><option value="active">active</option><option value="suspended">suspended</option><option value="disabled">disabled</option></select>
+            </div>
+          </section>
+
+          <section class="card p-5">
+            <h2 class="font-semibold text-gray-900 dark:text-white">授权产品</h2>
+            <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <select v-model.number="newProduct.moshu_group_id" class="input"><option :value="0">选择 Moshu 分组</option><option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }} · {{ group.platform }}</option></select>
+              <input v-model.trim="newProduct.product_code" class="input" placeholder="稳定产品代码" />
+              <input v-model.trim="newProduct.display_name" class="input" placeholder="下游显示名称" />
+              <button class="btn btn-primary" :disabled="busy || !newProduct.moshu_group_id || !newProduct.product_code || !newProduct.display_name" @click="addProduct">添加/更新</button>
+            </div>
+            <div class="mt-4 space-y-2">
+              <label v-for="product in products" :key="product.id" class="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-600">
+                <input v-model="selectedProducts" type="checkbox" :value="product.id" :disabled="!product.enabled" />
+                <span class="min-w-0 flex-1"><strong class="text-gray-900 dark:text-white">{{ product.display_name }}</strong><span class="ml-2 text-xs text-gray-500">{{ product.product_code }} · {{ product.platform }} · 成本 {{ product.cost_rate_multiplier.toFixed(4) }} · {{ product.models.length }} models</span></span>
+                <span class="text-xs" :class="product.credential_configured ? 'text-green-600' : 'text-amber-600'">{{ product.credential_configured ? '已签发凭证' : '待签发' }}</span>
+                <button class="text-sm text-primary-600 hover:underline" @click.prevent="rotate(product)">轮换</button>
+              </label>
+            </div>
+            <div class="mt-4 flex justify-end"><button class="btn btn-primary" :disabled="busy || !selectedProducts.length" @click="createEnrollment">生成 30 分钟一次性授权码</button></div>
+            <div v-if="enrollmentCode" class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/20">
+              <p class="text-sm font-semibold text-amber-800 dark:text-amber-300">授权码只显示这一次，请立即复制给 L1 管理员：</p>
+              <div class="mt-2 flex gap-2"><code class="min-w-0 flex-1 break-all rounded bg-white p-3 text-xs dark:bg-dark-900">{{ enrollmentCode }}</code><button class="btn btn-secondary" @click="copy(enrollmentCode)">复制</button></div>
+            </div>
+          </section>
+
+          <section class="card overflow-hidden">
+            <div class="border-b border-gray-100 px-5 py-4 dark:border-dark-700"><h2 class="font-semibold text-gray-900 dark:text-white">最近权威成本记录</h2></div>
+            <div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="bg-gray-50 text-left text-gray-500 dark:bg-dark-800"><tr><th class="px-4 py-3">Request</th><th class="px-4 py-3">产品</th><th class="px-4 py-3">标准价</th><th class="px-4 py-3">成本倍率</th><th class="px-4 py-3">实际成本</th><th class="px-4 py-3">状态</th></tr></thead><tbody><tr v-for="item in settlements" :key="item.id" class="border-t border-gray-100 dark:border-dark-700"><td class="max-w-[200px] truncate px-4 py-3 font-mono text-xs">{{ item.request_id }}</td><td class="px-4 py-3">{{ item.product_code }}</td><td class="px-4 py-3">${{ money(item.standard_cost) }}</td><td class="px-4 py-3">{{ item.cost_rate_multiplier.toFixed(4) }}</td><td class="px-4 py-3">${{ money(item.actual_cost) }}</td><td class="px-4 py-3">{{ item.status }}</td></tr><tr v-if="!settlements.length"><td colspan="6" class="px-4 py-8 text-center text-gray-500">暂无记录</td></tr></tbody></table></div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </AppLayout>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import AppLayout from '@/components/layout/AppLayout.vue'
+import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import { groupsAPI, resellersAPI } from '@/api/admin'
+import { useAppStore } from '@/stores/app'
+import type { AdminGroup } from '@/types'
+import type { ResellerProduct, ResellerSettlement, ResellerTenant } from '@/api/admin/resellers'
+
+const { t } = useI18n(), app = useAppStore()
+const loading = ref(true), busy = ref(false), selectedID = ref<number | null>(null)
+const tenants = ref<ResellerTenant[]>([]), products = ref<ResellerProduct[]>([]), groups = ref<AdminGroup[]>([]), settlements = ref<ResellerSettlement[]>([])
+const selectedProducts = ref<number[]>([]), enrollmentCode = ref('')
+const newTenant = reactive({ user_id: 0, name: '', cidrs: '' })
+const newProduct = reactive({ moshu_group_id: 0, product_code: '', display_name: '' })
+const selected = computed(() => tenants.value.find((item) => item.id === selectedID.value))
+
+async function load() { loading.value = true; try { [tenants.value, groups.value] = await Promise.all([resellersAPI.listTenants(), groupsAPI.getAllIncludingInactive()]); if (!selectedID.value && tenants.value[0]) selectedID.value = tenants.value[0].id; if (selectedID.value) await loadTenant(selectedID.value) } catch (e) { app.showError(errorText(e)) } finally { loading.value = false } }
+async function loadTenant(id: number) { const [productList, page] = await Promise.all([resellersAPI.listProducts(id), resellersAPI.settlements(id)]); products.value = productList; settlements.value = page.items; selectedProducts.value = productList.filter((item) => item.enabled).map((item) => item.id) }
+async function selectTenant(id: number) { selectedID.value = id; enrollmentCode.value = ''; await loadTenant(id) }
+async function act(action: () => Promise<unknown>, message: string) { busy.value = true; try { await action(); app.showSuccess(message); if (selectedID.value) await loadTenant(selectedID.value) } catch (e) { app.showError(errorText(e)) } finally { busy.value = false } }
+async function createTenant() { await act(async () => { const created = await resellersAPI.createTenant({ user_id: newTenant.user_id, name: newTenant.name, allowed_cidrs: newTenant.cidrs.split(',').map((v) => v.trim()).filter(Boolean) }); tenants.value = await resellersAPI.listTenants(); selectedID.value = created.id }, '代理商已创建') }
+async function saveTenantStatus() { if (!selected.value) return; await act(() => resellersAPI.updateTenant(selected.value!.id, { status: selected.value!.status, allowed_cidrs: selected.value!.allowed_cidrs }), '状态已更新') }
+async function addProduct() { if (!selectedID.value) return; await act(() => resellersAPI.upsertProduct(selectedID.value!, { ...newProduct, enabled: true }), '产品已保存') }
+async function createEnrollment() { if (!selectedID.value) return; busy.value = true; try { const result = await resellersAPI.createEnrollment(selectedID.value, selectedProducts.value); enrollmentCode.value = result.enrollment_code; app.showSuccess('一次性授权码已生成') } catch (e) { app.showError(errorText(e)) } finally { busy.value = false } }
+async function rotate(product: ResellerProduct) { if (!selectedID.value || !confirm('轮换后旧凭证仅短时继续有效，确认继续？')) return; busy.value = true; try { const result = await resellersAPI.rotate(selectedID.value, product.id); alert(`新凭证只显示一次：\n${result.api_key}`); await loadTenant(selectedID.value) } catch (e) { app.showError(errorText(e)) } finally { busy.value = false } }
+async function copy(value: string) { await navigator.clipboard.writeText(value); app.showSuccess('已复制') }
+function money(value: number) { return Number(value || 0).toFixed(6) }
+function errorText(error: unknown) { return (error as { message?: string }).message || '操作失败' }
+onMounted(load)
+</script>
