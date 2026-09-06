@@ -4,17 +4,11 @@
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('admin.moshuUpstream.title') }}</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.moshuUpstream.description') }}</p>
         </div>
         <button class="btn btn-secondary" :disabled="loading" @click="loadData">
           <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
           {{ t('common.refresh') }}
         </button>
-      </div>
-
-      <div class="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-100">
-        <p class="font-medium">{{ t('admin.moshuUpstream.restrictionTitle') }}</p>
-        <p class="mt-1">{{ t('admin.moshuUpstream.restrictionBody') }}</p>
       </div>
 
       <div v-if="loading" class="flex justify-center py-16">
@@ -31,19 +25,14 @@
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
-                <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white">{{ account.name }}</h2>
+                <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white">{{ accountLabel(account) }}</h2>
                 <span :class="statusClass(account.status)" class="rounded-full px-2 py-0.5 text-xs font-medium">
                   {{ statusLabel(account.status) }}
                 </span>
               </div>
-              <p class="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">{{ upstreamBaseURL(account) }}</p>
             </div>
-            <button
-              class="btn btn-secondary shrink-0"
-              :disabled="testingAccountID === account.id"
-              @click="testConnection(account)"
-            >
-              <Icon name="play" size="sm" :class="{ 'animate-pulse': testingAccountID === account.id }" />
+            <button class="btn btn-secondary shrink-0" @click="openTest(account)">
+              <Icon name="play" size="sm" />
               {{ t('admin.moshuUpstream.test') }}
             </button>
           </div>
@@ -85,6 +74,8 @@
         </article>
       </div>
     </div>
+
+    <AccountTestModal :show="showTestModal" :account="selectedAccount" @close="closeTest" />
   </AppLayout>
 </template>
 
@@ -93,17 +84,19 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { accountsAPI, groupsAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { AccountListItem, AdminGroup } from '@/types'
+import type { Account, AccountListItem, AdminGroup } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const loading = ref(true)
-const testingAccountID = ref<number | null>(null)
 const accounts = ref<AccountListItem[]>([])
 const groups = ref<AdminGroup[]>([])
+const selectedAccount = ref<Account | null>(null)
+const showTestModal = ref(false)
 
 async function loadData() {
   loading.value = true
@@ -121,21 +114,15 @@ async function loadData() {
   }
 }
 
-async function testConnection(account: AccountListItem) {
-  testingAccountID.value = account.id
-  try {
-    const result = await accountsAPI.testAccount(account.id)
-    if (result.success) {
-      appStore.showSuccess(result.message || t('admin.moshuUpstream.testSuccess'))
-    } else {
-      appStore.showError(result.message || t('admin.moshuUpstream.testFailed'))
-    }
-    await loadData()
-  } catch (error) {
-    appStore.showError(errorMessage(error, t('admin.moshuUpstream.testFailed')))
-  } finally {
-    testingAccountID.value = null
-  }
+function openTest(account: AccountListItem) {
+  selectedAccount.value = { ...account, name: accountLabel(account) }
+  showTestModal.value = true
+}
+
+function closeTest() {
+  showTestModal.value = false
+  selectedAccount.value = null
+  void loadData()
 }
 
 function groupsFor(account: AccountListItem): AdminGroup[] {
@@ -143,9 +130,9 @@ function groupsFor(account: AccountListItem): AdminGroup[] {
   return groups.value.filter((group) => ids.has(group.id))
 }
 
-function upstreamBaseURL(account: AccountListItem): string {
-  const value = account.credentials?.base_url
-  return typeof value === 'string' && value.trim() ? value : 'http://1Panel-sub2api-bjGj:8080'
+function accountLabel(account: AccountListItem): string {
+  const names = groupsFor(account).map((group) => group.name)
+  return names.length ? names.join(' / ') : t('admin.moshuUpstream.accountLabel', { id: account.id })
 }
 
 function formatMultiplier(value: number | null | undefined): string {

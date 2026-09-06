@@ -29,7 +29,7 @@ func moshuOnlyMutationGuard(c *gin.Context) {
 		c.Next()
 		return
 	}
-	response.Error(c, http.StatusForbidden, "This deployment is restricted to the Moshu upstream")
+	response.Error(c, http.StatusForbidden, "This operation is unavailable for the configured upstream")
 	c.Abort()
 }
 
