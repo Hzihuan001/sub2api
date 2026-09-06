@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -197,6 +198,7 @@ func NewHTTPUpstream(cfg *config.Config) service.HTTPUpstream {
 //   - 调用方必须关闭 resp.Body，否则会导致 inFlight 计数泄漏
 //   - inFlight > 0 的客户端不会被淘汰，确保活跃请求不被中断
 func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	applyMoshuResellerRequestID(req)
 	applyGrokCLIProxyHeaders(req)
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
@@ -236,6 +238,38 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	})
 
 	return resp, nil
+}
+
+const moshuResellerRequestIDHeader = "X-Reseller-Request-ID"
+
+// applyMoshuResellerRequestID attaches the gateway's existing correlation UUID
+// only to the explicitly configured Moshu origin. Other upstreams never receive it.
+func applyMoshuResellerRequestID(req *http.Request) {
+	if req == nil || req.URL == nil || !envFlagEnabled("MOSHU_RESELLER_CLIENT_ENABLED") {
+		return
+	}
+	baseURL, err := url.Parse(strings.TrimSpace(os.Getenv("MOSHU_RESELLER_URL")))
+	if err != nil || baseURL.Scheme == "" || baseURL.Host == "" || !strings.EqualFold(baseURL.Host, req.URL.Host) {
+		return
+	}
+	requestID, _ := req.Context().Value(ctxkey.ClientRequestID).(string)
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		requestID, _ = req.Context().Value(ctxkey.RequestID).(string)
+		requestID = strings.TrimSpace(requestID)
+	}
+	if requestID != "" {
+		req.Header.Set(moshuResellerRequestIDHeader, requestID)
+	}
+}
+
+func envFlagEnabled(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // DoWithTLS 执行带 TLS 指纹伪装的 HTTP 请求

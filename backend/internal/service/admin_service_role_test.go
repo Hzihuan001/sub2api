@@ -35,6 +35,12 @@ func TestAdminService_CreateUser_DefaultsToUserRole(t *testing.T) {
 	require.Equal(t, RoleUser, user.Role)
 }
 
+func TestNormalizeUserRoleAcceptsManager(t *testing.T) {
+	role, err := normalizeUserRole(RoleManager, RoleUser)
+	require.NoError(t, err)
+	require.Equal(t, RoleManager, role)
+}
+
 func TestAdminService_CreateUser_InvalidRoleRejected(t *testing.T) {
 	repo := &userRepoStub{nextID: 32}
 	svc := &adminServiceImpl{userRepo: repo}

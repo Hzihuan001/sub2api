@@ -14,6 +14,7 @@ const authStore = vi.hoisted(() => ({
   checkAuth: vi.fn(),
   isAuthenticated: true,
   isAdmin: false,
+  isSuperAdmin: false,
   isSimpleMode: false,
   hasPendingAuthSession: false,
 }))
@@ -113,6 +114,7 @@ describe('feature route guard', () => {
   beforeEach(() => {
     authStore.isAuthenticated = true
     authStore.isAdmin = false
+    authStore.isSuperAdmin = false
     authStore.isSimpleMode = false
     appStore.publicSettingsLoaded = false
     appStore.cachedPublicSettings = null
@@ -173,5 +175,33 @@ describe('feature route guard', () => {
     expect(appStore.fetchPublicSettings).not.toHaveBeenCalled()
     expect(next).toHaveBeenCalledOnce()
     expect(next).toHaveBeenCalledWith(target)
+  })
+
+  it('redirects a manager away from a super-admin-only route', async () => {
+    authStore.isAdmin = true
+    authStore.isSuperAdmin = false
+
+    const { navigation, next } = runGuard(
+      { requiresAdmin: true, requiresSuperAdmin: true },
+      '/admin/ops'
+    )
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith('/admin/dashboard')
+  })
+
+  it('allows a super admin into a super-admin-only route', async () => {
+    authStore.isAdmin = true
+    authStore.isSuperAdmin = true
+
+    const { navigation, next } = runGuard(
+      { requiresAdmin: true, requiresSuperAdmin: true },
+      '/admin/ops'
+    )
+    await navigation
+
+    expect(next).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith()
   })
 })

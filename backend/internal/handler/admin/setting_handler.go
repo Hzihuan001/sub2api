@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +48,30 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func isManagerRequest(c *gin.Context) bool {
+	role, ok := middleware.GetUserRoleFromContext(c)
+	return ok && role == service.RoleManager
+}
+
+func redactManagerEmailSettings(settings *dto.SystemSettings) {
+	if settings == nil {
+		return
+	}
+	settings.SMTPHost = ""
+	settings.SMTPPort = 0
+	settings.SMTPUsername = ""
+	settings.SMTPPasswordConfigured = false
+	settings.SMTPFrom = ""
+	settings.SMTPFromName = ""
+	settings.SMTPUseTLS = false
+	settings.BalanceLowNotifyEnabled = false
+	settings.BalanceLowNotifyThreshold = 0
+	settings.BalanceLowNotifyRechargeURL = ""
+	settings.SubscriptionExpiryNotifyEnabled = false
+	settings.AccountQuotaNotifyEnabled = false
+	settings.AccountQuotaNotifyEmails = nil
 }
 
 // SettingHandler 系统设置处理器
@@ -408,6 +433,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		payload.DefaultPlatformQuotas = platformQuotas
 	}
 
+	if isManagerRequest(c) {
+		redactManagerEmailSettings(&payload)
+	}
 	response.Success(c, systemSettingsResponseData(payload, authSourceDefaults))
 }
 

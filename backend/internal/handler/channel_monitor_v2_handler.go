@@ -30,7 +30,7 @@ func NewChannelMonitorV2Handler(svc *service.ChannelMonitorV2Service, apiKeyServ
 // (shared Dimensions/Errors handlers serve both user and admin route groups).
 func channelMonitorV2IsAdmin(c *gin.Context) bool {
 	role, ok := middleware.GetUserRoleFromContext(c)
-	return ok && role == service.RoleAdmin
+	return ok && (role == service.RoleAdmin || role == service.RoleManager)
 }
 
 func (h *ChannelMonitorV2Handler) GetConfig(c *gin.Context) {

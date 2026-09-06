@@ -169,6 +169,26 @@ WHERE ns.nspname = 'public'
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.user_allowed_groups')").Scan(&uagRegclass))
 	require.True(t, uagRegclass.Valid, "expected user_allowed_groups table to exist")
 
+	// Moshu reseller client state is additive and keeps protocol credentials
+	// separate from ordinary account rows.
+	for _, table := range []string{
+		"moshu_reseller_connections",
+		"moshu_products",
+		"moshu_catalog_sync_runs",
+		"moshu_settlement_cursors",
+		"moshu_request_profit_records",
+	} {
+		var relation sql.NullString
+		require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.' || $1)", table).Scan(&relation))
+		require.Truef(t, relation.Valid, "expected %s table to exist", table)
+	}
+	requireColumn(t, tx, "moshu_reseller_connections", "access_token_ciphertext", "text", 0, true)
+	requireColumn(t, tx, "moshu_reseller_connections", "refresh_token_ciphertext", "text", 0, true)
+	requireColumn(t, tx, "moshu_products", "credential_ciphertext", "text", 0, true)
+	requireColumn(t, tx, "moshu_products", "cost_rate_multiplier", "numeric", 0, false)
+	requireColumn(t, tx, "moshu_products", "sales_rate_multiplier", "numeric", 0, true)
+	requireColumn(t, tx, "moshu_request_profit_records", "gross_profit", "numeric", 0, false)
+
 	// user_subscriptions: deleted_at for soft delete support (migration 012)
 	requireColumn(t, tx, "user_subscriptions", "deleted_at", "timestamp with time zone", 0, true)
 

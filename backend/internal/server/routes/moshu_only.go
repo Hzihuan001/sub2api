@@ -54,7 +54,18 @@ func moshuOnlyBackupGuard(c *gin.Context) {
 // tests, but prevents administrators from adding, replacing, importing,
 // deleting, or re-authorizing upstream accounts.
 func moshuOnlyAccountGuard(c *gin.Context) {
-	if !moshuOnlyEnabled() || c.Request.Method == http.MethodGet || strings.HasSuffix(c.Request.URL.Path, "/test") {
+	if !moshuOnlyEnabled() {
+		c.Next()
+		return
+	}
+	// The generic account export contains reversible upstream credentials and
+	// proxy passwords. A downstream tenant may inspect redacted account data,
+	// but must never be able to export the owner-managed secret material.
+	if c.Request.Method == http.MethodGet && strings.HasSuffix(c.Request.URL.Path, "/accounts/data") {
+		moshuOnlyMutationGuard(c)
+		return
+	}
+	if c.Request.Method == http.MethodGet || strings.HasSuffix(c.Request.URL.Path, "/test") {
 		c.Next()
 		return
 	}

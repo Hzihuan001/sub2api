@@ -492,6 +492,25 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	auditReq := settingsAuditRequest(req)
 	omitted := omittedSettingKeys(sentFields)
+	if isManagerRequest(c) {
+		for _, key := range []string{
+			service.SettingKeySMTPHost,
+			service.SettingKeySMTPPort,
+			service.SettingKeySMTPUsername,
+			service.SettingKeySMTPPassword,
+			service.SettingKeySMTPFrom,
+			service.SettingKeySMTPFromName,
+			service.SettingKeySMTPUseTLS,
+			service.SettingKeyBalanceLowNotifyEnabled,
+			service.SettingKeyBalanceLowNotifyThreshold,
+			service.SettingKeyBalanceLowNotifyRechargeURL,
+			service.SettingKeySubscriptionExpiryNotifyEnabled,
+			service.SettingKeyAccountQuotaNotifyEnabled,
+			service.SettingKeyAccountQuotaNotifyEmails,
+		} {
+			omitted[key] = struct{}{}
+		}
+	}
 
 	previousSettings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -2397,6 +2416,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		slog.Error("default_platform_quotas_get_failed", "error", err)
 	} else {
 		payload.DefaultPlatformQuotas = platformQuotas
+	}
+	if isManagerRequest(c) {
+		redactManagerEmailSettings(&payload)
 	}
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 }

@@ -21,6 +21,7 @@ func TestMoshuOnlyAccountGuard(t *testing.T) {
 		wantStatus int
 	}{
 		{name: "list remains readable", method: http.MethodGet, path: "/api/v1/admin/accounts", wantStatus: http.StatusNoContent},
+		{name: "credential export is blocked", method: http.MethodGet, path: "/api/v1/admin/accounts/data", wantStatus: http.StatusForbidden},
 		{name: "connectivity test remains available", method: http.MethodPost, path: "/api/v1/admin/accounts/1/test", wantStatus: http.StatusNoContent},
 		{name: "create is blocked", method: http.MethodPost, path: "/api/v1/admin/accounts", wantStatus: http.StatusForbidden},
 		{name: "update is blocked", method: http.MethodPut, path: "/api/v1/admin/accounts/1", wantStatus: http.StatusForbidden},

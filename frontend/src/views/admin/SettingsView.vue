@@ -8263,7 +8263,7 @@
           />
         </div>
 
-        <div v-show="activeTab === 'email'" class="space-y-6">
+		<div v-if="authStore.isSuperAdmin" v-show="activeTab === 'email'" class="space-y-6">
           <!-- Email disabled hint - show when email_verify_enabled is off -->
           <div v-if="!form.email_verify_enabled" class="card">
             <div class="p-6">
@@ -8685,7 +8685,7 @@
         <!-- /Tab: Email -->
 
         <!-- Tab: Backup -->
-        <div v-show="activeTab === 'backup'">
+		<div v-if="authStore.isSuperAdmin" v-show="activeTab === 'backup'">
           <BackupSettings />
         </div>
 
@@ -8823,7 +8823,7 @@ import {
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
-import { useAppStore } from "@/stores";
+import { useAppStore, useAuthStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
 import {
@@ -8841,6 +8841,7 @@ import {
 
 const { t, locale } = useI18n();
 const appStore = useAppStore();
+const authStore = useAuthStore();
 // 关闭 step-up 开关是敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 码重试
 const settingsStepUp = useStepUp();
 const adminSettingsStore = useAdminSettingsStore();
@@ -8873,7 +8874,7 @@ type SettingsTab =
   | "email"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
-const settingsTabs = [
+const allSettingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
@@ -8884,6 +8885,11 @@ const settingsTabs = [
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
+const settingsTabs = computed(() =>
+  authStore.isSuperAdmin
+    ? allSettingsTabs
+    : allSettingsTabs.filter((tab) => tab.key !== "email" && tab.key !== "backup"),
+);
 
 const settingsTabKeyboardActions = {
   ArrowLeft: -1,
@@ -8895,6 +8901,7 @@ const settingsTabKeyboardActions = {
 } as const;
 
 function selectSettingsTab(tab: SettingsTab): void {
+	if (!settingsTabs.value.some((item) => item.key === tab)) return;
   activeTab.value = tab;
 }
 
@@ -8914,19 +8921,19 @@ function handleSettingsTabKeydown(event: KeyboardEvent, tab: SettingsTab): void 
   }
 
   event.preventDefault();
-  const currentIndex = settingsTabs.findIndex((item) => item.key === tab);
+	const currentIndex = settingsTabs.value.findIndex((item) => item.key === tab);
   let nextIndex = currentIndex < 0 ? 0 : currentIndex;
 
   if (action === "first") {
     nextIndex = 0;
   } else if (action === "last") {
-    nextIndex = settingsTabs.length - 1;
+	nextIndex = settingsTabs.value.length - 1;
   } else {
     nextIndex =
-      (nextIndex + action + settingsTabs.length) % settingsTabs.length;
+		(nextIndex + action + settingsTabs.value.length) % settingsTabs.value.length;
   }
 
-  const nextTab = settingsTabs[nextIndex]?.key;
+	const nextTab = settingsTabs.value[nextIndex]?.key;
   if (!nextTab) {
     return;
   }

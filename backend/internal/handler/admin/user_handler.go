@@ -63,7 +63,7 @@ type CreateUserRequest struct {
 	Password             string   `json:"password" binding:"required,min=6"`
 	Username             string   `json:"username"`
 	Notes                string   `json:"notes"`
-	Role                 string   `json:"role" binding:"omitempty,oneof=admin user"`
+	Role                 string   `json:"role" binding:"omitempty,oneof=admin manager user"`
 	Balance              *float64 `json:"balance"`
 	Concurrency          int      `json:"concurrency"`
 	RPMLimit             int      `json:"rpm_limit"`
@@ -78,7 +78,7 @@ type UpdateUserRequest struct {
 	Password             string   `json:"password" binding:"omitempty,min=6"`
 	Username             *string  `json:"username"`
 	Notes                *string  `json:"notes"`
-	Role                 string   `json:"role" binding:"omitempty,oneof=admin user"`
+	Role                 string   `json:"role" binding:"omitempty,oneof=admin manager user"`
 	Balance              *float64 `json:"balance"`
 	Concurrency          *int     `json:"concurrency"`
 	RPMLimit             *int     `json:"rpm_limit"`
@@ -278,8 +278,14 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// 创建管理员账号属权限敏感操作：需最近完成 step-up 2FA 验证。
-	if req.Role == service.RoleAdmin {
+	actorRole, _ := middleware.GetUserRoleFromContext(c)
+	if actorRole == service.RoleManager && req.Role != "" && req.Role != service.RoleUser {
+		response.Forbidden(c, "Only a super admin can create administrator accounts")
+		return
+	}
+
+	// 创建后台管理账号属权限敏感操作：需最近完成 step-up 2FA 验证。
+	if req.Role == service.RoleAdmin || req.Role == service.RoleManager {
 		if !middleware.EnforceStepUp(c, h.totpService, h.userService, h.settingService) {
 			return
 		}
@@ -320,23 +326,34 @@ func (h *UserHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	target, err := h.adminService.GetUser(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	actorRole, _ := middleware.GetUserRoleFromContext(c)
+	if actorRole == service.RoleManager {
+		if target.Role == service.RoleAdmin || target.Role == service.RoleManager {
+			response.Forbidden(c, "Only a super admin can modify administrator accounts")
+			return
+		}
+		if req.Role != "" && req.Role != service.RoleUser {
+			response.Forbidden(c, "Only a super admin can assign administrator roles")
+			return
+		}
+	}
 
 	// 防锁死保护：管理员不能把自己降级为普通用户(单管理员场景下会失去后台访问权)。
 	// 与既有"不能禁用/删除 admin"保护一致。降级其他管理员仍然允许。
-	if req.Role == service.RoleUser && userID == getAdminIDFromContext(c) {
+	if req.Role != "" && req.Role != service.RoleAdmin && userID == getAdminIDFromContext(c) {
 		response.BadRequest(c, "cannot demote yourself from admin")
 		return
 	}
 
 	// 把普通用户提升为管理员属权限敏感操作：需最近完成 step-up 2FA 验证。
 	// 目标已是管理员时（前端编辑表单总是携带 role）不触发，避免日常编辑被打断。
-	if req.Role == service.RoleAdmin {
-		target, err := h.adminService.GetUser(c.Request.Context(), userID)
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-		if target.Role != service.RoleAdmin {
+	if req.Role == service.RoleAdmin || req.Role == service.RoleManager {
+		if target.Role != req.Role {
 			if !middleware.EnforceStepUp(c, h.totpService, h.userService, h.settingService) {
 				return
 			}
@@ -374,6 +391,19 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	if err != nil {
 		response.BadRequest(c, "Invalid user ID")
 		return
+	}
+
+	actorRole, _ := middleware.GetUserRoleFromContext(c)
+	if actorRole == service.RoleManager {
+		target, getErr := h.adminService.GetUser(c.Request.Context(), userID)
+		if getErr != nil {
+			response.ErrorFrom(c, getErr)
+			return
+		}
+		if target.Role == service.RoleAdmin || target.Role == service.RoleManager {
+			response.Forbidden(c, "Only a super admin can delete administrator accounts")
+			return
+		}
 	}
 
 	err = h.adminService.DeleteUser(c.Request.Context(), userID)
@@ -604,6 +634,9 @@ func (h *UserHandler) BatchUpdateConcurrency(c *gin.Context) {
 		response.Success(c, gin.H{"affected": 0})
 		return
 	}
+	if !h.managerMayMutateUsers(c, userIDs) {
+		return
+	}
 
 	affected, err := h.adminService.BatchUpdateConcurrency(c.Request.Context(), userIDs, req.Concurrency, req.Mode)
 	if err != nil {
@@ -664,6 +697,9 @@ func (h *UserHandler) BatchUpdateLimits(c *gin.Context) {
 
 	if len(userIDs) == 0 {
 		response.Success(c, gin.H{"affected": 0})
+		return
+	}
+	if !h.managerMayMutateUsers(c, userIDs) {
 		return
 	}
 

@@ -478,7 +478,8 @@ export default {
       searchApiKeyGroups: '搜索 API Key 分组...',
       statusFilter: '状态筛选',
       allStatuses: '全部状态',
-      admin: '管理员',
+	  admin: '超级管理员',
+	  manager: '管理员',
       user: '用户',
       disabled: '禁用',
       email: '邮箱',
@@ -558,7 +559,8 @@ export default {
       failedToLoadApiKeys: '加载用户 API 密钥失败',
       deleteConfirm: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
       roles: {
-        admin: '管理员',
+		admin: '超级管理员',
+		manager: '管理员',
         user: '用户'
       },
       form: {
@@ -805,7 +807,7 @@ export default {
         type: '类型',
         priority: '优先级',
         apiKeys: 'API 密钥数',
-        accounts: '账号数',
+		accounts: '上游数',
         capacity: '容量',
         usage: '用量',
         status: '状态',
@@ -822,7 +824,7 @@ export default {
       accountsAvailable: '可用:',
       accountsRateLimited: '限流:',
       accountsTotal: '总量:',
-      accountsUnit: '个账号',
+	  accountsUnit: '条上游',
       form: {
         name: '名称',
         description: '描述',
@@ -874,10 +876,10 @@ export default {
         exclusiveHint: '专属分组，可以手动指定给用户',
         platformLabel: '平台限制',
         platformPlaceholder: '选择平台（留空则不限制）',
-        accountsLabel: '指定账号',
-        accountsPlaceholder: '选择账号（留空则不限制）',
+		accountsLabel: '指定上游',
+		accountsPlaceholder: '选择上游（留空则不限制）',
         priorityLabel: '优先级',
-        priorityHint: '数值越小优先级越高，用于账号调度',
+		priorityHint: '数值越小优先级越高，用于上游调度',
         statusLabel: '状态'
       },
       exclusiveObj: {
@@ -922,15 +924,15 @@ export default {
       exclusiveFilter: '专属',
       nonExclusive: '公开',
       public: '公开',
-      rateAndAccounts: '{rate}x 费率 · {count} 个账号',
-      accountsCount: '{count} 个账号',
+	  rateAndAccounts: '{rate}x 费率 · {count} 条上游',
+	  accountsCount: '{count} 条上游',
       rateLabel: '倍率',
       accountFilters: {
-        title: '账号过滤控制',
-        oauthOnly: '仅允许 OAuth 账号',
-        oauthOnlyEnabled: '已启用 — 排除 API Key 类型账号',
-        privacySetOnly: '仅允许隐私保护已设置的账号',
-        privacySetOnlyEnabled: '已启用 — Privacy 未设置的账号将被排除',
+		title: '上游过滤控制',
+		oauthOnly: '仅允许 OAuth 上游',
+		oauthOnlyEnabled: '已启用 — 排除 API Key 类型上游',
+		privacySetOnly: '仅允许隐私保护已设置的上游',
+		privacySetOnlyEnabled: '已启用 — Privacy 未设置的上游将被排除',
         disabled: '未启用'
       },
       enterGroupName: '请输入分组名称',
@@ -1029,7 +1031,7 @@ export default {
         title: '分组逐模型定价',
         description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',
         longContext: '启用长上下文阶梯定价',
-        longContextHint: '勾选后按渠道区间或官方预设阶梯计费；关闭后默认按第一档，账号显式开启时除外。',
+		longContextHint: '勾选后按渠道区间或官方预设阶梯计费；关闭后默认按第一档，上游显式开启时除外。',
         add: '添加模型价格'
       },
       voicePricing: {
@@ -1056,19 +1058,19 @@ export default {
       },
       profitControl: {
         enable: '启用利润控制',
-        enabledHint: '调度时仅允许"账号倍率 ≤ 请求实际下游倍率 ×（1 − 最低毛利率 − 安全缓冲）"的账号进入候选池；账号倍率可手工维护或由探测同步，既有排序、粘性与熔断在合格账号间照常工作。图片/视频调度暂不参与。',
-        disabledHint: '关闭后调度不做利润过滤，账号倍率高于下游倍率的账号也会被选中，可能产生亏损请求。',
+		enabledHint: '调度时仅允许"上游倍率 ≤ 请求实际下游倍率 ×（1 − 最低毛利率 − 安全缓冲）"的上游进入候选池；上游倍率可手工维护或由探测同步，既有排序、粘性与熔断在合格上游间照常工作。图片/视频调度暂不参与。',
+		disabledHint: '关闭后调度不做利润过滤，上游倍率高于下游倍率的上游也会被选中，可能产生亏损请求。',
         minMargin: '最低毛利率（%）',
         minMarginHint: '百分比输入，如 30 表示 30%；后端按小数存储',
         safetyBuffer: '安全缓冲（%）',
         safetyBufferHint: '与最低毛利率相加后从下游倍率中扣除，默认 0',
         marginRangeError: '最低毛利率应在 0 到 99.99 之间',
         bufferRangeError: '安全缓冲应在 0 到 99.99 之间',
-        sumTooHigh: '最低毛利率与安全缓冲之和必须小于 100%，否则将排除全部账号'
+		sumTooHigh: '最低毛利率与安全缓冲之和必须小于 100%，否则将排除全部上游'
       },
       modelsList: {
         title: '自定义 {endpoint} 模型列表',
-        hint: '仅影响 {endpoint} 展示结果，不影响白名单模型调用和账号调度。',
+		hint: '仅影响 {endpoint} 展示结果，不影响白名单模型调用和上游调度。',
         loading: '正在加载模型列表...',
         empty: '暂无可展示模型',
         selectedSummary: '已选 {selected} / {total}',
@@ -1076,17 +1078,17 @@ export default {
         invertSelection: '反选'
       },
       codexModelsManifest: {
-        title: '固定账号获取 Codex Model Manifest',
-        hint: '开启后，该分组的 Codex 客户端 /models 请求只用选定账号向上游拉取并按 slug 合并，不经过调度器；限流/过载中的选定账号仍会被使用。',
-        enable: '使用特定账号获取 manifest',
-        enabledHint: '账号来源限定为当前分组内的 OpenAI 账号，最多选择 10 个。',
+		title: '固定上游获取 Codex Model Manifest',
+		hint: '开启后，该分组的 Codex 客户端 /models 请求只用选定上游拉取并按 slug 合并，不经过调度器；限流/过载中的选定上游仍会被使用。',
+		enable: '使用特定上游获取 manifest',
+		enabledHint: '上游来源限定为当前分组内的 OpenAI 上游，最多选择 10 个。',
         disabledHint: '未启用：manifest 请求经由调度器选账。',
-        accounts: '选定账号',
-        searchPlaceholder: '搜索账号（当前分组内 OpenAI 账号）',
-        searchEmpty: '未找到匹配账号',
-        fallback: '选定账号全部不可用时回退调度器',
+		accounts: '选定上游',
+		searchPlaceholder: '搜索上游（当前分组内 OpenAI 上游）',
+		searchEmpty: '未找到匹配上游',
+		fallback: '选定上游全部不可用时回退调度器',
         fallbackHint: '关闭时返回 503 / 上游错误；开启时回退到现有调度器选账路径。',
-        selectAtLeastOne: '开启固定账号后至少选择一个账号'
+		selectAtLeastOne: '开启固定上游后至少选择一个上游'
       },
       compositeRoutes: {
         action: '路由',
@@ -1191,17 +1193,17 @@ export default {
         noFallback: '不兜底'
       },
       copyAccounts: {
-        title: '从分组复制账号',
-        tooltip: '选择一个或多个相同平台的分组，创建后会自动将这些分组的所有账号绑定到新分组（去重）。',
-        tooltipEdit: '选择一个或多个相同平台的分组，保存后当前分组的账号会被替换为这些分组的账号（去重）。',
-        selectPlaceholder: '选择分组以复制其账号...',
-        hint: '可选多个分组，账号会自动去重',
-        hintEdit: '⚠️ 注意：这会替换当前分组的所有账号绑定'
+		title: '从分组复制上游',
+		tooltip: '选择一个或多个相同平台的分组，创建后会自动将这些分组的所有上游绑定到新分组（去重）。',
+		tooltipEdit: '选择一个或多个相同平台的分组，保存后当前分组的上游会被替换为这些分组的上游（去重）。',
+		selectPlaceholder: '选择分组以复制其上游...',
+		hint: '可选多个分组，上游会自动去重',
+		hintEdit: '⚠️ 注意：这会替换当前分组的所有上游绑定'
       },
       modelRouting: {
         title: '模型路由配置',
         tooltip:
-          '配置特定模型请求优先路由到指定账号。支持通配符匹配，如 claude-opus-* 匹配所有 opus 模型。',
+		  '配置特定模型请求优先路由到指定上游。支持通配符匹配，如 claude-opus-* 匹配所有 opus 模型。',
         enabled: '已启用',
         disabled: '已禁用',
         disabledHint: '启用后，配置的路由规则才会生效',
@@ -1209,10 +1211,10 @@ export default {
         modelPattern: '模型模式',
         modelPatternPlaceholder: 'claude-opus-*',
         modelPatternHint: '支持 * 通配符，如 claude-opus-* 匹配所有 opus 模型',
-        accounts: '优先账号',
-        selectAccounts: '选择账号',
-        noAccounts: '此分组暂无账号',
-        loadingAccounts: '加载账号中...',
+		accounts: '优先上游',
+		selectAccounts: '选择上游',
+		noAccounts: '此分组暂无上游',
+		loadingAccounts: '加载上游中...',
       claudeMaxSimulation: {
         title: 'Claude Max 用量模拟',
         tooltip:
@@ -1223,9 +1225,9 @@ export default {
       },
         removeRule: '删除规则',
         noRules: '暂无路由规则',
-        noRulesHint: '添加路由规则以将特定模型请求优先路由到指定账号',
-        searchAccountPlaceholder: '搜索账号...',
-        accountsHint: '选择此模型模式优先使用的账号'
+		noRulesHint: '添加路由规则以将特定模型请求优先路由到指定上游',
+		searchAccountPlaceholder: '搜索上游...',
+		accountsHint: '选择此模型模式优先使用的上游'
       },
       mcpXml: {
         title: 'MCP XML 协议注入',

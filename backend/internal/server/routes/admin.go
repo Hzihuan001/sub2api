@@ -31,6 +31,8 @@ func RegisterAdminRoutes(
 	admin.Use(gin.HandlerFunc(auditLog))
 	admin.Use(middleware.AdminComplianceGuard(settingService))
 	{
+		registerMoshuResellerRoutes(admin, h)
+
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)
 
@@ -184,12 +186,13 @@ func registerContentModerationRoutes(admin *gin.RouterGroup, h *handler.Handlers
 func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
-		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
+		apiKeys.PUT("/:id", h.Admin.APIKey.ManagerTargetUserWriteGuard(), h.Admin.APIKey.UpdateGroup)
 	}
 }
 
 func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	ops := admin.Group("/ops")
+	ops.Use(middleware.SuperAdminOnly())
 	{
 		// Realtime ops signals
 		ops.GET("/concurrency", h.Admin.Ops.GetConcurrencyStats)
@@ -299,28 +302,29 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	users := admin.Group("/users")
+	managerTargetWrite := h.Admin.User.ManagerTargetUserWriteGuard()
 	{
 		users.GET("", h.Admin.User.List)
 		users.GET("/:id", h.Admin.User.GetByID)
-		users.POST("/:id/auth-identities", h.Admin.User.BindAuthIdentity)
+		users.POST("/:id/auth-identities", managerTargetWrite, h.Admin.User.BindAuthIdentity)
 		users.POST("", h.Admin.User.Create)
-		users.PUT("/:id", h.Admin.User.Update)
-		users.DELETE("/:id", h.Admin.User.Delete)
-		users.POST("/:id/balance", h.Admin.User.UpdateBalance)
+		users.PUT("/:id", managerTargetWrite, h.Admin.User.Update)
+		users.DELETE("/:id", managerTargetWrite, h.Admin.User.Delete)
+		users.POST("/:id/balance", managerTargetWrite, h.Admin.User.UpdateBalance)
 		users.GET("/:id/api-keys", h.Admin.User.GetUserAPIKeys)
 		users.GET("/:id/usage", h.Admin.User.GetUserUsage)
 		users.GET("/:id/balance-history", h.Admin.User.GetBalanceHistory)
-		users.POST("/:id/replace-group", h.Admin.User.ReplaceGroup)
+		users.POST("/:id/replace-group", managerTargetWrite, h.Admin.User.ReplaceGroup)
 		users.GET("/:id/rpm-status", h.Admin.User.GetUserRPMStatus)
 		users.POST("/batch-concurrency", h.Admin.User.BatchUpdateConcurrency)
 		users.POST("/batch-limits", h.Admin.User.BatchUpdateLimits)
 		users.GET("/:id/platform-quotas", h.Admin.User.GetUserPlatformQuotas)
-		users.PUT("/:id/platform-quotas", h.Admin.User.UpdateUserPlatformQuotas)
-		users.POST("/:id/platform-quotas/reset", h.Admin.User.ResetUserPlatformQuotaWindow)
+		users.PUT("/:id/platform-quotas", managerTargetWrite, h.Admin.User.UpdateUserPlatformQuotas)
+		users.POST("/:id/platform-quotas/reset", managerTargetWrite, h.Admin.User.ResetUserPlatformQuotaWindow)
 
 		// User attribute values
 		users.GET("/:id/attributes", h.Admin.UserAttribute.GetUserAttributes)
-		users.PUT("/:id/attributes", h.Admin.UserAttribute.UpdateUserAttributes)
+		users.PUT("/:id/attributes", managerTargetWrite, h.Admin.UserAttribute.UpdateUserAttributes)
 	}
 }
 
@@ -580,17 +584,17 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
-		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
-		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
-		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)
-		adminSettings.POST("/email-template-preview", h.Admin.Setting.PreviewEmailTemplate)
-		adminSettings.GET("/email-templates/:event/:locale", h.Admin.Setting.GetEmailTemplate)
-		adminSettings.PUT("/email-templates/:event/:locale", h.Admin.Setting.UpdateEmailTemplate)
-		adminSettings.POST("/email-templates/:event/:locale/restore-official", h.Admin.Setting.RestoreOfficialEmailTemplate)
+		adminSettings.POST("/test-smtp", middleware.SuperAdminOnly(), h.Admin.Setting.TestSMTPConnection)
+		adminSettings.POST("/send-test-email", middleware.SuperAdminOnly(), h.Admin.Setting.SendTestEmail)
+		adminSettings.GET("/email-templates", middleware.SuperAdminOnly(), h.Admin.Setting.ListEmailTemplates)
+		adminSettings.POST("/email-template-preview", middleware.SuperAdminOnly(), h.Admin.Setting.PreviewEmailTemplate)
+		adminSettings.GET("/email-templates/:event/:locale", middleware.SuperAdminOnly(), h.Admin.Setting.GetEmailTemplate)
+		adminSettings.PUT("/email-templates/:event/:locale", middleware.SuperAdminOnly(), h.Admin.Setting.UpdateEmailTemplate)
+		adminSettings.POST("/email-templates/:event/:locale/restore-official", middleware.SuperAdminOnly(), h.Admin.Setting.RestoreOfficialEmailTemplate)
 		// Admin API Key 管理
-		adminSettings.GET("/admin-api-key", h.Admin.Setting.GetAdminAPIKey)
-		adminSettings.POST("/admin-api-key/regenerate", h.Admin.Setting.RegenerateAdminAPIKey)
-		adminSettings.DELETE("/admin-api-key", h.Admin.Setting.DeleteAdminAPIKey)
+		adminSettings.GET("/admin-api-key", middleware.SuperAdminOnly(), h.Admin.Setting.GetAdminAPIKey)
+		adminSettings.POST("/admin-api-key/regenerate", middleware.SuperAdminOnly(), h.Admin.Setting.RegenerateAdminAPIKey)
+		adminSettings.DELETE("/admin-api-key", middleware.SuperAdminOnly(), h.Admin.Setting.DeleteAdminAPIKey)
 		// 529过载冷却配置
 		adminSettings.GET("/overload-cooldown", h.Admin.Setting.GetOverloadCooldownSettings)
 		adminSettings.PUT("/overload-cooldown", h.Admin.Setting.UpdateOverloadCooldownSettings)
@@ -622,6 +626,7 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
 	dataManagement := admin.Group("/data-management")
+	dataManagement.Use(middleware.SuperAdminOnly())
 	{
 		dataManagement.GET("/agent/health", h.Admin.DataManagement.GetAgentHealth)
 		dataManagement.GET("/config", h.Admin.DataManagement.GetConfig)
@@ -638,14 +643,16 @@ func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 		dataManagement.PUT("/s3/profiles/:profile_id", gin.HandlerFunc(stepUpAuth), h.Admin.DataManagement.UpdateS3Profile)
 		dataManagement.DELETE("/s3/profiles/:profile_id", h.Admin.DataManagement.DeleteS3Profile)
 		dataManagement.POST("/s3/profiles/:profile_id/activate", gin.HandlerFunc(stepUpAuth), h.Admin.DataManagement.SetActiveS3Profile)
-		dataManagement.POST("/backups", gin.HandlerFunc(stepUpAuth), h.Admin.DataManagement.CreateBackupJob)
-		dataManagement.GET("/backups", h.Admin.DataManagement.ListBackupJobs)
-		dataManagement.GET("/backups/:job_id", h.Admin.DataManagement.GetBackupJob)
+		dataBackups := dataManagement.Group("/backups")
+		dataBackups.POST("", gin.HandlerFunc(stepUpAuth), h.Admin.DataManagement.CreateBackupJob)
+		dataBackups.GET("", h.Admin.DataManagement.ListBackupJobs)
+		dataBackups.GET("/:job_id", h.Admin.DataManagement.GetBackupJob)
 	}
 }
 
 func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
 	backup := admin.Group("/backups")
+	backup.Use(middleware.SuperAdminOnly())
 	if moshuOnlyEnabled() {
 		// A full database restore could re-introduce arbitrary upstream accounts.
 		backup.Use(moshuOnlyBackupGuard)

@@ -478,7 +478,8 @@ export default {
       searchApiKeyGroups: 'Search API Key groups...',
       statusFilter: 'Status Filter',
       allStatuses: 'All Status',
-      admin: 'Admin',
+	  admin: 'Super Admin',
+	  manager: 'Admin',
       user: 'User',
       disabled: 'Disabled',
       email: 'Email',
@@ -672,7 +673,8 @@ export default {
       createdAt: 'Created',
       totalRecharged: 'Total Recharged',
       roles: {
-        admin: 'Admin',
+		admin: 'Super Admin',
+		manager: 'Admin',
         user: 'User'
       },
       // Settings Dropdowns
@@ -812,7 +814,7 @@ export default {
         type: 'Type',
         priority: 'Priority',
         apiKeys: 'API Keys',
-        accounts: 'Accounts',
+		accounts: 'Upstreams',
         capacity: 'Capacity',
         usage: 'Usage',
         status: 'Status',
@@ -830,15 +832,15 @@ export default {
       accountsRateLimited: 'Limited:',
       accountsTotal: 'Total:',
       accountsUnit: '',
-      rateAndAccounts: '{rate}x rate · {count} accounts',
-      accountsCount: '{count} accounts',
+	  rateAndAccounts: '{rate}x rate · {count} upstreams',
+	  accountsCount: '{count} upstreams',
       rateLabel: 'rate',
       accountFilters: {
-        title: 'Account Filter Controls',
-        oauthOnly: 'Only allow OAuth accounts',
-        oauthOnlyEnabled: 'Enabled — API Key accounts will be excluded',
-        privacySetOnly: 'Only allow accounts with privacy protection set',
-        privacySetOnlyEnabled: 'Enabled — accounts with unset Privacy will be excluded',
+		title: 'Upstream Filter Controls',
+		oauthOnly: 'Only allow OAuth upstreams',
+		oauthOnlyEnabled: 'Enabled — API Key upstreams will be excluded',
+		privacySetOnly: 'Only allow upstreams with privacy protection set',
+		privacySetOnlyEnabled: 'Enabled — upstreams with unset Privacy will be excluded',
         disabled: 'Disabled'
       },
       form: {
@@ -892,10 +894,10 @@ export default {
         exclusiveHint: 'Exclusive group, can be manually assigned to users',
         platformLabel: 'Platform Restriction',
         platformPlaceholder: 'Select platform (leave empty for no restriction)',
-        accountsLabel: 'Designated Accounts',
-        accountsPlaceholder: 'Select accounts (leave empty for no restriction)',
+		accountsLabel: 'Designated Upstreams',
+		accountsPlaceholder: 'Select upstreams (leave empty for no restriction)',
         priorityLabel: 'Priority',
-        priorityHint: 'Lower value means higher priority, used for account scheduling',
+		priorityHint: 'Lower value means higher priority, used for upstream scheduling',
         statusLabel: 'Status'
       },
       exclusiveObj: {
@@ -1032,7 +1034,7 @@ export default {
         title: 'Per-model group pricing',
         description: 'Overrides channel and built-in prices for matching models. Long-context tiers come from official presets — do not enter custom intervals. Use per-request tiers such as realtime, tts, and stt for audio.',
         longContext: 'Enable long-context tier pricing',
-        longContextHint: 'When checked, channel intervals or official preset tiers apply. Otherwise the first tier is used unless the account explicitly enables long-context billing.',
+		longContextHint: 'When checked, channel intervals or official preset tiers apply. Otherwise the first tier is used unless the upstream explicitly enables long-context billing.',
         add: 'Add model price'
       },
       voicePricing: {
@@ -1059,19 +1061,19 @@ export default {
       },
       profitControl: {
         enable: 'Enable profit control',
-        enabledHint: 'Scheduling only admits accounts whose account multiplier ≤ the request\'s effective downstream multiplier × (1 − min margin − safety buffer). Account multipliers may be maintained manually or synchronized from probes; existing ordering, stickiness and breakers keep working among qualified accounts. Image/video scheduling is not covered yet.',
-        disabledHint: 'When disabled, scheduling does no profit filtering: accounts whose account multiplier exceeds the downstream multiplier can still be selected, which may produce loss-making requests.',
+		enabledHint: 'Scheduling only admits upstreams whose multiplier ≤ the request\'s effective downstream multiplier × (1 − min margin − safety buffer). Upstream multipliers may be maintained manually or synchronized from probes; existing ordering, stickiness and breakers keep working among qualified upstreams. Image/video scheduling is not covered yet.',
+		disabledHint: 'When disabled, scheduling does no profit filtering: upstreams whose multiplier exceeds the downstream multiplier can still be selected, which may produce loss-making requests.',
         minMargin: 'Min gross margin (%)',
         minMarginHint: 'Percent input, e.g. 30 means 30%; stored as a decimal on the backend',
         safetyBuffer: 'Safety buffer (%)',
         safetyBufferHint: 'Added to min margin and deducted from the downstream multiplier; defaults to 0',
         marginRangeError: 'Min gross margin must be between 0 and 99.99',
         bufferRangeError: 'Safety buffer must be between 0 and 99.99',
-        sumTooHigh: 'Min gross margin plus safety buffer must be less than 100%, otherwise every account would be excluded'
+		sumTooHigh: 'Min gross margin plus safety buffer must be less than 100%, otherwise every upstream would be excluded'
       },
       modelsList: {
         title: 'Custom {endpoint} Model List',
-        hint: 'Only changes the {endpoint} response. Whitelist model calls and account routing are unchanged.',
+		hint: 'Only changes the {endpoint} response. Whitelist model calls and upstream routing are unchanged.',
         loading: 'Loading model list...',
         empty: 'No displayable models',
         selectedSummary: 'Selected {selected} / {total}',
@@ -1079,17 +1081,17 @@ export default {
         invertSelection: 'Invert'
       },
       codexModelsManifest: {
-        title: 'Pinned Accounts for Codex Model Manifest',
-        hint: 'When enabled, Codex client /models requests for this group are fetched only from the pinned accounts and merged by slug, bypassing the scheduler. Pinned accounts in rate-limit or overload windows are still used.',
-        enable: 'Fetch manifest with specific accounts',
-        enabledHint: 'Accounts are limited to OpenAI accounts bound to this group, at most 10.',
-        disabledHint: 'Not enabled: manifest requests go through scheduler account selection.',
-        accounts: 'Pinned accounts',
-        searchPlaceholder: 'Search accounts (OpenAI accounts in this group)',
-        searchEmpty: 'No matching accounts',
-        fallback: 'Fall back to the scheduler when all pinned accounts are unavailable',
+		title: 'Pinned Upstreams for Codex Model Manifest',
+		hint: 'When enabled, Codex client /models requests for this group are fetched only from the pinned upstreams and merged by slug, bypassing the scheduler. Pinned upstreams in rate-limit or overload windows are still used.',
+		enable: 'Fetch manifest with specific upstreams',
+		enabledHint: 'Upstreams are limited to OpenAI upstreams bound to this group, at most 10.',
+		disabledHint: 'Not enabled: manifest requests go through scheduler upstream selection.',
+		accounts: 'Pinned upstreams',
+		searchPlaceholder: 'Search upstreams (OpenAI upstreams in this group)',
+		searchEmpty: 'No matching upstreams',
+		fallback: 'Fall back to the scheduler when all pinned upstreams are unavailable',
         fallbackHint: 'Off: return 503 / the upstream error. On: fall back to the existing scheduler path.',
-        selectAtLeastOne: 'Select at least one account after enabling pinned accounts'
+		selectAtLeastOne: 'Select at least one upstream after enabling pinned upstreams'
       },
       compositeRoutes: {
         action: 'Routes',
@@ -1193,16 +1195,16 @@ export default {
         noFallback: 'No Fallback'
       },
       copyAccounts: {
-        title: 'Copy Accounts from Groups',
-        tooltip: 'Select one or more groups of the same platform. After creation, all accounts from these groups will be automatically bound to the new group (deduplicated).',
-        tooltipEdit: 'Select one or more groups of the same platform. After saving, current group accounts will be replaced with accounts from these groups (deduplicated).',
-        selectPlaceholder: 'Select groups to copy accounts from...',
-        hint: 'Multiple groups can be selected, accounts will be deduplicated',
-        hintEdit: '⚠️ Warning: This will replace all existing account bindings'
+		title: 'Copy Upstreams from Groups',
+		tooltip: 'Select one or more groups of the same platform. After creation, all upstreams from these groups will be automatically bound to the new group (deduplicated).',
+		tooltipEdit: 'Select one or more groups of the same platform. After saving, current group upstreams will be replaced with upstreams from these groups (deduplicated).',
+		selectPlaceholder: 'Select groups to copy upstreams from...',
+		hint: 'Multiple groups can be selected; upstreams will be deduplicated',
+		hintEdit: '⚠️ Warning: This will replace all existing upstream bindings'
       },
       modelRouting: {
         title: 'Model Routing',
-        tooltip: 'Configure specific model requests to be routed to designated accounts. Supports wildcard matching, e.g., claude-opus-* matches all opus models.',
+		tooltip: 'Configure specific model requests to be routed to designated upstreams. Supports wildcard matching, e.g., claude-opus-* matches all opus models.',
         enabled: 'Enabled',
         disabled: 'Disabled',
         disabledHint: 'Routing rules will only take effect when enabled',
@@ -1210,15 +1212,15 @@ export default {
         modelPattern: 'Model Pattern',
         modelPatternPlaceholder: 'claude-opus-*',
         modelPatternHint: 'Supports * wildcard, e.g., claude-opus-* matches all opus models',
-        accounts: 'Priority Accounts',
-        selectAccounts: 'Select accounts',
-        noAccounts: 'No accounts in this group',
-        loadingAccounts: 'Loading accounts...',
+		accounts: 'Priority Upstreams',
+		selectAccounts: 'Select upstreams',
+		noAccounts: 'No upstreams in this group',
+		loadingAccounts: 'Loading upstreams...',
         removeRule: 'Remove Rule',
         noRules: 'No routing rules',
-        noRulesHint: 'Add routing rules to route specific model requests to designated accounts',
-        searchAccountPlaceholder: 'Search accounts...',
-        accountsHint: 'Select accounts to prioritize for this model pattern'
+		noRulesHint: 'Add routing rules to route specific model requests to designated upstreams',
+		searchAccountPlaceholder: 'Search upstreams...',
+		accountsHint: 'Select upstreams to prioritize for this model pattern'
       },
       mcpXml: {
         title: 'MCP XML Protocol Injection',

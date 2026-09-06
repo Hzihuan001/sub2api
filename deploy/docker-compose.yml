@@ -53,6 +53,12 @@ services:
       - RUN_MODE=${RUN_MODE:-standard}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
       - ALIPAY_MOBILE_PRECREATE_DEEP_LINK=${ALIPAY_MOBILE_PRECREATE_DEEP_LINK:-}
+      # L1 reseller protocol client. Legacy manually configured Moshu accounts
+      # continue to work while this remains disabled.
+      - MOSHU_RESELLER_CLIENT_ENABLED=${MOSHU_RESELLER_CLIENT_ENABLED:-false}
+      - MOSHU_RESELLER_URL=${MOSHU_RESELLER_URL:-}
+      - MOSHU_RESELLER_ALLOW_HTTP=${MOSHU_RESELLER_ALLOW_HTTP:-false}
+      - MOSHU_ONLY_MODE=${MOSHU_ONLY_MODE:-false}
 
       # =======================================================================
       # Database Configuration (PostgreSQL)
