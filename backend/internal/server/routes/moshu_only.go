@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -57,36 +58,29 @@ func moshuOnlyAccountGuard(c *gin.Context) {
 		c.Next()
 		return
 	}
+	if c.Request.Method == http.MethodPut && isAccountUpdatePath(c.Request.URL.Path) && moshuOnlyAccountGroupUpdate(c) {
+		c.Next()
+		return
+	}
 	moshuOnlyMutationGuard(c)
 }
 
 func moshuOnlyGroupGuard(c *gin.Context) {
-	if !moshuOnlyEnabled() {
-		c.Next()
-		return
-	}
-	// Existing product groups remain visible. Retail admins may change the
-	// selling multiplier and per-user overrides, but the product catalogue and
-	// routing topology are owned by Moshu in this phase.
-	if c.Request.Method == http.MethodGet ||
-		strings.HasSuffix(c.Request.URL.Path, "/rate-multipliers") ||
-		(strings.HasSuffix(c.Request.URL.Path, "/sort-order") && c.Request.Method == http.MethodPut) {
-		c.Next()
-		return
-	}
-	if c.Request.Method == http.MethodPut && isGroupUpdatePath(c.Request.URL.Path) && moshuOnlyRetailGroupUpdate(c) {
-		c.Next()
-		return
-	}
-	moshuOnlyMutationGuard(c)
+	// Retail administrators own their sales groups. Upstream account and proxy
+	// topology remains protected by the dedicated account/proxy guards.
+	c.Next()
 }
 
-func isGroupUpdatePath(path string) bool {
+func isAccountUpdatePath(path string) bool {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
-	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "admin" && parts[3] == "groups" && parts[4] != ""
+	if len(parts) != 5 || parts[0] != "api" || parts[1] != "v1" || parts[2] != "admin" || parts[3] != "accounts" {
+		return false
+	}
+	_, err := strconv.ParseInt(parts[4], 10, 64)
+	return err == nil
 }
 
-func moshuOnlyRetailGroupUpdate(c *gin.Context) bool {
+func moshuOnlyAccountGroupUpdate(c *gin.Context) bool {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil || len(bytes.TrimSpace(body)) == 0 {
 		return false
@@ -96,8 +90,8 @@ func moshuOnlyRetailGroupUpdate(c *gin.Context) bool {
 		return false
 	}
 	allowed := map[string]bool{
-		"rate_multiplier": true,
-		"description":     true,
+		"group_ids":                  true,
+		"confirm_mixed_channel_risk": true,
 	}
 	for key := range payload {
 		if !allowed[key] {
@@ -105,5 +99,6 @@ func moshuOnlyRetailGroupUpdate(c *gin.Context) bool {
 		}
 	}
 	c.Request.Body = io.NopCloser(bytes.NewReader(body))
-	return len(payload) > 0
+	_, hasGroupIDs := payload["group_ids"]
+	return hasGroupIDs
 }

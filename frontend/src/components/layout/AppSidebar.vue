@@ -768,7 +768,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     {
       path: '/admin/groups',
-      label: appStore.cachedPublicSettings?.moshu_only_mode === true ? t('nav.moshuPricing') : t('nav.groups'),
+      label: t('nav.groups'),
       icon: FolderIcon,
       hideInSimpleMode: true
     },

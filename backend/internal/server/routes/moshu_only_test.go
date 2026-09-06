@@ -17,17 +17,21 @@ func TestMoshuOnlyAccountGuard(t *testing.T) {
 		name       string
 		method     string
 		path       string
+		body       string
 		wantStatus int
 	}{
 		{name: "list remains readable", method: http.MethodGet, path: "/api/v1/admin/accounts", wantStatus: http.StatusNoContent},
 		{name: "connectivity test remains available", method: http.MethodPost, path: "/api/v1/admin/accounts/1/test", wantStatus: http.StatusNoContent},
 		{name: "create is blocked", method: http.MethodPost, path: "/api/v1/admin/accounts", wantStatus: http.StatusForbidden},
 		{name: "update is blocked", method: http.MethodPut, path: "/api/v1/admin/accounts/1", wantStatus: http.StatusForbidden},
+		{name: "group assignment is editable", method: http.MethodPut, path: "/api/v1/admin/accounts/1", body: `{"group_ids":[2,3]}`, wantStatus: http.StatusNoContent},
+		{name: "mixed channel confirmation may accompany assignment", method: http.MethodPut, path: "/api/v1/admin/accounts/1", body: `{"group_ids":[2],"confirm_mixed_channel_risk":true}`, wantStatus: http.StatusNoContent},
+		{name: "other account fields remain blocked", method: http.MethodPut, path: "/api/v1/admin/accounts/1", body: `{"name":"changed"}`, wantStatus: http.StatusForbidden},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status := runMoshuOnlyGuard(t, moshuOnlyAccountGuard, tt.method, tt.path, "")
+			status := runMoshuOnlyGuard(t, moshuOnlyAccountGuard, tt.method, tt.path, tt.body)
 			if status != tt.wantStatus {
 				t.Fatalf("status = %d, want %d", status, tt.wantStatus)
 			}
@@ -47,9 +51,9 @@ func TestMoshuOnlyGroupGuard(t *testing.T) {
 	}{
 		{name: "list remains readable", method: http.MethodGet, path: "/api/v1/admin/groups", wantStatus: http.StatusNoContent},
 		{name: "retail multiplier is editable", method: http.MethodPut, path: "/api/v1/admin/groups/2", body: `{"rate_multiplier":0.4}`, wantStatus: http.StatusNoContent},
-		{name: "description is editable", method: http.MethodPut, path: "/api/v1/admin/groups/2", body: `{"description":"retail product"}`, wantStatus: http.StatusNoContent},
-		{name: "upstream topology is immutable", method: http.MethodPut, path: "/api/v1/admin/groups/2", body: `{"name":"other upstream"}`, wantStatus: http.StatusForbidden},
-		{name: "create is blocked", method: http.MethodPost, path: "/api/v1/admin/groups", body: `{}`, wantStatus: http.StatusForbidden},
+		{name: "group settings are editable", method: http.MethodPut, path: "/api/v1/admin/groups/2", body: `{"name":"retail"}`, wantStatus: http.StatusNoContent},
+		{name: "create is available", method: http.MethodPost, path: "/api/v1/admin/groups", body: `{}`, wantStatus: http.StatusNoContent},
+		{name: "delete is available", method: http.MethodDelete, path: "/api/v1/admin/groups/2", wantStatus: http.StatusNoContent},
 	}
 
 	for _, tt := range tests {
@@ -62,26 +66,28 @@ func TestMoshuOnlyGroupGuard(t *testing.T) {
 	}
 }
 
-func TestMoshuOnlyGroupGuardRestoresAllowedRequestBody(t *testing.T) {
+func TestMoshuOnlyAccountGuardRestoresAllowedRequestBody(t *testing.T) {
 	t.Setenv("MOSHU_ONLY_MODE", "true")
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	router.Use(moshuOnlyGroupGuard)
-	router.PUT("/api/v1/admin/groups/:id", func(c *gin.Context) {
-		var payload map[string]float64
+	router.Use(moshuOnlyAccountGuard)
+	router.PUT("/api/v1/admin/accounts/:id", func(c *gin.Context) {
+		var payload struct {
+			GroupIDs []int64 `json:"group_ids"`
+		}
 		if err := json.NewDecoder(c.Request.Body).Decode(&payload); err != nil {
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if payload["rate_multiplier"] != 0.4 {
+		if len(payload.GroupIDs) != 2 || payload.GroupIDs[0] != 2 || payload.GroupIDs[1] != 3 {
 			c.Status(http.StatusUnprocessableEntity)
 			return
 		}
 		c.Status(http.StatusNoContent)
 	})
 
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/groups/2", strings.NewReader(`{"rate_multiplier":0.4}`))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/accounts/1", strings.NewReader(`{"group_ids":[2,3]}`))
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
 

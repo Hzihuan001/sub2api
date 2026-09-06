@@ -49,22 +49,38 @@
           </dl>
 
           <div class="mt-4">
-            <p class="text-xs font-medium uppercase tracking-wide text-gray-400">{{ t('admin.moshuUpstream.boundGroups') }}</p>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <router-link
-                v-for="group in groupsFor(account)"
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.moshuUpstream.assignGroups') }}</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.moshuUpstream.assignGroupsHint') }}</p>
+            <div v-if="compatibleGroups(account).length" class="mt-3 grid gap-2 sm:grid-cols-2">
+              <label
+                v-for="group in compatibleGroups(account)"
                 :key="group.id"
-                to="/admin/groups"
-                class="rounded-lg border border-gray-200 px-3 py-2 text-sm hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:hover:border-primary-500"
+                class="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:border-primary-400 dark:border-dark-600 dark:hover:border-primary-500"
               >
-                <span class="font-medium">{{ group.name }}</span>
-                <span class="ml-2 text-gray-500 dark:text-gray-400">
+                <input
+                  v-model="bindingDrafts[account.id]"
+                  type="checkbox"
+                  :value="group.id"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span class="min-w-0 flex-1 truncate font-medium text-gray-800 dark:text-gray-200">{{ group.name }}</span>
+                <span class="text-gray-500 dark:text-gray-400">
                   {{ t('admin.moshuUpstream.retailMultiplier') }} {{ formatMultiplier(group.rate_multiplier) }}
                 </span>
-              </router-link>
-              <span v-if="groupsFor(account).length === 0" class="text-sm text-amber-600 dark:text-amber-400">
-                {{ t('admin.moshuUpstream.noBoundGroups') }}
-              </span>
+              </label>
+            </div>
+            <router-link v-else to="/admin/groups" class="mt-3 inline-flex text-sm text-primary-600 hover:underline dark:text-primary-400">
+              {{ t('admin.moshuUpstream.noCompatibleGroups') }}
+            </router-link>
+            <div class="mt-3 flex justify-end">
+              <button
+                class="btn btn-primary"
+                :disabled="savingAccountID === account.id || !bindingsChanged(account)"
+                @click="saveBindings(account)"
+              >
+                <Icon name="check" size="sm" />
+                {{ savingAccountID === account.id ? t('common.saving') : t('admin.moshuUpstream.saveAssignments') }}
+              </button>
             </div>
           </div>
 
@@ -80,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -95,6 +111,8 @@ const appStore = useAppStore()
 const loading = ref(true)
 const accounts = ref<AccountListItem[]>([])
 const groups = ref<AdminGroup[]>([])
+const bindingDrafts = reactive<Record<number, number[]>>({})
+const savingAccountID = ref<number | null>(null)
 const selectedAccount = ref<Account | null>(null)
 const showTestModal = ref(false)
 
@@ -107,6 +125,9 @@ async function loadData() {
     ])
     accounts.value = accountPage.items
     groups.value = allGroups
+    for (const account of accountPage.items) {
+      bindingDrafts[account.id] = [...(account.group_ids ?? [])]
+    }
   } catch (error) {
     appStore.showError(errorMessage(error, t('admin.moshuUpstream.loadFailed')))
   } finally {
@@ -125,14 +146,34 @@ function closeTest() {
   void loadData()
 }
 
-function groupsFor(account: AccountListItem): AdminGroup[] {
-  const ids = new Set(account.group_ids ?? [])
-  return groups.value.filter((group) => ids.has(group.id))
+function compatibleGroups(account: AccountListItem): AdminGroup[] {
+  return groups.value.filter((group) => group.platform === account.platform)
+}
+
+function normalizedGroupIDs(values: number[] | undefined): number[] {
+  return [...new Set(values ?? [])].sort((a, b) => a - b)
+}
+
+function bindingsChanged(account: AccountListItem): boolean {
+  return normalizedGroupIDs(bindingDrafts[account.id]).join(',') !== normalizedGroupIDs(account.group_ids).join(',')
+}
+
+async function saveBindings(account: AccountListItem) {
+  savingAccountID.value = account.id
+  try {
+    await accountsAPI.update(account.id, { group_ids: normalizedGroupIDs(bindingDrafts[account.id]) })
+    appStore.showSuccess(t('admin.moshuUpstream.assignmentsSaved'))
+    await loadData()
+  } catch (error) {
+    appStore.showError(errorMessage(error, t('admin.moshuUpstream.assignmentsSaveFailed')))
+  } finally {
+    savingAccountID.value = null
+  }
 }
 
 function accountLabel(account: AccountListItem): string {
-  const names = groupsFor(account).map((group) => group.name)
-  return names.length ? names.join(' / ') : t('admin.moshuUpstream.accountLabel', { id: account.id })
+  const name = account.name.replace(/^moshu[\s_-]*/i, '').trim()
+  return name || t('admin.moshuUpstream.accountLabel')
 }
 
 function formatMultiplier(value: number | null | undefined): string {
