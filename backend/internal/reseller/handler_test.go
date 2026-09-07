@@ -19,7 +19,7 @@ func TestGatewayMiddlewareDoesNotLeakDatabaseErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectQuery("SELECT rc.reseller_id").WithArgs(int64(7)).
 		WillReturnError(errors.New("secret database details"))

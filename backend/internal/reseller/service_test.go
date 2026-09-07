@@ -45,7 +45,7 @@ func TestBeginGatewayRequestRejectsDuplicateBeforeUpstream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectQuery("SELECT rc.reseller_id").WithArgs(int64(7)).WillReturnRows(
 		sqlmock.NewRows([]string{"reseller_id", "product_id", "group_id", "catalog_version", "cost_rate_multiplier", "allowed_cidrs", "user_id", "available_balance"}).
@@ -88,7 +88,7 @@ func TestFailedGatewayRequestUsesReservedPricingSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectQuery("SELECT rc.reseller_id").WithArgs(int64(7)).WillReturnRows(
 		sqlmock.NewRows([]string{"reseller_id", "product_id", "group_id", "catalog_version", "cost_rate_multiplier", "allowed_cidrs", "user_id", "available_balance"}).

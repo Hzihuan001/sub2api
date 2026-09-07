@@ -246,7 +246,7 @@ func (s *Service) ListProducts(ctx context.Context, resellerID int64, enabledOnl
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	products := make([]Product, 0)
 	for rows.Next() {
 		product, scanErr := scanProduct(rows)
@@ -501,7 +501,7 @@ func (s *Service) ListSettlements(ctx context.Context, resellerID, afterID int64
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]Settlement, 0, limit)
 	for rows.Next() {
 		item, scanErr := scanSettlement(rows)
@@ -809,7 +809,7 @@ func listProductsTx(ctx context.Context, tx *sql.Tx, resellerID int64, ids []int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	products := make([]Product, 0, len(ids))
 	for rows.Next() {
 		product, scanErr := scanProduct(rows)
