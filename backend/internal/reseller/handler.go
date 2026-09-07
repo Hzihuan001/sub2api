@@ -54,6 +54,26 @@ type updateTenantRequest struct {
 	AllowedCIDRs []string `json:"allowed_cidrs"`
 }
 
+func (h *Handler) ChangeBillingAccount(c *gin.Context) {
+	id, ok := positiveParam(c, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		UserID int64 `json:"user_id" binding:"required,gt=0"`
+	}
+	if c.ShouldBindJSON(&req) != nil {
+		response.BadRequest(c, "invalid billing account")
+		return
+	}
+	tenant, err := h.service.ChangeBillingAccount(c.Request.Context(), id, req.UserID)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, tenant)
+}
+
 func (h *Handler) UpdateTenant(c *gin.Context) {
 	id, ok := positiveParam(c, "id")
 	if !ok {
@@ -331,7 +351,7 @@ func (h *Handler) GatewayMiddleware() gin.HandlerFunc {
 			case errors.Is(err, ErrInvalidInput):
 				status = http.StatusBadRequest
 				message = err.Error()
-			case errors.Is(err, ErrForbidden), errors.Is(err, ErrUnauthorized):
+			case errors.Is(err, ErrForbidden), errors.Is(err, ErrUnauthorized), errors.Is(err, ErrInsufficientBalance):
 				status = http.StatusForbidden
 				message = err.Error()
 			}

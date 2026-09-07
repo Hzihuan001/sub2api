@@ -48,8 +48,8 @@ func TestBeginGatewayRequestRejectsDuplicateBeforeUpstream(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery("SELECT rc.reseller_id").WithArgs(int64(7)).WillReturnRows(
-		sqlmock.NewRows([]string{"reseller_id", "product_id", "group_id", "catalog_version", "cost_rate_multiplier", "allowed_cidrs"}).
-			AddRow(int64(2), int64(3), int64(4), int64(5), float64(0.35), []byte(`[]`)),
+		sqlmock.NewRows([]string{"reseller_id", "product_id", "group_id", "catalog_version", "cost_rate_multiplier", "allowed_cidrs", "user_id", "available_balance"}).
+			AddRow(int64(2), int64(3), int64(4), int64(5), float64(0.35), []byte(`[]`), int64(12), 10.0),
 	)
 	mock.ExpectExec("INSERT INTO reseller_request_reservations").
 		WithArgs(anyUUID{}, int64(2), int64(3), int64(7), int64(4), int64(5), float64(0.35)).
@@ -58,7 +58,7 @@ func TestBeginGatewayRequestRejectsDuplicateBeforeUpstream(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest("POST", "/v1/messages", nil)
 	c.Request.Header.Set("X-Reseller-Request-ID", uuid.NewString())
-	c.Set("api_key", &service.APIKey{ID: 7, Key: apiKeyPrefix + "credential"})
+	c.Set("api_key", &service.APIKey{ID: 7, Key: apiKeyPrefix + "credential", UserID: 12, User: &service.User{ID: 12}})
 	if err := (&Service{db: db}).BeginGatewayRequest(c); err != ErrDuplicateRequest {
 		t.Fatalf("duplicate error = %v, want %v", err, ErrDuplicateRequest)
 	}
@@ -91,8 +91,8 @@ func TestFailedGatewayRequestUsesReservedPricingSnapshot(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery("SELECT rc.reseller_id").WithArgs(int64(7)).WillReturnRows(
-		sqlmock.NewRows([]string{"reseller_id", "product_id", "group_id", "catalog_version", "cost_rate_multiplier", "allowed_cidrs"}).
-			AddRow(int64(2), int64(3), int64(4), int64(5), float64(0.35), []byte(`[]`)),
+		sqlmock.NewRows([]string{"reseller_id", "product_id", "group_id", "catalog_version", "cost_rate_multiplier", "allowed_cidrs", "user_id", "available_balance"}).
+			AddRow(int64(2), int64(3), int64(4), int64(5), float64(0.35), []byte(`[]`), int64(12), 10.0),
 	)
 	mock.ExpectExec("INSERT INTO reseller_request_reservations").
 		WithArgs(anyUUID{}, int64(2), int64(3), int64(7), int64(4), int64(5), float64(0.35)).
@@ -105,7 +105,7 @@ func TestFailedGatewayRequestUsesReservedPricingSnapshot(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
 	c.Request.Header.Set("X-Reseller-Request-ID", uuid.NewString())
-	c.Set("api_key", &service.APIKey{ID: 7, Key: apiKeyPrefix + "credential"})
+	c.Set("api_key", &service.APIKey{ID: 7, Key: apiKeyPrefix + "credential", UserID: 12, User: &service.User{ID: 12}})
 	sut := &Service{db: db}
 	if err := sut.BeginGatewayRequest(c); err != nil {
 		t.Fatal(err)

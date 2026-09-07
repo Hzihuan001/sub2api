@@ -8,15 +8,26 @@ const (
 )
 
 type Tenant struct {
-	ID              int64     `json:"id"`
-	UserID          int64     `json:"user_id"`
-	Name            string    `json:"name"`
-	Status          string    `json:"status"`
-	ProtocolVersion string    `json:"protocol_version"`
-	InstanceID      *string   `json:"instance_id,omitempty"`
-	AllowedCIDRs    []string  `json:"allowed_cidrs"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              int64           `json:"id"`
+	UserID          int64           `json:"user_id"`
+	BillingAccount  *BillingAccount `json:"billing_account,omitempty"`
+	Name            string          `json:"name"`
+	Status          string          `json:"status"`
+	ProtocolVersion string          `json:"protocol_version"`
+	InstanceID      *string         `json:"instance_id,omitempty"`
+	AllowedCIDRs    []string        `json:"allowed_cidrs"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+}
+
+// BillingAccount is the ordinary Moshu user that owns all reseller product keys.
+// Balance and usage continue to use the existing user billing ledger.
+type BillingAccount struct {
+	Email         string  `json:"email"`
+	Role          string  `json:"role"`
+	Status        string  `json:"status"`
+	Balance       float64 `json:"balance"`
+	FrozenBalance float64 `json:"frozen_balance"`
 }
 
 type Product struct {

@@ -30,13 +30,14 @@ const (
 )
 
 var (
-	ErrDisabled          = errors.New("reseller protocol is disabled")
-	ErrUnauthorized      = errors.New("invalid reseller credentials")
-	ErrForbidden         = errors.New("reseller access denied")
-	ErrNotFound          = errors.New("reseller resource not found")
-	ErrEnrollmentInvalid = errors.New("enrollment code is invalid or expired")
-	ErrDuplicateRequest  = errors.New("reseller request id was already used")
-	ErrInvalidInput      = errors.New("invalid reseller request")
+	ErrDisabled            = errors.New("reseller protocol is disabled")
+	ErrUnauthorized        = errors.New("invalid reseller credentials")
+	ErrForbidden           = errors.New("reseller access denied")
+	ErrNotFound            = errors.New("reseller resource not found")
+	ErrEnrollmentInvalid   = errors.New("enrollment code is invalid or expired")
+	ErrDuplicateRequest    = errors.New("reseller request id was already used")
+	ErrInvalidInput        = errors.New("invalid reseller request")
+	ErrInsufficientBalance = errors.New("insufficient reseller account balance; recharge the reseller account first")
 )
 
 type Service struct {
@@ -71,31 +72,35 @@ func (s *Service) CreateTenant(ctx context.Context, userID int64, name string, a
 	rawCIDRs, _ := json.Marshal(normalizeStrings(allowedCIDRs))
 	row := s.db.QueryRowContext(ctx, `
 		INSERT INTO reseller_tenants (user_id, name, allowed_cidrs)
-		SELECT $1, $2, $3::jsonb FROM users WHERE id = $1 AND deleted_at IS NULL
+		SELECT $1, $2, $3::jsonb FROM users
+		WHERE id = $1 AND deleted_at IS NULL AND role='user' AND status='active'
 		RETURNING id, user_id, name, status, protocol_version, instance_id::text,
 		          allowed_cidrs, created_at, updated_at`, userID, name, rawCIDRs)
 	tenant, err := scanTenant(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("%w: user does not exist", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: select an active ordinary user as the reseller billing account", ErrInvalidInput)
 	}
 	return tenant, err
 }
 
 func (s *Service) ListTenants(ctx context.Context) ([]Tenant, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, user_id, name, status, protocol_version, instance_id::text,
-		       allowed_cidrs, created_at, updated_at
-		FROM reseller_tenants ORDER BY id DESC`)
+		SELECT rt.id, rt.user_id, rt.name, rt.status, rt.protocol_version, rt.instance_id::text,
+		       rt.allowed_cidrs, rt.created_at, rt.updated_at,
+		       u.email, u.role, u.status, u.balance, u.frozen_balance
+		FROM reseller_tenants rt JOIN users u ON u.id=rt.user_id ORDER BY rt.id DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	result := make([]Tenant, 0)
 	for rows.Next() {
-		tenant, scanErr := scanTenant(rows)
+		account := &BillingAccount{}
+		tenant, scanErr := scanTenant(rows, &account.Email, &account.Role, &account.Status, &account.Balance, &account.FrozenBalance)
 		if scanErr != nil {
 			return nil, scanErr
 		}
+		tenant.BillingAccount = account
 		result = append(result, *tenant)
 	}
 	return result, rows.Err()
@@ -133,9 +138,9 @@ func (s *Service) UpsertProduct(ctx context.Context, resellerID, groupID int64, 
 	var modelsRaw []byte
 	err := s.db.QueryRowContext(ctx, `
 		SELECT platform, rate_multiplier, COALESCE(models_list_config, '{}'::jsonb)
-		FROM groups WHERE id=$1 AND deleted_at IS NULL`, groupID).Scan(&platform, &costRate, &modelsRaw)
+		FROM groups WHERE id=$1 AND deleted_at IS NULL AND subscription_type='standard'`, groupID).Scan(&platform, &costRate, &modelsRaw)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("%w: group does not exist", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: select a balance-billed group for the prepaid reseller account", ErrInvalidInput)
 	}
 	if err != nil {
 		return nil, err
@@ -169,6 +174,56 @@ func (s *Service) UpsertProduct(ctx context.Context, resellerID, groupID int64, 
 		return nil, ErrNotFound
 	}
 	return product, err
+}
+
+// ChangeBillingAccount retires the old credentials without reassigning their
+// ownership or historical usage. The reseller must obtain new product keys.
+func (s *Service) ChangeBillingAccount(ctx context.Context, resellerID, userID int64) (*Tenant, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	tenant, err := getTenantTx(ctx, tx, resellerID, true)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	var targetID int64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM users WHERE id=$1
+		AND role='user' AND status='active' AND deleted_at IS NULL FOR SHARE`, userID).Scan(&targetID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: select an active ordinary user as the reseller billing account", ErrInvalidInput)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if tenant.UserID == targetID {
+		return tenant, nil
+	}
+	// Locking the tenant serializes this change with enrollment and rotation.
+	if _, err = tx.ExecContext(ctx, `UPDATE api_keys SET status='inactive',updated_at=NOW()
+		WHERE id IN (SELECT api_key_id FROM reseller_credentials WHERE reseller_id=$1)
+		AND deleted_at IS NULL`, resellerID); err != nil {
+		return nil, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE reseller_credentials SET status='revoked',updated_at=NOW()
+		WHERE reseller_id=$1 AND status IN ('active','retiring')`, resellerID); err != nil {
+		return nil, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE reseller_tenants SET user_id=$2,updated_at=NOW() WHERE id=$1`, resellerID, targetID); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	if s.apiKeys != nil {
+		s.apiKeys.InvalidateAuthCacheByUserID(ctx, tenant.UserID)
+	}
+	tenant.UserID = targetID
+	return tenant, nil
 }
 
 func (s *Service) ListProducts(ctx context.Context, resellerID int64, enabledOnly bool) ([]Product, error) {
@@ -504,23 +559,37 @@ func (s *Service) BeginGatewayRequest(c *gin.Context) error {
 	var resellerID, productID, groupID, catalogVersion int64
 	var costRateMultiplier float64
 	var allowedCIDRsRaw []byte
+	var billingUserID int64
+	var availableBalance float64
 	err = s.db.QueryRowContext(c.Request.Context(), `
 		SELECT rc.reseller_id,rc.product_id,rp.moshu_group_id,rp.price_catalog_version,
-		       rp.cost_rate_multiplier,rt.allowed_cidrs
+		       rp.cost_rate_multiplier,rt.allowed_cidrs,rt.user_id,u.balance-u.frozen_balance
 		FROM reseller_credentials rc
 		JOIN reseller_products rp ON rp.id=rc.product_id
 		JOIN reseller_tenants rt ON rt.id=rc.reseller_id
+		JOIN api_keys ak ON ak.id=rc.api_key_id AND ak.user_id=rt.user_id
+		JOIN users u ON u.id=rt.user_id AND u.role='user' AND u.status='active' AND u.deleted_at IS NULL
+		JOIN groups g ON g.id=rp.moshu_group_id AND g.subscription_type='standard' AND g.deleted_at IS NULL
 		WHERE rc.api_key_id=$1 AND rc.status IN ('active','retiring')
 		  AND (rc.expires_at IS NULL OR rc.expires_at>NOW())
 		  AND (rc.status<>'retiring' OR rc.overlap_until IS NULL OR rc.overlap_until>NOW())
 		  AND rp.enabled=TRUE AND rt.status='active'`, apiKey.ID).Scan(
 		&resellerID, &productID, &groupID, &catalogVersion, &costRateMultiplier, &allowedCIDRsRaw,
+		&billingUserID, &availableBalance,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrForbidden
 	}
 	if err != nil {
 		return err
+	}
+	// Reject stale cached owners instead of charging another account. Never
+	// rewrite the authenticated user: billing, concurrency and usage share it.
+	if apiKey.UserID != billingUserID || apiKey.User == nil || apiKey.User.ID != billingUserID {
+		return ErrForbidden
+	}
+	if availableBalance <= 0 {
+		return ErrInsufficientBalance
 	}
 	var allowedCIDRs []string
 	if json.Unmarshal(allowedCIDRsRaw, &allowedCIDRs) != nil || !ipAllowed(c.ClientIP(), allowedCIDRs) {
@@ -589,6 +658,17 @@ func int64ContextValue(c *gin.Context, key string) (int64, bool) {
 }
 
 func (s *Service) rotateCredentialTx(ctx context.Context, tx *sql.Tx, tenant Tenant, product Product, overlap time.Duration) (IssuedCredential, error) {
+	var eligible bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM users u JOIN groups g ON g.id=$2
+		WHERE u.id=$1 AND u.deleted_at IS NULL AND u.role='user' AND u.status='active'
+		AND g.deleted_at IS NULL AND g.subscription_type='standard'
+	)`, tenant.UserID, product.MoshuGroupID).Scan(&eligible); err != nil {
+		return IssuedCredential{}, err
+	}
+	if !eligible {
+		return IssuedCredential{}, fmt.Errorf("%w: product credentials require an active ordinary billing account and a balance-billed group", ErrInvalidInput)
+	}
 	// api_keys.key is VARCHAR(64); keep the dedicated prefix while staying below it.
 	key, err := s.randomToken(apiKeyPrefix, 28)
 	if err != nil {
@@ -665,12 +745,13 @@ func (s *Service) getTenant(ctx context.Context, id int64) (*Tenant, error) {
 
 type scanner interface{ Scan(...any) error }
 
-func scanTenant(row scanner) (*Tenant, error) {
+func scanTenant(row scanner, extra ...any) (*Tenant, error) {
 	var tenant Tenant
 	var instance sql.NullString
 	var rawCIDRs []byte
-	if err := row.Scan(&tenant.ID, &tenant.UserID, &tenant.Name, &tenant.Status,
-		&tenant.ProtocolVersion, &instance, &rawCIDRs, &tenant.CreatedAt, &tenant.UpdatedAt); err != nil {
+	fields := []any{&tenant.ID, &tenant.UserID, &tenant.Name, &tenant.Status,
+		&tenant.ProtocolVersion, &instance, &rawCIDRs, &tenant.CreatedAt, &tenant.UpdatedAt}
+	if err := row.Scan(append(fields, extra...)...); err != nil {
 		return nil, err
 	}
 	if instance.Valid {

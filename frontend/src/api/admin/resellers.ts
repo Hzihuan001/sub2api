@@ -3,6 +3,13 @@ import { apiClient } from '../client'
 export interface ResellerTenant {
   id: number
   user_id: number
+  billing_account?: {
+    email: string
+    role: string
+    status: string
+    balance: number
+    frozen_balance: number
+  }
   name: string
   status: 'active' | 'suspended' | 'disabled'
   protocol_version: string
@@ -48,6 +55,10 @@ export default {
   },
   async updateTenant(id: number, payload: { status: string; allowed_cidrs: string[] }): Promise<ResellerTenant> {
     const response = await apiClient.patch<ResellerTenant>(`/admin/resellers/${id}`, payload)
+    return response.data
+  },
+  async changeBillingAccount(id: number, userID: number): Promise<ResellerTenant> {
+    const response = await apiClient.post<ResellerTenant>(`/admin/resellers/${id}/billing-account`, { user_id: userID })
     return response.data
   },
   async listProducts(id: number): Promise<ResellerProduct[]> {

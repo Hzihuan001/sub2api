@@ -27,6 +27,7 @@ func registerResellerAdminRoutes(admin *gin.RouterGroup, handler *reseller.Handl
 		resellers.GET("", handler.ListTenants)
 		resellers.POST("", handler.CreateTenant)
 		resellers.PATCH("/:id", handler.UpdateTenant)
+		resellers.POST("/:id/billing-account", handler.ChangeBillingAccount)
 		resellers.GET("/:id/products", handler.ListProducts)
 		resellers.POST("/:id/products", handler.UpsertProduct)
 		resellers.POST("/:id/enrollments", handler.CreateEnrollment)
