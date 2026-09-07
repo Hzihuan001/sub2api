@@ -137,7 +137,7 @@ func (s *Service) UpsertProduct(ctx context.Context, resellerID, groupID int64, 
 	var costRate float64
 	var modelsRaw []byte
 	err := s.db.QueryRowContext(ctx, `
-		SELECT platform, rate_multiplier, COALESCE(models_list_config, '{}'::jsonb)
+		SELECT platform, rate_multiplier, COALESCE(model_allowlist, '{}'::jsonb)
 		FROM groups WHERE id=$1 AND deleted_at IS NULL AND subscription_type='standard'`, groupID).Scan(&platform, &costRate, &modelsRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: select a balance-billed group for the prepaid reseller account", ErrInvalidInput)
