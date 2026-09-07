@@ -771,12 +771,7 @@ const adminNavItems = computed((): NavItem[] => {
       featureFlag: () => authStore.isSuperAdmin && flagOpsMonitoring() !== false
     },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
-    {
-      path: '/admin/groups',
-      label: t('nav.groups'),
-      icon: FolderIcon,
-      hideInSimpleMode: true
-    },
+    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
     {
       path: '/admin/channels',
       label: t('nav.channelManagement'),

@@ -26,7 +26,7 @@ func (a *catalogAdmin) UpdateGroup(_ context.Context, _ int64, input *service.Up
 	require.Nil(a.t, input.RateMultiplier)
 	require.Empty(a.t, input.Name)
 	require.Empty(a.t, input.Status)
-	a.group.ModelsListConfig = *input.ModelsListConfig
+	a.group.ModelAllowlist = *input.ModelAllowlist
 	a.groupUpdates++
 	return &a.group, nil
 }
@@ -48,7 +48,7 @@ func TestApplyCatalogPreservesSalesAndRetriesOnlyChangedFields(t *testing.T) {
 	defer db.Close()
 	rate := 1.0
 	admin := &catalogAdmin{t: t, failAccount: true,
-		group:   service.Group{ID: 10, Name: "My sales name", Platform: "openai", Status: "disabled", RateMultiplier: 0, ModelsListConfig: service.GroupModelsListConfig{Enabled: true, Models: []string{"old-model"}}},
+		group:   service.Group{ID: 10, Name: "My sales name", Platform: "openai", Status: "disabled", RateMultiplier: 0, ModelAllowlist: service.GroupModelAllowlist{Enabled: true, Models: []string{"old-model"}}},
 		account: service.Account{ID: 20, Name: "Keep account", Platform: "openai", Type: "apikey", Status: "active", GroupIDs: []int64{10}, Credentials: map[string]any{"api_key": "keep"}, RateMultiplier: &rate},
 	}
 	sut := NewService(db, nil, admin)

@@ -32,9 +32,9 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 			if group.Platform != product.Platform {
 				return fmt.Errorf("product %d platform changed; migrate its local group explicitly", product.ID)
 			}
-			models := service.GroupModelsListConfig{Enabled: len(product.Models) > 0, Models: append([]string{}, product.Models...)}
-			if group.ModelsListConfig.Enabled != models.Enabled || !slices.Equal(group.ModelsListConfig.Models, models.Models) {
-				if _, err = s.admin.UpdateGroup(ctx, group.ID, &service.UpdateGroupInput{ModelsListConfig: &models}); err != nil {
+			models := service.GroupModelAllowlist{Enabled: len(product.Models) > 0, Models: append([]string{}, product.Models...)}
+			if group.ModelAllowlist.Enabled != models.Enabled || !slices.Equal(group.ModelAllowlist.Models, models.Models) {
+				if _, err = s.admin.UpdateGroup(ctx, group.ID, &service.UpdateGroupInput{ModelAllowlist: &models}); err != nil {
 					return fmt.Errorf("sync product %d models: %w", product.ID, err)
 				}
 			}

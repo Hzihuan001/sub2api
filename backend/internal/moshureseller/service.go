@@ -675,12 +675,12 @@ func persistCatalogTx(ctx context.Context, tx *sql.Tx, catalog RemoteCatalog, cr
 }
 
 func (s *Service) ensureGroup(ctx context.Context, product Product, name string, salesMultiplier float64) (int64, error) {
-	models := service.GroupModelsListConfig{Enabled: len(product.Models) > 0, Models: append([]string(nil), product.Models...)}
+	models := service.GroupModelAllowlist{Enabled: len(product.Models) > 0, Models: append([]string(nil), product.Models...)}
 	createGroup := func() (int64, error) {
 		group, err := s.admin.CreateGroup(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateGroupInput{
 			Name: name, Description: "Moshu reseller product: " + product.ProductCode,
 			Platform: product.Platform, RateMultiplier: salesMultiplier, AllowZeroRateMultiplier: true,
-			ModelsListConfig: models,
+			ModelAllowlist: models,
 		})
 		if err != nil {
 			return 0, err
@@ -693,7 +693,7 @@ func (s *Service) ensureGroup(ctx context.Context, product Product, name string,
 	status := service.StatusActive
 	group, err := s.admin.UpdateGroup(ctx, *product.LocalGroupID, &service.UpdateGroupInput{
 		Name: name, Platform: product.Platform, RateMultiplier: &salesMultiplier, AllowZeroRateMultiplier: true,
-		Status: status, ModelsListConfig: &models,
+		Status: status, ModelAllowlist: &models,
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrGroupNotFound) {
