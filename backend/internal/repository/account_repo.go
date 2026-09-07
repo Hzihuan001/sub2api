@@ -123,6 +123,9 @@ func newAccountRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor, schedul
 }
 
 func (r *accountRepository) Create(ctx context.Context, account *service.Account) error {
+	if productID := service.ResellerResourceProduct(ctx); productID > 0 {
+		return r.createResellerAccount(ctx, productID, account)
+	}
 	if err := createAccountRecord(ctx, r.client, account); err != nil {
 		return err
 	}

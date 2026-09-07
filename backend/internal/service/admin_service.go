@@ -212,6 +212,8 @@ type AdminBoundAuthIdentityChannel struct {
 }
 
 type CreateGroupInput struct {
+	// Internal opt-in for reseller pricing; ordinary group endpoints stay unchanged.
+	AllowZeroRateMultiplier   bool `json:"-"`
 	Name                      string
 	Description               string
 	Platform                  string
@@ -292,6 +294,7 @@ type CreateGroupInput struct {
 }
 
 type UpdateGroupInput struct {
+	AllowZeroRateMultiplier   bool `json:"-"`
 	Name                      string
 	Description               *string
 	Platform                  string

@@ -44,6 +44,9 @@ func newGroupRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *groupRep
 }
 
 func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) error {
+	if productID := service.ResellerResourceProduct(ctx); productID > 0 {
+		return r.createResellerGroup(ctx, productID, groupIn)
+	}
 	if err := createGroupRecord(ctx, r.client, groupIn); err != nil {
 		return err
 	}

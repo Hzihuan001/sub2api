@@ -76,7 +76,7 @@ export default {
     return response.data
   },
 
-  async configureProduct(id: number, payload: { selected: boolean; sales_name: string; sales_multiplier: number; allow_loss?: boolean }): Promise<MoshuProduct> {
+  async configureProduct(id: number, payload: { selected: boolean; sales_name: string; sales_multiplier: number }): Promise<MoshuProduct> {
     const response = await apiClient.put<MoshuProduct>(`/admin/moshu-reseller/products/${id}`, payload)
     return response.data
   },

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -14,8 +15,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/google/uuid"
 )
-
-const defaultSafetyBuffer = 0.05
 
 var (
 	ErrDisabled     = errors.New("Moshu reseller client is disabled")
@@ -31,6 +30,7 @@ type Service struct {
 	client    *protocolClient
 	now       func() time.Time
 	authMu    sync.Mutex
+	configMu  sync.Mutex
 }
 
 func NewService(db *sql.DB, encryptor service.SecretEncryptor, admin service.AdminService) *Service {
@@ -67,6 +67,11 @@ func (s *Service) Status(ctx context.Context) (*Status, error) {
 }
 
 func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string) (*Status, error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	// Enrollment replaces the refresh token; do not race the settlement worker.
+	s.authMu.Lock()
+	defer s.authMu.Unlock()
 	if !Enabled() {
 		return nil, ErrDisabled
 	}
@@ -79,8 +84,15 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 		return nil, err
 	}
 	instanceID := uuid.NewString()
+	var existingResellerID *int64
 	if existing, loadErr := s.loadConnection(ctx); loadErr == nil && existing.InstanceID != "" {
+		if existing.BaseURL != baseURL {
+			return nil, fmt.Errorf("%w: reconnect to the existing main site; changing sites requires a separate migration", ErrInvalidInput)
+		}
+		existingResellerID = existing.ResellerID
 		instanceID = existing.InstanceID
+	} else if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
+		return nil, loadErr
 	}
 	exchange, err := s.client.exchange(ctx, baseURL, strings.TrimSpace(enrollmentCode), instanceID)
 	if err != nil {
@@ -88,6 +100,9 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 	}
 	if exchange.Tenant.ProtocolVersion != "v1" || exchange.Catalog.ProtocolVersion != "v1" {
 		return nil, fmt.Errorf("%w: unsupported Moshu reseller protocol", ErrInvalidInput)
+	}
+	if existingResellerID != nil && *existingResellerID != exchange.Tenant.ID {
+		return nil, fmt.Errorf("%w: cannot replace the connected reseller identity", ErrInvalidInput)
 	}
 	accessCiphertext, err := s.encryptor.Encrypt(exchange.AccessToken)
 	if err != nil {
@@ -124,7 +139,7 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 		 access_token_ciphertext=EXCLUDED.access_token_ciphertext,
 		 refresh_token_ciphertext=EXCLUDED.refresh_token_ciphertext,
 		 access_token_expires_at=EXCLUDED.access_token_expires_at,
-		 catalog_version=EXCLUDED.catalog_version,last_catalog_sync_at=NOW(),
+		 catalog_version=EXCLUDED.catalog_version,catalog_etag=NULL,last_catalog_sync_at=NOW(),
 		 last_error=NULL,updated_at=NOW()`, baseURL, instanceID, exchange.Tenant.ID,
 		exchange.Tenant.Name, exchange.Tenant.ProtocolVersion, accessCiphertext,
 		refreshCiphertext, expiresAt, exchange.Catalog.CatalogVersion)
@@ -134,25 +149,43 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 	if err := persistCatalogTx(ctx, tx, exchange.Catalog, credentials); err != nil {
 		return nil, err
 	}
+	for _, credential := range exchange.Credentials {
+		if err := syncAccountCredentialTx(ctx, tx, credential.ProductID, credential.APIKey); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return s.Status(ctx)
 }
 
-func (s *Service) SyncCatalog(ctx context.Context) (*Status, error) {
+func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 	connection, token, err := s.authenticatedConnection(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var runID int64
+	defer func() {
+		if syncErr != nil {
+			s.recordSyncFailure(ctx, runID, syncErr)
+		}
+	}()
 	_ = s.db.QueryRowContext(ctx, `INSERT INTO moshu_catalog_sync_runs(status,from_version) VALUES('running',$1) RETURNING id`, connection.CatalogVersion).Scan(&runID)
 	catalog, etag, notModified, err := s.client.catalog(ctx, connection.BaseURL, token, connection.CatalogETag)
 	if err != nil {
-		s.recordSyncFailure(ctx, runID, err)
 		return nil, err
 	}
 	if notModified {
+		// Retry local revocation even if the remote catalog has not changed.
+		if err := s.disableRevokedProducts(ctx); err != nil {
+			return nil, err
+		}
+		if err := s.applyCatalogConfiguration(ctx); err != nil {
+			return nil, err
+		}
 		_, _ = s.db.ExecContext(ctx, `UPDATE moshu_reseller_connections SET status='active',last_catalog_sync_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=1`)
 		_, _ = s.db.ExecContext(ctx, `UPDATE moshu_catalog_sync_runs SET status='succeeded',to_version=$2,completed_at=NOW() WHERE id=$1`, runID, connection.CatalogVersion)
 		return s.Status(ctx)
@@ -184,10 +217,15 @@ func (s *Service) SyncCatalog(ctx context.Context) (*Status, error) {
 	if err := s.disableRevokedProducts(ctx); err != nil {
 		return nil, err
 	}
+	if err := s.applyCatalogConfiguration(ctx); err != nil {
+		return nil, err
+	}
 	return s.Status(ctx)
 }
 
-func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool, salesName string, salesMultiplier float64, allowLoss bool) (*Product, error) {
+func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool, salesName string, salesMultiplier float64) (*Product, error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 	product, credentialCiphertext, err := s.loadProduct(ctx, id)
 	if err != nil {
 		return nil, err
@@ -213,15 +251,14 @@ func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool,
 	if !product.Authorized {
 		return nil, fmt.Errorf("%w: product authorization was revoked", ErrInvalidInput)
 	}
-	minimum := product.CostRateMultiplier + defaultSafetyBuffer
-	if salesMultiplier < minimum && !allowLoss {
-		return nil, fmt.Errorf("%w: sales multiplier must be at least %.4f", ErrInvalidInput, minimum)
+	if math.IsNaN(salesMultiplier) || math.IsInf(salesMultiplier, 0) || salesMultiplier < 0 {
+		return nil, fmt.Errorf("%w: invalid sales multiplier", ErrInvalidInput)
 	}
 	if strings.TrimSpace(salesName) == "" {
 		salesName = product.DisplayName
 	}
 	if credentialCiphertext == "" {
-		if _, err := s.RotateCredential(ctx, id); err != nil {
+		if _, err := s.rotateCredential(ctx, id); err != nil {
 			return nil, err
 		}
 		product, credentialCiphertext, err = s.loadProduct(ctx, id)
@@ -252,6 +289,12 @@ func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool,
 }
 
 func (s *Service) RotateCredential(ctx context.Context, id int64) (*Product, error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	return s.rotateCredential(ctx, id)
+}
+
+func (s *Service) rotateCredential(ctx context.Context, id int64) (*Product, error) {
 	product, _, err := s.loadProduct(ctx, id)
 	if err != nil {
 		return nil, err
@@ -268,30 +311,30 @@ func (s *Service) RotateCredential(ctx context.Context, id int64) (*Product, err
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE moshu_products SET credential_ciphertext=$2,credential_received_at=NOW(),updated_at=NOW() WHERE id=$1`, id, ciphertext)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	if product.LocalAccountID != nil {
-		account, getErr := s.admin.GetAccount(ctx, *product.LocalAccountID)
-		if getErr != nil {
-			return nil, getErr
-		}
-		credentials := cloneMap(account.Credentials)
-		credentials["api_key"] = credential.APIKey
-		_, err = s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
-			Name: account.Name, Type: account.Type, Credentials: credentials, Extra: cloneMap(account.Extra),
-			Status: account.Status, GroupIDs: &account.GroupIDs, SkipMixedChannelCheck: true,
-		})
-		if err != nil {
-			return nil, err
-		}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.ExecContext(ctx, `UPDATE moshu_products SET credential_ciphertext=$2,credential_received_at=NOW(),updated_at=NOW() WHERE id=$1`, id, ciphertext); err != nil {
+		return nil, err
+	}
+	if err = syncAccountCredentialTx(ctx, tx, product.RemoteProductID, credential.APIKey); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
 	}
 	updated, _, err := s.loadProduct(ctx, id)
 	return updated, err
 }
 
-func (s *Service) SyncSettlements(ctx context.Context) (int, error) {
+func (s *Service) SyncSettlements(ctx context.Context) (synced int, syncErr error) {
+	defer func() {
+		if syncErr != nil {
+			s.recordSyncFailure(ctx, 0, syncErr)
+		}
+	}()
 	connection, token, err := s.authenticatedConnection(ctx)
 	if err != nil {
 		return 0, err
@@ -323,8 +366,12 @@ func (s *Service) SyncSettlements(ctx context.Context) (int, error) {
 		}
 		cursor = page.NextCursor
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE moshu_reseller_connections SET status='active',last_settlement_sync_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=1`)
-	_ = s.reconcilePendingProfits(ctx)
+	if err := s.reconcilePendingProfits(ctx); err != nil {
+		return total, fmt.Errorf("reconcile pending profits: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE moshu_reseller_connections SET status='active',last_settlement_sync_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=1`); err != nil {
+		return total, err
+	}
 	return total, nil
 }
 
@@ -559,9 +606,9 @@ func persistCatalogTx(ctx context.Context, tx *sql.Tx, catalog RemoteCatalog, cr
 func (s *Service) ensureGroup(ctx context.Context, product Product, name string, salesMultiplier float64) (int64, error) {
 	models := service.GroupModelsListConfig{Enabled: len(product.Models) > 0, Models: append([]string(nil), product.Models...)}
 	if product.LocalGroupID == nil {
-		group, err := s.admin.CreateGroup(ctx, &service.CreateGroupInput{
+		group, err := s.admin.CreateGroup(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateGroupInput{
 			Name: name, Description: "Moshu reseller product: " + product.ProductCode,
-			Platform: product.Platform, RateMultiplier: salesMultiplier,
+			Platform: product.Platform, RateMultiplier: salesMultiplier, AllowZeroRateMultiplier: true,
 			ModelsListConfig: models,
 		})
 		if err != nil {
@@ -571,7 +618,7 @@ func (s *Service) ensureGroup(ctx context.Context, product Product, name string,
 	}
 	status := service.StatusActive
 	group, err := s.admin.UpdateGroup(ctx, *product.LocalGroupID, &service.UpdateGroupInput{
-		Name: name, Platform: product.Platform, RateMultiplier: &salesMultiplier,
+		Name: name, Platform: product.Platform, RateMultiplier: &salesMultiplier, AllowZeroRateMultiplier: true,
 		Status: status, ModelsListConfig: &models,
 	})
 	if err != nil {
@@ -593,7 +640,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 	groupIDs := []int64{groupID}
 	rate := product.CostRateMultiplier
 	if product.LocalAccountID == nil {
-		account, err := s.admin.CreateAccount(ctx, &service.CreateAccountInput{
+		account, err := s.admin.CreateAccount(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateAccountInput{
 			Name: "Moshu - " + product.DisplayName, Platform: product.Platform, Type: service.AccountTypeAPIKey,
 			Credentials: credentials, Extra: extra, Concurrency: 100, Priority: 50,
 			RateMultiplier: &rate, GroupIDs: groupIDs, SkipDefaultGroupBind: true, SkipMixedChannelCheck: true,
@@ -695,14 +742,21 @@ func (s *Service) persistSettlement(ctx context.Context, settlement RemoteSettle
 
 func (s *Service) reconcilePendingProfits(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
+		WITH matches AS (
+		 SELECT pending.id,ul.id AS usage_id,ul.actual_cost
+		 FROM moshu_request_profit_records pending
+		 JOIN LATERAL (
+		  SELECT id,actual_cost FROM usage_logs
+		  WHERE request_id IN (pending.request_id::text,'client:' || pending.request_id::text,'local:' || pending.request_id::text)
+		  ORDER BY id DESC LIMIT 1
+		 ) ul ON TRUE
+		 WHERE pending.local_usage_log_id IS NULL
+		 ORDER BY pending.id LIMIT 1000
+		)
 		UPDATE moshu_request_profit_records pr SET
-		 local_usage_log_id=ul.id,l1_customer_charge=ul.actual_cost,
-		 gross_profit=ul.actual_cost-pr.moshu_actual_cost,updated_at=NOW()
-		FROM LATERAL (
-		 SELECT id,actual_cost FROM usage_logs
-		 WHERE request_id IN (pr.request_id::text,'client:' || pr.request_id::text,'local:' || pr.request_id::text)
-		 ORDER BY id DESC LIMIT 1
-		) ul WHERE pr.local_usage_log_id IS NULL`)
+		 local_usage_log_id=matches.usage_id,l1_customer_charge=matches.actual_cost,
+		 gross_profit=matches.actual_cost-pr.moshu_actual_cost,updated_at=NOW()
+		FROM matches WHERE pr.id=matches.id AND pr.local_usage_log_id IS NULL`)
 	return err
 }
 

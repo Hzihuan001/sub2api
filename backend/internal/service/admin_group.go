@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -308,9 +309,19 @@ func sanitizeGroupOpenAIFast(group *Group) {
 	}
 }
 
+func validateGroupRateMultiplier(rate float64, allowZero bool) error {
+	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 || (rate == 0 && !allowZero) {
+		if allowZero {
+			return errors.New("rate_multiplier must be finite and >= 0")
+		}
+		return errors.New("rate_multiplier must be > 0")
+	}
+	return nil
+}
+
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
-	if input.RateMultiplier <= 0 {
-		return nil, errors.New("rate_multiplier must be > 0")
+	if err := validateGroupRateMultiplier(input.RateMultiplier, input.AllowZeroRateMultiplier); err != nil {
+		return nil, err
 	}
 
 	platform := NormalizeGroupPlatform(input.Platform)
@@ -683,8 +694,8 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.Platform = input.Platform
 	}
 	if input.RateMultiplier != nil {
-		if *input.RateMultiplier <= 0 {
-			return nil, errors.New("rate_multiplier must be > 0")
+		if err := validateGroupRateMultiplier(*input.RateMultiplier, input.AllowZeroRateMultiplier); err != nil {
+			return nil, err
 		}
 		group.RateMultiplier = *input.RateMultiplier
 	}

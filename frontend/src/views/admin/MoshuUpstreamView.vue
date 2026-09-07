@@ -39,11 +39,24 @@
               <div class="flex gap-2"><button class="btn btn-secondary" :disabled="busy" @click="syncCatalog">{{ t('admin.moshuUpstream.syncCatalog') }}</button><button class="btn btn-secondary" :disabled="busy" @click="syncSettlements">{{ t('admin.moshuUpstream.syncSettlements') }}</button></div>
             </div>
             <p v-if="status.connection?.last_error" class="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{{ status.connection.last_error }}</p>
+            <p class="mt-2 text-xs text-gray-500">上游成本和模型每 5 分钟自动同步，也可手动同步；不会修改本地销售名称和倍率。</p>
+            <details class="mt-4">
+              <summary>重新授权 / 计费账号换绑后同步 Key</summary>
+              <p class="my-2 text-sm text-gray-500">使用同一主站、同一代理商的新授权码。自动更新已启用账号的 Key，保留本地售价、分组和历史记录。换绑后请为全部需要的产品生成授权码。</p>
+              <input v-model.trim="enrollment.enrollment_code" class="input w-full" placeholder="输入一次性授权码" autocomplete="off" :disabled="busy" />
+              <button class="btn btn-primary mt-2" :disabled="busy || !enrollment.enrollment_code" @click="enroll">重新授权并同步</button>
+            </details>
           </section>
 
           <section class="space-y-3">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.moshuUpstream.authorizedProducts') }}</h2>
+            <div class="card space-y-2 p-4">
+              <p class="text-sm text-gray-500">销售倍率自主设置，支持 0 及低于成本销售，不设成本下限。勾选后按各自名称和倍率批量启用/保存；失败项保留勾选，便于重试。</p>
+              <div class="flex gap-2"><button class="btn btn-secondary" :disabled="busy" @click="batchIDs = status.products.filter(p => p.authorized && !p.selected).map(p => p.id)">选择尚未启用的产品</button><button class="btn btn-primary" :disabled="busy || !batchIDs.length" @click="saveBatch">批量启用/保存（{{ batchIDs.length }}）</button></div>
+              <p v-for="result in batchResults" :key="result.id" class="text-sm" :class="result.success ? 'text-green-600' : 'text-red-600'">{{ result.name }}：{{ result.success ? '成功' : result.error }}</p>
+            </div>
             <article v-for="product in status.products" :key="product.id" class="card p-5">
+              <label class="mb-2 flex items-center gap-2 text-sm"><input v-model="batchIDs" type="checkbox" :value="product.id" :disabled="busy || !product.authorized" />批量选择</label>
               <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_minmax(150px,190px)_auto] xl:items-end">
                 <div>
                   <div class="flex flex-wrap items-center gap-2"><h3 class="font-semibold text-gray-900 dark:text-white">{{ product.display_name }}</h3><span class="rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-dark-700">{{ product.platform }}</span><span v-if="!product.authorized" class="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">{{ t('admin.moshuUpstream.revoked') }}</span></div>
@@ -54,6 +67,7 @@
                 <div class="flex gap-2"><button class="btn btn-primary" :disabled="busy || !product.authorized" @click="saveProduct(product)">{{ product.selected ? t('common.save') : t('admin.moshuUpstream.enableSale') }}</button><button v-if="product.selected" class="btn btn-secondary" :disabled="busy" @click="rotate(product)">{{ t('admin.moshuUpstream.rotate') }}</button></div>
               </div>
               <div v-if="product.selected" class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700"><span>{{ t('admin.moshuUpstream.localConfigured') }} #{{ product.local_group_id }} / #{{ product.local_account_id }}</span><button class="text-red-600 hover:underline" :disabled="busy" @click="disableProduct(product)">{{ t('admin.moshuUpstream.stopSale') }}</button></div>
+              <p v-else-if="product.local_group_id || product.local_account_id" class="mt-3 text-xs text-amber-600">已有本地资源：分组 #{{ product.local_group_id ?? '未创建' }} / 账号 #{{ product.local_account_id ?? '未创建' }}。启用或重试时会复用，不会重复创建。</p>
             </article>
           </section>
 
@@ -94,6 +108,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { accountsAPI, groupsAPI, moshuResellerAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { runResellerBatch, type BatchResult } from '@/utils/resellerBatch'
 import type { MoshuProduct, MoshuProfitRecord, MoshuResellerStatus } from '@/api/admin/moshuReseller'
 import type { Account, AccountListItem, AdminGroup } from '@/types'
 
@@ -103,6 +118,7 @@ const authStore = useAuthStore()
 const loading = ref(true), busy = ref(false)
 const status = ref<MoshuResellerStatus | null>(null), profits = ref<MoshuProfitRecord[]>([])
 const enrollment = reactive({ base_url: '', enrollment_code: '' })
+const batchIDs = ref<number[]>([]), batchResults = ref<BatchResult[]>([])
 const drafts = reactive<Record<number, { name: string; multiplier: number }>>({})
 const accounts = ref<AccountListItem[]>([]), groups = ref<AdminGroup[]>([])
 const bindings = reactive<Record<number, number[]>>({})
@@ -117,15 +133,38 @@ async function loadData() {
       groupsAPI.getAllIncludingInactive()
     ])
     status.value = current
+    if (current?.connection?.base_url) enrollment.base_url = current.connection.base_url
     accounts.value = accountPage.items.filter((account) => !account.extra?.moshu_reseller_managed)
     groups.value = allGroups
-    current?.products.forEach((product) => { drafts[product.id] = { name: product.display_name, multiplier: product.sales_rate_multiplier ?? product.cost_rate_multiplier + 0.05 } })
+    current?.products.forEach((product) => { drafts[product.id] = { name: allGroups.find(g => g.id === product.local_group_id)?.name ?? product.display_name, multiplier: product.sales_rate_multiplier ?? 1 } })
     accounts.value.forEach((account) => { bindings[account.id] = [...(account.group_ids ?? [])] })
     profits.value = current?.connected ? (await moshuResellerAPI.profits(1, 20)).items : []
   } catch (error) { appStore.showError(errorText(error)) } finally { loading.value = false }
 }
-async function run(action: () => Promise<unknown>, message: string) { busy.value = true; try { await action(); appStore.showSuccess(message); await loadData() } catch (error) { appStore.showError(errorText(error)) } finally { busy.value = false } }
-const enroll = () => run(() => moshuResellerAPI.enroll(enrollment), t('admin.moshuUpstream.connected'))
+async function run(action: () => Promise<unknown>, message: string) {
+  if (busy.value) return
+  const previousDrafts = Object.fromEntries(Object.entries(drafts).map(([id, draft]) => [id, { ...draft }]))
+  busy.value = true
+  try { await action(); appStore.showSuccess(message); await loadData() }
+  catch (error) {
+    await loadData()
+    for (const product of status.value?.products ?? []) if (previousDrafts[product.id]) drafts[product.id] = previousDrafts[product.id]
+    appStore.showError(errorText(error))
+  } finally { busy.value = false }
+}
+const enroll = () => run(async () => { await moshuResellerAPI.enroll({ ...enrollment }); enrollment.enrollment_code = '' }, t('admin.moshuUpstream.connected'))
+async function saveBatch() {
+  if (busy.value) return
+  const targets = (status.value?.products ?? []).filter(p => p.authorized && batchIDs.value.includes(p.id)).map(p => ({ ...p, draft: { ...drafts[p.id] } }))
+  if (!confirm(`确认按填写的售价启用/保存 ${targets.length} 个产品？`)) return
+  busy.value = true
+  try {
+    batchResults.value = await runResellerBatch(targets, p => p.display_name, p => moshuResellerAPI.configureProduct(p.id, { selected: true, sales_name: p.draft.name, sales_multiplier: p.draft.multiplier }))
+    batchIDs.value = batchResults.value.filter(r => !r.success).map(r => r.id)
+    await loadData()
+    for (const p of targets) if (batchIDs.value.includes(p.id)) drafts[p.id] = p.draft
+  } finally { busy.value = false }
+}
 const syncCatalog = () => run(() => moshuResellerAPI.syncCatalog(), t('admin.moshuUpstream.catalogSynced'))
 const syncSettlements = () => run(() => moshuResellerAPI.syncSettlements(), t('admin.moshuUpstream.settlementsSynced'))
 const rotate = (product: MoshuProduct) => run(() => moshuResellerAPI.rotateCredential(product.id), t('admin.moshuUpstream.rotated'))

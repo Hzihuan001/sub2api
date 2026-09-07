@@ -54,7 +54,6 @@ type configureProductRequest struct {
 	Selected        bool    `json:"selected"`
 	SalesName       string  `json:"sales_name"`
 	SalesMultiplier float64 `json:"sales_multiplier"`
-	AllowLoss       bool    `json:"allow_loss"`
 }
 
 func (h *Handler) ConfigureProduct(c *gin.Context) {
@@ -68,7 +67,7 @@ func (h *Handler) ConfigureProduct(c *gin.Context) {
 		response.BadRequest(c, "invalid request")
 		return
 	}
-	result, err := h.service.ConfigureProduct(c.Request.Context(), id, req.Selected, req.SalesName, req.SalesMultiplier, req.AllowLoss)
+	result, err := h.service.ConfigureProduct(c.Request.Context(), id, req.Selected, req.SalesName, req.SalesMultiplier)
 	if err != nil {
 		h.writeError(c, err)
 		return
