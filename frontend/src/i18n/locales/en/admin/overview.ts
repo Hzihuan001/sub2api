@@ -168,6 +168,7 @@ export default {
       neverExpire: 'Never',
       empty: 'No backup records',
       actions: {
+        delete: 'Delete',
         download: 'Download',
         downloadParts: 'Download Parts',
         downloadPartsHint: 'Download every part in order and concatenate the gzip bytes: on Linux/macOS run cat payload.part-* > backup.sql.gz; on Windows run copy /b payload.part-000001+payload.part-000002 backup.sql.gz.',

@@ -31,7 +31,7 @@
           <section class="card p-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div><h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ selected.name }}</h2><p class="mt-1 text-xs text-gray-500">实例：{{ selected.instance_id || '尚未兑换授权码' }}</p></div>
-              <select v-model="selected.status" class="input w-36" @change="saveTenantStatus"><option value="active">active</option><option value="suspended">suspended</option><option value="disabled">disabled</option></select>
+              <Select v-model="selected.status" class="w-36" :options="tenantStatusOptions" @update:model-value="saveTenantStatus" />
             </div>
             <div v-if="selected.billing_account" class="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
               <p>充值及计费账号：{{ selected.billing_account.email }}（#{{ selected.user_id }}）</p>
@@ -61,7 +61,7 @@
               <p v-for="result in batchResults" :key="result.id" class="mt-1 text-sm" :class="result.success ? 'text-green-600' : 'text-red-600'">{{ result.name }}：{{ result.success ? '已添加' : result.error }}</p>
             </details>
             <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <select v-model.number="newProduct.moshu_group_id" class="input"><option :value="0">选择按余额计费的 Moshu 分组</option><option v-for="group in balanceGroups" :key="group.id" :value="group.id">{{ group.name }} · {{ group.platform }}</option></select>
+              <Select v-model="newProduct.moshu_group_id" :options="balanceGroupOptions" placeholder="选择按余额计费的 Moshu 分组" />
               <input v-model.trim="newProduct.product_code" class="input" placeholder="稳定产品代码" />
               <input v-model.trim="newProduct.display_name" class="input" placeholder="下游显示名称" />
               <button class="btn btn-primary" :disabled="busy || !newProduct.moshu_group_id || !newProduct.product_code || !newProduct.display_name" @click="addProduct">添加/更新</button>
@@ -88,6 +88,31 @@
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      :show="showBillingAccountConfirm"
+      title="确认更换计费账号"
+      message="更换计费账号将立即停用此代理商的旧授权 Key，需重新连接 L1 后才能恢复调用。确认更换？"
+      danger
+      @confirm="confirmBillingAccountChange"
+      @cancel="showBillingAccountConfirm = false"
+    />
+    <ConfirmDialog
+      :show="Boolean(pendingRotateProduct)"
+      title="确认轮换凭证"
+      message="轮换后旧凭证仅短时继续有效，确认继续？"
+      danger
+      @confirm="confirmRotate"
+      @cancel="pendingRotateProduct = null"
+    />
+    <BaseDialog :show="Boolean(rotatedAPIKey)" title="新凭证" width="normal" @close="rotatedAPIKey = ''">
+      <p class="text-sm text-amber-700 dark:text-amber-300">新凭证只显示一次，请立即复制并妥善保存。</p>
+      <code class="mt-3 block break-all rounded bg-gray-50 p-3 text-xs dark:bg-dark-900">{{ rotatedAPIKey }}</code>
+      <template #footer>
+        <button class="btn btn-secondary" @click="rotatedAPIKey = ''">关闭</button>
+        <button class="btn btn-primary" @click="copy(rotatedAPIKey)">复制</button>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -97,6 +122,8 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Select from '@/components/common/Select.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { groupsAPI, resellersAPI, usersAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { runResellerBatch, type BatchResult } from '@/utils/resellerBatch'
@@ -112,10 +139,19 @@ const billingUserOptions = ref<{ value: number; label: string }[]>([])
 const searchingUsers = ref(false)
 const replacementUserID = ref<number | null>(null)
 const batchGroupIDs = ref<number[]>([]), batchResults = ref<BatchResult[]>([])
+const showBillingAccountConfirm = ref(false)
+const pendingRotateProduct = ref<ResellerProduct | null>(null)
+const rotatedAPIKey = ref('')
 let userSearchController: AbortController | undefined
 const newProduct = reactive({ moshu_group_id: 0, product_code: '', display_name: '' })
 const selected = computed(() => tenants.value.find((item) => item.id === selectedID.value))
 const balanceGroups = computed(() => groups.value.filter((group) => group.subscription_type === 'standard'))
+const tenantStatusOptions = [
+  { value: 'active', label: 'active' },
+  { value: 'suspended', label: 'suspended' },
+  { value: 'disabled', label: 'disabled' },
+]
+const balanceGroupOptions = computed(() => balanceGroups.value.map((group) => ({ value: group.id, label: `${group.name} · ${group.platform}` })))
 const batchGroups = computed(() => balanceGroups.value.filter(g => !products.value.some(p => p.moshu_group_id === g.id)).sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)))
 
 async function addProductsBatch() {
@@ -157,7 +193,13 @@ async function searchBillingUsers(query: string) {
 }
 async function changeBillingAccount() {
   const tenantID = selectedID.value, userID = replacementUserID.value
-  if (!tenantID || !userID || !confirm('更换计费账号将立即停用此代理商的旧授权 Key，需重新连接 L1 后才能恢复调用。确认更换？')) return
+  if (!tenantID || !userID) return
+  showBillingAccountConfirm.value = true
+}
+async function confirmBillingAccountChange() {
+  const tenantID = selectedID.value, userID = replacementUserID.value
+  showBillingAccountConfirm.value = false
+  if (!tenantID || !userID) return
   await act(async () => {
     await resellersAPI.changeBillingAccount(tenantID, userID)
     enrollmentCode.value = ''
@@ -168,7 +210,18 @@ async function changeBillingAccount() {
 async function saveTenantStatus() { if (!selected.value) return; await act(() => resellersAPI.updateTenant(selected.value!.id, { status: selected.value!.status, allowed_cidrs: selected.value!.allowed_cidrs }), '状态已更新') }
 async function addProduct() { if (!selectedID.value) return; await act(() => resellersAPI.upsertProduct(selectedID.value!, { ...newProduct, enabled: true }), '产品已保存') }
 async function createEnrollment() { if (!selectedID.value) return; busy.value = true; try { const result = await resellersAPI.createEnrollment(selectedID.value, selectedProducts.value); enrollmentCode.value = result.enrollment_code; app.showSuccess('一次性授权码已生成') } catch (e) { app.showError(errorText(e)) } finally { busy.value = false } }
-async function rotate(product: ResellerProduct) { if (!selectedID.value || !confirm('轮换后旧凭证仅短时继续有效，确认继续？')) return; busy.value = true; try { const result = await resellersAPI.rotate(selectedID.value, product.id); alert(`新凭证只显示一次：\n${result.api_key}`); await loadTenant(selectedID.value) } catch (e) { app.showError(errorText(e)) } finally { busy.value = false } }
+function rotate(product: ResellerProduct) { if (selectedID.value) pendingRotateProduct.value = product }
+async function confirmRotate() {
+  const tenantID = selectedID.value, product = pendingRotateProduct.value
+  pendingRotateProduct.value = null
+  if (!tenantID || !product) return
+  busy.value = true
+  try {
+    const result = await resellersAPI.rotate(tenantID, product.id)
+    rotatedAPIKey.value = result.api_key
+    await loadTenant(tenantID)
+  } catch (e) { app.showError(errorText(e)) } finally { busy.value = false }
+}
 async function copy(value: string) { await navigator.clipboard.writeText(value); app.showSuccess('已复制') }
 function money(value: number) { return Number(value || 0).toFixed(6) }
 function errorText(error: unknown) { return (error as { message?: string }).message || '操作失败' }

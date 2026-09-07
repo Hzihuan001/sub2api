@@ -3,6 +3,7 @@ export default {
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
+      add: 'Add Account',
       autoRefresh: 'Auto Refresh',
       enableAutoRefresh: 'Enable auto refresh',
       refreshInterval5s: '5 seconds',

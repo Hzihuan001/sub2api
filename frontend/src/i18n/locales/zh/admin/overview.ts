@@ -168,6 +168,7 @@ export default {
       neverExpire: '永不过期',
       empty: '暂无备份记录',
       actions: {
+        delete: '删除',
         download: '下载',
         downloadParts: '下载分卷',
         downloadPartsHint: '请按顺序下载全部分卷后拼接 gzip 字节流：Linux/macOS 使用 cat payload.part-* > backup.sql.gz；Windows 使用 copy /b payload.part-000001+payload.part-000002 backup.sql.gz。',
