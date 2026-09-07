@@ -18,11 +18,12 @@ export default {
     rotate: 'Rotate credential',
     rotated: 'Product credential rotated',
     saleActive: 'Sales enabled',
-    savedResources: 'Sales configuration is retained and will be reused when enabled again.',
     stopSale: 'Stop selling',
     productSaved: 'Retail product configuration saved',
     productStopped: 'Product sale stopped',
     costMultiplier: 'Cost multiplier',
+    allModels: 'All models',
+    modelCount: '{count} models',
     retailMultiplier: 'Retail multiplier',
     loadFailed: 'Failed to load upstream details',
     status: {

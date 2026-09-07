@@ -18,11 +18,12 @@ export default {
     rotate: '轮换凭证',
     rotated: '产品凭证已轮换',
     saleActive: '销售已启用',
-    savedResources: '已保留销售配置，重新启用时会复用。',
     stopSale: '停止销售',
     productSaved: '销售产品配置已保存',
     productStopped: '产品已停止销售',
     costMultiplier: '成本倍率',
+    allModels: '全部模型',
+    modelCount: '{count} 个模型',
     retailMultiplier: '销售倍率',
     loadFailed: '加载上游信息失败',
     status: {

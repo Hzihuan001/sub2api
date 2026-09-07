@@ -678,7 +678,7 @@ func (s *Service) ensureGroup(ctx context.Context, product Product, name string,
 	models := service.GroupModelAllowlist{Enabled: len(product.Models) > 0, Models: append([]string(nil), product.Models...)}
 	createGroup := func() (int64, error) {
 		group, err := s.admin.CreateGroup(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateGroupInput{
-			Name: name, Description: "Moshu reseller product: " + product.ProductCode,
+			Name: name, Description: "",
 			Platform: product.Platform, RateMultiplier: salesMultiplier, AllowZeroRateMultiplier: true,
 			ModelAllowlist: models,
 		})

@@ -47,19 +47,18 @@
               <div class="flex gap-2"><button class="btn btn-secondary" :disabled="busy" @click="batchIDs = status.products.filter(p => p.authorized && !p.selected).map(p => p.id)">选择尚未启用的产品</button><button class="btn btn-primary" :disabled="busy || !batchIDs.length" @click="saveBatch">批量启用/保存（{{ batchIDs.length }}）</button></div>
               <p v-for="result in batchResults" :key="result.id" class="text-sm" :class="result.success ? 'text-green-600' : 'text-red-600'">{{ result.name }}：{{ result.success ? '成功' : result.error }}</p>
             </div>
-            <article v-for="product in status.products" :key="product.id" class="card p-5">
+            <article v-for="product in authorizedProducts" :key="product.id" class="card p-5">
               <label class="mb-2 flex items-center gap-2 text-sm"><input v-model="batchIDs" type="checkbox" :value="product.id" :disabled="busy || !product.authorized" />批量选择</label>
               <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_minmax(150px,190px)_auto] xl:items-end">
                 <div>
                   <div class="flex flex-wrap items-center gap-2"><h3 class="font-semibold text-gray-900 dark:text-white">{{ product.display_name }}</h3><span class="rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-dark-700">{{ product.platform }}</span><span v-if="!product.authorized" class="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">{{ t('admin.moshuUpstream.revoked') }}</span></div>
-                  <p class="mt-1 text-xs text-gray-500">{{ product.product_code }} · {{ t('admin.moshuUpstream.costMultiplier') }} {{ multiplier(product.cost_rate_multiplier) }} · {{ product.models.length }} models</p>
+                  <p class="mt-1 text-xs text-gray-500">{{ product.product_code }} · {{ t('admin.moshuUpstream.costMultiplier') }} {{ multiplier(product.cost_rate_multiplier) }} · {{ modelSummary(product.models) }}</p>
                 </div>
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ t('admin.moshuUpstream.salesName') }}</span><input v-model.trim="drafts[product.id].name" class="input mt-1 w-full" :disabled="!product.authorized" /></label>
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ t('admin.moshuUpstream.retailMultiplier') }}</span><input v-model.number="drafts[product.id].multiplier" class="input mt-1 w-full" type="number" min="0" step="0.01" :disabled="!product.authorized" /></label>
-                <div class="flex gap-2"><button class="btn btn-primary" :disabled="busy || !product.authorized" @click="saveProduct(product)">{{ product.selected ? t('common.save') : t('admin.moshuUpstream.enableSale') }}</button><button v-if="product.selected" class="btn btn-secondary" :disabled="busy" @click="rotate(product)">{{ t('admin.moshuUpstream.rotate') }}</button></div>
+                <div class="flex flex-wrap gap-2"><button class="btn btn-primary" :disabled="busy || !product.authorized" @click="saveProduct(product)">{{ product.selected ? t('common.save') : t('admin.moshuUpstream.enableSale') }}</button><button v-if="product.selected" class="btn btn-secondary" :disabled="busy" @click="rotate(product)">{{ t('admin.moshuUpstream.rotate') }}</button><button v-if="product.local_account_id" class="btn btn-secondary" :disabled="busy || testingProductID === product.id" @click="openProductTest(product)">{{ t('admin.accounts.testConnection') }}</button></div>
               </div>
               <div v-if="product.selected" class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700"><span>{{ t('admin.moshuUpstream.saleActive') }}</span><button class="text-red-600 hover:underline" :disabled="busy" @click="disableProduct(product)">{{ t('admin.moshuUpstream.stopSale') }}</button></div>
-              <p v-else-if="product.local_group_id || product.local_account_id" class="mt-3 text-xs text-amber-600">{{ t('admin.moshuUpstream.savedResources') }}</p>
             </article>
           </section>
 
@@ -67,19 +66,22 @@
         </template>
       </template>
     </div>
+    <AccountTestModal :show="showTest" :account="testingAccount" @close="closeProductTest" />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
-import { groupsAPI, moshuResellerAPI } from '@/api/admin'
+import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
+import { accountsAPI, groupsAPI, moshuResellerAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { runResellerBatch, type BatchResult } from '@/utils/resellerBatch'
 import type { MoshuProduct, MoshuResellerStatus } from '@/api/admin/moshuReseller'
+import type { Account } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -89,6 +91,10 @@ const status = ref<MoshuResellerStatus | null>(null)
 const enrollment = reactive({ base_url: '', enrollment_code: '' })
 const batchIDs = ref<number[]>([]), batchResults = ref<BatchResult[]>([])
 const drafts = reactive<Record<number, { name: string; multiplier: number }>>({})
+const authorizedProducts = computed(() => status.value?.products.filter(product => product.authorized) ?? [])
+const testingProductID = ref<number | null>(null)
+const testingAccount = ref<Account | null>(null)
+const showTest = ref(false)
 
 async function loadData() {
   loading.value = true
@@ -116,7 +122,7 @@ async function run(action: () => Promise<unknown>, message: string) {
 const enroll = () => run(async () => { await moshuResellerAPI.enroll({ ...enrollment }); enrollment.enrollment_code = '' }, t('admin.moshuUpstream.connected'))
 async function saveBatch() {
   if (busy.value) return
-  const targets = (status.value?.products ?? []).filter(p => p.authorized && batchIDs.value.includes(p.id)).map(p => ({ ...p, draft: { ...drafts[p.id] } }))
+  const targets = authorizedProducts.value.filter(p => batchIDs.value.includes(p.id)).map(p => ({ ...p, draft: { ...drafts[p.id] } }))
   if (!confirm(`确认按填写的售价启用/保存 ${targets.length} 个产品？`)) return
   busy.value = true
   try {
@@ -130,7 +136,18 @@ const syncCatalog = () => run(() => moshuResellerAPI.syncCatalog(), t('admin.mos
 const rotate = (product: MoshuProduct) => run(() => moshuResellerAPI.rotateCredential(product.id), t('admin.moshuUpstream.rotated'))
 const saveProduct = (product: MoshuProduct) => run(() => moshuResellerAPI.configureProduct(product.id, { selected: true, sales_name: drafts[product.id].name, sales_multiplier: drafts[product.id].multiplier }), t('admin.moshuUpstream.productSaved'))
 const disableProduct = (product: MoshuProduct) => run(() => moshuResellerAPI.configureProduct(product.id, { selected: false, sales_name: drafts[product.id].name, sales_multiplier: drafts[product.id].multiplier }), t('admin.moshuUpstream.productStopped'))
+async function openProductTest(product: MoshuProduct) {
+  if (!product.local_account_id || testingProductID.value !== null) return
+  testingProductID.value = product.id
+  try {
+    testingAccount.value = await accountsAPI.getById(product.local_account_id)
+    showTest.value = true
+  } catch (error) { appStore.showError(errorText(error)) }
+  finally { testingProductID.value = null }
+}
+function closeProductTest() { showTest.value = false; testingAccount.value = null }
 function multiplier(value?: number | null) { return Number(value ?? 1).toFixed(2) }
+function modelSummary(models?: string[]) { return models?.length ? t('admin.moshuUpstream.modelCount', { count: models.length }) : t('admin.moshuUpstream.allModels') }
 function errorText(error: unknown) { const value = error as { message?: string }; return value.message || t('admin.moshuUpstream.loadFailed') }
 onMounted(loadData)
 </script>

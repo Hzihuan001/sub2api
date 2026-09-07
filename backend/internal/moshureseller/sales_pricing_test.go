@@ -47,6 +47,7 @@ func (a *deletedGroupAdmin) SetAccountSchedulable(_ context.Context, id int64, s
 func (a *pricingAdmin) CreateGroup(_ context.Context, input *service.CreateGroupInput) (*service.Group, error) {
 	require.Equal(a.t, a.rate, input.RateMultiplier)
 	require.True(a.t, input.AllowZeroRateMultiplier)
+	require.Empty(a.t, input.Description)
 	return &service.Group{ID: 10, RateMultiplier: input.RateMultiplier}, nil
 }
 func (a *pricingAdmin) UpdateGroup(_ context.Context, _ int64, input *service.UpdateGroupInput) (*service.Group, error) {
