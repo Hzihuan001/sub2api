@@ -33,7 +33,7 @@ func TestResellerAdmissionUsesBillingAccount(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			mock.ExpectQuery("SELECT rc.reseller_id").WithArgs(int64(7)).WillReturnRows(
 				sqlmock.NewRows([]string{"reseller_id", "product_id", "group_id", "catalog_version", "cost_rate_multiplier", "allowed_cidrs", "user_id", "available_balance"}).
 					AddRow(2, 3, 4, 5, 0.35, []byte(`[]`), 12, tc.balance))
@@ -69,7 +69,7 @@ func TestResellerCredentialBelongsToTenantUser(t *testing.T) {
 		t.Run(map[bool]string{true: "ordinary user", false: "privileged or disabled user"}[eligible], func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			mock.ExpectBegin()
 			tx, err := db.BeginTx(context.Background(), nil)
 			require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestResellerCredentialBelongsToTenantUser(t *testing.T) {
 func TestCreateTenantRejectsInvalidBillingAccount(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectQuery("INSERT INTO reseller_tenants").WithArgs(int64(1), "L1", sqlmock.AnyArg()).WillReturnError(sql.ErrNoRows)
 	_, err = NewService(db, nil, nil).CreateTenant(context.Background(), 1, "L1", nil)
 	require.True(t, errors.Is(err, ErrInvalidInput))

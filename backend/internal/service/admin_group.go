@@ -352,32 +352,6 @@ func mergeUniqueModelIDs(modelLists ...[]string) []string {
 	return merged
 }
 
-func filterEffectiveModels(available, selected []string) []string {
-	filtered := make([]string, 0, len(selected))
-	seen := make(map[string]struct{}, len(selected))
-	for _, modelID := range selected {
-		modelID = strings.TrimSpace(modelID)
-		if modelID == "" || !effectiveModelsAllow(available, modelID) {
-			continue
-		}
-		if _, exists := seen[modelID]; exists {
-			continue
-		}
-		seen[modelID] = struct{}{}
-		filtered = append(filtered, modelID)
-	}
-	return filtered
-}
-
-func effectiveModelsAllow(available []string, modelID string) bool {
-	for _, pattern := range available {
-		if pattern == modelID || strings.HasSuffix(pattern, "*") && strings.HasPrefix(modelID, strings.TrimSuffix(pattern, "*")) {
-			return true
-		}
-	}
-	return false
-}
-
 func defaultModelsListCandidateIDs(platform string) []string {
 	switch platform {
 	case PlatformOpenAI:

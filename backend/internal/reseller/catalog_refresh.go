@@ -16,6 +16,7 @@ func (s *Service) refreshProductSnapshots(ctx context.Context, resellerID int64)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = rows.Close() }()
 	type snapshot struct {
 		id, groupID int64
 		platform    string
@@ -26,14 +27,14 @@ func (s *Service) refreshProductSnapshots(ctx context.Context, resellerID int64)
 	for rows.Next() {
 		var item snapshot
 		if err := rows.Scan(&item.id, &item.groupID, &item.platform, &item.rate, &item.raw); err != nil {
-			rows.Close()
 			return err
 		}
 		snapshots = append(snapshots, item)
 	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
 		return err
 	}
 	for _, item := range snapshots {

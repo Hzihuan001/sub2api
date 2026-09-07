@@ -92,7 +92,7 @@ func (s *Service) ListTenants(ctx context.Context) ([]Tenant, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]Tenant, 0)
 	for rows.Next() {
 		account := &BillingAccount{}
