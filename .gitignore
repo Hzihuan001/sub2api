@@ -139,6 +139,7 @@ deploy/docker-compose.override.yml
 .golangci-cache/
 vite.config.js
 docs/*
+!docs/RESELLER_RELIABILITY_20260907.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md

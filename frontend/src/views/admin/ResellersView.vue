@@ -49,6 +49,17 @@
 
           <section class="card p-5">
             <h2 class="font-semibold text-gray-900 dark:text-white">授权产品</h2>
+            <details class="mt-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+              <summary>批量添加分组</summary>
+              <p class="my-2 text-xs text-gray-500">按平台排列；已授权分组自动跳过。代码自动使用 group-ID，显示名称使用分组名称。</p>
+              <div class="grid max-h-64 gap-2 overflow-y-auto md:grid-cols-2">
+                <label v-for="group in batchGroups" :key="group.id" class="flex items-center gap-2 text-sm">
+                  <input v-model="batchGroupIDs" type="checkbox" :value="group.id" :disabled="busy" />{{ group.platform }} · {{ group.name }}
+                </label>
+              </div>
+              <div class="mt-3 flex gap-2"><button class="btn btn-secondary" :disabled="busy" @click="batchGroupIDs = batchGroups.map(g => g.id)">全选</button><button class="btn btn-primary" :disabled="busy || !batchGroupIDs.length" @click="addProductsBatch">添加所选 {{ batchGroupIDs.length }} 个分组</button></div>
+              <p v-for="result in batchResults" :key="result.id" class="mt-1 text-sm" :class="result.success ? 'text-green-600' : 'text-red-600'">{{ result.name }}：{{ result.success ? '已添加' : result.error }}</p>
+            </details>
             <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <select v-model.number="newProduct.moshu_group_id" class="input"><option :value="0">选择按余额计费的 Moshu 分组</option><option v-for="group in balanceGroups" :key="group.id" :value="group.id">{{ group.name }} · {{ group.platform }}</option></select>
               <input v-model.trim="newProduct.product_code" class="input" placeholder="稳定产品代码" />
@@ -88,6 +99,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Select from '@/components/common/Select.vue'
 import { groupsAPI, resellersAPI, usersAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
+import { runResellerBatch, type BatchResult } from '@/utils/resellerBatch'
 import type { AdminGroup } from '@/types'
 import type { ResellerProduct, ResellerSettlement, ResellerTenant } from '@/api/admin/resellers'
 
@@ -99,14 +111,31 @@ const newTenant = reactive({ user_id: null as number | null, name: '', cidrs: ''
 const billingUserOptions = ref<{ value: number; label: string }[]>([])
 const searchingUsers = ref(false)
 const replacementUserID = ref<number | null>(null)
+const batchGroupIDs = ref<number[]>([]), batchResults = ref<BatchResult[]>([])
 let userSearchController: AbortController | undefined
 const newProduct = reactive({ moshu_group_id: 0, product_code: '', display_name: '' })
 const selected = computed(() => tenants.value.find((item) => item.id === selectedID.value))
 const balanceGroups = computed(() => groups.value.filter((group) => group.subscription_type === 'standard'))
+const batchGroups = computed(() => balanceGroups.value.filter(g => !products.value.some(p => p.moshu_group_id === g.id)).sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)))
+
+async function addProductsBatch() {
+  const tenantID = selectedID.value
+  if (!tenantID || busy.value) return
+  const targets = batchGroups.value.filter(g => batchGroupIDs.value.includes(g.id))
+  busy.value = true
+  try {
+    batchResults.value = await runResellerBatch(targets, g => g.name, g => {
+      if (products.value.some(p => p.product_code === `group-${g.id}` && p.moshu_group_id !== g.id)) throw new Error('自动产品代码已被其他分组使用，请手动添加')
+      return resellersAPI.upsertProduct(tenantID, { moshu_group_id: g.id, product_code: `group-${g.id}`, display_name: g.name, enabled: true })
+    })
+    batchGroupIDs.value = batchResults.value.filter(r => !r.success).map(r => r.id)
+    if (selectedID.value === tenantID) await loadTenant(tenantID)
+  } catch (e) { app.showError(errorText(e)) } finally { busy.value = false }
+}
 
 async function load() { loading.value = true; try { [tenants.value, groups.value] = await Promise.all([resellersAPI.listTenants(), groupsAPI.getAllIncludingInactive()]); if (!selectedID.value && tenants.value[0]) selectedID.value = tenants.value[0].id; if (selectedID.value) await loadTenant(selectedID.value) } catch (e) { app.showError(errorText(e)) } finally { loading.value = false } }
 async function loadTenant(id: number) { const [productList, page] = await Promise.all([resellersAPI.listProducts(id), resellersAPI.settlements(id)]); products.value = productList; settlements.value = page.items; selectedProducts.value = productList.filter((item) => item.enabled).map((item) => item.id) }
-async function selectTenant(id: number) { selectedID.value = id; enrollmentCode.value = ''; replacementUserID.value = null; await loadTenant(id) }
+async function selectTenant(id: number) { if (busy.value) return; selectedID.value = id; enrollmentCode.value = ''; replacementUserID.value = null; batchGroupIDs.value = []; batchResults.value = []; await loadTenant(id) }
 async function act(action: () => Promise<unknown>, message: string) { busy.value = true; try { await action(); app.showSuccess(message); if (selectedID.value) await loadTenant(selectedID.value) } catch (e) { app.showError(errorText(e)) } finally { busy.value = false } }
 async function createTenant() { const userID = newTenant.user_id; if (!userID) return; await act(async () => { const created = await resellersAPI.createTenant({ user_id: userID, name: newTenant.name, allowed_cidrs: newTenant.cidrs.split(',').map((v) => v.trim()).filter(Boolean) }); tenants.value = await resellersAPI.listTenants(); selectedID.value = created.id }, '代理商已创建') }
 async function searchBillingUsers(query: string) {

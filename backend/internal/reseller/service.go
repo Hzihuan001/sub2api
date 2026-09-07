@@ -227,6 +227,9 @@ func (s *Service) ChangeBillingAccount(ctx context.Context, resellerID, userID i
 }
 
 func (s *Service) ListProducts(ctx context.Context, resellerID int64, enabledOnly bool) ([]Product, error) {
+	if err := s.refreshProductSnapshots(ctx, resellerID); err != nil {
+		return nil, err
+	}
 	query := `
 		SELECT rp.id, rp.reseller_id, rp.moshu_group_id, rp.product_code,
 		       rp.display_name, rp.platform, rp.enabled, rp.cost_rate_multiplier,
@@ -236,7 +239,7 @@ func (s *Service) ListProducts(ctx context.Context, resellerID int64, enabledOnl
 		       rp.created_at, rp.updated_at
 		FROM reseller_products rp WHERE rp.reseller_id=$1`
 	if enabledOnly {
-		query += ` AND rp.enabled=TRUE`
+		query += ` AND rp.enabled=TRUE AND EXISTS(SELECT 1 FROM groups g WHERE g.id=rp.moshu_group_id AND g.status='active' AND g.subscription_type='standard' AND g.deleted_at IS NULL)`
 	}
 	query += ` ORDER BY rp.product_code, rp.id`
 	rows, err := s.db.QueryContext(ctx, query, resellerID)
@@ -866,6 +869,9 @@ func scanSettlement(row scanner) (*Settlement, error) {
 func extractModelsSnapshot(raw []byte) []string {
 	var value any
 	if json.Unmarshal(raw, &value) != nil {
+		return []string{}
+	}
+	if config, ok := value.(map[string]any); ok && config["enabled"] == false {
 		return []string{}
 	}
 	seen := map[string]struct{}{}

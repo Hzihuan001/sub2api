@@ -256,7 +256,11 @@ func (h *Handler) Catalog(c *gin.Context) {
 		h.writeError(c, err)
 		return
 	}
-	etag := `W/"` + strconv.FormatInt(catalog.CatalogVersion, 10) + `"`
+	etag, err := catalogETag(*catalog)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
 	c.Header("ETag", etag)
 	if c.GetHeader("If-None-Match") == etag {
 		c.Status(http.StatusNotModified)
