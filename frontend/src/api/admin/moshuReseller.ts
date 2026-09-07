@@ -39,27 +39,6 @@ export interface MoshuResellerStatus {
   products: MoshuProduct[]
 }
 
-export interface MoshuProfitRecord {
-  id: number
-  request_id: string
-  product_code: string
-  requested_model?: string
-  moshu_actual_cost: number
-  l1_customer_charge: number
-  gross_profit: number
-  settlement_status: string
-  remote_completed_at?: string
-  created_at: string
-}
-
-export interface MoshuProfitPage {
-  items: MoshuProfitRecord[]
-  total: number
-  page: number
-  page_size: number
-  pages: number
-}
-
 export default {
   async status(): Promise<MoshuResellerStatus> {
     const response = await apiClient.get<MoshuResellerStatus>('/admin/moshu-reseller/status')
@@ -83,16 +62,6 @@ export default {
 
   async rotateCredential(id: number): Promise<MoshuProduct> {
     const response = await apiClient.post<MoshuProduct>(`/admin/moshu-reseller/products/${id}/credentials/rotate`)
-    return response.data
-  },
-
-  async syncSettlements(): Promise<{ synced: number }> {
-    const response = await apiClient.post<{ synced: number }>('/admin/moshu-reseller/settlements/sync')
-    return response.data
-  },
-
-  async profits(page = 1, pageSize = 20): Promise<MoshuProfitPage> {
-    const response = await apiClient.get<MoshuProfitPage>('/admin/moshu-reseller/profits', { params: { page, page_size: pageSize } })
     return response.data
   }
 }

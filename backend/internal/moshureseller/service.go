@@ -48,6 +48,12 @@ type storedConnection struct {
 }
 
 func (s *Service) Status(ctx context.Context) (*Status, error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	return s.status(ctx, true)
+}
+
+func (s *Service) status(ctx context.Context, reconcile bool) (*Status, error) {
 	result := &Status{Enabled: Enabled(), Products: []Product{}}
 	connection, err := s.loadConnection(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -58,12 +64,51 @@ func (s *Service) Status(ctx context.Context) (*Status, error) {
 	}
 	result.Connection = &connection.Connection
 	result.Connected = connection.Status == "active" || connection.Status == "error"
+	if reconcile && s.admin != nil {
+		if err := s.reconcileSelectedProducts(ctx); err != nil {
+			return nil, err
+		}
+	}
 	products, err := s.listProducts(ctx)
 	if err != nil {
 		return nil, err
 	}
 	result.Products = products
 	return result, nil
+}
+
+func (s *Service) reconcileSelectedProducts(ctx context.Context) error {
+	products, err := s.listProducts(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range products {
+		product := &products[i]
+		if !product.Selected {
+			continue
+		}
+		missing := product.LocalGroupID == nil || product.LocalAccountID == nil
+		if !missing {
+			_, groupErr := s.admin.GetGroup(ctx, *product.LocalGroupID)
+			if groupErr != nil && !errors.Is(groupErr, service.ErrGroupNotFound) {
+				return groupErr
+			}
+			missing = errors.Is(groupErr, service.ErrGroupNotFound)
+		}
+		if !missing {
+			_, accountErr := s.admin.GetAccount(ctx, *product.LocalAccountID)
+			if accountErr != nil && !errors.Is(accountErr, service.ErrAccountNotFound) {
+				return accountErr
+			}
+			missing = errors.Is(accountErr, service.ErrAccountNotFound)
+		}
+		if missing {
+			if _, err := s.deactivateProduct(ctx, product); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string) (*Status, error) {
@@ -157,7 +202,7 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return s.Status(ctx)
+	return s.status(ctx, false)
 }
 
 func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
@@ -188,7 +233,7 @@ func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 		}
 		_, _ = s.db.ExecContext(ctx, `UPDATE moshu_reseller_connections SET status='active',last_catalog_sync_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=1`)
 		_, _ = s.db.ExecContext(ctx, `UPDATE moshu_catalog_sync_runs SET status='succeeded',to_version=$2,completed_at=NOW() WHERE id=$1`, runID, connection.CatalogVersion)
-		return s.Status(ctx)
+		return s.status(ctx, false)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -220,7 +265,7 @@ func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 	if err := s.applyCatalogConfiguration(ctx); err != nil {
 		return nil, err
 	}
-	return s.Status(ctx)
+	return s.status(ctx, false)
 }
 
 func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool, salesName string, salesMultiplier float64) (*Product, error) {
@@ -231,22 +276,7 @@ func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool,
 		return nil, err
 	}
 	if !selected {
-		if product.LocalGroupID != nil {
-			disabled := service.StatusDisabled
-			if _, updateErr := s.admin.UpdateGroup(ctx, *product.LocalGroupID, &service.UpdateGroupInput{Platform: product.Platform, Status: disabled}); updateErr != nil {
-				return nil, updateErr
-			}
-		}
-		if product.LocalAccountID != nil {
-			if _, updateErr := s.admin.SetAccountSchedulable(ctx, *product.LocalAccountID, false); updateErr != nil {
-				return nil, updateErr
-			}
-		}
-		_, err = s.db.ExecContext(ctx, `UPDATE moshu_products SET selected=FALSE,updated_at=NOW() WHERE id=$1`, id)
-		if err == nil {
-			product.Selected = false
-		}
-		return product, err
+		return s.deactivateProduct(ctx, product)
 	}
 	if !product.Authorized {
 		return nil, fmt.Errorf("%w: product authorization was revoked", ErrInvalidInput)
@@ -286,6 +316,47 @@ func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool,
 	}
 	updated, _, err := s.loadProduct(ctx, id)
 	return updated, err
+}
+
+// deactivateProduct stops routing while tolerating resources that an
+// administrator already removed from the normal group/account pages. Missing
+// pointers are cleared so a later re-enable can safely recreate them.
+func (s *Service) deactivateProduct(ctx context.Context, product *Product) (*Product, error) {
+	clearGroup := false
+	clearAccount := false
+	if product.LocalGroupID != nil {
+		disabled := service.StatusDisabled
+		if _, err := s.admin.UpdateGroup(ctx, *product.LocalGroupID, &service.UpdateGroupInput{Platform: product.Platform, Status: disabled}); err != nil {
+			if !errors.Is(err, service.ErrGroupNotFound) {
+				return nil, err
+			}
+			clearGroup = true
+		}
+	}
+	if product.LocalAccountID != nil {
+		if _, err := s.admin.SetAccountSchedulable(ctx, *product.LocalAccountID, false); err != nil {
+			if !errors.Is(err, service.ErrAccountNotFound) {
+				return nil, err
+			}
+			clearAccount = true
+		}
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE moshu_products SET selected=FALSE,
+		local_group_id=CASE WHEN $2 THEN NULL ELSE local_group_id END,
+		local_account_id=CASE WHEN $3 THEN NULL ELSE local_account_id END,
+		updated_at=NOW() WHERE id=$1`, product.ID, clearGroup, clearAccount)
+	if err != nil {
+		return nil, err
+	}
+	product.Selected = false
+	if clearGroup {
+		product.LocalGroupID = nil
+	}
+	if clearAccount {
+		product.LocalAccountID = nil
+	}
+	return product, nil
 }
 
 func (s *Service) RotateCredential(ctx context.Context, id int64) (*Product, error) {
@@ -605,7 +676,7 @@ func persistCatalogTx(ctx context.Context, tx *sql.Tx, catalog RemoteCatalog, cr
 
 func (s *Service) ensureGroup(ctx context.Context, product Product, name string, salesMultiplier float64) (int64, error) {
 	models := service.GroupModelsListConfig{Enabled: len(product.Models) > 0, Models: append([]string(nil), product.Models...)}
-	if product.LocalGroupID == nil {
+	createGroup := func() (int64, error) {
 		group, err := s.admin.CreateGroup(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateGroupInput{
 			Name: name, Description: "Moshu reseller product: " + product.ProductCode,
 			Platform: product.Platform, RateMultiplier: salesMultiplier, AllowZeroRateMultiplier: true,
@@ -616,12 +687,21 @@ func (s *Service) ensureGroup(ctx context.Context, product Product, name string,
 		}
 		return group.ID, nil
 	}
+	if product.LocalGroupID == nil {
+		return createGroup()
+	}
 	status := service.StatusActive
 	group, err := s.admin.UpdateGroup(ctx, *product.LocalGroupID, &service.UpdateGroupInput{
 		Name: name, Platform: product.Platform, RateMultiplier: &salesMultiplier, AllowZeroRateMultiplier: true,
 		Status: status, ModelsListConfig: &models,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrGroupNotFound) {
+			if _, clearErr := s.db.ExecContext(ctx, `UPDATE moshu_products SET local_group_id=NULL,selected=FALSE,updated_at=NOW() WHERE id=$1 AND local_group_id=$2`, product.ID, *product.LocalGroupID); clearErr != nil {
+				return 0, clearErr
+			}
+			return createGroup()
+		}
 		return 0, err
 	}
 	return group.ID, nil
@@ -640,18 +720,16 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 	groupIDs := []int64{groupID}
 	rate := product.CostRateMultiplier
 	if product.LocalAccountID == nil {
-		account, err := s.admin.CreateAccount(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateAccountInput{
-			Name: "Moshu - " + product.DisplayName, Platform: product.Platform, Type: service.AccountTypeAPIKey,
-			Credentials: credentials, Extra: extra, Concurrency: 100, Priority: 50,
-			RateMultiplier: &rate, GroupIDs: groupIDs, SkipDefaultGroupBind: true, SkipMixedChannelCheck: true,
-		})
-		if err != nil {
-			return 0, err
-		}
-		return account.ID, nil
+		return s.createProductAccount(ctx, product, groupID, credentials, extra, groupIDs, rate)
 	}
 	account, err := s.admin.GetAccount(ctx, *product.LocalAccountID)
 	if err != nil {
+		if errors.Is(err, service.ErrAccountNotFound) {
+			if _, clearErr := s.db.ExecContext(ctx, `UPDATE moshu_products SET local_account_id=NULL,selected=FALSE,updated_at=NOW() WHERE id=$1 AND local_account_id=$2`, product.ID, *product.LocalAccountID); clearErr != nil {
+				return 0, clearErr
+			}
+			return s.createProductAccount(ctx, product, groupID, credentials, extra, groupIDs, rate)
+		}
 		return 0, err
 	}
 	extra = mergeMap(account.Extra, extra)
@@ -666,6 +744,18 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 		return 0, err
 	}
 	return updated.ID, nil
+}
+
+func (s *Service) createProductAccount(ctx context.Context, product Product, groupID int64, credentials, extra map[string]any, groupIDs []int64, rate float64) (int64, error) {
+	account, err := s.admin.CreateAccount(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateAccountInput{
+		Name: "Moshu - " + product.DisplayName, Platform: product.Platform, Type: service.AccountTypeAPIKey,
+		Credentials: credentials, Extra: extra, Concurrency: 100, Priority: 50,
+		RateMultiplier: &rate, GroupIDs: groupIDs, SkipDefaultGroupBind: true, SkipMixedChannelCheck: true,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return account.ID, nil
 }
 
 func (s *Service) disableRevokedProducts(ctx context.Context) error {
@@ -692,12 +782,16 @@ func (s *Service) disableRevokedProducts(ctx context.Context) error {
 	for _, item := range targets {
 		if item.groupID.Valid {
 			if _, err := s.admin.UpdateGroup(ctx, item.groupID.Int64, &service.UpdateGroupInput{Platform: item.platform, Status: service.StatusDisabled}); err != nil {
-				return err
+				if !errors.Is(err, service.ErrGroupNotFound) {
+					return err
+				}
 			}
 		}
 		if item.accountID.Valid {
 			if _, err := s.admin.SetAccountSchedulable(ctx, item.accountID.Int64, false); err != nil {
-				return err
+				if !errors.Is(err, service.ErrAccountNotFound) {
+					return err
+				}
 			}
 		}
 	}

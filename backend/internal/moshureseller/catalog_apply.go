@@ -2,6 +2,7 @@ package moshureseller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"slices"
@@ -20,6 +21,12 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 		if product.LocalGroupID != nil {
 			group, err := s.admin.GetGroup(ctx, *product.LocalGroupID)
 			if err != nil {
+				if errors.Is(err, service.ErrGroupNotFound) {
+					if _, stopErr := s.deactivateProduct(ctx, &product); stopErr != nil {
+						return fmt.Errorf("stop product %d after its local group was deleted: %w", product.ID, stopErr)
+					}
+					continue
+				}
 				return fmt.Errorf("load product %d group: %w", product.ID, err)
 			}
 			if group.Platform != product.Platform {
@@ -35,6 +42,12 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 		if product.LocalAccountID != nil {
 			account, err := s.admin.GetAccount(ctx, *product.LocalAccountID)
 			if err != nil {
+				if errors.Is(err, service.ErrAccountNotFound) {
+					if _, stopErr := s.deactivateProduct(ctx, &product); stopErr != nil {
+						return fmt.Errorf("stop product %d after its local account was deleted: %w", product.ID, stopErr)
+					}
+					continue
+				}
 				return fmt.Errorf("load product %d account: %w", product.ID, err)
 			}
 			if account.Platform != product.Platform {
