@@ -63,6 +63,25 @@ func TestProtocolClientCatalogHonorsETagAndNotModified(t *testing.T) {
 	require.Equal(t, `W/"3"`, etag)
 }
 
+func TestProtocolClientBalanceUsesScopedResellerEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/api/v1/reseller/v1/balance", r.URL.Path)
+		require.Equal(t, "Bearer reseller-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"balance":88.5,"frozen_balance":3.25,"warning":true}}`))
+	}))
+	defer server.Close()
+
+	client := newProtocolClient()
+	client.http = server.Client()
+	result, err := client.balance(context.Background(), server.URL, "reseller-token")
+	require.NoError(t, err)
+	require.Equal(t, 88.5, result.Balance)
+	require.Equal(t, 3.25, result.FrozenBalance)
+	require.True(t, result.Warning)
+}
+
 func TestDisabledRuntimeStopsImmediately(t *testing.T) {
 	t.Setenv("MOSHU_RESELLER_CLIENT_ENABLED", "false")
 	runtime := NewRuntime(nil)

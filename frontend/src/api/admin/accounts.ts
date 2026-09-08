@@ -586,6 +586,10 @@ export interface SyncUpstreamModelsResult {
   warnings?: UpstreamModelSyncWarning[]
 }
 
+export interface ProbeUpstreamModelsResult {
+  models: string[]
+}
+
 export interface UpstreamModelSyncWarning {
   code: string
   message: string
@@ -610,6 +614,14 @@ export interface UpstreamModelMetadata {
  */
 export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModelsResult> {
   const { data } = await apiClient.post<SyncUpstreamModelsResult>(`/admin/accounts/${id}/models/sync-upstream`)
+  return data
+}
+
+/**
+ * Probe live model IDs without changing the account's model configuration.
+ */
+export async function probeUpstreamModels(id: number): Promise<ProbeUpstreamModelsResult> {
+  const { data } = await apiClient.post<ProbeUpstreamModelsResult>(`/admin/accounts/${id}/models/probe-upstream`)
   return data
 }
 
@@ -1073,6 +1085,7 @@ export const accountsAPI = {
   resetTempUnschedulable,
   setSchedulable,
   getAvailableModels,
+  probeUpstreamModels,
   syncUpstreamModels,
   syncUpstreamModelsPreview,
   generateAuthUrl,

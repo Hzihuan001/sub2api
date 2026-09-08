@@ -8263,7 +8263,7 @@
           />
         </div>
 
-		<div v-if="authStore.isSuperAdmin" v-show="activeTab === 'email'" class="space-y-6">
+		<div v-show="activeTab === 'email'" class="space-y-6">
           <!-- Email disabled hint - show when email_verify_enabled is off -->
           <div v-if="!form.email_verify_enabled" class="card">
             <div class="p-6">
@@ -8888,7 +8888,7 @@ const allSettingsTabs = [
 const settingsTabs = computed(() =>
   authStore.isSuperAdmin
     ? allSettingsTabs
-    : allSettingsTabs.filter((tab) => tab.key !== "email" && tab.key !== "backup"),
+    : allSettingsTabs.filter((tab) => tab.key !== "backup"),
 );
 
 const settingsTabKeyboardActions = {

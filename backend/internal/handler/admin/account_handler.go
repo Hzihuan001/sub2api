@@ -2966,6 +2966,51 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	response.Success(c, models)
 }
 
+// ProbeUpstreamModels fetches the live model IDs exposed by an account's
+// upstream model-list endpoint without persisting capability metadata or
+// changing the account's configured model mapping.
+// POST /api/v1/admin/accounts/:id/models/probe-upstream
+func (h *AccountHandler) ProbeUpstreamModels(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	if h.accountTestService == nil {
+		response.InternalError(c, "Account test service is not configured")
+		return
+	}
+
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
+	if err != nil {
+		var probeErr *service.UpstreamModelSyncError
+		if errors.As(err, &probeErr) {
+			switch probeErr.Kind {
+			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
+				response.BadRequest(c, probeErr.SafeMessage())
+			case service.UpstreamModelSyncErrorInternal:
+				response.InternalError(c, probeErr.SafeMessage())
+			default:
+				slog.Warn("probe_upstream_models_failed", "account_id", accountID, "kind", probeErr.Kind)
+				response.Error(c, http.StatusBadGateway, probeErr.SafeMessage())
+			}
+			return
+		}
+
+		slog.Warn("probe_upstream_models_failed", "account_id", accountID)
+		response.Error(c, http.StatusBadGateway, "Failed to probe upstream models")
+		return
+	}
+
+	response.Success(c, gin.H{"models": models})
+}
+
 // SyncUpstreamModels handles syncing live supported models from an account's upstream.
 // POST /api/v1/admin/accounts/:id/models/sync-upstream
 func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {

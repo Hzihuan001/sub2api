@@ -25,7 +25,7 @@
           {{ siteName }}
         </router-link>
         <!-- Version Badge -->
-        <VersionBadge :version="siteVersion" />
+        <VersionBadge v-if="authStore.isSuperAdmin" :version="siteVersion" />
       </div>
     </div>
 

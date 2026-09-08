@@ -13,8 +13,9 @@ import (
 
 type pricingAdmin struct {
 	service.AdminService
-	t    *testing.T
-	rate float64
+	t        *testing.T
+	rate     float64
+	capacity int
 }
 
 type deletedGroupAdmin struct {
@@ -58,6 +59,7 @@ func (a *pricingAdmin) UpdateGroup(_ context.Context, _ int64, input *service.Up
 }
 func (a *pricingAdmin) CreateAccount(_ context.Context, input *service.CreateAccountInput) (*service.Account, error) {
 	require.Equal(a.t, 5.0, *input.RateMultiplier) // Upstream cost is untouched.
+	require.Equal(a.t, a.capacity, input.Concurrency)
 	return &service.Account{ID: 20}, nil
 }
 
@@ -73,10 +75,11 @@ func TestConfigureProductAllowsPricesBelowCostAndZero(t *testing.T) {
 		mock.ExpectQuery("SELECT base_url").WillReturnRows(sqlmock.NewRows([]string{"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh", "expiry", "etag", "version", "catalog_at", "settlement_at", "error"}).AddRow("https://main.example", "instance", 1, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "etag", 1, nil, nil, nil))
 		mock.ExpectExec("UPDATE moshu_products SET selected=TRUE").WithArgs(int64(3), rate, int64(10), int64(20)).WillReturnResult(sqlmock.NewResult(0, 1))
 		mock.ExpectQuery("SELECT id,remote_product_id").WithArgs(int64(3)).WillReturnRows(pricingRows(true, rate, 10, 20))
-		sut := NewService(db, testEncryptor{}, &pricingAdmin{t: t, rate: rate})
-		product, err := sut.ConfigureProduct(context.Background(), 3, true, "My price", rate)
+		sut := NewService(db, testEncryptor{}, &pricingAdmin{t: t, rate: rate, capacity: 37})
+		product, err := sut.ConfigureProduct(context.Background(), 3, true, "My price", rate, 37)
 		require.NoError(t, err)
 		require.Equal(t, rate, *product.SalesRateMultiplier)
+		require.Equal(t, 37, product.Capacity)
 		_, err = sut.ensureGroup(context.Background(), *product, "My price", rate)
 		require.NoError(t, err)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -89,11 +92,21 @@ func TestConfigureProductRejectsInvalidNumbersWithoutWrites(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
 		mock.ExpectQuery("SELECT id,remote_product_id").WithArgs(int64(3)).WillReturnRows(pricingRows(false, 1, nil, nil))
-		_, err = NewService(db, testEncryptor{}, nil).ConfigureProduct(context.Background(), 3, true, "Invalid", rate)
+		_, err = NewService(db, testEncryptor{}, nil).ConfigureProduct(context.Background(), 3, true, "Invalid", rate, 10)
 		require.ErrorIs(t, err, ErrInvalidInput)
 		require.NoError(t, mock.ExpectationsWereMet())
 		_ = db.Close()
 	}
+}
+
+func TestConfigureProductRejectsNegativeCapacity(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	mock.ExpectQuery("SELECT id,remote_product_id").WithArgs(int64(3)).WillReturnRows(pricingRows(false, 1, nil, nil))
+	_, err = NewService(db, testEncryptor{}, nil).ConfigureProduct(context.Background(), 3, true, "Invalid", 1, -1)
+	require.ErrorIs(t, err, ErrInvalidInput)
+	require.NoError(t, mock.ExpectationsWereMet())
+	_ = db.Close()
 }
 
 func TestConfigureProductStopsSaleWhenLocalGroupWasDeleted(t *testing.T) {
@@ -105,7 +118,7 @@ func TestConfigureProductStopsSaleWhenLocalGroupWasDeleted(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	admin := &deletedGroupAdmin{t: t}
 
-	product, err := NewService(db, testEncryptor{}, admin).ConfigureProduct(context.Background(), 3, false, "GPT", 1.7)
+	product, err := NewService(db, testEncryptor{}, admin).ConfigureProduct(context.Background(), 3, false, "GPT", 1.7, 10)
 
 	require.NoError(t, err)
 	require.False(t, product.Selected)

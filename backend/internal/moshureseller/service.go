@@ -76,6 +76,24 @@ func (s *Service) status(ctx context.Context, reconcile bool) (*Status, error) {
 	if err != nil {
 		return nil, err
 	}
+	if s.admin != nil {
+		for i := range products {
+			products[i].Capacity = 100
+			if products[i].LocalAccountID == nil {
+				continue
+			}
+			account, accountErr := s.admin.GetAccount(ctx, *products[i].LocalAccountID)
+			if accountErr != nil {
+				if errors.Is(accountErr, service.ErrAccountNotFound) {
+					continue
+				}
+				return nil, accountErr
+			}
+			if account.Concurrency > 0 {
+				products[i].Capacity = account.Concurrency
+			}
+		}
+	}
 	result.Products = products
 	return result, nil
 }
@@ -285,7 +303,18 @@ func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 	return s.status(ctx, false)
 }
 
-func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool, salesName string, salesMultiplier float64) (*Product, error) {
+// Balance returns the wallet state of the main-site billing account bound to
+// the authenticated reseller tenant. The main site owns the authorization
+// check; L1 only proxies the scoped, read-only response.
+func (s *Service) Balance(ctx context.Context) (*Balance, error) {
+	connection, token, err := s.authenticatedConnection(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.client.balance(ctx, connection.BaseURL, token)
+}
+
+func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool, salesName string, salesMultiplier float64, requestedCapacity int) (*Product, error) {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	product, credentialCiphertext, err := s.loadProduct(ctx, id)
@@ -304,6 +333,10 @@ func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool,
 	if strings.TrimSpace(salesName) == "" {
 		salesName = product.DisplayName
 	}
+	capacity, err := s.resolveProductCapacity(ctx, product, requestedCapacity)
+	if err != nil {
+		return nil, err
+	}
 	if credentialCiphertext == "" {
 		if _, err := s.rotateCredential(ctx, id); err != nil {
 			return nil, err
@@ -321,7 +354,7 @@ func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool,
 	if err != nil {
 		return nil, err
 	}
-	accountID, err := s.ensureAccount(ctx, *product, groupID, plainKey)
+	accountID, err := s.ensureAccount(ctx, *product, groupID, plainKey, capacity)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +365,29 @@ func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool,
 		return nil, err
 	}
 	updated, _, err := s.loadProduct(ctx, id)
+	if updated != nil {
+		updated.Capacity = capacity
+	}
 	return updated, err
+}
+
+func (s *Service) resolveProductCapacity(ctx context.Context, product *Product, requested int) (int, error) {
+	if requested < 0 {
+		return 0, fmt.Errorf("%w: capacity must be at least 1", ErrInvalidInput)
+	}
+	if requested > 0 {
+		return requested, nil
+	}
+	if product.LocalAccountID != nil && s.admin != nil {
+		account, err := s.admin.GetAccount(ctx, *product.LocalAccountID)
+		if err == nil && account.Concurrency > 0 {
+			return account.Concurrency, nil
+		}
+		if err != nil && !errors.Is(err, service.ErrAccountNotFound) {
+			return 0, err
+		}
+	}
+	return 100, nil
 }
 
 // deactivateProduct stops routing while tolerating resources that an
@@ -492,7 +547,7 @@ func (s *Service) rotateCredential(ctx context.Context, id int64) (*Product, err
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.ExecContext(ctx, `UPDATE moshu_products SET credential_ciphertext=$2,credential_received_at=NOW(),updated_at=NOW() WHERE id=$1`, id, ciphertext); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE moshu_products SET credential_ciphertext=$2::text,credential_received_at=NOW(),updated_at=NOW() WHERE id=$1::bigint`, id, ciphertext); err != nil {
 		return nil, err
 	}
 	if err = syncAccountCredentialTx(ctx, tx, product.RemoteProductID, credential.APIKey); err != nil {
@@ -812,7 +867,7 @@ func (s *Service) ensureGroup(ctx context.Context, product Product, name string,
 	return group.ID, nil
 }
 
-func (s *Service) ensureAccount(ctx context.Context, product Product, groupID int64, apiKey string) (int64, error) {
+func (s *Service) ensureAccount(ctx context.Context, product Product, groupID int64, apiKey string, capacity int) (int64, error) {
 	connection, err := s.loadConnection(ctx)
 	if err != nil {
 		return 0, err
@@ -825,7 +880,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 	groupIDs := []int64{groupID}
 	rate := product.CostRateMultiplier
 	if product.LocalAccountID == nil {
-		return s.createProductAccount(ctx, product, credentials, extra, groupIDs, rate)
+		return s.createProductAccount(ctx, product, credentials, extra, groupIDs, rate, capacity)
 	}
 	account, err := s.admin.GetAccount(ctx, *product.LocalAccountID)
 	if err != nil {
@@ -833,14 +888,14 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 			if _, clearErr := s.db.ExecContext(ctx, `UPDATE moshu_products SET local_account_id=NULL,selected=FALSE,updated_at=NOW() WHERE id=$1 AND local_account_id=$2`, product.ID, *product.LocalAccountID); clearErr != nil {
 				return 0, clearErr
 			}
-			return s.createProductAccount(ctx, product, credentials, extra, groupIDs, rate)
+			return s.createProductAccount(ctx, product, credentials, extra, groupIDs, rate, capacity)
 		}
 		return 0, err
 	}
 	extra = mergeMap(account.Extra, extra)
 	updated, err := s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
 		Name: account.Name, Type: account.Type, Credentials: credentials, Extra: extra,
-		RateMultiplier: &rate, Status: service.StatusActive, GroupIDs: &groupIDs, SkipMixedChannelCheck: true,
+		Concurrency: &capacity, RateMultiplier: &rate, Status: service.StatusActive, GroupIDs: &groupIDs, SkipMixedChannelCheck: true,
 	})
 	if err != nil {
 		return 0, err
@@ -851,10 +906,14 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 	return updated.ID, nil
 }
 
-func (s *Service) createProductAccount(ctx context.Context, product Product, credentials, extra map[string]any, groupIDs []int64, rate float64) (int64, error) {
+func (s *Service) createProductAccount(ctx context.Context, product Product, credentials, extra map[string]any, groupIDs []int64, rate float64, capacity ...int) (int64, error) {
+	accountCapacity := 100
+	if len(capacity) > 0 && capacity[0] > 0 {
+		accountCapacity = capacity[0]
+	}
 	account, err := s.admin.CreateAccount(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateAccountInput{
 		Name: "Moshu - " + product.DisplayName, Platform: product.Platform, Type: service.AccountTypeAPIKey,
-		Credentials: credentials, Extra: extra, Concurrency: 100, Priority: 50,
+		Credentials: credentials, Extra: extra, Concurrency: accountCapacity, Priority: 50,
 		RateMultiplier: &rate, GroupIDs: groupIDs, SkipDefaultGroupBind: true, SkipMixedChannelCheck: true,
 	})
 	if err != nil {

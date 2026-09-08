@@ -29,6 +29,7 @@ export interface MoshuProduct {
   credential_available: boolean
   local_group_id?: number
   local_account_id?: number
+  capacity: number
   effective_at: string
 }
 
@@ -39,9 +40,20 @@ export interface MoshuResellerStatus {
   products: MoshuProduct[]
 }
 
+export interface MoshuResellerBalance {
+  balance: number
+  frozen_balance: number
+  warning: boolean
+}
+
 export default {
   async status(): Promise<MoshuResellerStatus> {
     const response = await apiClient.get<MoshuResellerStatus>('/admin/moshu-reseller/status')
+    return response.data
+  },
+
+  async balance(): Promise<MoshuResellerBalance> {
+    const response = await apiClient.get<MoshuResellerBalance>('/admin/moshu-reseller/balance')
     return response.data
   },
 
@@ -55,7 +67,7 @@ export default {
     return response.data
   },
 
-  async configureProduct(id: number, payload: { selected: boolean; sales_name: string; sales_multiplier: number }): Promise<MoshuProduct> {
+  async configureProduct(id: number, payload: { selected: boolean; sales_name: string; sales_multiplier: number; capacity: number }): Promise<MoshuProduct> {
     const response = await apiClient.put<MoshuProduct>(`/admin/moshu-reseller/products/${id}`, payload)
     return response.data
   },

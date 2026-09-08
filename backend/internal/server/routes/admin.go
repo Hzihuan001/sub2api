@@ -412,6 +412,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.POST("/:id/schedulable", h.Admin.Account.SetSchedulable)
 		accounts.POST("/models/sync-upstream-preview", h.Admin.Account.SyncUpstreamModelsPreview)
 		accounts.GET("/:id/models", h.Admin.Account.GetAvailableModels)
+		accounts.POST("/:id/models/probe-upstream", h.Admin.Account.ProbeUpstreamModels)
 		accounts.POST("/:id/models/sync-upstream", h.Admin.Account.SyncUpstreamModels)
 		accounts.POST("/batch", h.Admin.Account.BatchCreate)
 		// 账号导出泄露上游凭证原文——要求 step-up 2FA
@@ -584,13 +585,13 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
-		adminSettings.POST("/test-smtp", middleware.SuperAdminOnly(), h.Admin.Setting.TestSMTPConnection)
-		adminSettings.POST("/send-test-email", middleware.SuperAdminOnly(), h.Admin.Setting.SendTestEmail)
-		adminSettings.GET("/email-templates", middleware.SuperAdminOnly(), h.Admin.Setting.ListEmailTemplates)
-		adminSettings.POST("/email-template-preview", middleware.SuperAdminOnly(), h.Admin.Setting.PreviewEmailTemplate)
-		adminSettings.GET("/email-templates/:event/:locale", middleware.SuperAdminOnly(), h.Admin.Setting.GetEmailTemplate)
-		adminSettings.PUT("/email-templates/:event/:locale", middleware.SuperAdminOnly(), h.Admin.Setting.UpdateEmailTemplate)
-		adminSettings.POST("/email-templates/:event/:locale/restore-official", middleware.SuperAdminOnly(), h.Admin.Setting.RestoreOfficialEmailTemplate)
+		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
+		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
+		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)
+		adminSettings.POST("/email-template-preview", h.Admin.Setting.PreviewEmailTemplate)
+		adminSettings.GET("/email-templates/:event/:locale", h.Admin.Setting.GetEmailTemplate)
+		adminSettings.PUT("/email-templates/:event/:locale", h.Admin.Setting.UpdateEmailTemplate)
+		adminSettings.POST("/email-templates/:event/:locale/restore-official", h.Admin.Setting.RestoreOfficialEmailTemplate)
 		// Admin API Key 管理
 		adminSettings.GET("/admin-api-key", middleware.SuperAdminOnly(), h.Admin.Setting.GetAdminAPIKey)
 		adminSettings.POST("/admin-api-key/regenerate", middleware.SuperAdminOnly(), h.Admin.Setting.RegenerateAdminAPIKey)
@@ -689,6 +690,7 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 
 func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	system := admin.Group("/system")
+	system.Use(middleware.SuperAdminOnly())
 	if moshuOnlyEnabled() {
 		// Binary self-update/rollback would replace the Moshu-only enforcement.
 		system.Use(moshuOnlyReadOnlyGuard)

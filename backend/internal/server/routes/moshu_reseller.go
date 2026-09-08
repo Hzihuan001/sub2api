@@ -11,6 +11,7 @@ func registerMoshuResellerRoutes(admin *gin.RouterGroup, handlers *handler.Handl
 	reseller.Use(middleware.SuperAdminOnly())
 	{
 		reseller.GET("/status", handlers.MoshuReseller.Status)
+		reseller.GET("/balance", handlers.MoshuReseller.Balance)
 		reseller.POST("/enroll", handlers.MoshuReseller.Enroll)
 		reseller.POST("/catalog/sync", handlers.MoshuReseller.SyncCatalog)
 		reseller.PUT("/products/:id", handlers.MoshuReseller.ConfigureProduct)

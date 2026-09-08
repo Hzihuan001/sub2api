@@ -32,6 +32,7 @@ type Product struct {
 	CredentialAvailable bool           `json:"credential_available"`
 	LocalGroupID        *int64         `json:"local_group_id,omitempty"`
 	LocalAccountID      *int64         `json:"local_account_id,omitempty"`
+	Capacity            int            `json:"capacity"`
 	EffectiveAt         time.Time      `json:"effective_at"`
 }
 
@@ -40,6 +41,14 @@ type Status struct {
 	Connected  bool        `json:"connected"`
 	Connection *Connection `json:"connection,omitempty"`
 	Products   []Product   `json:"products"`
+}
+
+// Balance is the wallet state of the billing account bound to this reseller.
+// It intentionally contains no account identity or credential fields.
+type Balance struct {
+	Balance       float64 `json:"balance"`
+	FrozenBalance float64 `json:"frozen_balance"`
+	Warning       bool    `json:"warning"`
 }
 
 type RemoteTenant struct {

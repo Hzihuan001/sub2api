@@ -72,6 +72,12 @@ func (c *protocolClient) catalog(ctx context.Context, baseURL, token, etag strin
 	return &result, responseETag, notModified, err
 }
 
+func (c *protocolClient) balance(ctx context.Context, baseURL, token string) (*Balance, error) {
+	var result Balance
+	err := c.doJSON(ctx, http.MethodGet, baseURL+"/api/v1/reseller/v1/balance", token, "", nil, &result, nil)
+	return &result, err
+}
+
 func (c *protocolClient) rotate(ctx context.Context, baseURL, token string, productID int64) (*RemoteCredential, error) {
 	var result RemoteCredential
 	err := c.doJSON(ctx, http.MethodPost, baseURL+"/api/v1/reseller/v1/credentials/rotate", token, "", map[string]any{"product_id": productID}, &result, nil)

@@ -50,10 +50,20 @@ func (h *Handler) SyncCatalog(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *Handler) Balance(c *gin.Context) {
+	result, err := h.service.Balance(c.Request.Context())
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 type configureProductRequest struct {
 	Selected        bool    `json:"selected"`
 	SalesName       string  `json:"sales_name"`
 	SalesMultiplier float64 `json:"sales_multiplier"`
+	Capacity        int     `json:"capacity"`
 }
 
 func (h *Handler) ConfigureProduct(c *gin.Context) {
@@ -67,7 +77,7 @@ func (h *Handler) ConfigureProduct(c *gin.Context) {
 		response.BadRequest(c, "invalid request")
 		return
 	}
-	result, err := h.service.ConfigureProduct(c.Request.Context(), id, req.Selected, req.SalesName, req.SalesMultiplier)
+	result, err := h.service.ConfigureProduct(c.Request.Context(), id, req.Selected, req.SalesName, req.SalesMultiplier, req.Capacity)
 	if err != nil {
 		h.writeError(c, err)
 		return
