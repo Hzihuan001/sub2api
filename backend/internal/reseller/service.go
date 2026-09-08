@@ -80,6 +80,9 @@ func (s *Service) CreateTenant(ctx context.Context, userID int64, name string, a
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: select an active ordinary user as the reseller billing account", ErrInvalidInput)
 	}
+	if isTenantConflict(err) {
+		return nil, fmt.Errorf("%w: 该用户或代理商名称已被其他代理商使用", ErrInvalidInput)
+	}
 	return tenant, err
 }
 
@@ -88,7 +91,7 @@ func (s *Service) ListTenants(ctx context.Context) ([]Tenant, error) {
 		SELECT rt.id, rt.user_id, rt.name, rt.status, rt.protocol_version, rt.instance_id::text,
 		       rt.allowed_cidrs, rt.created_at, rt.updated_at,
 		       u.email, u.role, u.status, u.balance, u.frozen_balance
-		FROM reseller_tenants rt JOIN users u ON u.id=rt.user_id ORDER BY rt.id DESC`)
+		FROM reseller_tenants rt JOIN users u ON u.id=rt.user_id WHERE rt.deleted_at IS NULL ORDER BY rt.id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +120,7 @@ func (s *Service) UpdateTenant(ctx context.Context, id int64, status string, all
 	rawCIDRs, _ := json.Marshal(normalizeStrings(allowedCIDRs))
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE reseller_tenants SET status=$2, allowed_cidrs=$3::jsonb, updated_at=NOW()
-		WHERE id=$1
+		WHERE id=$1 AND deleted_at IS NULL
 		RETURNING id, user_id, name, status, protocol_version, instance_id::text,
 		          allowed_cidrs, created_at, updated_at`, id, status, rawCIDRs)
 	tenant, err := scanTenant(row)
@@ -133,10 +136,19 @@ func (s *Service) UpsertProduct(ctx context.Context, resellerID, groupID int64, 
 	if productCode == "" || len(productCode) > 80 || displayName == "" || len(displayName) > 120 {
 		return nil, fmt.Errorf("%w: invalid product fields", ErrInvalidInput)
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = getTenantTx(ctx, tx, resellerID, true)
+	if err != nil {
+		return nil, err
+	}
 	var platform string
 	var costRate float64
 	var modelsRaw []byte
-	err := s.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		SELECT platform, rate_multiplier, COALESCE(model_allowlist, '{}'::jsonb)
 		FROM groups WHERE id=$1 AND deleted_at IS NULL AND subscription_type='standard'`, groupID).Scan(&platform, &costRate, &modelsRaw)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -148,7 +160,7 @@ func (s *Service) UpsertProduct(ctx context.Context, resellerID, groupID int64, 
 	models := extractModelsSnapshot(modelsRaw)
 	modelsJSON, _ := json.Marshal(models)
 	capabilitiesJSON, _ := json.Marshal(map[string]any{"platform": platform})
-	row := s.db.QueryRowContext(ctx, `
+	row := tx.QueryRowContext(ctx, `
 		INSERT INTO reseller_products (
 			reseller_id, moshu_group_id, product_code, display_name, platform,
 			enabled, cost_rate_multiplier, model_snapshot, capabilities
@@ -173,7 +185,29 @@ func (s *Service) UpsertProduct(ctx context.Context, resellerID, groupID int64, 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return product, err
+	if err != nil {
+		return nil, err
+	}
+	var invalidatedKeys []string
+	if !enabled {
+		invalidatedKeys, err = s.keysForInvalidationTx(ctx, tx, resellerID, product.ID)
+		if err != nil {
+			return nil, err
+		}
+		if err := revokeProductKeysTx(ctx, tx, resellerID, product.ID); err != nil {
+			return nil, err
+		}
+		product.CredentialConfigured = false
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	if !enabled && s.apiKeys != nil {
+		for _, key := range invalidatedKeys {
+			s.apiKeys.InvalidateAuthCacheByKey(ctx, key)
+		}
+	}
+	return product, nil
 }
 
 // ChangeBillingAccount retires the old credentials without reassigning their
@@ -214,6 +248,9 @@ func (s *Service) ChangeBillingAccount(ctx context.Context, resellerID, userID i
 		return nil, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE reseller_tenants SET user_id=$2,updated_at=NOW() WHERE id=$1`, resellerID, targetID); err != nil {
+		if isTenantConflict(err) {
+			return nil, fmt.Errorf("%w: 该用户已经绑定其他代理商", ErrInvalidInput)
+		}
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -289,7 +326,7 @@ func (s *Service) CreateEnrollment(ctx context.Context, resellerID, createdBy in
 	return code, expiresAt, err
 }
 
-func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remoteIP string) (*EnrollmentExchangeResult, error) {
+func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remoteIP string, expectedResellerIDs ...int64) (*EnrollmentExchangeResult, error) {
 	if !Enabled() {
 		return nil, ErrDisabled
 	}
@@ -325,6 +362,12 @@ func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remo
 	if tenant.InstanceID != nil && *tenant.InstanceID != instanceUUID.String() {
 		return nil, fmt.Errorf("%w: tenant is already bound to another instance", ErrInvalidInput)
 	}
+	if len(expectedResellerIDs) > 0 && expectedResellerIDs[0] > 0 && expectedResellerIDs[0] != resellerID {
+		return nil, rebindNotSupported(expectedResellerIDs[0], resellerID)
+	}
+	if err := checkInstanceBindingTx(ctx, tx, resellerID, instanceUUID.String()); err != nil {
+		return nil, err
+	}
 
 	var productIDs []int64
 	if err := json.Unmarshal(productRaw, &productIDs); err != nil || len(productIDs) == 0 {
@@ -359,6 +402,10 @@ func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remo
 		VALUES ($1,$2,$3,$4,$5)`, refreshID, resellerID, instanceUUID, refreshHash, s.now().UTC().Add(refreshTokenTTL)); err != nil {
 		return nil, err
 	}
+	granted, err := listGrantedProductsTx(ctx, tx, resellerID)
+	if err != nil {
+		return nil, err
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -367,7 +414,7 @@ func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remo
 	if err != nil {
 		return nil, err
 	}
-	catalog := buildCatalog(*tenant, products, s.now().UTC())
+	catalog := buildCatalog(*tenant, granted, s.now().UTC())
 	return &EnrollmentExchangeResult{
 		Tenant: *tenant, AccessToken: access, RefreshToken: refresh,
 		ExpiresIn: int64(accessTokenTTL.Seconds()), Catalog: catalog, Credentials: credentials,
@@ -463,7 +510,7 @@ func (s *Service) Catalog(ctx context.Context, resellerID int64) (*Catalog, erro
 	if err != nil {
 		return nil, err
 	}
-	catalog := buildCatalog(*tenant, products, s.now().UTC())
+	catalog := buildCatalog(*tenant, grantedProducts(products), s.now().UTC())
 	return &catalog, nil
 }
 
@@ -480,6 +527,9 @@ func (s *Service) RotateCredential(ctx context.Context, resellerID, productID in
 	products, err := listProductsTx(ctx, tx, resellerID, []int64{productID})
 	if err != nil || len(products) != 1 || !products[0].Enabled {
 		return nil, ErrNotFound
+	}
+	if !products[0].CredentialConfigured {
+		return nil, fmt.Errorf("%w: redeem a new enrollment code before issuing this product's key", ErrInvalidInput)
 	}
 	issued, err := s.rotateCredentialTx(ctx, tx, *tenant, products[0], rotationOverlap)
 	if err != nil {
@@ -739,7 +789,7 @@ func (s *Service) randomToken(prefix string, bytes int) (string, error) {
 func (s *Service) getTenant(ctx context.Context, id int64) (*Tenant, error) {
 	tenant, err := scanTenant(s.db.QueryRowContext(ctx, `
 		SELECT id,user_id,name,status,protocol_version,instance_id::text,
-		       allowed_cidrs,created_at,updated_at FROM reseller_tenants WHERE id=$1`, id))
+		       allowed_cidrs,created_at,updated_at FROM reseller_tenants WHERE id=$1 AND deleted_at IS NULL`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -789,7 +839,7 @@ func scanProduct(row scanner) (*Product, error) {
 }
 
 func getTenantTx(ctx context.Context, tx *sql.Tx, id int64, lock bool) (*Tenant, error) {
-	query := `SELECT id,user_id,name,status,protocol_version,instance_id::text,allowed_cidrs,created_at,updated_at FROM reseller_tenants WHERE id=$1`
+	query := `SELECT id,user_id,name,status,protocol_version,instance_id::text,allowed_cidrs,created_at,updated_at FROM reseller_tenants WHERE id=$1 AND deleted_at IS NULL`
 	if lock {
 		query += ` FOR UPDATE`
 	}

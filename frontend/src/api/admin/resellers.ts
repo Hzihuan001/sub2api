@@ -65,6 +65,12 @@ export default {
     const response = await apiClient.get<ResellerProduct[]>(`/admin/resellers/${id}/products`)
     return response.data
   },
+  async deleteTenant(id: number): Promise<void> {
+    await apiClient.delete(`/admin/resellers/${id}`)
+  },
+  async deleteProduct(id: number, productID: number): Promise<void> {
+    await apiClient.delete(`/admin/resellers/${id}/products/${productID}`)
+  },
   async upsertProduct(id: number, payload: { moshu_group_id: number; product_code: string; display_name: string; enabled: boolean }): Promise<ResellerProduct> {
     const response = await apiClient.post<ResellerProduct>(`/admin/resellers/${id}/products`, payload)
     return response.data

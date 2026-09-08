@@ -99,6 +99,18 @@ type upsertProductRequest struct {
 	Enabled      *bool  `json:"enabled"`
 }
 
+func (h *Handler) DeleteTenant(c *gin.Context) {
+	id, ok := positiveParam(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.service.DeleteTenant(c.Request.Context(), id); err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
+}
+
 func (h *Handler) UpsertProduct(c *gin.Context) {
 	resellerID, ok := positiveParam(c, "id")
 	if !ok {
@@ -132,6 +144,22 @@ func (h *Handler) ListProducts(c *gin.Context) {
 		return
 	}
 	response.Success(c, products)
+}
+
+func (h *Handler) DeleteProduct(c *gin.Context) {
+	resellerID, ok := positiveParam(c, "id")
+	if !ok {
+		return
+	}
+	productID, ok := positiveParam(c, "product_id")
+	if !ok {
+		return
+	}
+	if err := h.service.DeleteProduct(c.Request.Context(), resellerID, productID); err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
 }
 
 type enrollmentRequest struct {
@@ -187,8 +215,9 @@ func (h *Handler) AdminListSettlements(c *gin.Context) {
 }
 
 type exchangeEnrollmentRequest struct {
-	EnrollmentCode string `json:"enrollment_code" binding:"required"`
-	InstanceID     string `json:"instance_id" binding:"required"`
+	EnrollmentCode     string `json:"enrollment_code" binding:"required"`
+	InstanceID         string `json:"instance_id" binding:"required"`
+	ExpectedResellerID int64  `json:"expected_reseller_id"`
 }
 
 func (h *Handler) ExchangeEnrollment(c *gin.Context) {
@@ -197,7 +226,7 @@ func (h *Handler) ExchangeEnrollment(c *gin.Context) {
 		response.BadRequest(c, "invalid request")
 		return
 	}
-	result, err := h.service.ExchangeEnrollment(c.Request.Context(), req.EnrollmentCode, req.InstanceID, c.ClientIP())
+	result, err := h.service.ExchangeEnrollment(c.Request.Context(), req.EnrollmentCode, req.InstanceID, c.ClientIP(), req.ExpectedResellerID)
 	if err != nil {
 		h.writeError(c, err)
 		return

@@ -31,7 +31,10 @@
           <section class="card p-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div><h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ selected.name }}</h2><p class="mt-1 text-xs text-gray-500">实例：{{ selected.instance_id || '尚未兑换授权码' }}</p></div>
-              <Select v-model="selected.status" class="w-36" :options="tenantStatusOptions" @update:model-value="saveTenantStatus" />
+              <div class="flex gap-2">
+                <button class="btn btn-secondary" :disabled="busy" @click="toggleTenantStatus">{{ selected.status === 'active' ? '停用代理商' : '启用代理商' }}</button>
+                <button class="btn btn-secondary text-red-600" :disabled="busy" @click="showDeleteTenant = true">删除代理商</button>
+              </div>
             </div>
             <div v-if="selected.billing_account" class="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
               <p>充值及计费账号：{{ selected.billing_account.email }}（#{{ selected.user_id }}）</p>
@@ -49,6 +52,7 @@
 
           <section class="card p-5">
             <h2 class="font-semibold text-gray-900 dark:text-white">授权产品</h2>
+            <p class="mt-2 text-sm text-gray-500">添加后需生成授权码并在代理站重新授权，才会出现新产品；删除会立即删除对应授权 Key。未勾选的已有产品仍保留授权。</p>
             <details class="mt-4 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
               <summary>批量添加分组</summary>
               <p class="my-2 text-xs text-gray-500">按平台排列；已授权分组自动跳过。代码自动使用 group-ID，显示名称使用分组名称。</p>
@@ -67,11 +71,12 @@
               <button class="btn btn-primary" :disabled="busy || !newProduct.moshu_group_id || !newProduct.product_code || !newProduct.display_name" @click="addProduct">添加/更新</button>
             </div>
             <div class="mt-4 space-y-2">
-              <label v-for="product in products" :key="product.id" class="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-600">
+              <label v-for="product in activeProducts" :key="product.id" class="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-600">
                 <input v-model="selectedProducts" type="checkbox" :value="product.id" :disabled="!product.enabled" />
                 <span class="min-w-0 flex-1"><strong class="text-gray-900 dark:text-white">{{ product.display_name }}</strong><span class="ml-2 text-xs text-gray-500">{{ product.product_code }} · {{ product.platform }} · 成本 {{ product.cost_rate_multiplier.toFixed(4) }} · {{ product.models.length }} models</span></span>
                 <span class="text-xs" :class="product.credential_configured ? 'text-green-600' : 'text-amber-600'">{{ product.credential_configured ? '已签发凭证' : '待签发' }}</span>
-                <button class="text-sm text-primary-600 hover:underline" @click.prevent="rotate(product)">轮换</button>
+                <button v-if="product.credential_configured" class="text-sm text-primary-600 hover:underline" :disabled="busy" @click.prevent="rotate(product)">轮换</button>
+                <button class="text-sm text-red-600 hover:underline" :disabled="busy" @click.prevent="pendingDeleteProduct = product">删除授权</button>
               </label>
             </div>
             <div class="mt-4 flex justify-end"><button class="btn btn-primary" :disabled="busy || !selectedProducts.length" @click="createEnrollment">生成 30 分钟一次性授权码</button></div>
@@ -97,6 +102,12 @@
       @confirm="confirmBillingAccountChange"
       @cancel="showBillingAccountConfirm = false"
     />
+    <ConfirmDialog :show="showDeleteTenant" title="删除代理商"
+      message="删除后该代理商的全部授权 Key、连接凭证和未使用授权码失效。绑定用户、余额与历史账单保留。此操作不可恢复。"
+      danger @confirm="confirmDeleteTenant" @cancel="showDeleteTenant = false" />
+    <ConfirmDialog :show="Boolean(pendingDeleteProduct)" title="删除产品授权"
+      message="对应授权 Key 将立即删除，历史使用记录保留。再次添加后需要新授权码，旧 Key 不会恢复。"
+      danger @confirm="confirmDeleteProduct" @cancel="pendingDeleteProduct = null" />
     <ConfirmDialog
       :show="Boolean(pendingRotateProduct)"
       title="确认轮换凭证"
@@ -140,19 +151,17 @@ const searchingUsers = ref(false)
 const replacementUserID = ref<number | null>(null)
 const batchGroupIDs = ref<number[]>([]), batchResults = ref<BatchResult[]>([])
 const showBillingAccountConfirm = ref(false)
+const showDeleteTenant = ref(false)
+const pendingDeleteProduct = ref<ResellerProduct | null>(null)
 const pendingRotateProduct = ref<ResellerProduct | null>(null)
 const rotatedAPIKey = ref('')
 let userSearchController: AbortController | undefined
 const newProduct = reactive({ moshu_group_id: 0, product_code: '', display_name: '' })
 const selected = computed(() => tenants.value.find((item) => item.id === selectedID.value))
 const balanceGroups = computed(() => groups.value.filter((group) => group.subscription_type === 'standard'))
-const tenantStatusOptions = [
-  { value: 'active', label: 'active' },
-  { value: 'suspended', label: 'suspended' },
-  { value: 'disabled', label: 'disabled' },
-]
+const activeProducts = computed(() => products.value.filter(product => product.enabled))
 const balanceGroupOptions = computed(() => balanceGroups.value.map((group) => ({ value: group.id, label: `${group.name} · ${group.platform}` })))
-const batchGroups = computed(() => balanceGroups.value.filter(g => !products.value.some(p => p.moshu_group_id === g.id)).sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)))
+const batchGroups = computed(() => balanceGroups.value.filter(g => !activeProducts.value.some(p => p.moshu_group_id === g.id)).sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name)))
 
 async function addProductsBatch() {
   const tenantID = selectedID.value
@@ -162,7 +171,8 @@ async function addProductsBatch() {
   try {
     batchResults.value = await runResellerBatch(targets, g => g.name, g => {
       if (products.value.some(p => p.product_code === `group-${g.id}` && p.moshu_group_id !== g.id)) throw new Error('自动产品代码已被其他分组使用，请手动添加')
-      return resellersAPI.upsertProduct(tenantID, { moshu_group_id: g.id, product_code: `group-${g.id}`, display_name: g.name, enabled: true })
+      const previous = products.value.find(p => p.moshu_group_id === g.id)
+      return resellersAPI.upsertProduct(tenantID, { moshu_group_id: g.id, product_code: previous?.product_code ?? `group-${g.id}`, display_name: g.name, enabled: true })
     })
     batchGroupIDs.value = batchResults.value.filter(r => !r.success).map(r => r.id)
     if (selectedID.value === tenantID) await loadTenant(tenantID)
@@ -207,7 +217,29 @@ async function confirmBillingAccountChange() {
     tenants.value = await resellersAPI.listTenants()
   }, '计费账号已更换，请重新生成授权码并连接 L1')
 }
-async function saveTenantStatus() { if (!selected.value) return; await act(() => resellersAPI.updateTenant(selected.value!.id, { status: selected.value!.status, allowed_cidrs: selected.value!.allowed_cidrs }), '状态已更新') }
+async function toggleTenantStatus() {
+  const tenant = selected.value
+  if (!tenant || busy.value) return
+  const status = tenant.status === 'active' ? 'suspended' : 'active'
+  await act(async () => { await resellersAPI.updateTenant(tenant.id, { status, allowed_cidrs: tenant.allowed_cidrs }); tenants.value = await resellersAPI.listTenants() }, status === 'active' ? '代理商已启用' : '代理商已停用')
+}
+async function confirmDeleteTenant() {
+  showDeleteTenant.value = false
+  const id = selectedID.value
+  if (!id || busy.value) return
+  await act(async () => {
+    await resellersAPI.deleteTenant(id)
+    tenants.value = await resellersAPI.listTenants()
+    selectedID.value = tenants.value[0]?.id ?? null
+    products.value = []; settlements.value = []; selectedProducts.value = []; enrollmentCode.value = ''
+  }, '代理商已删除，用户余额和历史账单已保留')
+}
+async function confirmDeleteProduct() {
+  const product = pendingDeleteProduct.value, id = selectedID.value
+  pendingDeleteProduct.value = null
+  if (!id || !product || busy.value) return
+  await act(async () => { await resellersAPI.deleteProduct(id, product.id); enrollmentCode.value = '' }, '产品授权及对应 Key 已删除')
+}
 async function addProduct() { if (!selectedID.value) return; await act(() => resellersAPI.upsertProduct(selectedID.value!, { ...newProduct, enabled: true }), '产品已保存') }
 async function createEnrollment() { if (!selectedID.value) return; busy.value = true; try { const result = await resellersAPI.createEnrollment(selectedID.value, selectedProducts.value); enrollmentCode.value = result.enrollment_code; app.showSuccess('一次性授权码已生成') } catch (e) { app.showError(errorText(e)) } finally { busy.value = false } }
 function rotate(product: ResellerProduct) { if (selectedID.value) pendingRotateProduct.value = product }
