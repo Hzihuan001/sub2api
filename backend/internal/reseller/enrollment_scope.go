@@ -42,7 +42,7 @@ func listGrantedProductsTx(ctx context.Context, tx *sql.Tx, resellerID int64) ([
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	products := make([]Product, 0)
 	for rows.Next() {
 		p, err := scanProduct(rows)
