@@ -89,6 +89,20 @@ func (h *Handler) RotateCredential(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *Handler) EnsureProductTestAccount(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "invalid product id")
+		return
+	}
+	accountID, err := h.service.EnsureProductTestAccount(c.Request.Context(), id)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"account_id": accountID})
+}
+
 func (h *Handler) SyncSettlements(c *gin.Context) {
 	count, err := h.service.SyncSettlements(c.Request.Context())
 	if err != nil {

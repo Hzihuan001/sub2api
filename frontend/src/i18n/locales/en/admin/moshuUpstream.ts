@@ -1,6 +1,7 @@
 export default {
   moshuUpstream: {
     title: 'Upstream',
+    description: 'Manage authorized upstream channels and sales configuration',
     protocolDisabled: 'Reseller protocol is not enabled',
     protocolDisabledHint: 'Manual per-group keys remain available. Enable MOSHU_RESELLER_CLIENT_ENABLED to use enrollment.',
     enrollTitle: 'Connect to Moshu reseller',

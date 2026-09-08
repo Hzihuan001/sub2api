@@ -67,12 +67,9 @@ func (r *accountRepository) createResellerAccount(ctx context.Context, productID
 	}
 	defer func() { _ = tx.Rollback() }()
 	client := tx.Client()
-	groupID, accountID, err := lockResellerResources(ctx, client, productID)
+	_, accountID, err := lockResellerResources(ctx, client, productID)
 	if err != nil {
 		return err
-	}
-	if !groupID.Valid {
-		return fmt.Errorf("create reseller group before account")
 	}
 	if accountID.Valid {
 		existing, err := newAccountRepositoryWithSQL(client, client, r.schedulerCache).GetByID(ctx, accountID.Int64)

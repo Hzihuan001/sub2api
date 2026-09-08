@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"reflect"
 	"slices"
+	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 // Retry local application even on HTTP 304. Only upstream-owned fields change.
@@ -53,11 +56,12 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 			if account.Platform != product.Platform {
 				return fmt.Errorf("product %d platform changed; migrate its local account explicitly", product.ID)
 			}
-			if account.RateMultiplier == nil || *account.RateMultiplier != product.CostRateMultiplier {
+			credentials, modelsChanged := withProductModelMapping(account.Credentials, product.Models)
+			if account.RateMultiplier == nil || *account.RateMultiplier != product.CostRateMultiplier || modelsChanged {
 				rate := product.CostRateMultiplier
 				if _, err = s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
 					Name: account.Name, Type: account.Type, Status: account.Status,
-					Credentials: cloneMap(account.Credentials), Extra: cloneMap(account.Extra),
+					Credentials: credentials, Extra: cloneMap(account.Extra),
 					GroupIDs: &account.GroupIDs, RateMultiplier: &rate, SkipMixedChannelCheck: true,
 				}); err != nil {
 					return fmt.Errorf("sync product %d cost: %w", product.ID, err)
@@ -66,4 +70,28 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func withProductModelMapping(credentials map[string]any, models []string) (map[string]any, bool) {
+	mapping := make(map[string]any, len(models))
+	for _, model := range models {
+		if model = strings.TrimSpace(model); model != "" {
+			mapping[model] = model
+		}
+	}
+	current, exists := credentials["model_mapping"]
+	if len(mapping) == 0 {
+		if !exists {
+			return credentials, false
+		}
+		updated := cloneMap(credentials)
+		delete(updated, "model_mapping")
+		return updated, true
+	}
+	if exists && reflect.DeepEqual(current, mapping) {
+		return credentials, false
+	}
+	updated := cloneMap(credentials)
+	updated["model_mapping"] = mapping
+	return updated, true
 }

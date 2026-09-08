@@ -68,6 +68,9 @@ func (s *Service) status(ctx context.Context, reconcile bool) (*Status, error) {
 		if err := s.reconcileSelectedProducts(ctx); err != nil {
 			return nil, err
 		}
+		if err := s.reconcileAuthorizedAccounts(ctx); err != nil {
+			return nil, err
+		}
 	}
 	products, err := s.listProducts(ctx)
 	if err != nil {
@@ -202,6 +205,14 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	if s.admin != nil {
+		if err := s.reconcileAuthorizedAccounts(ctx); err != nil {
+			return nil, err
+		}
+		if err := s.applyCatalogConfiguration(ctx); err != nil {
+			return nil, err
+		}
+	}
 	return s.status(ctx, false)
 }
 
@@ -226,6 +237,9 @@ func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 	if notModified {
 		// Retry local revocation even if the remote catalog has not changed.
 		if err := s.disableRevokedProducts(ctx); err != nil {
+			return nil, err
+		}
+		if err := s.reconcileAuthorizedAccounts(ctx); err != nil {
 			return nil, err
 		}
 		if err := s.applyCatalogConfiguration(ctx); err != nil {
@@ -260,6 +274,9 @@ func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 		return nil, err
 	}
 	if err := s.disableRevokedProducts(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.reconcileAuthorizedAccounts(ctx); err != nil {
 		return nil, err
 	}
 	if err := s.applyCatalogConfiguration(ctx); err != nil {
@@ -363,6 +380,94 @@ func (s *Service) RotateCredential(ctx context.Context, id int64) (*Product, err
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	return s.rotateCredential(ctx, id)
+}
+
+// EnsureProductTestAccount materializes the product as a real local account so
+// every authorized upstream channel can use the standard account test flow.
+// Products that are not on sale remain unschedulable and cannot receive traffic.
+func (s *Service) EnsureProductTestAccount(ctx context.Context, id int64) (int64, error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	return s.ensureProductAccount(ctx, id)
+}
+
+func (s *Service) reconcileAuthorizedAccounts(ctx context.Context) error {
+	products, err := s.listProducts(ctx)
+	if err != nil {
+		return err
+	}
+	for _, product := range products {
+		if !product.Authorized {
+			continue
+		}
+		if _, err := s.ensureProductAccount(ctx, product.ID); err != nil {
+			return fmt.Errorf("create upstream account for product %d: %w", product.ID, err)
+		}
+	}
+	return nil
+}
+
+func (s *Service) ensureProductAccount(ctx context.Context, id int64) (int64, error) {
+
+	product, credentialCiphertext, err := s.loadProduct(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+	if !product.Authorized {
+		return 0, fmt.Errorf("%w: product authorization was revoked", ErrInvalidInput)
+	}
+	if product.LocalAccountID != nil {
+		if account, err := s.admin.GetAccount(ctx, *product.LocalAccountID); err == nil {
+			if (!product.Selected || product.LocalGroupID == nil) && account.Schedulable {
+				if _, err := s.admin.SetAccountSchedulable(ctx, account.ID, false); err != nil {
+					return 0, err
+				}
+			}
+			return *product.LocalAccountID, nil
+		} else if !errors.Is(err, service.ErrAccountNotFound) {
+			return 0, err
+		}
+		if _, err := s.db.ExecContext(ctx, `UPDATE moshu_products SET local_account_id=NULL,updated_at=NOW() WHERE id=$1 AND local_account_id=$2`, product.ID, *product.LocalAccountID); err != nil {
+			return 0, err
+		}
+		product.LocalAccountID = nil
+	}
+	if credentialCiphertext == "" {
+		if _, err := s.rotateCredential(ctx, id); err != nil {
+			return 0, err
+		}
+		product, credentialCiphertext, err = s.loadProduct(ctx, id)
+		if err != nil {
+			return 0, err
+		}
+	}
+	plainKey, err := s.encryptor.Decrypt(credentialCiphertext)
+	if err != nil {
+		return 0, fmt.Errorf("decrypt product credential: %w", err)
+	}
+	connection, err := s.loadConnection(ctx)
+	if err != nil {
+		return 0, err
+	}
+	credentials := productAccountCredentials(plainKey, connection.BaseURL, product.Models)
+	extra := map[string]any{
+		"moshu_reseller_managed": true, "moshu_product_code": product.ProductCode,
+		"moshu_remote_product_id": product.RemoteProductID, "moshu_cost_read_only": true,
+	}
+	groupIDs := []int64{}
+	if product.LocalGroupID != nil {
+		groupIDs = append(groupIDs, *product.LocalGroupID)
+	}
+	accountID, err := s.createProductAccount(ctx, *product, credentials, extra, groupIDs, product.CostRateMultiplier)
+	if err != nil {
+		return 0, err
+	}
+	if !product.Selected || product.LocalGroupID == nil {
+		if _, err := s.admin.SetAccountSchedulable(ctx, accountID, false); err != nil {
+			return 0, err
+		}
+	}
+	return accountID, nil
 }
 
 func (s *Service) rotateCredential(ctx context.Context, id int64) (*Product, error) {
@@ -712,7 +817,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 	if err != nil {
 		return 0, err
 	}
-	credentials := map[string]any{"api_key": apiKey, "base_url": connection.BaseURL}
+	credentials := productAccountCredentials(apiKey, connection.BaseURL, product.Models)
 	extra := map[string]any{
 		"moshu_reseller_managed": true, "moshu_product_code": product.ProductCode,
 		"moshu_remote_product_id": product.RemoteProductID, "moshu_cost_read_only": true,
@@ -720,7 +825,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 	groupIDs := []int64{groupID}
 	rate := product.CostRateMultiplier
 	if product.LocalAccountID == nil {
-		return s.createProductAccount(ctx, product, groupID, credentials, extra, groupIDs, rate)
+		return s.createProductAccount(ctx, product, credentials, extra, groupIDs, rate)
 	}
 	account, err := s.admin.GetAccount(ctx, *product.LocalAccountID)
 	if err != nil {
@@ -728,7 +833,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 			if _, clearErr := s.db.ExecContext(ctx, `UPDATE moshu_products SET local_account_id=NULL,selected=FALSE,updated_at=NOW() WHERE id=$1 AND local_account_id=$2`, product.ID, *product.LocalAccountID); clearErr != nil {
 				return 0, clearErr
 			}
-			return s.createProductAccount(ctx, product, groupID, credentials, extra, groupIDs, rate)
+			return s.createProductAccount(ctx, product, credentials, extra, groupIDs, rate)
 		}
 		return 0, err
 	}
@@ -746,7 +851,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 	return updated.ID, nil
 }
 
-func (s *Service) createProductAccount(ctx context.Context, product Product, groupID int64, credentials, extra map[string]any, groupIDs []int64, rate float64) (int64, error) {
+func (s *Service) createProductAccount(ctx context.Context, product Product, credentials, extra map[string]any, groupIDs []int64, rate float64) (int64, error) {
 	account, err := s.admin.CreateAccount(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateAccountInput{
 		Name: "Moshu - " + product.DisplayName, Platform: product.Platform, Type: service.AccountTypeAPIKey,
 		Credentials: credentials, Extra: extra, Concurrency: 100, Priority: 50,
@@ -756,6 +861,12 @@ func (s *Service) createProductAccount(ctx context.Context, product Product, gro
 		return 0, err
 	}
 	return account.ID, nil
+}
+
+func productAccountCredentials(apiKey, baseURL string, models []string) map[string]any {
+	credentials := map[string]any{"api_key": apiKey, "base_url": baseURL}
+	credentials, _ = withProductModelMapping(credentials, models)
+	return credentials
 }
 
 func (s *Service) disableRevokedProducts(ctx context.Context) error {

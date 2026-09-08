@@ -310,6 +310,9 @@ const displayName = computed(() => {
 })
 
 const pageTitle = computed(() => {
+  if (route.name === 'AdminAccounts' && appStore.cachedPublicSettings?.moshu_only_mode === true) {
+    return t('admin.moshuUpstream.title')
+  }
   // For custom pages, use the menu item's label instead of generic "自定义页面"
   if (route.name === 'CustomPage') {
     const id = route.params.id as string
@@ -326,6 +329,9 @@ const pageTitle = computed(() => {
 })
 
 const pageDescription = computed(() => {
+  if (route.name === 'AdminAccounts' && appStore.cachedPublicSettings?.moshu_only_mode === true) {
+    return t('admin.moshuUpstream.description')
+  }
   const descKey = route.meta.descriptionKey as string
   if (descKey) {
     return t(descKey)

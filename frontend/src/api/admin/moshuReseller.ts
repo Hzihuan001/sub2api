@@ -63,5 +63,10 @@ export default {
   async rotateCredential(id: number): Promise<MoshuProduct> {
     const response = await apiClient.post<MoshuProduct>(`/admin/moshu-reseller/products/${id}/credentials/rotate`)
     return response.data
+  },
+
+  async ensureTestAccount(id: number): Promise<{ account_id: number }> {
+    const response = await apiClient.post<{ account_id: number }>(`/admin/moshu-reseller/products/${id}/test-account`)
+    return response.data
   }
 }

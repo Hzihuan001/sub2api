@@ -41,13 +41,24 @@ func TestEnrollmentSynchronizesOperationalKeyBeforeCommit(t *testing.T) {
 			} else {
 				sync.WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectCommit()
-				mock.ExpectQuery("SELECT base_url").WillReturnError(sql.ErrNoRows)
+				mock.ExpectQuery("SELECT id,remote_product_id").WillReturnRows(pricingRows(false, 1, nil, nil))
+				mock.ExpectQuery("SELECT id,remote_product_id").WithArgs(int64(3)).WillReturnRows(pricingRows(false, 1, nil, nil))
+				mock.ExpectQuery("SELECT base_url").WillReturnRows(sqlmock.NewRows([]string{"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh", "expiry", "etag", "version", "catalog_at", "settlement_at", "error"}).AddRow(server.URL, "instance", 1, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "etag", 1, nil, nil, nil))
+				mock.ExpectQuery("SELECT id,remote_product_id").WillReturnRows(pricingRows(false, 1, nil, nil))
+				mock.ExpectQuery("SELECT base_url").WillReturnRows(sqlmock.NewRows([]string{"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh", "expiry", "etag", "version", "catalog_at", "settlement_at", "error"}).AddRow(server.URL, "instance", 1, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "etag", 1, nil, nil, nil))
+				mock.ExpectQuery("SELECT id,remote_product_id").WillReturnRows(pricingRows(false, 1, nil, nil))
 			}
-			_, err = NewService(db, testEncryptor{}, nil).Enroll(context.Background(), server.URL, "once")
+			var admin *testAccountAdmin
+			if !failSync {
+				admin = &testAccountAdmin{t: t, expectedBaseURL: server.URL}
+			}
+			_, err = NewService(db, testEncryptor{}, admin).Enroll(context.Background(), server.URL, "once")
 			if failSync {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
+				require.Equal(t, 1, admin.created)
+				require.Equal(t, 1, admin.unschedulable)
 			}
 			require.NoError(t, mock.ExpectationsWereMet())
 		})

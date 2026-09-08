@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
@@ -61,4 +62,26 @@ func TestResellerResourceCreationRecoversPartialFailures(t *testing.T) {
 	require.Equal(t, 1, count)
 	require.NoError(t, integrationDB.QueryRow(`SELECT COUNT(*) FROM groups WHERE name=$1`, group.Name).Scan(&count))
 	require.Equal(t, 1, count)
+}
+
+func TestResellerAccountCanBeCreatedBeforeSalesGroup(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	accounts := newAccountRepositoryWithSQL(client, integrationDB, nil)
+	suffix := time.Now().UnixNano()
+	var productID int64
+	require.NoError(t, integrationDB.QueryRow(`INSERT INTO moshu_products(remote_product_id,product_code,display_name,platform,moshu_group_id,cost_rate_multiplier,price_catalog_version,effective_at) VALUES($1,$2,'test-only','openai',1,1,1,NOW()) RETURNING id`, suffix, fmt.Sprint(suffix)).Scan(&productID))
+	resourceCtx := service.WithResellerResourceProduct(ctx, productID)
+	account := &service.Account{
+		Name: fmt.Sprintf("reseller-test-account-%d", suffix), Platform: "openai", Type: "apikey",
+		Status: "active", Schedulable: false, Credentials: map[string]any{"api_key": "synthetic"}, Extra: map[string]any{},
+	}
+
+	require.NoError(t, accounts.Create(resourceCtx, account))
+
+	var storedGroup sql.NullInt64
+	var storedAccount int64
+	require.NoError(t, integrationDB.QueryRow(`SELECT local_group_id,local_account_id FROM moshu_products WHERE id=$1`, productID).Scan(&storedGroup, &storedAccount))
+	require.False(t, storedGroup.Valid)
+	require.Equal(t, account.ID, storedAccount)
 }

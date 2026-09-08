@@ -1,12 +1,6 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('admin.moshuUpstream.title') }}</h1>
-        </div>
-      </div>
-
       <div v-if="loading" class="flex justify-center py-16"><LoadingSpinner /></div>
       <template v-else>
         <template v-if="authStore.isSuperAdmin">
@@ -56,7 +50,7 @@
                 </div>
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ t('admin.moshuUpstream.salesName') }}</span><input v-model.trim="drafts[product.id].name" class="input mt-1 w-full" :disabled="!product.authorized" /></label>
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ t('admin.moshuUpstream.retailMultiplier') }}</span><input v-model.number="drafts[product.id].multiplier" class="input mt-1 w-full" type="number" min="0" step="0.01" :disabled="!product.authorized" /></label>
-                <div class="flex flex-wrap gap-2"><button class="btn btn-primary" :disabled="busy || !product.authorized" @click="saveProduct(product)">{{ product.selected ? t('common.save') : t('admin.moshuUpstream.enableSale') }}</button><button v-if="product.selected" class="btn btn-secondary" :disabled="busy" @click="rotate(product)">{{ t('admin.moshuUpstream.rotate') }}</button><button v-if="product.local_account_id" class="btn btn-secondary" :disabled="busy || testingProductID === product.id" @click="openProductTest(product)">{{ t('admin.accounts.testConnection') }}</button></div>
+                <div class="flex flex-wrap gap-2"><button class="btn btn-primary" :disabled="busy || !product.authorized" @click="saveProduct(product)">{{ product.selected ? t('common.save') : t('admin.moshuUpstream.enableSale') }}</button><button v-if="product.selected" class="btn btn-secondary" :disabled="busy" @click="rotate(product)">{{ t('admin.moshuUpstream.rotate') }}</button><button class="btn btn-secondary" :disabled="busy || testingProductID === product.id" @click="openProductTest(product)">{{ t('admin.accounts.testConnection') }}</button></div>
               </div>
               <div v-if="product.selected" class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700"><span>{{ t('admin.moshuUpstream.saleActive') }}</span><button class="text-red-600 hover:underline" :disabled="busy" @click="disableProduct(product)">{{ t('admin.moshuUpstream.stopSale') }}</button></div>
             </article>
@@ -137,10 +131,12 @@ const rotate = (product: MoshuProduct) => run(() => moshuResellerAPI.rotateCrede
 const saveProduct = (product: MoshuProduct) => run(() => moshuResellerAPI.configureProduct(product.id, { selected: true, sales_name: drafts[product.id].name, sales_multiplier: drafts[product.id].multiplier }), t('admin.moshuUpstream.productSaved'))
 const disableProduct = (product: MoshuProduct) => run(() => moshuResellerAPI.configureProduct(product.id, { selected: false, sales_name: drafts[product.id].name, sales_multiplier: drafts[product.id].multiplier }), t('admin.moshuUpstream.productStopped'))
 async function openProductTest(product: MoshuProduct) {
-  if (!product.local_account_id || testingProductID.value !== null) return
+  if (testingProductID.value !== null) return
   testingProductID.value = product.id
   try {
-    testingAccount.value = await accountsAPI.getById(product.local_account_id)
+    const accountID = product.local_account_id ?? (await moshuResellerAPI.ensureTestAccount(product.id)).account_id
+    product.local_account_id = accountID
+    testingAccount.value = await accountsAPI.getById(accountID)
     showTest.value = true
   } catch (error) { appStore.showError(errorText(error)) }
   finally { testingProductID.value = null }

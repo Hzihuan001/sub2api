@@ -1,6 +1,7 @@
 export default {
   moshuUpstream: {
     title: '上游管理',
+    description: '管理已授权的上游渠道和销售配置',
     protocolDisabled: '代理商协议尚未启用',
     protocolDisabledHint: '当前继续使用第一阶段手工分组密钥。启用 MOSHU_RESELLER_CLIENT_ENABLED 后可使用接入向导。',
     enrollTitle: '接入 Moshu 代理商',
