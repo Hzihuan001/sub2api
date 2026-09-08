@@ -663,8 +663,8 @@ func int64ContextValue(c *gin.Context, key string) (int64, bool) {
 func (s *Service) rotateCredentialTx(ctx context.Context, tx *sql.Tx, tenant Tenant, product Product, overlap time.Duration) (IssuedCredential, error) {
 	var eligible bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
-		SELECT 1 FROM users u JOIN groups g ON g.id=$2
-		WHERE u.id=$1 AND u.deleted_at IS NULL AND u.role='user' AND u.status='active'
+		SELECT 1 FROM users u JOIN groups g ON g.id=$2::bigint
+		WHERE u.id=$1::bigint AND u.deleted_at IS NULL AND u.role='user' AND u.status='active'
 		AND g.deleted_at IS NULL AND g.subscription_type='standard'
 	)`, tenant.UserID, product.MoshuGroupID).Scan(&eligible); err != nil {
 		return IssuedCredential{}, err
@@ -678,8 +678,8 @@ func (s *Service) rotateCredentialTx(ctx context.Context, tx *sql.Tx, tenant Ten
 		return IssuedCredential{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `
-		UPDATE reseller_credentials SET status='retiring',overlap_until=$2,rotated_at=NOW(),updated_at=NOW()
-		WHERE product_id=$1 AND status='active'`, product.ID, s.now().UTC().Add(overlap)); err != nil {
+		UPDATE reseller_credentials SET status='retiring',overlap_until=$2::timestamptz,rotated_at=NOW(),updated_at=NOW()
+		WHERE product_id=$1::bigint AND status='active'`, product.ID, s.now().UTC().Add(overlap)); err != nil {
 		return IssuedCredential{}, err
 	}
 	var apiKeyID int64
