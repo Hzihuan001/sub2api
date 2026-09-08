@@ -70,6 +70,13 @@ func TestResellerBillingAccountTransferPreservesOwnership(t *testing.T) {
 	require.Equal(t, "inactive", keyStatus)
 	require.Equal(t, "revoked", credentialStatus)
 	issued, err := sut.RotateCredential(ctx, tenantID, productID)
+	require.ErrorIs(t, err, reseller.ErrInvalidInput, "a changed billing account requires reauthorization")
+	code, _, err := sut.CreateEnrollment(ctx, tenantID, 0, []int64{productID}, 0)
+	require.NoError(t, err)
+	exchanged, err := sut.ExchangeEnrollment(ctx, code, uuid.NewString(), "127.0.0.1", tenantID)
+	require.NoError(t, err)
+	require.Len(t, exchanged.Credentials, 1)
+	issued, err = sut.RotateCredential(ctx, tenantID, productID)
 	require.NoError(t, err)
 	var newKeyID int64
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id,user_id FROM api_keys WHERE key=$1`, issued.APIKey).Scan(&newKeyID, &owner))

@@ -11,6 +11,7 @@ import (
 )
 
 func TestResellerCatalogRefreshesGroupChangesWithoutReauthorization(t *testing.T) {
+	t.Setenv("MOSHU_RESELLER_SERVER_ENABLED", "true")
 	ctx := context.Background()
 	db := integrationDB
 	suffix := uuid.NewString()
@@ -21,6 +22,13 @@ func TestResellerCatalogRefreshesGroupChangesWithoutReauthorization(t *testing.T
 	tenant, err := sut.CreateTenant(ctx, userID, suffix, nil)
 	require.NoError(t, err)
 	product, err := sut.UpsertProduct(ctx, tenant.ID, groupID, "test", "Sales name", true)
+	require.NoError(t, err)
+	ungranted, err := sut.Catalog(ctx, tenant.ID)
+	require.NoError(t, err)
+	require.Empty(t, ungranted.Products, "new products require enrollment before becoming available")
+	code, _, err := sut.CreateEnrollment(ctx, tenant.ID, 0, []int64{product.ID}, 0)
+	require.NoError(t, err)
+	_, err = sut.ExchangeEnrollment(ctx, code, uuid.NewString(), "127.0.0.1", tenant.ID)
 	require.NoError(t, err)
 	_, err = db.Exec(`UPDATE groups SET rate_multiplier=2.5,model_allowlist='{"enabled":true,"models":["new-model"]}' WHERE id=$1`, groupID)
 	require.NoError(t, err)
