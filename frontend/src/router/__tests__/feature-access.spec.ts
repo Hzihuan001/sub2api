@@ -190,6 +190,11 @@ describe('feature route guard', () => {
     expect(next).toHaveBeenCalledOnce()
     expect(next).toHaveBeenCalledWith('/admin/dashboard')
   })
+  it('allows a regular user to use the image studio', async () => {
+    const { navigation, next } = runGuard({ requiresAuth: true, requiresAdmin: false }, '/image-studio')
+    await navigation
+    expect(next).toHaveBeenCalledWith()
+  })
 
   it('allows a super admin into a super-admin-only route', async () => {
     authStore.isAdmin = true

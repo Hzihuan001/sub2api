@@ -3,13 +3,15 @@
     <div class="space-y-6">
       <div v-if="loading" class="flex justify-center py-16"><LoadingSpinner /></div>
       <template v-else>
-        <template v-if="authStore.isSuperAdmin">
+        <template>
         <section v-if="status && !status.enabled" class="card border-amber-200 p-5 dark:border-amber-900">
           <h2 class="font-semibold text-amber-800 dark:text-amber-300">{{ t('admin.moshuUpstream.protocolDisabled') }}</h2>
           <p class="mt-2 text-sm text-amber-700 dark:text-amber-400">{{ t('admin.moshuUpstream.protocolDisabledHint') }}</p>
         </section>
 
         <section v-else-if="status && !status.connected" class="card p-5">
+          <p v-if="!authStore.isSuperAdmin" class="text-sm text-gray-500">请联系最高管理员完成上游授权接入。</p>
+          <template v-else>
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.moshuUpstream.enrollTitle') }}</h2>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.moshuUpstream.enrollHint') }}</p>
           <div class="mt-4 grid gap-4 lg:grid-cols-2">
@@ -17,6 +19,7 @@
             <label class="text-sm"><span class="font-medium">{{ t('admin.moshuUpstream.enrollmentCode') }}</span><input v-model.trim="enrollment.enrollment_code" class="input mt-1 w-full" autocomplete="off" /></label>
           </div>
           <div class="mt-4 flex justify-end"><button class="btn btn-primary" :disabled="busy || !enrollment.enrollment_code" @click="enroll">{{ t('admin.moshuUpstream.connect') }}</button></div>
+          </template>
         </section>
 
         <template v-else-if="status?.connected">
@@ -38,9 +41,9 @@
             </div>
             <p v-if="status.connection?.last_error" class="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{{ status.connection.last_error }}</p>
             <p class="mt-2 text-xs text-gray-500">上游成本和模型每 5 分钟自动同步，也可手动同步；不会修改本地分组名称、倍率和容量。</p>
-            <details class="mt-4">
+            <details v-if="authStore.isSuperAdmin" class="mt-4">
               <summary>重新授权 / 计费账号换绑后同步 Key</summary>
-              <p class="my-2 text-sm text-gray-500">使用同一主站、同一代理商的新授权码。自动更新已启用账号的 Key，保留本地倍率、分组、容量和历史记录。换绑后请为全部需要的产品生成授权码。</p>
+              <p class="my-2 text-sm text-gray-500">仅支持同一主站、同一代理商重新授权。新增产品需兑换新授权码；已授权产品保留。主站更换计费账号后，请为全部需要的产品生成新授权码。成功后页面会完整刷新，用户、日志和设置保留。</p>
               <input v-model.trim="enrollment.enrollment_code" class="input w-full" placeholder="输入一次性授权码" autocomplete="off" :disabled="busy" />
               <button class="btn btn-primary mt-2" :disabled="busy || !enrollment.enrollment_code" @click="enroll">重新授权并同步</button>
             </details>
@@ -63,7 +66,7 @@
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ t('admin.moshuUpstream.salesName') }}</span><input v-model.trim="drafts[product.id].name" class="input mt-1 w-full" :disabled="!product.authorized" /></label>
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ t('admin.moshuUpstream.retailMultiplier') }}</span><input v-model.number="drafts[product.id].multiplier" class="input mt-1 w-full" type="number" min="0" step="0.01" :disabled="!product.authorized" /></label>
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400" :title="t('admin.moshuUpstream.capacityHint')">{{ t('admin.moshuUpstream.capacity') }}</span><input v-model.number="drafts[product.id].capacity" class="input mt-1 w-full" type="number" min="1" step="1" :disabled="!product.authorized" /></label>
-                <div class="flex flex-wrap gap-2"><button class="btn btn-primary" :disabled="busy || !product.authorized" @click="saveProduct(product)">{{ product.selected ? t('common.save') : t('admin.moshuUpstream.enableSale') }}</button><button v-if="product.selected" class="btn btn-secondary" :title="t('admin.moshuUpstream.rotateHint')" :disabled="busy" @click="rotate(product)">{{ t('admin.moshuUpstream.rotate') }}</button><button class="btn btn-secondary" :disabled="busy || testingProductID === product.id" @click="openProductTest(product)">{{ t('admin.accounts.testConnection') }}</button></div>
+                <div class="flex flex-wrap gap-2"><button class="btn btn-primary" :disabled="busy || !product.authorized" @click="saveProduct(product)">{{ product.selected ? t('common.save') : t('admin.moshuUpstream.enableSale') }}</button><button v-if="product.selected && authStore.isSuperAdmin" class="btn btn-secondary" :title="t('admin.moshuUpstream.rotateHint')" :disabled="busy" @click="rotate(product)">{{ t('admin.moshuUpstream.rotate') }}</button><button class="btn btn-secondary" :disabled="busy || testingProductID === product.id" @click="openProductTest(product)">{{ t('admin.accounts.testConnection') }}</button></div>
               </div>
               <div v-if="product.selected" class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700"><span>{{ t('admin.moshuUpstream.saleActive') }}</span><button class="text-red-600 hover:underline" :disabled="busy" @click="disableProduct(product)">{{ t('admin.moshuUpstream.stopSale') }}</button></div>
             </article>
@@ -88,6 +91,7 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { runResellerBatch, type BatchResult } from '@/utils/resellerBatch'
 import { formatCurrency } from '@/utils/format'
+import { reloadAfterResellerEnrollment } from '@/utils/resellerRefresh'
 import type { MoshuProduct, MoshuResellerBalance, MoshuResellerStatus } from '@/api/admin/moshuReseller'
 import type { Account } from '@/types'
 
@@ -113,11 +117,12 @@ async function loadData() {
   loading.value = true
   let productsToProbe: MoshuProduct[] = []
   try {
-    const [current, allGroups] = await Promise.all([
-      authStore.isSuperAdmin ? moshuResellerAPI.status() : Promise.resolve(null),
-      groupsAPI.getAllIncludingInactive()
-    ])
+    // Status reconciles upstream resources. Read groups after it completes.
+    const current = await moshuResellerAPI.status()
+    const allGroups = await groupsAPI.getAllIncludingInactive()
     status.value = current
+    for (const id of Object.keys(drafts)) delete drafts[Number(id)]
+    batchIDs.value = batchIDs.value.filter(id => current.products.some(p => p.id === id && p.authorized))
     if (current?.connection?.base_url) enrollment.base_url = current.connection.base_url
     current?.products.forEach((product) => { drafts[product.id] = { name: allGroups.find(g => g.id === product.local_group_id)?.name ?? product.display_name, multiplier: product.sales_rate_multiplier ?? 1, capacity: product.capacity > 0 ? product.capacity : 100 } })
     productsToProbe = current?.products.filter(product => product.authorized) ?? []
@@ -166,7 +171,21 @@ async function run(action: () => Promise<unknown>, message: string) {
     appStore.showError(errorText(error))
   } finally { busy.value = false }
 }
-const enroll = () => run(async () => { await moshuResellerAPI.enroll({ ...enrollment }); enrollment.enrollment_code = '' }, t('admin.moshuUpstream.connected'))
+async function enroll() {
+  if (busy.value || !authStore.isSuperAdmin) return
+  busy.value = true
+  try {
+    await moshuResellerAPI.enroll({ ...enrollment })
+    enrollment.enrollment_code = ''
+    ++modelProbeGeneration
+    closeProductTest()
+    upstreamBalance.value = null
+    batchIDs.value = []; batchResults.value = []
+    for (const id of Object.keys(detectedModelCounts)) delete detectedModelCounts[Number(id)]
+    reloadAfterResellerEnrollment()
+  } catch (error) { appStore.showError(errorText(error)) }
+  finally { busy.value = false }
+}
 async function saveBatch() {
   if (busy.value) return
   const targets = authorizedProducts.value.filter(p => batchIDs.value.includes(p.id)).map(p => ({ ...p, draft: { ...drafts[p.id] } }))

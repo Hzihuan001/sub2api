@@ -2,6 +2,7 @@ package moshureseller
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -133,7 +134,15 @@ func (h *Handler) ListProfits(c *gin.Context) {
 }
 
 func (h *Handler) writeError(c *gin.Context, err error) {
+	var upstream *upstreamRequestError
 	switch {
+	case errors.As(err, &upstream):
+		// An upstream 401 must not log the local administrator out.
+		status := http.StatusBadGateway
+		if upstream.Status >= 400 && upstream.Status < 500 {
+			status = http.StatusBadRequest
+		}
+		response.Error(c, status, upstream.Message)
 	case errors.Is(err, ErrDisabled):
 		response.Error(c, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, ErrNotConnected):
@@ -143,6 +152,7 @@ func (h *Handler) writeError(c *gin.Context, err error) {
 	case errors.Is(err, ErrInvalidInput):
 		response.BadRequest(c, err.Error())
 	default:
-		response.InternalError(c, "Moshu reseller request failed")
+		slog.Error("moshu_reseller.request_failed", "path", c.FullPath(), "error", err)
+		response.InternalError(c, "代理商操作失败，请使用请求 ID 查询服务日志")
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"strings"
@@ -150,25 +151,30 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 		return nil, err
 	}
 	instanceID := uuid.NewString()
-	var existingResellerID *int64
+	hadExistingConnection := false
+	var expectedResellerID int64
 	if existing, loadErr := s.loadConnection(ctx); loadErr == nil && existing.InstanceID != "" {
+		hadExistingConnection = true
+		if existing.ResellerID != nil {
+			expectedResellerID = *existing.ResellerID
+		}
 		if existing.BaseURL != baseURL {
 			return nil, fmt.Errorf("%w: reconnect to the existing main site; changing sites requires a separate migration", ErrInvalidInput)
 		}
-		existingResellerID = existing.ResellerID
 		instanceID = existing.InstanceID
 	} else if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
 		return nil, loadErr
 	}
-	exchange, err := s.client.exchange(ctx, baseURL, strings.TrimSpace(enrollmentCode), instanceID)
+	exchange, err := s.client.exchange(ctx, baseURL, strings.TrimSpace(enrollmentCode), instanceID, expectedResellerID)
 	if err != nil {
 		return nil, err
 	}
 	if exchange.Tenant.ProtocolVersion != "v1" || exchange.Catalog.ProtocolVersion != "v1" {
 		return nil, fmt.Errorf("%w: unsupported Moshu reseller protocol", ErrInvalidInput)
 	}
-	if existingResellerID != nil && *existingResellerID != exchange.Tenant.ID {
-		return nil, fmt.Errorf("%w: cannot replace the connected reseller identity", ErrInvalidInput)
+	if expectedResellerID > 0 && expectedResellerID != exchange.Tenant.ID {
+		slog.Info("moshu_reseller.rebind_rejected", "current_reseller_id", expectedResellerID, "target_reseller_id", exchange.Tenant.ID)
+		return nil, fmt.Errorf("%w: 本次仅支持同一代理商重新授权，不支持切换代理商", ErrInvalidInput)
 	}
 	accessCiphertext, err := s.encryptor.Encrypt(exchange.AccessToken)
 	if err != nil {
@@ -215,6 +221,14 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 	if err := persistCatalogTx(ctx, tx, exchange.Catalog, credentials); err != nil {
 		return nil, err
 	}
+	if hadExistingConnection {
+		if _, err := tx.ExecContext(ctx, `UPDATE moshu_products SET authorized=FALSE,updated_at=NOW() WHERE remote_product_id <> ALL($1::bigint[]) AND authorized=TRUE`, pgInt64Array(remoteProductIDs(exchange.Catalog.Products))); err != nil {
+			return nil, err
+		}
+		if err := clearRevokedCredentialsTx(ctx, tx); err != nil {
+			return nil, err
+		}
+	}
 	for _, credential := range exchange.Credentials {
 		if err := syncAccountCredentialTx(ctx, tx, credential.ProductID, credential.APIKey); err != nil {
 			return nil, err
@@ -224,6 +238,11 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 		return nil, err
 	}
 	if s.admin != nil {
+		if hadExistingConnection {
+			if err := s.disableRevokedProducts(ctx); err != nil {
+				return nil, err
+			}
+		}
 		if err := s.reconcileAuthorizedAccounts(ctx); err != nil {
 			return nil, err
 		}
@@ -280,6 +299,9 @@ func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 		return nil, err
 	}
 	revoked, _ := result.RowsAffected()
+	if err := clearRevokedCredentialsTx(ctx, tx); err != nil {
+		return nil, err
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE moshu_reseller_connections SET status='active',catalog_etag=$1,catalog_version=$2,last_catalog_sync_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=1`, etag, catalog.CatalogVersion)
 	if err != nil {
 		return nil, err

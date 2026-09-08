@@ -17,6 +17,13 @@ type protocolClient struct {
 	http *http.Client
 }
 
+type upstreamRequestError struct {
+	Status  int
+	Message string
+}
+
+func (e *upstreamRequestError) Error() string { return e.Message }
+
 type apiEnvelope[T any] struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -41,10 +48,14 @@ func validateBaseURL(raw string) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-func (c *protocolClient) exchange(ctx context.Context, baseURL, code, instanceID string) (*EnrollmentExchange, error) {
+func (c *protocolClient) exchange(ctx context.Context, baseURL, code, instanceID string, expectedResellerIDs ...int64) (*EnrollmentExchange, error) {
+	var expectedID int64
+	if len(expectedResellerIDs) > 0 {
+		expectedID = expectedResellerIDs[0]
+	}
 	var result EnrollmentExchange
 	err := c.doJSON(ctx, http.MethodPost, baseURL+"/api/v1/reseller/v1/enrollments/exchange", "", "", map[string]any{
-		"enrollment_code": code, "instance_id": instanceID,
+		"enrollment_code": code, "instance_id": instanceID, "expected_reseller_id": expectedID,
 	}, &result, nil)
 	return &result, err
 }
@@ -130,14 +141,19 @@ func (c *protocolClient) doJSON(ctx context.Context, method, endpoint, token, et
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Moshu returned HTTP %d", resp.StatusCode)
+		message := fmt.Sprintf("主站请求失败（HTTP %d），请稍后重试", resp.StatusCode)
+		var failure apiEnvelope[json.RawMessage]
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && json.Unmarshal(payload, &failure) == nil && len(failure.Message) > 0 && len(failure.Message) <= 500 {
+			message = failure.Message
+		}
+		return &upstreamRequestError{Status: resp.StatusCode, Message: message}
 	}
 	envelope := apiEnvelope[json.RawMessage]{}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return fmt.Errorf("invalid Moshu response")
 	}
 	if envelope.Code != 0 {
-		return fmt.Errorf("Moshu rejected request: %s", envelope.Message)
+		return &upstreamRequestError{Status: http.StatusBadGateway, Message: "主站拒绝了授权请求，请检查授权码和代理商状态"}
 	}
 	if out != nil && len(envelope.Data) > 0 {
 		if err := json.Unmarshal(envelope.Data, out); err != nil {

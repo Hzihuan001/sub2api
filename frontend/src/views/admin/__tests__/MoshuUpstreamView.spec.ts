@@ -15,9 +15,11 @@ const mocks = vi.hoisted(() => ({
   probeUpstreamModels: vi.fn(async () => ({ models: ['model-a', 'model-b', 'model-b'] })),
   balance: vi.fn(async () => ({ balance: 88.5, frozen_balance: 3.25, warning: false })),
   showError: vi.fn()
+  ,reloadAfterEnrollment: vi.fn()
 }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (s: string, params?: { count?: number }) => params?.count == null ? s : `${s}:${params.count}` }) }))
 vi.mock('@/utils/format', () => ({ formatCurrency: (value: number) => `$${value.toFixed(2)}` }))
+vi.mock('@/utils/resellerRefresh', () => ({ reloadAfterResellerEnrollment: mocks.reloadAfterEnrollment }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => mocks.auth }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: mocks.showError }) }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }))
@@ -67,6 +69,7 @@ describe('reseller configuration', () => {
     await wrapper.findAll('button').find(b => b.text() === '重新授权并同步')!.trigger('click')
     await flushPromises()
     expect(mocks.enroll).toHaveBeenCalledTimes(1)
+    expect(mocks.reloadAfterEnrollment).toHaveBeenCalledTimes(1)
     expect(mocks.enroll).toHaveBeenCalledWith({ base_url: 'https://main.example', enrollment_code: 'new-enrollment' })
     expect(wrapper.find('input[placeholder="输入一次性授权码"]').element.value).toBe('')
     expect(mocks.showError).not.toHaveBeenCalled()
@@ -78,6 +81,19 @@ describe('reseller configuration', () => {
     await flushPromises()
     expect(wrapper.text()).not.toContain('admin.moshuUpstream.modelCount')
     expect(mocks.showError).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('keeps the current station and authorization code on enrollment rejection', async () => {
+    mocks.enroll.mockRejectedValueOnce(new Error('不支持切换代理商'))
+    const wrapper = mount(MoshuUpstreamView)
+    await flushPromises()
+    await wrapper.find('input[placeholder="输入一次性授权码"]').setValue('another-tenant')
+    await wrapper.findAll('button').find(b => b.text() === '重新授权并同步')!.trigger('click')
+    await flushPromises()
+    expect(mocks.reloadAfterEnrollment).not.toHaveBeenCalled()
+    expect(wrapper.find('input[placeholder="输入一次性授权码"]').element.value).toBe('another-tenant')
+    expect(wrapper.text()).toContain('上游名称')
+    expect(mocks.showError).toHaveBeenCalledWith('不支持切换代理商')
     wrapper.unmount()
   })
   it('offers the standard connection test for a product without an existing local account', async () => {
@@ -94,12 +110,16 @@ describe('reseller configuration', () => {
     expect(wrapper.get('[data-test="upstream-account-test"]').text()).toBe('真实上游账号')
     wrapper.unmount()
   })
-  it('does not expose reconnection or batch controls to non-superadmin', async () => {
+  it('allows manager channel controls but hides reconnection and key rotation', async () => {
     mocks.auth.isSuperAdmin = false
     const wrapper = mount(MoshuUpstreamView)
     await flushPromises()
     expect(wrapper.text()).not.toContain('重新授权并同步')
-    expect(wrapper.text()).not.toContain('批量启用/保存')
+    expect(wrapper.text()).toContain('批量启用/保存')
+    expect(wrapper.text()).toContain('上游名称')
+    expect(wrapper.text()).toContain('admin.accounts.testConnection')
+    expect(wrapper.text()).toContain('$85.25')
+    expect(wrapper.text()).not.toContain('admin.moshuUpstream.rotate')
     wrapper.unmount()
   })
   it('does not render revoked upstream products', async () => {
