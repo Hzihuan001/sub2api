@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
-	"slices"
-	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -35,12 +32,8 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 			if group.Platform != product.Platform {
 				return fmt.Errorf("product %d platform changed; migrate its local group explicitly", product.ID)
 			}
-			models := service.GroupModelAllowlist{Enabled: len(product.Models) > 0, Models: append([]string{}, product.Models...)}
-			if group.ModelAllowlist.Enabled != models.Enabled || !slices.Equal(group.ModelAllowlist.Models, models.Models) {
-				if _, err = s.admin.UpdateGroup(ctx, group.ID, &service.UpdateGroupInput{ModelAllowlist: &models}); err != nil {
-					return fmt.Errorf("sync product %d models: %w", product.ID, err)
-				}
-			}
+			// The local group owns model authorization. Catalog refreshes must not
+			// overwrite a whitelist configured by the reseller administrator.
 		}
 		if product.LocalAccountID != nil {
 			account, err := s.admin.GetAccount(ctx, *product.LocalAccountID)
@@ -56,12 +49,13 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 			if account.Platform != product.Platform {
 				return fmt.Errorf("product %d platform changed; migrate its local account explicitly", product.ID)
 			}
-			credentials, modelsChanged := withProductModelMapping(account.Credentials, product.Models)
-			if account.RateMultiplier == nil || *account.RateMultiplier != product.CostRateMultiplier || modelsChanged {
+			credentials, passthroughChanged := withPassthroughCredentials(account.Credentials)
+			extra, passthroughExtraChanged := withPassthroughExtra(account.Extra, account.Platform, account.Type)
+			if account.RateMultiplier == nil || *account.RateMultiplier != product.CostRateMultiplier || passthroughChanged || passthroughExtraChanged {
 				rate := product.CostRateMultiplier
 				if _, err = s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
 					Name: account.Name, Type: account.Type, Status: account.Status,
-					Credentials: credentials, Extra: cloneMap(account.Extra),
+					Credentials: credentials, Extra: extra,
 					GroupIDs: &account.GroupIDs, RateMultiplier: &rate, SkipMixedChannelCheck: true,
 				}); err != nil {
 					return fmt.Errorf("sync product %d cost: %w", product.ID, err)
@@ -72,26 +66,29 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 	return nil
 }
 
-func withProductModelMapping(credentials map[string]any, models []string) (map[string]any, bool) {
-	mapping := make(map[string]any, len(models))
-	for _, model := range models {
-		if model = strings.TrimSpace(model); model != "" {
-			mapping[model] = model
-		}
-	}
-	current, exists := credentials["model_mapping"]
-	if len(mapping) == 0 {
-		if !exists {
-			return credentials, false
-		}
-		updated := cloneMap(credentials)
-		delete(updated, "model_mapping")
-		return updated, true
-	}
-	if exists && reflect.DeepEqual(current, mapping) {
+func withPassthroughCredentials(credentials map[string]any) (map[string]any, bool) {
+	if _, exists := credentials["model_mapping"]; !exists {
 		return credentials, false
 	}
 	updated := cloneMap(credentials)
-	updated["model_mapping"] = mapping
+	delete(updated, "model_mapping")
+	return updated, true
+}
+
+func withPassthroughExtra(extra map[string]any, platform, accountType string) (map[string]any, bool) {
+	key := ""
+	switch {
+	case platform == service.PlatformOpenAI:
+		key = "openai_passthrough"
+	case platform == service.PlatformAnthropic && accountType == service.AccountTypeAPIKey:
+		key = "anthropic_passthrough"
+	default:
+		return extra, false
+	}
+	if enabled, ok := extra[key].(bool); ok && enabled {
+		return extra, false
+	}
+	updated := cloneMap(extra)
+	updated[key] = true
 	return updated, true
 }

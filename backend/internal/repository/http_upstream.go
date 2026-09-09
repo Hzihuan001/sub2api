@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/andybalholm/brotli"
+	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/mod/semver"
 	"golang.org/x/net/http2"
@@ -242,14 +243,19 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 
 const moshuResellerRequestIDHeader = "X-Reseller-Request-ID"
 
+func isMoshuResellerRequest(req *http.Request) bool {
+	if req == nil || req.URL == nil || !envFlagEnabled("MOSHU_RESELLER_CLIENT_ENABLED") {
+		return false
+	}
+	baseURL, err := url.Parse(strings.TrimSpace(os.Getenv("MOSHU_RESELLER_URL")))
+	return err == nil && baseURL.Scheme != "" && baseURL.Host != "" &&
+		strings.EqualFold(baseURL.Scheme, req.URL.Scheme) && strings.EqualFold(baseURL.Host, req.URL.Host)
+}
+
 // applyMoshuResellerRequestID attaches the gateway's existing correlation UUID
 // only to the explicitly configured Moshu origin. Other upstreams never receive it.
 func applyMoshuResellerRequestID(req *http.Request) {
-	if req == nil || req.URL == nil || !envFlagEnabled("MOSHU_RESELLER_CLIENT_ENABLED") {
-		return
-	}
-	baseURL, err := url.Parse(strings.TrimSpace(os.Getenv("MOSHU_RESELLER_URL")))
-	if err != nil || baseURL.Scheme == "" || baseURL.Host == "" || !strings.EqualFold(baseURL.Host, req.URL.Host) {
+	if !isMoshuResellerRequest(req) {
 		return
 	}
 	requestID, _ := req.Context().Value(ctxkey.ClientRequestID).(string)
@@ -258,9 +264,11 @@ func applyMoshuResellerRequestID(req *http.Request) {
 		requestID, _ = req.Context().Value(ctxkey.RequestID).(string)
 		requestID = strings.TrimSpace(requestID)
 	}
-	if requestID != "" {
-		req.Header.Set(moshuResellerRequestIDHeader, requestID)
+	if requestID == "" {
+		// Account tests/probes do not pass through gateway correlation middleware.
+		requestID = uuid.NewString()
 	}
+	req.Header.Set(moshuResellerRequestIDHeader, requestID)
 }
 
 func envFlagEnabled(name string) bool {
@@ -285,6 +293,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	if req != nil && req.URL != nil && strings.EqualFold(req.URL.Scheme, "http") {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 	}
+	applyMoshuResellerRequestID(req)
 	applyGrokCLIProxyHeaders(req)
 	upstreamProfile := service.HTTPUpstreamProfileDefault
 	if req != nil {

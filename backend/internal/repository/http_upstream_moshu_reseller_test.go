@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/google/uuid"
 )
 
 func TestApplyMoshuResellerRequestIDScopesHeaderToConfiguredOrigin(t *testing.T) {
@@ -22,6 +23,29 @@ func TestApplyMoshuResellerRequestIDScopesHeaderToConfiguredOrigin(t *testing.T)
 	applyMoshuResellerRequestID(external)
 	if got := external.Header.Get(moshuResellerRequestIDHeader); got != "" {
 		t.Fatalf("external upstream received private reseller header %q", got)
+	}
+}
+
+func TestApplyMoshuResellerRequestIDProbeGetsUniqueUUID(t *testing.T) {
+	t.Setenv("MOSHU_RESELLER_CLIENT_ENABLED", "true")
+	t.Setenv("MOSHU_RESELLER_URL", "https://moshu.example")
+	var ids []string
+	for range 2 {
+		req, _ := http.NewRequest(http.MethodPost, "https://moshu.example/v1/responses", nil)
+		applyMoshuResellerRequestID(req)
+		id := req.Header.Get(moshuResellerRequestIDHeader)
+		if _, err := uuid.Parse(id); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if ids[0] == ids[1] {
+		t.Fatal("independent probes reused a reservation")
+	}
+	req, _ := http.NewRequest(http.MethodPost, "http://moshu.example/v1/responses", nil)
+	applyMoshuResellerRequestID(req)
+	if req.Header.Get(moshuResellerRequestIDHeader) != "" {
+		t.Fatal("scheme mismatch leaked reseller header")
 	}
 }
 

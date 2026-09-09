@@ -551,6 +551,7 @@ func (s *Service) ensureProductAccount(ctx context.Context, id int64) (int64, er
 		"moshu_reseller_managed": true, "moshu_product_code": product.ProductCode,
 		"moshu_remote_product_id": product.RemoteProductID, "moshu_cost_read_only": true,
 	}
+	extra, _ = withPassthroughExtra(extra, product.Platform, service.AccountTypeAPIKey)
 	groupIDs := []int64{}
 	if product.LocalGroupID != nil {
 		groupIDs = append(groupIDs, *product.LocalGroupID)
@@ -879,7 +880,9 @@ func persistCatalogTx(ctx context.Context, tx *sql.Tx, catalog RemoteCatalog, cr
 }
 
 func (s *Service) ensureGroup(ctx context.Context, product Product, name string, salesMultiplier float64) (int64, error) {
-	models := service.GroupModelAllowlist{Enabled: len(product.Models) > 0, Models: append([]string(nil), product.Models...)}
+	// Reseller accounts are passthrough accounts. New groups start without a
+	// whitelist; model access is managed explicitly from Group Management.
+	models := service.GroupModelAllowlist{Enabled: false, Models: []string{}}
 	createGroup := func() (int64, error) {
 		group, err := s.admin.CreateGroup(service.WithResellerResourceProduct(ctx, product.ID), &service.CreateGroupInput{
 			Name: name, Description: "",
@@ -897,7 +900,7 @@ func (s *Service) ensureGroup(ctx context.Context, product Product, name string,
 	status := service.StatusActive
 	group, err := s.admin.UpdateGroup(ctx, *product.LocalGroupID, &service.UpdateGroupInput{
 		Name: name, Platform: product.Platform, RateMultiplier: &salesMultiplier, AllowZeroRateMultiplier: true,
-		Status: status, ModelAllowlist: &models,
+		Status: status,
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrGroupNotFound) {
@@ -921,6 +924,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 		"moshu_reseller_managed": true, "moshu_product_code": product.ProductCode,
 		"moshu_remote_product_id": product.RemoteProductID, "moshu_cost_read_only": true,
 	}
+	extra, _ = withPassthroughExtra(extra, product.Platform, service.AccountTypeAPIKey)
 	groupIDs := []int64{groupID}
 	rate := product.CostRateMultiplier
 	if product.LocalAccountID == nil {
@@ -967,9 +971,9 @@ func (s *Service) createProductAccount(ctx context.Context, product Product, cre
 }
 
 func productAccountCredentials(apiKey, baseURL string, models []string) map[string]any {
-	credentials := map[string]any{"api_key": apiKey, "base_url": baseURL}
-	credentials, _ = withProductModelMapping(credentials, models)
-	return credentials
+	// Model authorization belongs to the local group, never the account.
+	_ = models
+	return map[string]any{"api_key": apiKey, "base_url": baseURL}
 }
 
 func (s *Service) disableRevokedProducts(ctx context.Context) error {
@@ -1019,7 +1023,9 @@ func (s *Service) persistSettlement(ctx context.Context, settlement RemoteSettle
 	err := s.db.QueryRowContext(ctx, `
 		SELECT mp.local_group_id,mp.sales_rate_multiplier,ul.id,ul.actual_cost
 		FROM moshu_products mp
-		LEFT JOIN usage_logs ul ON ul.request_id IN ($2,'client:' || $2,'local:' || $2)
+		LEFT JOIN usage_logs ul ON ul.request_id::text IN (
+			$2::text,'client:'::text || $2::text,'local:'::text || $2::text
+		)
 		WHERE mp.remote_product_id=$1 ORDER BY ul.id DESC NULLS LAST LIMIT 1`, settlement.ProductID, settlement.RequestID).
 		Scan(&localGroupID, &salesMultiplier, &usageLogID, &customerCharge)
 	if err != nil {

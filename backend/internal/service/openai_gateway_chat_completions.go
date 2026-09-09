@@ -77,6 +77,12 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
 	setCodexToolNameReverse(c, nil)
+	// The main station already accepts Chat Completions and performs provider
+	// conversion. A second Responses bridge can buffer streams and replay the
+	// same reseller reservation during protocol fallback.
+	if account.IsMoshuResellerManaged() && account.Platform == PlatformOpenAI {
+		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+	}
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
 	}

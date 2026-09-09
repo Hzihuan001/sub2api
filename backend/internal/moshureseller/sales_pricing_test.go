@@ -49,17 +49,23 @@ func (a *pricingAdmin) CreateGroup(_ context.Context, input *service.CreateGroup
 	require.Equal(a.t, a.rate, input.RateMultiplier)
 	require.True(a.t, input.AllowZeroRateMultiplier)
 	require.Empty(a.t, input.Description)
+	require.False(a.t, input.ModelAllowlist.Enabled)
+	require.Empty(a.t, input.ModelAllowlist.Models)
 	return &service.Group{ID: 10, RateMultiplier: input.RateMultiplier}, nil
 }
 func (a *pricingAdmin) UpdateGroup(_ context.Context, _ int64, input *service.UpdateGroupInput) (*service.Group, error) {
 	require.NotNil(a.t, input.RateMultiplier)
 	require.Equal(a.t, a.rate, *input.RateMultiplier)
 	require.True(a.t, input.AllowZeroRateMultiplier)
+	require.Nil(a.t, input.ModelAllowlist)
 	return &service.Group{ID: 10, RateMultiplier: *input.RateMultiplier}, nil
 }
 func (a *pricingAdmin) CreateAccount(_ context.Context, input *service.CreateAccountInput) (*service.Account, error) {
 	require.Equal(a.t, 5.0, *input.RateMultiplier) // Upstream cost is untouched.
 	require.Equal(a.t, a.capacity, input.Concurrency)
+	require.Equal(a.t, true, input.Extra["openai_passthrough"])
+	_, hasMapping := input.Credentials["model_mapping"]
+	require.False(a.t, hasMapping)
 	return &service.Account{ID: 20}, nil
 }
 

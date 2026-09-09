@@ -392,6 +392,13 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
 	}
+	if account.IsMoshuResellerManaged() {
+		// The main station has already exhausted its own account retry budget.
+		// Replaying this reservation is rejected as 409 and can obscure the
+		// original error (or charge again if a new ID were generated).
+		failoverErr.NextAccountAction = NextAccountStop
+		failoverErr.RetryableOnSameAccount = false
+	}
 	return failoverErr
 }
 

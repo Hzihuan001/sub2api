@@ -67,11 +67,36 @@ func TestEnsureProductTestAccountCreatesUnscheduledAccountWithoutSalesGroup(t *t
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestProductAccountCredentialsExposeAuthorizedModelsToStandardTestDialog(t *testing.T) {
+func TestProductAccountCredentialsUsePassthroughMode(t *testing.T) {
 	credentials := productAccountCredentials("key", "https://main.example", []string{"gpt-image-1", " gpt-5.6 "})
 
-	require.Equal(t, map[string]any{
-		"gpt-image-1": "gpt-image-1",
-		"gpt-5.6":     "gpt-5.6",
-	}, credentials["model_mapping"])
+	require.Equal(t, "key", credentials["api_key"])
+	require.Equal(t, "https://main.example", credentials["base_url"])
+	_, hasMapping := credentials["model_mapping"]
+	require.False(t, hasMapping)
+}
+
+func TestWithPassthroughExtraUsesPlatformSpecificSwitch(t *testing.T) {
+	tests := []struct {
+		name        string
+		platform    string
+		accountType string
+		key         string
+		changed     bool
+	}{
+		{name: "openai", platform: service.PlatformOpenAI, accountType: service.AccountTypeAPIKey, key: "openai_passthrough", changed: true},
+		{name: "anthropic api key", platform: service.PlatformAnthropic, accountType: service.AccountTypeAPIKey, key: "anthropic_passthrough", changed: true},
+		{name: "anthropic oauth unsupported", platform: service.PlatformAnthropic, accountType: service.AccountTypeOAuth},
+		{name: "other platform", platform: service.PlatformGemini, accountType: service.AccountTypeAPIKey},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			extra, changed := withPassthroughExtra(map[string]any{"keep": "value"}, tt.platform, tt.accountType)
+			require.Equal(t, tt.changed, changed)
+			require.Equal(t, "value", extra["keep"])
+			if tt.key != "" {
+				require.Equal(t, true, extra[tt.key])
+			}
+		})
+	}
 }

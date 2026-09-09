@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.2-l1.10
+  CUSTOM_VERSION: 0.2.2-l1.11
 
 jobs:
   quality:
@@ -44,7 +44,7 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Verify release tag
-        run: test "$GITHUB_REF_NAME" = 'custom-l1-0.2.2.10'
+        run: test "$GITHUB_REF_NAME" = 'custom-l1-0.2.2.11'
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -52,7 +52,10 @@ jobs:
 
       - name: Backend reseller tests
         working-directory: backend
-        run: go test ./internal/moshureseller ./internal/service
+        run: |
+          go test ./internal/moshureseller ./internal/service
+          go test -tags=unit ./internal/service -run '^TestMoshuReseller'
+          go test ./internal/repository -run '^TestApplyMoshu'
 
       - name: Frontend typecheck and locale tests
         working-directory: frontend

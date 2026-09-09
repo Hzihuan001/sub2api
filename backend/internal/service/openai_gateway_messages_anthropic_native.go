@@ -126,6 +126,9 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 // 第三方端点保持朴素路径，不附加 ?beta=true。
 func (s *OpenAIGatewayService) nativeAnthropicTargetURL(account *Account) (string, error) {
 	baseURL := strings.TrimSpace(account.GetAnthropicProtocolBaseURL())
+	if account.IsMoshuResellerManaged() {
+		baseURL = strings.TrimSpace(account.GetCredential("base_url"))
+	}
 	if baseURL == "" {
 		return "", fmt.Errorf("account %d has no anthropic protocol base url", account.ID)
 	}
