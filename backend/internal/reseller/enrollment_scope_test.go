@@ -90,7 +90,7 @@ func TestCatalogHidesUnexchangedOrDeletedProducts(t *testing.T) {
 func TestRevocationRollsBackIfKeyDeletionFails(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id,user_id,name,status").WillReturnRows(tenantRows())
 	mock.ExpectExec("UPDATE reseller_products").WithArgs(int64(1), int64(3)).WillReturnResult(sqlmock.NewResult(0, 1))
@@ -103,7 +103,7 @@ func TestRevocationRollsBackIfKeyDeletionFails(t *testing.T) {
 func TestDeletedProductInvalidatesOldCodesAndKeysTogether(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id,user_id,name,status").WillReturnRows(tenantRows())
 	mock.ExpectExec("UPDATE reseller_products").WithArgs(int64(1), int64(3)).WillReturnResult(sqlmock.NewResult(0, 1))
@@ -118,7 +118,7 @@ func TestDeletedProductInvalidatesOldCodesAndKeysTogether(t *testing.T) {
 func TestDeleteTenantRetainsHistoryAndIsNotReversibleByStatus(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id,user_id,name,status").WillReturnRows(tenantRows())
 	for _, query := range []string{"UPDATE api_keys SET status='inactive',deleted_at", "UPDATE reseller_credentials SET status='revoked'", "UPDATE reseller_refresh_tokens SET revoked_at", "UPDATE reseller_enrollment_codes SET used_at", "UPDATE reseller_products SET enabled=FALSE", "UPDATE reseller_tenants SET status='disabled',deleted_at"} {
