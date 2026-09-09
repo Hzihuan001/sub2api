@@ -30,7 +30,7 @@ func TestOperatorTargetUserWriteGuard(t *testing.T) {
 		wantStatus int
 	}{
 		{id: "1", wantStatus: http.StatusOK},
-		{id: "2", wantStatus: http.StatusForbidden},
+		{id: "2", wantStatus: http.StatusOK},
 		{id: "3", wantStatus: http.StatusForbidden},
 	} {
 		router := gin.New()
@@ -48,7 +48,7 @@ func TestOperatorTargetUserWriteGuard(t *testing.T) {
 
 func TestOperatorBatchWithPrivilegedUserIsRejectedBeforeWrite(t *testing.T) {
 	base := newStubAdminService()
-	base.users = []service.User{{ID: 1, Role: service.RoleUser}, {ID: 2, Role: service.RoleAdmin}}
+	base.users = []service.User{{ID: 1, Role: service.RoleUser}, {ID: 2, Role: service.RoleOperator}, {ID: 3, Role: service.RoleAdmin}}
 	serviceStub := &batchLimitsAdminServiceStub{stubAdminService: base}
 	handler := NewUserHandler(serviceStub, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
@@ -59,12 +59,25 @@ func TestOperatorBatchWithPrivilegedUserIsRejectedBeforeWrite(t *testing.T) {
 	router.POST("/api/v1/admin/users/batch-limits", handler.BatchUpdateLimits)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/batch-limits", bytes.NewBufferString(`{"user_ids":[1,2],"rpm_limit":10}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/batch-limits", bytes.NewBufferString(`{"user_ids":[1,3],"rpm_limit":10}`))
 	request.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusForbidden, recorder.Code)
 	require.Empty(t, serviceStub.calls)
+}
+
+func TestOperatorCanWriteSameLevelOperatorAPIKey(t *testing.T) {
+	base := newStubAdminService()
+	base.users = []service.User{{ID: 2, Role: service.RoleOperator}}
+	base.apiKeys = []service.APIKey{{ID: 20, UserID: 2}}
+	handler := NewAdminAPIKeyHandler(base)
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set(string(middleware.ContextKeyUserRole), service.RoleOperator); c.Next() })
+	router.PUT("/api/v1/admin/api-keys/:id", handler.OperatorTargetUserWriteGuard(), func(c *gin.Context) { c.Status(http.StatusOK) })
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/20", nil))
+	require.Equal(t, http.StatusOK, recorder.Code)
 }
 
 func TestOperatorAPIKeyWriteGuardProtectsPrivilegedOwners(t *testing.T) {

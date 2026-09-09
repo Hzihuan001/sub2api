@@ -218,6 +218,19 @@ describe('admin UsersView', () => {
     )
   })
 
+  it('keeps same-level operators selectable for management actions', async () => {
+    authStore.isAdmin = false
+    authStore.isOperator = true
+    listUsers.mockResolvedValueOnce({
+      items: [createAdminUser({ id: 1, role: 'user' }), createAdminUser({ id: 2, role: 'operator', email: 'operator@example.com' })],
+      total: 2, page: 1, page_size: 20, pages: 1
+    })
+    const wrapper = mountUsersView()
+    await flushPromises()
+    await wrapper.get('[data-test="select-2"]').trigger('click')
+    expect(wrapper.get('[data-test="selected-keys"]').text()).toContain('2')
+  })
+
   it('lists Kiro usage in column settings while keeping it hidden by default', async () => {
     const wrapper = mountUsersView()
 

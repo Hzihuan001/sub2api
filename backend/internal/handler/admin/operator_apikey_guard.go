@@ -9,7 +9,7 @@ import (
 )
 
 // OperatorTargetUserWriteGuard resolves an API key without changing it, then
-// applies the same ordinary-user-only rule as the user management endpoints.
+// applies the same user/operator rule as the user management endpoints.
 func (h *AdminAPIKeyHandler) OperatorTargetUserWriteGuard() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !isOperatorContext(c) {
@@ -39,8 +39,8 @@ func (h *AdminAPIKeyHandler) OperatorTargetUserWriteGuard() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if target.Role != service.RoleUser {
-			response.Forbidden(c, "operators may only modify API keys owned by ordinary users")
+		if target.Role == service.RoleAdmin {
+			response.Forbidden(c, "operators may not modify API keys owned by super administrators")
 			c.Abort()
 			return
 		}

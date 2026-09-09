@@ -29,7 +29,7 @@
         <label class="input-label">{{ t('admin.users.username') }}</label>
         <input v-model="form.username" type="text" class="input" />
       </div>
-      <div v-if="authStore.isAdmin">
+      <div v-if="authStore.isAdmin || authStore.isOperator">
         <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
         <Select
           v-model="form.role"
@@ -113,11 +113,21 @@ const form = reactive({
   customAttributes: {} as UserAttributeValuesMap
 })
 
-const roleOptions = computed<SelectOption[]>(() => [
-  { value: 'user', label: t('admin.users.roles.user') },
-  { value: 'operator', label: t('admin.users.roles.operator') },
-  { value: 'admin', label: t('admin.users.roles.admin') },
-])
+const roleOptions = computed<SelectOption[]>(() => {
+  if (authStore.isAdmin) {
+    return [
+      { value: 'user', label: t('admin.users.roles.user') },
+      { value: 'operator', label: t('admin.users.roles.operator') },
+      { value: 'admin', label: t('admin.users.roles.admin') },
+    ]
+  }
+  return props.user?.role === 'operator'
+    ? [{ value: 'operator', label: t('admin.users.roles.operator') }]
+    : [
+        { value: 'user', label: t('admin.users.roles.user') },
+        { value: 'operator', label: t('admin.users.roles.operator') },
+      ]
+})
 
 watch(() => props.user, (u) => {
   if (u) {
@@ -153,7 +163,7 @@ const handleUpdateUser = async () => {
   submitting.value = true
   try {
     const data: any = { email: form.email, username: form.username, notes: form.notes, concurrency: form.concurrency, rpm_limit: form.rpm_limit }
-    if (authStore.isAdmin) data.role = form.role
+    if (authStore.isAdmin || authStore.isOperator) data.role = form.role
     if (form.password.trim()) data.password = form.password.trim()
     // 提升为管理员属敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 验证并重试
     await stepUp.run(() => adminAPI.users.update(userId, data))

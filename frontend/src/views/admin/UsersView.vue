@@ -842,7 +842,7 @@ const authStore = useAuthStore()
 const canWriteUsers = computed(() => authStore.canOperator('users.write'))
 const canSeeUserBalance = computed(() => authStore.canOperator('finance.user_balance.read'))
 const canSeeUserCharge = computed(() => authStore.canOperator('finance.user_charge.read'))
-const canMutateUser = (user: AdminUser) => canWriteUsers.value && (!authStore.isOperator || user.role === 'user')
+const canMutateUser = (user: AdminUser) => canWriteUsers.value && (!authStore.isOperator || user.role === 'user' || user.role === 'operator')
 const canAdjustBalance = (user: AdminUser) => canMutateUser(user) && authStore.canOperator('users.balance.write')
 
 // Generate dynamic attribute columns from enabled definitions

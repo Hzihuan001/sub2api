@@ -14,9 +14,8 @@ func isOperatorContext(c *gin.Context) bool {
 	return ok && role == service.RoleOperator
 }
 
-// OperatorTargetUserWriteGuard prevents operators from mutating admin or
-// operator accounts. It is attached to every single-target user write route,
-// including routes whose final handler is owned by another user sub-module.
+// OperatorTargetUserWriteGuard prevents operators from mutating admin
+// accounts. Operators may manage ordinary users and same-level operators.
 func (h *UserHandler) OperatorTargetUserWriteGuard() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !isOperatorContext(c) {
@@ -35,8 +34,8 @@ func (h *UserHandler) OperatorTargetUserWriteGuard() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if target.Role != service.RoleUser {
-			response.Forbidden(c, "operators may only modify ordinary users")
+		if target.Role == service.RoleAdmin {
+			response.Forbidden(c, "operators may not modify super administrators")
 			c.Abort()
 			return
 		}
@@ -56,8 +55,8 @@ func (h *UserHandler) operatorMayMutateUsers(c *gin.Context, userIDs []int64) bo
 			response.ErrorFrom(c, err)
 			return false
 		}
-		if target.Role != service.RoleUser {
-			response.Forbidden(c, "batch contains a privileged user")
+		if target.Role == service.RoleAdmin {
+			response.Forbidden(c, "batch contains a super administrator")
 			return false
 		}
 	}

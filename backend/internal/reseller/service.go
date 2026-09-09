@@ -81,7 +81,7 @@ func (s *Service) CreateTenant(ctx context.Context, userID int64, name string, a
 		return nil, fmt.Errorf("%w: select an active ordinary user as the reseller billing account", ErrInvalidInput)
 	}
 	if isTenantConflict(err) {
-		return nil, fmt.Errorf("%w: 该用户或代理商名称已被其他代理商使用", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: 代理商名称已被使用，请使用不同的名称", ErrInvalidInput)
 	}
 	return tenant, err
 }
@@ -248,9 +248,6 @@ func (s *Service) ChangeBillingAccount(ctx context.Context, resellerID, userID i
 		return nil, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE reseller_tenants SET user_id=$2,updated_at=NOW() WHERE id=$1`, resellerID, targetID); err != nil {
-		if isTenantConflict(err) {
-			return nil, fmt.Errorf("%w: 该用户已经绑定其他代理商", ErrInvalidInput)
-		}
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {

@@ -9,6 +9,7 @@
       <section class="card p-5">
         <h2 class="font-semibold text-gray-900 dark:text-white">新建代理商</h2>
         <p class="mt-2 text-sm text-gray-500">选择代理商自己的主站普通用户账号。充值余额、授权 Key、扣费和使用记录均归属该账号。没有账号时，请先在用户管理中创建。</p>
+        <p class="mt-2 text-sm text-gray-500">同一计费账号可绑定多个不同名称的代理商，共享余额、专属倍率和账号级限额。每个代理商独立授权一个分站，产品权限与凭证分别管理。</p>
         <div class="mt-4 grid gap-3 md:grid-cols-3">
           <Select v-model="newTenant.user_id" :options="billingUserOptions" remote clearable :loading="searchingUsers" placeholder="选择代理商充值账号" search-placeholder="输入部分邮箱或用户名" @search="searchBillingUsers" />
           <input v-model.trim="newTenant.name" class="input" placeholder="代理商名称" />

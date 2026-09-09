@@ -11,7 +11,7 @@ import (
 func isTenantConflict(err error) bool {
 	var pg *pq.Error
 	return errors.As(err, &pg) && pg.Code == "23505" &&
-		(pg.Constraint == "reseller_tenants_user_active_uidx" || pg.Constraint == "reseller_tenants_name_active_uidx")
+		pg.Constraint == "reseller_tenants_name_active_uidx"
 }
 
 // Soft deletion preserves the billing user, balance and historical settlements.

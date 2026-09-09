@@ -283,7 +283,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	// 创建特权账号属权限敏感操作：需最近完成 step-up 2FA 验证。
-	if req.Role == service.RoleAdmin || req.Role == service.RoleOperator {
+	if req.Role == service.RoleAdmin || (req.Role == service.RoleOperator && !isOperatorContext(c)) {
 		if !middleware.EnforceStepUp(c, h.totpService, h.userService, h.settingService) {
 			return
 		}
@@ -325,9 +325,24 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
-	if isOperatorContext(c) && req.Role != "" && req.Role != service.RoleUser {
-		response.Forbidden(c, "operators cannot change user roles")
+	if isOperatorContext(c) && req.Role == service.RoleAdmin {
+		response.Forbidden(c, "operators may not grant super administrator")
 		return
+	}
+	if isOperatorContext(c) && req.Role != "" {
+		target, targetErr := h.adminService.GetUser(c.Request.Context(), userID)
+		if targetErr != nil {
+			response.ErrorFrom(c, targetErr)
+			return
+		}
+		if target.Role == service.RoleOperator && req.Role != service.RoleOperator {
+			response.Forbidden(c, "operators may not change the role of a same-level operator")
+			return
+		}
+		if req.Role != service.RoleUser && req.Role != service.RoleOperator {
+			response.Forbidden(c, "invalid operator target role")
+			return
+		}
 	}
 
 	// 防锁死保护：admin 不能把自己降级为 operator 或 user。
@@ -338,7 +353,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 
 	// 授予或切换特权角色属敏感操作。目标角色未变化时不触发 step-up。
-	if req.Role == service.RoleAdmin || req.Role == service.RoleOperator {
+	if req.Role == service.RoleAdmin || (req.Role == service.RoleOperator && !isOperatorContext(c)) {
 		target, err := h.adminService.GetUser(c.Request.Context(), userID)
 		if err != nil {
 			response.ErrorFrom(c, err)

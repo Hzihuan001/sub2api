@@ -106,7 +106,7 @@ func TestCreateOperatorUserRequiresStepUp(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestOperatorCannotCreateOrAssignPrivilegedRoles(t *testing.T) {
+func TestOperatorCannotCreateOrAssignSuperAdministrator(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	base := newStubAdminService()
 	h := NewUserHandler(base, nil, nil, nil, nil, nil, nil)
@@ -119,7 +119,7 @@ func TestOperatorCannotCreateOrAssignPrivilegedRoles(t *testing.T) {
 	router.POST("/api/v1/admin/users", h.Create)
 	router.PUT("/api/v1/admin/users/:id", h.Update)
 
-	for _, role := range []string{service.RoleOperator, service.RoleAdmin} {
+	for _, role := range []string{service.RoleAdmin} {
 		create := doJSON(t, router, http.MethodPost, "/api/v1/admin/users", map[string]any{
 			"email": "blocked-" + role + "@example.com", "password": "pass123", "role": role,
 		})
@@ -128,6 +128,34 @@ func TestOperatorCannotCreateOrAssignPrivilegedRoles(t *testing.T) {
 		update := doJSON(t, router, http.MethodPut, "/api/v1/admin/users/1", map[string]any{"role": role})
 		require.Equal(t, http.StatusForbidden, update.Code)
 	}
+}
+
+func TestOperatorCanPromoteOrdinaryUserToOperator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	base := newStubAdminService()
+	base.users = []service.User{{ID: 1, Role: service.RoleUser}}
+	h := NewUserHandler(base, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyUserRole), service.RoleOperator)
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9})
+		c.Next()
+	})
+	router.PUT("/api/v1/admin/users/:id", h.Update)
+	rec := doJSON(t, router, http.MethodPut, "/api/v1/admin/users/1", map[string]any{"role": service.RoleOperator})
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestOperatorCanEditSameLevelOperator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	base := newStubAdminService()
+	base.users = []service.User{{ID: 2, Role: service.RoleOperator}}
+	h := NewUserHandler(base, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set(string(middleware.ContextKeyUserRole), service.RoleOperator); c.Next() })
+	router.PUT("/api/v1/admin/users/:id", h.Update)
+	rec := doJSON(t, router, http.MethodPut, "/api/v1/admin/users/2", map[string]any{"email": "operator-edited@example.com"})
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestAdminCannotDemoteSelfToAnyNonAdminRole(t *testing.T) {
