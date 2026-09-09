@@ -13,7 +13,7 @@ import (
 func TestCreateTenantsSharingBillingAccount(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	s := NewService(db, nil, nil)
 	for i, name := range []string{"API station", "COS station"} {
 		mock.ExpectQuery("INSERT INTO reseller_tenants").WithArgs(int64(10), name, sqlmock.AnyArg()).
@@ -34,7 +34,7 @@ func TestCreateTenantsSharingBillingAccount(t *testing.T) {
 func TestBillingRebindOnlyRevokesTargetTenantCredentials(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { _ = db.Close() })
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id,user_id,name,status").WithArgs(int64(1)).WillReturnRows(tenantRows())
 	mock.ExpectQuery("SELECT id FROM users").WithArgs(int64(20)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(20))
