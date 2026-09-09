@@ -69,6 +69,12 @@ func moshuOnlyAccountGuard(c *gin.Context) {
 		c.Next()
 		return
 	}
+	// Live model discovery is read-only even though the API uses POST.
+	if c.Request.Method == http.MethodPost && strings.HasSuffix(c.Request.URL.Path, "/models/probe-upstream") &&
+		isAccountUpdatePath(strings.TrimSuffix(c.Request.URL.Path, "/models/probe-upstream")) {
+		c.Next()
+		return
+	}
 	if c.Request.Method == http.MethodPut && isAccountUpdatePath(c.Request.URL.Path) && moshuOnlyAccountGroupUpdate(c) {
 		c.Next()
 		return
