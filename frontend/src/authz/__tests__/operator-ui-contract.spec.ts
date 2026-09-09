@@ -38,8 +38,8 @@ describe('operator UI contract', () => {
     expect(users).toContain('v-if="canMutateUser(row)"')
     expect(users).toContain('v-if="canMutateUser(user)"')
     expect(createModal).toContain('v-if="authStore.isAdmin"')
-    expect(editModal).toContain('v-if="authStore.isAdmin"')
-    expect(editModal).toContain('if (authStore.isAdmin) data.role = form.role')
+    expect(editModal).toContain('v-if="authStore.isAdmin || authStore.isOperator"')
+    expect(editModal).toContain('if (authStore.isAdmin || authStore.isOperator) data.role = form.role')
   })
 
   it('makes ops configuration and cleanup controls admin-only', () => {
