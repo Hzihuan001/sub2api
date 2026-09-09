@@ -42,6 +42,7 @@ describe('reseller configuration', () => {
   it('allows same-site reconnect while connected and preserves the sales name and price', async () => {
     const wrapper = mount(MoshuUpstreamView)
     await flushPromises()
+    expect(wrapper.get('article').element.closest('template')).toBeNull()
     expect(wrapper.text()).not.toContain('admin.moshuUpstream.protocolSubtitle')
     expect(wrapper.text()).not.toContain('https://main.example')
     expect(wrapper.text()).not.toContain('common.refresh')

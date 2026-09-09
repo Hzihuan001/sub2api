@@ -3,7 +3,6 @@
     <div class="space-y-6">
       <div v-if="loading" class="flex justify-center py-16"><LoadingSpinner /></div>
       <template v-else>
-        <template>
         <section v-if="status && !status.enabled" class="card border-amber-200 p-5 dark:border-amber-900">
           <h2 class="font-semibold text-amber-800 dark:text-amber-300">{{ t('admin.moshuUpstream.protocolDisabled') }}</h2>
           <p class="mt-2 text-sm text-amber-700 dark:text-amber-400">{{ t('admin.moshuUpstream.protocolDisabledHint') }}</p>
@@ -72,7 +71,6 @@
             </article>
           </section>
 
-        </template>
         </template>
       </template>
     </div>
