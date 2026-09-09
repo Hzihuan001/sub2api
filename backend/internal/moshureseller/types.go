@@ -25,6 +25,7 @@ type Product struct {
 	Authorized          bool           `json:"authorized"`
 	Selected            bool           `json:"selected"`
 	CostRateMultiplier  float64        `json:"cost_rate_multiplier"`
+	CostRateOverride    *float64       `json:"cost_rate_override,omitempty"`
 	SalesRateMultiplier *float64       `json:"sales_rate_multiplier,omitempty"`
 	CatalogVersion      int64          `json:"price_catalog_version"`
 	Models              []string       `json:"models"`

@@ -617,7 +617,7 @@
 
               <!-- Toggle Status Button (not for admin) -->
               <button
-                v-if="canManageUser(row) && row.role !== 'admin'"
+                v-if="canManageUser(row) && row.role !== 'admin' && row.id !== authStore.user?.id"
                 @click="handleToggleStatus(row)"
                 :class="[
                   'flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors',
@@ -740,7 +740,7 @@
 
               <!-- Delete (not for admin) -->
               <button
-                v-if="user.role !== 'admin'"
+                v-if="user.role !== 'admin' && user.id !== authStore.user?.id"
                 @click="handleDelete(user); closeActionMenu()"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
               >
@@ -755,7 +755,7 @@
 
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
-    <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
+    <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="handleManagedUserUpdated(editingUser)" />
     <BulkEditUserModal
       :show="showBulkEditModal"
       :selected-ids="selectedIds"
@@ -770,7 +770,7 @@
     />
     <UserApiKeysModal :show="showApiKeysModal" :user="viewingUser" @close="closeApiKeysModal" />
     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
-    <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
+    <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="handleManagedUserUpdated(balanceUser)" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
     <UserAttributesConfigModal :show="showAttributesModal" @close="handleAttributesModalClose" />
@@ -821,7 +821,15 @@ import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const canManageUser = (user: AdminUser): boolean =>
-  authStore.isSuperAdmin || (user.role !== 'admin' && user.id !== authStore.user?.id)
+  authStore.isSuperAdmin || user.role !== 'admin'
+
+async function handleManagedUserUpdated(user: AdminUser | null) {
+  const updates: Promise<unknown>[] = [loadUsers()]
+  if (user && user.id === authStore.user?.id) updates.push(authStore.refreshUser())
+  // A profile refresh failure must not turn a completed balance change into a
+  // failed action that invites a duplicate recharge.
+  await Promise.allSettled(updates)
+}
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>

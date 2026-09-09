@@ -1,5 +1,13 @@
 export default {
   moshuUpstream: {
+    saveCost: 'Save cost multiplier',
+    followUpstreamCost: 'Follow upstream cost',
+    costHint: 'Used for local account cost reporting; actual charges are determined upstream. Sync preserves manual overrides.',
+    catalogCost: 'Public upstream multiplier',
+    manualCost: 'Manual override',
+    autoCost: 'Following upstream',
+    costSaved: 'Cost multiplier saved',
+    invalidCost: 'Enter a cost multiplier between 0 and 999999.9999',
     title: 'Upstream',
     description: 'Manage authorized upstream channels and group configuration',
     protocolDisabled: 'Reseller protocol is not enabled',

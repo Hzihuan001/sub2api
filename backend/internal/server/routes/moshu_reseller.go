@@ -15,6 +15,7 @@ func registerMoshuResellerRoutes(admin *gin.RouterGroup, handlers *handler.Handl
 		reseller.POST("/enroll", middleware.SuperAdminOnly(), handlers.MoshuReseller.Enroll)
 		reseller.POST("/catalog/sync", handlers.MoshuReseller.SyncCatalog)
 		reseller.PUT("/products/:id", handlers.MoshuReseller.ConfigureProduct)
+		reseller.PUT("/products/:id/cost", handlers.MoshuReseller.SetProductCost)
 		reseller.POST("/products/:id/test-account", handlers.MoshuReseller.EnsureProductTestAccount)
 		reseller.POST("/products/:id/credentials/rotate", middleware.SuperAdminOnly(), handlers.MoshuReseller.RotateCredential)
 		reseller.POST("/settlements/sync", middleware.SuperAdminOnly(), handlers.MoshuReseller.SyncSettlements)

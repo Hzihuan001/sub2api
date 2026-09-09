@@ -23,6 +23,7 @@ export interface MoshuProduct {
   authorized: boolean
   selected: boolean
   cost_rate_multiplier: number
+  cost_rate_override?: number
   sales_rate_multiplier?: number
   price_catalog_version: number
   models: string[]
@@ -74,6 +75,11 @@ export default {
 
   async rotateCredential(id: number): Promise<MoshuProduct> {
     const response = await apiClient.post<MoshuProduct>(`/admin/moshu-reseller/products/${id}/credentials/rotate`)
+    return response.data
+  },
+
+  async setProductCost(id: number, payload: { cost_rate_multiplier: number } | { follow_upstream: true }): Promise<MoshuProduct> {
+    const response = await apiClient.put<MoshuProduct>(`/admin/moshu-reseller/products/${id}/cost`, payload)
     return response.data
   },
 

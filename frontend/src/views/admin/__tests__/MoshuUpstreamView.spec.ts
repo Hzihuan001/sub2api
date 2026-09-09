@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   authorized: true,
   models: [] as string[],
   localAccountID: 2 as number | undefined,
+  costOverride: undefined as number | undefined,
+  setProductCost: vi.fn(async () => ({})),
   auth: { isSuperAdmin: true },
   enroll: vi.fn(async (payload: { base_url: string; enrollment_code: string }) => ({ ...payload })),
   configureProduct: vi.fn(async () => ({})),
@@ -28,16 +30,50 @@ vi.mock('@/api/admin', () => ({
   accountsAPI: { getById: mocks.getAccountByID, probeUpstreamModels: mocks.probeUpstreamModels },
   groupsAPI: { getAllIncludingInactive: async () => [{ id: 5, name: '我的销售名' }] },
   moshuResellerAPI: {
-    status: async () => ({ enabled: true, connected: true, connection: { base_url: 'https://main.example', reseller_name: 'L1', catalog_version: 1 }, products: [{ id: 3, display_name: '上游名称', platform: 'openai', authorized: mocks.authorized, selected: mocks.selected, local_group_id: 5, local_account_id: mocks.localAccountID, cost_rate_multiplier: 1, sales_rate_multiplier: 1.7, capacity: 23, models: mocks.models }] }),
+    status: async () => ({ enabled: true, connected: true, connection: { base_url: 'https://main.example', reseller_name: 'L1', catalog_version: 1 }, products: [{ id: 3, display_name: '上游名称', platform: 'openai', authorized: mocks.authorized, selected: mocks.selected, local_group_id: 5, local_account_id: mocks.localAccountID, cost_rate_multiplier: 1, cost_rate_override: mocks.costOverride, sales_rate_multiplier: 1.7, capacity: 23, models: mocks.models }] }),
     balance: mocks.balance,
     profits: async () => ({ items: [] }),
     enroll: mocks.enroll,
     configureProduct: mocks.configureProduct,
+    setProductCost: mocks.setProductCost,
     ensureTestAccount: mocks.ensureTestAccount
   }
 }))
 
 describe('reseller configuration', () => {
+  beforeEach(() => { mocks.costOverride = undefined })
+  it.each([0, 0.1234])('saves an independent cost override %s without enabling a group', async (rate) => {
+    mocks.auth.isSuperAdmin = false
+    mocks.selected = false
+    const wrapper = mount(MoshuUpstreamView)
+    await flushPromises()
+    await wrapper.get('[data-test="cost-multiplier"]').setValue(rate)
+    await wrapper.get('article form').trigger('submit')
+    await flushPromises()
+    expect(mocks.setProductCost).toHaveBeenCalledWith(3, { cost_rate_multiplier: rate })
+    expect(mocks.configureProduct).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('shows a persisted zero override and can restore upstream tracking', async () => {
+    mocks.costOverride = 0
+    const wrapper = mount(MoshuUpstreamView)
+    await flushPromises()
+    expect(wrapper.get('[data-test="cost-multiplier"]').element.value).toBe('0')
+    await wrapper.findAll('button').find(b => b.text() === 'admin.moshuUpstream.followUpstreamCost')!.trigger('click')
+    await flushPromises()
+    expect(mocks.setProductCost).toHaveBeenCalledWith(3, { follow_upstream: true })
+    expect(mocks.configureProduct).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it.each(['', '-1', '1000000'])('rejects invalid manual cost %s without writing', async (rate) => {
+    const wrapper = mount(MoshuUpstreamView)
+    await flushPromises()
+    await wrapper.get('[data-test="cost-multiplier"]').setValue(rate)
+    await wrapper.get('article form').trigger('submit')
+    expect(mocks.setProductCost).not.toHaveBeenCalled()
+    expect(mocks.showError).toHaveBeenCalledWith('admin.moshuUpstream.invalidCost')
+    wrapper.unmount()
+  })
   beforeEach(() => { vi.clearAllMocks(); mocks.auth.isSuperAdmin = true; mocks.selected = true; mocks.authorized = true; mocks.models = []; mocks.localAccountID = 2; mocks.probeUpstreamModels.mockResolvedValue({ models: ['model-a', 'model-b', 'model-b'] }) })
   it('allows same-site reconnect while connected and preserves the sales name and price', async () => {
     const wrapper = mount(MoshuUpstreamView)

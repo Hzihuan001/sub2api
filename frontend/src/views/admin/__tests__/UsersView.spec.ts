@@ -8,12 +8,14 @@ const {
   listUsers,
   getAllGroups,
   getBatchUsersUsage,
+  refreshUser,
   listEnabledDefinitions,
   getBatchUserAttributes
 } = vi.hoisted(() => ({
   listUsers: vi.fn(),
   getAllGroups: vi.fn(),
   getBatchUsersUsage: vi.fn(),
+  refreshUser: vi.fn(async () => ({})),
   listEnabledDefinitions: vi.fn(),
   getBatchUserAttributes: vi.fn()
 }))
@@ -46,7 +48,7 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isAdmin: true, isSuperAdmin: false })
+  useAuthStore: () => ({ isAdmin: true, isSuperAdmin: false, user: { id: 51, role: 'manager' }, refreshUser })
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -102,6 +104,7 @@ const DataTableStub = {
       </template>
       <div v-for="row in data" :key="row.id">
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
+        <div :data-test="'actions-' + row.id"><slot name="cell-actions" :row="row" /></div>
       </div>
     </div>
   `
@@ -131,6 +134,7 @@ describe('admin UsersView', () => {
     listUsers.mockReset()
     getAllGroups.mockReset()
     getBatchUsersUsage.mockReset()
+    refreshUser.mockClear()
     listEnabledDefinitions.mockReset()
     getBatchUserAttributes.mockReset()
 
@@ -374,7 +378,7 @@ describe('admin UsersView', () => {
     expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('')
   })
 
-  it('lets an ordinary administrator select peer managers but filters out super admins', async () => {
+  it('lets a manager edit and select themselves without exposing self-disable or super-admin actions', async () => {
     listUsers.mockResolvedValue({
       items: [
         createAdminUser({ id: 51, email: 'manager@example.com', role: 'manager' }),
@@ -419,5 +423,18 @@ describe('admin UsersView', () => {
     await wrapper.get('[data-test="select-52"]').trigger('click')
 
     expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('51')
+    const selfActions = wrapper.get('[data-test="actions-51"]')
+    expect(selfActions.text()).toContain('common.edit')
+    expect(selfActions.text()).toContain('common.more')
+    expect(selfActions.text()).not.toContain('admin.users.disable')
+    expect(wrapper.get('[data-test="actions-52"]').text()).not.toContain('common.edit')
+    await selfActions.findAll('button').find(b => b.text() === 'common.more')!.trigger('click')
+    expect(wrapper.text()).toContain('admin.users.deposit')
+    expect(wrapper.text()).toContain('admin.users.withdraw')
+    expect(wrapper.text()).not.toContain('common.delete')
+    await wrapper.findAll('button').find(b => b.text() === 'admin.users.deposit')!.trigger('click')
+    wrapper.findComponent({ name: 'UserBalanceModal' }).vm.$emit('success')
+    await flushPromises()
+    expect(refreshUser).toHaveBeenCalledTimes(1)
   })
 })

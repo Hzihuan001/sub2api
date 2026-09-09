@@ -50,6 +50,17 @@ func TestMoshuResellerManagementAccess(t *testing.T) {
 				}
 			}
 			require.NoError(t, mock.ExpectationsWereMet())
+			// Managers have the same cost controls as the super admin. Ordinary
+			// users cannot reach even the request validation boundary.
+			w = httptest.NewRecorder()
+			req := httptest.NewRequest("PUT", "/admin/moshu-reseller/products/1/cost", strings.NewReader(`{}`))
+			req.Header.Set("Content-Type", "application/json")
+			r.ServeHTTP(w, req)
+			if role == "user" {
+				require.Equal(t, http.StatusForbidden, w.Code)
+			} else {
+				require.Equal(t, http.StatusBadRequest, w.Code)
+			}
 		})
 	}
 }

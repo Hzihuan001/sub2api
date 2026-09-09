@@ -51,8 +51,8 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 			}
 			credentials, passthroughChanged := withPassthroughCredentials(account.Credentials)
 			extra, passthroughExtraChanged := withPassthroughExtra(account.Extra, account.Platform, account.Type)
-			if account.RateMultiplier == nil || *account.RateMultiplier != product.CostRateMultiplier || passthroughChanged || passthroughExtraChanged {
-				rate := product.CostRateMultiplier
+			if account.RateMultiplier == nil || *account.RateMultiplier != product.EffectiveCostRate() || passthroughChanged || passthroughExtraChanged {
+				rate := product.EffectiveCostRate()
 				if _, err = s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
 					Name: account.Name, Type: account.Type, Status: account.Status,
 					Credentials: credentials, Extra: extra,

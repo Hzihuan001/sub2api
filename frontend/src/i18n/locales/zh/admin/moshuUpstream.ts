@@ -1,6 +1,14 @@
 export default {
   moshuUpstream: {
     title: '上游管理',
+    saveCost: '保存成本倍率',
+    followUpstreamCost: '恢复跟随上游',
+    costHint: '用于本站账号成本统计，实际扣费以主站为准；手动设置后同步不会覆盖。',
+    catalogCost: '上游公开倍率',
+    manualCost: '手动设置',
+    autoCost: '跟随上游',
+    costSaved: '成本倍率已保存',
+    invalidCost: '请输入 0 至 999999.9999 之间的成本倍率',
     description: '管理已授权的上游渠道和分组配置',
     protocolDisabled: '代理商协议尚未启用',
     protocolDisabledHint: '当前继续使用第一阶段手工分组密钥。启用 MOSHU_RESELLER_CLIENT_ENABLED 后可使用接入向导。',

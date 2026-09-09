@@ -341,10 +341,6 @@ func (h *UserHandler) Update(c *gin.Context) {
 			response.Forbidden(c, "Only a super admin can assign the super admin role")
 			return
 		}
-		if userID == getAdminIDFromContext(c) && req.Balance != nil {
-			response.Forbidden(c, "managers cannot change their own balance")
-			return
-		}
 	}
 
 	// A management user may edit their own profile, but cannot remove their own
@@ -433,10 +429,6 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid user ID")
-		return
-	}
-	if isManagerContext(c) && userID == getAdminIDFromContext(c) {
-		response.Forbidden(c, "managers cannot change their own balance")
 		return
 	}
 

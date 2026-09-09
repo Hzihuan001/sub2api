@@ -86,6 +86,28 @@ func (h *Handler) ConfigureProduct(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *Handler) SetProductCost(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "invalid product id")
+		return
+	}
+	var req struct {
+		Rate           *float64 `json:"cost_rate_multiplier"`
+		FollowUpstream bool     `json:"follow_upstream"`
+	}
+	if c.ShouldBindJSON(&req) != nil || (req.Rate == nil) != req.FollowUpstream {
+		response.BadRequest(c, "provide a cost multiplier or follow_upstream=true")
+		return
+	}
+	result, err := h.service.SetProductCost(c.Request.Context(), id, req.Rate)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *Handler) RotateCredential(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {

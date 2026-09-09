@@ -22,7 +22,7 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isAdmin: true, isSuperAdmin: false })
+  useAuthStore: () => ({ isAdmin: true, isSuperAdmin: false, user: { id: 8, role: 'manager' } })
 }))
 
 vi.mock('@/composables/useClipboard', () => ({
@@ -97,5 +97,13 @@ describe('UserEditModal concurrency', () => {
     const options = wrapper.findComponent({ name: 'Select' }).props('options') as Array<{ value: string }>
 
     expect(options.map((option) => option.value)).toEqual(['user', 'manager'])
+  })
+  it('allows editing yourself while keeping the current management role locked', async () => {
+    const wrapper = mountModal(3)
+    await wrapper.setProps({ user: { ...wrapper.props('user'), id: 8, role: 'manager' } as never })
+    expect(wrapper.findComponent({ name: 'Select' }).attributes('disabled')).toBeDefined()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(update).toHaveBeenCalledWith(8, expect.objectContaining({ role: 'manager' }))
   })
 })

@@ -33,6 +33,7 @@
         <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
         <Select
           v-model="form.role"
+          :disabled="user?.id === authStore.user?.id"
           :options="roleOptions"
           :searchable="false"
         />

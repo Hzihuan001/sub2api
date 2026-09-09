@@ -39,7 +39,7 @@
               <button class="text-primary-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50" :disabled="loadingBalance" @click="loadBalance(true)">{{ t('admin.moshuUpstream.refreshBalance') }}</button>
             </div>
             <p v-if="status.connection?.last_error" class="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{{ status.connection.last_error }}</p>
-            <p class="mt-2 text-xs text-gray-500">上游成本和模型每 5 分钟自动同步，也可手动同步；不会修改本地分组名称、倍率和容量。</p>
+            <p class="mt-2 text-xs text-gray-500">上游成本和模型每 5 分钟自动同步，也可手动同步；不会修改手动设置的成本倍率、本地分组名称、倍率和容量。</p>
             <details v-if="authStore.isSuperAdmin" class="mt-4">
               <summary>重新授权 / 计费账号换绑后同步 Key</summary>
               <p class="my-2 text-sm text-gray-500">重新授权仅更新同一主站的授权渠道和计费账号链路，也支持原代理商删除后绑定新的代理商。本站用户、余额、API Key、历史日志和系统设置继续保留，不切换或初始化站点数据。相同主站分组的渠道保留倍率和容量；失去授权的渠道停用。请为需要接入的产品生成新授权码，成功后页面会完整刷新。</p>
@@ -60,13 +60,19 @@
               <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(170px,220px)_minmax(120px,160px)_minmax(120px,160px)_auto] xl:items-end">
                 <div>
                   <div class="flex flex-wrap items-center gap-2"><h3 class="font-semibold text-gray-900 dark:text-white">{{ product.display_name }}</h3><span class="rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-dark-700">{{ product.platform }}</span><span v-if="!product.authorized" class="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">{{ t('admin.moshuUpstream.revoked') }}</span></div>
-                  <p class="mt-1 text-xs text-gray-500">{{ product.product_code }} · {{ t('admin.moshuUpstream.costMultiplier') }} {{ multiplier(product.cost_rate_multiplier) }}<template v-if="detectedModelCount(product.id) !== null"> · {{ t('admin.moshuUpstream.modelCount', { count: detectedModelCount(product.id) }) }}</template></p>
+                  <p class="mt-1 text-xs text-gray-500">{{ product.product_code }} · {{ t('admin.moshuUpstream.costMultiplier') }} {{ multiplier(product.cost_rate_override ?? product.cost_rate_multiplier) }}<template v-if="detectedModelCount(product.id) !== null"> · {{ t('admin.moshuUpstream.modelCount', { count: detectedModelCount(product.id) }) }}</template></p>
                 </div>
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ t('admin.moshuUpstream.salesName') }}</span><input v-model.trim="drafts[product.id].name" class="input mt-1 w-full" :disabled="!product.authorized" /></label>
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ t('admin.moshuUpstream.retailMultiplier') }}</span><input v-model.number="drafts[product.id].multiplier" class="input mt-1 w-full" type="number" min="0" step="0.01" :disabled="!product.authorized" /></label>
                 <label class="text-sm"><span class="text-gray-600 dark:text-gray-400" :title="t('admin.moshuUpstream.capacityHint')">{{ t('admin.moshuUpstream.capacity') }}</span><input v-model.number="drafts[product.id].capacity" class="input mt-1 w-full" type="number" min="1" step="1" :disabled="!product.authorized" /></label>
                 <div class="flex flex-wrap gap-2"><button class="btn btn-primary" :disabled="busy || !product.authorized" @click="saveProduct(product)">{{ product.selected ? t('common.save') : t('admin.moshuUpstream.enableSale') }}</button><button v-if="product.selected && authStore.isSuperAdmin" class="btn btn-secondary" :title="t('admin.moshuUpstream.rotateHint')" :disabled="busy" @click="rotate(product)">{{ t('admin.moshuUpstream.rotate') }}</button><button class="btn btn-secondary" :disabled="busy || testingProductID === product.id" @click="openProductTest(product)">{{ t('admin.accounts.testConnection') }}</button></div>
               </div>
+              <form class="mt-4 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-3 dark:border-dark-700" @submit.prevent="saveCost(product)">
+                <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ t('admin.moshuUpstream.costMultiplier') }}</span><input v-model.number="costDrafts[product.id]" data-test="cost-multiplier" class="input mt-1 block w-36" type="number" min="0" max="999999.9999" step="0.0001" required :disabled="busy" /></label>
+                <button type="submit" class="btn btn-secondary" :disabled="busy">{{ t('admin.moshuUpstream.saveCost') }}</button>
+                <button v-if="product.cost_rate_override != null" type="button" class="btn btn-secondary" :disabled="busy" @click="resetCost(product)">{{ t('admin.moshuUpstream.followUpstreamCost') }}</button>
+                <p class="w-full text-xs text-gray-500">{{ t('admin.moshuUpstream.costHint') }} {{ t('admin.moshuUpstream.catalogCost') }}: {{ multiplier(product.cost_rate_multiplier) }} · {{ t(product.cost_rate_override != null ? 'admin.moshuUpstream.manualCost' : 'admin.moshuUpstream.autoCost') }}</p>
+              </form>
               <div v-if="product.selected" class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-dark-700"><span>{{ t('admin.moshuUpstream.saleActive') }}</span><button class="text-red-600 hover:underline" :disabled="busy" @click="disableProduct(product)">{{ t('admin.moshuUpstream.stopSale') }}</button></div>
             </article>
           </section>
@@ -104,6 +110,7 @@ const availableBalance = computed(() => (upstreamBalance.value?.balance ?? 0) - 
 const enrollment = reactive({ base_url: '', enrollment_code: '' })
 const batchIDs = ref<number[]>([]), batchResults = ref<BatchResult[]>([])
 const drafts = reactive<Record<number, { name: string; multiplier: number; capacity: number }>>({})
+const costDrafts = reactive<Record<number, number | string>>({})
 const authorizedProducts = computed(() => status.value?.products.filter(product => product.authorized) ?? [])
 const testingProductID = ref<number | null>(null)
 const testingAccount = ref<Account | null>(null)
@@ -120,6 +127,8 @@ async function loadData() {
     const allGroups = await groupsAPI.getAllIncludingInactive()
     status.value = current
     for (const id of Object.keys(drafts)) delete drafts[Number(id)]
+    for (const id of Object.keys(costDrafts)) delete costDrafts[Number(id)]
+    for (const product of current.products) costDrafts[product.id] = product.cost_rate_override ?? product.cost_rate_multiplier
     batchIDs.value = batchIDs.value.filter(id => current.products.some(p => p.id === id && p.authorized))
     if (current?.connection?.base_url) enrollment.base_url = current.connection.base_url
     current?.products.forEach((product) => { drafts[product.id] = { name: allGroups.find(g => g.id === product.local_group_id)?.name ?? product.display_name, multiplier: product.sales_rate_multiplier ?? 1, capacity: product.capacity > 0 ? product.capacity : 100 } })
@@ -197,6 +206,15 @@ async function saveBatch() {
   } finally { busy.value = false }
 }
 const syncCatalog = () => run(() => moshuResellerAPI.syncCatalog(), t('admin.moshuUpstream.catalogSynced'))
+async function saveCost(product: MoshuProduct) {
+  const rate = costDrafts[product.id]
+  if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0 || rate > 999999.9999) {
+    appStore.showError(t('admin.moshuUpstream.invalidCost'))
+    return
+  }
+  await run(() => moshuResellerAPI.setProductCost(product.id, { cost_rate_multiplier: rate }), t('admin.moshuUpstream.costSaved'))
+}
+const resetCost = (product: MoshuProduct) => run(() => moshuResellerAPI.setProductCost(product.id, { follow_upstream: true }), t('admin.moshuUpstream.costSaved'))
 const rotate = (product: MoshuProduct) => run(() => moshuResellerAPI.rotateCredential(product.id), t('admin.moshuUpstream.rotated'))
 const saveProduct = (product: MoshuProduct) => run(() => moshuResellerAPI.configureProduct(product.id, { selected: true, sales_name: drafts[product.id].name, sales_multiplier: drafts[product.id].multiplier, capacity: drafts[product.id].capacity }), t('admin.moshuUpstream.productSaved'))
 const disableProduct = (product: MoshuProduct) => run(() => moshuResellerAPI.configureProduct(product.id, { selected: false, sales_name: drafts[product.id].name, sales_multiplier: drafts[product.id].multiplier, capacity: drafts[product.id].capacity }), t('admin.moshuUpstream.productStopped'))
@@ -213,7 +231,7 @@ async function openProductTest(product: MoshuProduct) {
   finally { testingProductID.value = null }
 }
 function closeProductTest() { showTest.value = false; testingAccount.value = null }
-function multiplier(value?: number | null) { return Number(value ?? 1).toFixed(2) }
+function multiplier(value?: number | null) { return Number(value ?? 1).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) }
 function detectedModelCount(productID: number) { return detectedModelCounts[productID] ?? null }
 function errorText(error: unknown) { const value = error as { message?: string }; return value.message || t('admin.moshuUpstream.loadFailed') }
 onMounted(loadData)

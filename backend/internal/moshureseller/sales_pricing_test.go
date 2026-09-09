@@ -16,6 +16,7 @@ type pricingAdmin struct {
 	t        *testing.T
 	rate     float64
 	capacity int
+	cost     *float64
 }
 
 type deletedGroupAdmin struct {
@@ -61,7 +62,11 @@ func (a *pricingAdmin) UpdateGroup(_ context.Context, _ int64, input *service.Up
 	return &service.Group{ID: 10, RateMultiplier: *input.RateMultiplier}, nil
 }
 func (a *pricingAdmin) CreateAccount(_ context.Context, input *service.CreateAccountInput) (*service.Account, error) {
-	require.Equal(a.t, 5.0, *input.RateMultiplier) // Upstream cost is untouched.
+	expectedCost := 5.0
+	if a.cost != nil {
+		expectedCost = *a.cost
+	}
+	require.Equal(a.t, expectedCost, *input.RateMultiplier)
 	require.Equal(a.t, a.capacity, input.Concurrency)
 	require.Equal(a.t, true, input.Extra["openai_passthrough"])
 	_, hasMapping := input.Credentials["model_mapping"]
@@ -70,7 +75,11 @@ func (a *pricingAdmin) CreateAccount(_ context.Context, input *service.CreateAcc
 }
 
 func pricingRows(selected bool, rate float64, groupID, accountID any) *sqlmock.Rows {
-	return sqlmock.NewRows([]string{"id", "remote", "code", "name", "platform", "group", "authorized", "selected", "cost", "sales", "version", "models", "capabilities", "credential", "local_group", "local_account", "effective"}).AddRow(3, 7, "gpt", "GPT", "openai", 9, true, selected, 5.0, rate, 1, []byte(`[]`), []byte(`{}`), "test-key", groupID, accountID, time.Now())
+	return pricingRowsWithCost(selected, rate, groupID, accountID, nil)
+}
+
+func pricingRowsWithCost(selected bool, rate float64, groupID, accountID, override any) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{"id", "remote", "code", "name", "platform", "group", "authorized", "selected", "cost", "sales", "version", "models", "capabilities", "credential", "local_group", "local_account", "effective", "cost_override"}).AddRow(3, 7, "gpt", "GPT", "openai", 9, true, selected, 5.0, rate, 1, []byte(`[]`), []byte(`{}`), "test-key", groupID, accountID, time.Now(), override)
 }
 
 func TestConfigureProductAllowsPricesBelowCostAndZero(t *testing.T) {

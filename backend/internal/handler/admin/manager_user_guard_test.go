@@ -15,8 +15,34 @@ import (
 
 type managerGuardAdminService struct {
 	service.AdminService
-	users map[int64]*service.User
-	keys  map[int64]*service.APIKey
+	users             map[int64]*service.User
+	keys              map[int64]*service.APIKey
+	lastUpdate        *service.UpdateUserInput
+	balanceOperations []string
+}
+
+func (s *managerGuardAdminService) UpdateUser(_ context.Context, id int64, input *service.UpdateUserInput) (*service.User, error) {
+	s.lastUpdate = input
+	if input.Username != nil {
+		s.users[id].Username = *input.Username
+	}
+	if input.Balance != nil {
+		s.users[id].Balance = *input.Balance
+	}
+	return s.users[id], nil
+}
+
+func (s *managerGuardAdminService) UpdateUserBalance(_ context.Context, id int64, amount float64, operation, _ string) (*service.User, error) {
+	s.balanceOperations = append(s.balanceOperations, operation)
+	switch operation {
+	case "add":
+		s.users[id].Balance += amount
+	case "subtract":
+		s.users[id].Balance -= amount
+	case "set":
+		s.users[id].Balance = amount
+	}
+	return s.users[id], nil
 }
 
 func (s *managerGuardAdminService) GetUser(_ context.Context, id int64) (*service.User, error) {
@@ -150,21 +176,48 @@ func TestManagerCannotPromoteOrdinaryUserToSuperAdminWithForgedPayload(t *testin
 	require.Equal(t, http.StatusForbidden, recorder.Code)
 }
 
-func TestManagerCannotRechargeSelf(t *testing.T) {
+func TestManagerCanEditAndAdjustOwnBalance(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := &UserHandler{}
+	adminService := &managerGuardAdminService{users: map[int64]*service.User{7: {ID: 7, Role: service.RoleManager, Balance: 50}}}
+	handler := &UserHandler{adminService: adminService}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUserRole), service.RoleManager)
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 7})
 		c.Next()
 	})
-	router.POST("/users/:id/balance", handler.UpdateBalance)
+	router.POST("/users/:id/balance", handler.ManagerTargetUserWriteGuard(), handler.UpdateBalance)
+	router.PUT("/users/:id", handler.ManagerTargetUserWriteGuard(), handler.Update)
+	router.DELETE("/users/:id", handler.ManagerTargetUserWriteGuard(), handler.Delete)
 
+	for _, operation := range []string{"add", "subtract", "set"} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/users/7/balance", bytes.NewBufferString(`{"balance":10,"operation":"`+operation+`"}`))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	}
+	require.Equal(t, []string{"add", "subtract", "set"}, adminService.balanceOperations)
+	require.Equal(t, 10.0, adminService.users[7].Balance)
+	for _, tc := range []struct {
+		body   string
+		status int
+	}{
+		{`{"username":"self edited","balance":12,"role":"manager"}`, 200},
+		{`{"role":"admin"}`, 403},
+		{`{"role":"user"}`, 400},
+		{`{"status":"disabled"}`, 400},
+	} {
+		request := httptest.NewRequest(http.MethodPut, "/users/7", bytes.NewBufferString(tc.body))
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		require.Equal(t, tc.status, recorder.Code, recorder.Body.String())
+	}
+	require.Equal(t, "self edited", adminService.users[7].Username)
+	require.Equal(t, 12.0, adminService.users[7].Balance)
+	require.Equal(t, int64(7), adminService.lastUpdate.ActorAdminID)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/users/7/balance", bytes.NewBufferString(`{"balance":10,"operation":"add"}`))
-	request.Header.Set("Content-Type", "application/json")
-	router.ServeHTTP(recorder, request)
-
-	require.Equal(t, http.StatusForbidden, recorder.Code)
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/users/7", nil))
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
 }

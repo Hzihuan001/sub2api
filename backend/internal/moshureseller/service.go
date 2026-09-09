@@ -556,7 +556,7 @@ func (s *Service) ensureProductAccount(ctx context.Context, id int64) (int64, er
 	if product.LocalGroupID != nil {
 		groupIDs = append(groupIDs, *product.LocalGroupID)
 	}
-	accountID, err := s.createProductAccount(ctx, *product, credentials, extra, groupIDs, product.CostRateMultiplier)
+	accountID, err := s.createProductAccount(ctx, *product, credentials, extra, groupIDs, product.EffectiveCostRate())
 	if err != nil {
 		return 0, err
 	}
@@ -807,25 +807,29 @@ func (s *Service) loadProduct(ctx context.Context, id int64) (*Product, string, 
 
 const productSelect = `SELECT id,remote_product_id,product_code,display_name,platform,moshu_group_id,
 	authorized,selected,cost_rate_multiplier,sales_rate_multiplier,price_catalog_version,
-	model_snapshot,capabilities,credential_ciphertext,local_group_id,local_account_id,effective_at FROM moshu_products`
+	model_snapshot,capabilities,credential_ciphertext,local_group_id,local_account_id,effective_at,cost_rate_override FROM moshu_products`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanProduct(row rowScanner) (*Product, string, error) {
 	var product Product
 	var sales sql.NullFloat64
+	var costOverride sql.NullFloat64
 	var models, capabilities []byte
 	var credential sql.NullString
 	var groupID, accountID sql.NullInt64
 	err := row.Scan(&product.ID, &product.RemoteProductID, &product.ProductCode, &product.DisplayName,
 		&product.Platform, &product.MoshuGroupID, &product.Authorized, &product.Selected,
 		&product.CostRateMultiplier, &sales, &product.CatalogVersion, &models, &capabilities,
-		&credential, &groupID, &accountID, &product.EffectiveAt)
+		&credential, &groupID, &accountID, &product.EffectiveAt, &costOverride)
 	if err != nil {
 		return nil, "", err
 	}
 	if sales.Valid {
 		product.SalesRateMultiplier = &sales.Float64
+	}
+	if costOverride.Valid {
+		product.CostRateOverride = &costOverride.Float64
 	}
 	if groupID.Valid {
 		product.LocalGroupID = &groupID.Int64
@@ -926,7 +930,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 	}
 	extra, _ = withPassthroughExtra(extra, product.Platform, service.AccountTypeAPIKey)
 	groupIDs := []int64{groupID}
-	rate := product.CostRateMultiplier
+	rate := product.EffectiveCostRate()
 	if product.LocalAccountID == nil {
 		return s.createProductAccount(ctx, product, credentials, extra, groupIDs, rate, capacity)
 	}
