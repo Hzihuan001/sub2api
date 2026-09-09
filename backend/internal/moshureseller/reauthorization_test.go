@@ -66,7 +66,7 @@ func TestDifferentTenantResponseNeverCommitsLocally(t *testing.T) {
 	mock.ExpectQuery("SELECT base_url").WillReturnRows(connectionRows(server.URL))
 	_, err = NewService(db, testEncryptor{}, nil).Enroll(context.Background(), server.URL, "code")
 	require.ErrorIs(t, err, ErrInvalidInput)
-	require.ErrorContains(t, err, "不支持切换代理商")
+	require.ErrorContains(t, err, "主站未确认")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

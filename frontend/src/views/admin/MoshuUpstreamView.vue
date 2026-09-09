@@ -42,7 +42,7 @@
             <p class="mt-2 text-xs text-gray-500">上游成本和模型每 5 分钟自动同步，也可手动同步；不会修改本地分组名称、倍率和容量。</p>
             <details v-if="authStore.isSuperAdmin" class="mt-4">
               <summary>重新授权 / 计费账号换绑后同步 Key</summary>
-              <p class="my-2 text-sm text-gray-500">仅支持同一主站、同一代理商重新授权。新增产品需兑换新授权码；已授权产品保留。主站更换计费账号后，请为全部需要的产品生成新授权码。成功后页面会完整刷新，用户、日志和设置保留。</p>
+              <p class="my-2 text-sm text-gray-500">重新授权仅更新同一主站的授权渠道和计费账号链路，也支持原代理商删除后绑定新的代理商。本站用户、余额、API Key、历史日志和系统设置继续保留，不切换或初始化站点数据。相同主站分组的渠道保留倍率和容量；失去授权的渠道停用。请为需要接入的产品生成新授权码，成功后页面会完整刷新。</p>
               <input v-model.trim="enrollment.enrollment_code" class="input w-full" placeholder="输入一次性授权码" autocomplete="off" :disabled="busy" />
               <button class="btn btn-primary mt-2" :disabled="busy || !enrollment.enrollment_code" @click="enroll">重新授权并同步</button>
             </details>

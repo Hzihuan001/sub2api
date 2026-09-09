@@ -87,12 +87,13 @@ type RemoteCredential struct {
 }
 
 type EnrollmentExchange struct {
-	Tenant       RemoteTenant       `json:"tenant"`
-	AccessToken  string             `json:"access_token"`
-	RefreshToken string             `json:"refresh_token"`
-	ExpiresIn    int64              `json:"expires_in"`
-	Catalog      RemoteCatalog      `json:"catalog"`
-	Credentials  []RemoteCredential `json:"credentials"`
+	ReauthorizationMode string             `json:"reauthorization_mode,omitempty"`
+	Tenant              RemoteTenant       `json:"tenant"`
+	AccessToken         string             `json:"access_token"`
+	RefreshToken        string             `json:"refresh_token"`
+	ExpiresIn           int64              `json:"expires_in"`
+	Catalog             RemoteCatalog      `json:"catalog"`
+	Credentials         []RemoteCredential `json:"credentials"`
 }
 
 type RemoteSettlement struct {

@@ -24,12 +24,12 @@ func TestCredentialSyncAtomicWithOutbox(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.ExecContext(ctx, `
-	CREATE TABLE accounts(id bigint PRIMARY KEY,credentials jsonb,updated_at timestamptz,deleted_at timestamptz);
-	CREATE TABLE moshu_products(remote_product_id bigint PRIMARY KEY,local_account_id bigint,credential_ciphertext text,sales_rate_multiplier numeric);
+	CREATE TABLE accounts(id bigint PRIMARY KEY,credentials jsonb,updated_at timestamptz,deleted_at timestamptz,extra jsonb);
+	CREATE TABLE moshu_products(remote_product_id bigint PRIMARY KEY,local_account_id bigint,credential_ciphertext text,sales_rate_multiplier numeric,product_code text);
 	CREATE TABLE account_groups(account_id bigint,group_id bigint);
 	CREATE TABLE scheduler_outbox(event_type text,account_id bigint,payload jsonb);
-	INSERT INTO accounts VALUES(2,'{"api_key":"old","base_url":"https://example.test","other":"keep"}',NOW(),NULL);
-	INSERT INTO moshu_products VALUES(3,2,'old-cipher',1.23),(4,NULL,'unused-cipher',2.34);
+	INSERT INTO accounts VALUES(2,'{"api_key":"old","base_url":"https://example.test","other":"keep"}',NOW(),NULL,'{"custom":"keep","moshu_remote_product_id":1}');
+	INSERT INTO moshu_products VALUES(3,2,'old-cipher',1.23,'gpt'),(4,NULL,'unused-cipher',2.34,'claude');
 	INSERT INTO account_groups VALUES(2,5),(2,6);`)
 	require.NoError(t, err)
 	readKey := func() string {
@@ -54,6 +54,12 @@ func TestCredentialSyncAtomicWithOutbox(t *testing.T) {
 	require.NoError(t, syncAccountCredentialTx(ctx, tx, 4, "not-enabled-key"))
 	require.NoError(t, tx.Commit())
 	require.Equal(t, "new-key", readKey())
+	var remoteID int64
+	var code, custom string
+	require.NoError(t, db.QueryRow(`SELECT (extra->>'moshu_remote_product_id')::bigint,extra->>'moshu_product_code',extra->>'custom' FROM accounts WHERE id=2`).Scan(&remoteID, &code, &custom))
+	require.EqualValues(t, 3, remoteID)
+	require.Equal(t, "gpt", code)
+	require.Equal(t, "keep", custom)
 	var baseURL, other, ciphertext string
 	var rate float64
 	require.NoError(t, db.QueryRow(`SELECT a.credentials->>'base_url',a.credentials->>'other',p.credential_ciphertext,p.sales_rate_multiplier FROM accounts a JOIN moshu_products p ON p.local_account_id=a.id WHERE a.id=2`).Scan(&baseURL, &other, &ciphertext, &rate))

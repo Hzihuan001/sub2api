@@ -63,6 +63,8 @@ describe('reseller configuration', () => {
     await flushPromises()
     expect(wrapper.get('[data-test="upstream-account-test"]').text()).toBe('真实上游账号')
     expect(wrapper.text()).toContain('重新授权 / 计费账号换绑后同步 Key')
+    expect(wrapper.text()).toContain('本站用户、余额、API Key、历史日志和系统设置继续保留')
+    expect(wrapper.text()).not.toContain('仅支持同一主站、同一代理商重新授权')
     expect(wrapper.findAll('input').some(i => i.element.value === '我的销售名')).toBe(true)
     expect(wrapper.find('input[type="number"]').element.value).toBe('1.7')
     expect(wrapper.findAll('input[type="number"]')[1].element.value).toBe('23')

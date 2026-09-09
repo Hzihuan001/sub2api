@@ -153,6 +153,7 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 	instanceID := uuid.NewString()
 	hadExistingConnection := false
 	var expectedResellerID int64
+	var previousRefresh string
 	if existing, loadErr := s.loadConnection(ctx); loadErr == nil && existing.InstanceID != "" {
 		hadExistingConnection = true
 		if existing.ResellerID != nil {
@@ -162,19 +163,23 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 			return nil, fmt.Errorf("%w: reconnect to the existing main site; changing sites requires a separate migration", ErrInvalidInput)
 		}
 		instanceID = existing.InstanceID
+		previousRefresh, err = s.encryptor.Decrypt(existing.RefreshCiphertext)
+		if err != nil {
+			return nil, err
+		}
 	} else if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
 		return nil, loadErr
 	}
-	exchange, err := s.client.exchange(ctx, baseURL, strings.TrimSpace(enrollmentCode), instanceID, expectedResellerID)
+	exchange, err := s.client.exchangePreservingStation(ctx, baseURL, strings.TrimSpace(enrollmentCode), instanceID, expectedResellerID, previousRefresh)
 	if err != nil {
 		return nil, err
 	}
 	if exchange.Tenant.ProtocolVersion != "v1" || exchange.Catalog.ProtocolVersion != "v1" {
 		return nil, fmt.Errorf("%w: unsupported Moshu reseller protocol", ErrInvalidInput)
 	}
-	if expectedResellerID > 0 && expectedResellerID != exchange.Tenant.ID {
-		slog.Info("moshu_reseller.rebind_rejected", "current_reseller_id", expectedResellerID, "target_reseller_id", exchange.Tenant.ID)
-		return nil, fmt.Errorf("%w: 本次仅支持同一代理商重新授权，不支持切换代理商", ErrInvalidInput)
+	changingReseller := expectedResellerID > 0 && expectedResellerID != exchange.Tenant.ID
+	if changingReseller && (exchange.ReauthorizationMode != "preserve_station" || exchange.Catalog.ResellerID != exchange.Tenant.ID) {
+		return nil, fmt.Errorf("%w: 主站未确认保留本站数据的重新授权，请先升级主站", ErrInvalidInput)
 	}
 	accessCiphertext, err := s.encryptor.Encrypt(exchange.AccessToken)
 	if err != nil {
@@ -191,6 +196,13 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 			return nil, encErr
 		}
 		credentials[credential.ProductID] = ciphertext
+	}
+	if changingReseller {
+		for _, product := range exchange.Catalog.Products {
+			if product.Enabled && credentials[product.ID] == "" {
+				return nil, fmt.Errorf("%w: 新代理商授权缺少渠道凭证，请重新生成授权码", ErrInvalidInput)
+			}
+		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -218,6 +230,11 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 	if err != nil {
 		return nil, err
 	}
+	if changingReseller {
+		if err := prepareStationReauthorizationTx(ctx, tx, exchange.Catalog); err != nil {
+			return nil, err
+		}
+	}
 	if err := persistCatalogTx(ctx, tx, exchange.Catalog, credentials); err != nil {
 		return nil, err
 	}
@@ -236,6 +253,9 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
+	}
+	if changingReseller {
+		slog.Info("moshu_reseller.station_upstream_reauthorized", "previous_reseller_id", expectedResellerID, "reseller_id", exchange.Tenant.ID, "local_data", "preserved")
 	}
 	if s.admin != nil {
 		if hadExistingConnection {
@@ -583,6 +603,8 @@ func (s *Service) rotateCredential(ctx context.Context, id int64) (*Product, err
 }
 
 func (s *Service) SyncSettlements(ctx context.Context) (synced int, syncErr error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 	defer func() {
 		if syncErr != nil {
 			s.recordSyncFailure(ctx, 0, syncErr)

@@ -53,9 +53,14 @@ func (c *protocolClient) exchange(ctx context.Context, baseURL, code, instanceID
 	if len(expectedResellerIDs) > 0 {
 		expectedID = expectedResellerIDs[0]
 	}
+	return c.exchangePreservingStation(ctx, baseURL, code, instanceID, expectedID, "")
+}
+
+func (c *protocolClient) exchangePreservingStation(ctx context.Context, baseURL, code, instanceID string, expectedID int64, previousRefresh string) (*EnrollmentExchange, error) {
 	var result EnrollmentExchange
 	err := c.doJSON(ctx, http.MethodPost, baseURL+"/api/v1/reseller/v1/enrollments/exchange", "", "", map[string]any{
 		"enrollment_code": code, "instance_id": instanceID, "expected_reseller_id": expectedID,
+		"reauthorization_mode": "preserve_station", "previous_refresh_token": previousRefresh,
 	}, &result, nil)
 	return &result, err
 }

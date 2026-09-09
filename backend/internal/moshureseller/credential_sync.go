@@ -10,7 +10,8 @@ import (
 // configuration while reconnecting. The outbox retries cache propagation.
 func syncAccountCredentialTx(ctx context.Context, tx *sql.Tx, remoteProductID int64, key string) error {
 	_, err := tx.ExecContext(ctx, `WITH changed AS (
-		UPDATE accounts a SET credentials=jsonb_set(COALESCE(a.credentials,'{}'::jsonb),'{api_key}',to_jsonb($2::text)),updated_at=NOW()
+		UPDATE accounts a SET credentials=jsonb_set(COALESCE(a.credentials,'{}'::jsonb),'{api_key}',to_jsonb($2::text)),
+		extra=COALESCE(a.extra,'{}'::jsonb)||jsonb_build_object('moshu_remote_product_id',p.remote_product_id,'moshu_product_code',p.product_code),updated_at=NOW()
 		FROM moshu_products p WHERE p.remote_product_id=$1 AND p.local_account_id=a.id
 		AND a.deleted_at IS NULL
 		RETURNING a.id
