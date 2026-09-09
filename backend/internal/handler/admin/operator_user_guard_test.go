@@ -80,7 +80,7 @@ func TestOperatorCanWriteSameLevelOperatorAPIKey(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 }
 
-func TestOperatorAPIKeyWriteGuardProtectsPrivilegedOwners(t *testing.T) {
+func TestOperatorAPIKeyWriteGuardProtectsSuperAdminOwners(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	base := newStubAdminService()
 	base.users = []service.User{
@@ -100,7 +100,7 @@ func TestOperatorAPIKeyWriteGuardProtectsPrivilegedOwners(t *testing.T) {
 		wantStatus int
 	}{
 		{keyID: "10", wantStatus: http.StatusOK},
-		{keyID: "20", wantStatus: http.StatusForbidden},
+		{keyID: "20", wantStatus: http.StatusOK},
 		{keyID: "30", wantStatus: http.StatusForbidden},
 	} {
 		router := gin.New()
