@@ -279,8 +279,8 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	actorRole, _ := middleware.GetUserRoleFromContext(c)
-	if actorRole == service.RoleManager && req.Role != "" && req.Role != service.RoleUser {
-		response.Forbidden(c, "Only a super admin can create administrator accounts")
+	if actorRole == service.RoleManager && !managerMayAssignRole(req.Role) {
+		response.Forbidden(c, "Only a super admin can create a super admin account")
 		return
 	}
 
@@ -333,20 +333,28 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 	actorRole, _ := middleware.GetUserRoleFromContext(c)
 	if actorRole == service.RoleManager {
-		if target.Role == service.RoleAdmin || target.Role == service.RoleManager {
-			response.Forbidden(c, "Only a super admin can modify administrator accounts")
+		if target.Role == service.RoleAdmin {
+			response.Forbidden(c, "Only a super admin can modify a super admin account")
 			return
 		}
-		if req.Role != "" && req.Role != service.RoleUser {
-			response.Forbidden(c, "Only a super admin can assign administrator roles")
+		if !managerMayAssignRole(req.Role) {
+			response.Forbidden(c, "Only a super admin can assign the super admin role")
+			return
+		}
+		if userID == getAdminIDFromContext(c) && req.Balance != nil {
+			response.Forbidden(c, "managers cannot change their own balance")
 			return
 		}
 	}
 
-	// 防锁死保护：管理员不能把自己降级为普通用户(单管理员场景下会失去后台访问权)。
-	// 与既有"不能禁用/删除 admin"保护一致。降级其他管理员仍然允许。
-	if req.Role != "" && req.Role != service.RoleAdmin && userID == getAdminIDFromContext(c) {
-		response.BadRequest(c, "cannot demote yourself from admin")
+	// A management user may edit their own profile, but cannot remove their own
+	// management access or disable the active session account.
+	if userID == getAdminIDFromContext(c) && req.Role != "" && req.Role != target.Role {
+		response.BadRequest(c, "cannot change your own management role")
+		return
+	}
+	if userID == getAdminIDFromContext(c) && req.Status == service.StatusDisabled {
+		response.BadRequest(c, "cannot disable your own management account")
 		return
 	}
 
@@ -395,13 +403,17 @@ func (h *UserHandler) Delete(c *gin.Context) {
 
 	actorRole, _ := middleware.GetUserRoleFromContext(c)
 	if actorRole == service.RoleManager {
+		if userID == getAdminIDFromContext(c) {
+			response.BadRequest(c, "cannot delete your own management account")
+			return
+		}
 		target, getErr := h.adminService.GetUser(c.Request.Context(), userID)
 		if getErr != nil {
 			response.ErrorFrom(c, getErr)
 			return
 		}
-		if target.Role == service.RoleAdmin || target.Role == service.RoleManager {
-			response.Forbidden(c, "Only a super admin can delete administrator accounts")
+		if target.Role == service.RoleAdmin {
+			response.Forbidden(c, "Only a super admin can delete a super admin account")
 			return
 		}
 	}
@@ -421,6 +433,10 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	if isManagerContext(c) && userID == getAdminIDFromContext(c) {
+		response.Forbidden(c, "managers cannot change their own balance")
 		return
 	}
 
@@ -619,6 +635,9 @@ func (h *UserHandler) BatchUpdateConcurrency(c *gin.Context) {
 				return
 			}
 			for _, u := range users {
+				if isManagerContext(c) && u.Role == service.RoleAdmin {
+					continue
+				}
 				userIDs = append(userIDs, u.ID)
 			}
 			if len(users) < pageSize {
@@ -686,6 +705,9 @@ func (h *UserHandler) BatchUpdateLimits(c *gin.Context) {
 				return
 			}
 			for _, user := range users {
+				if isManagerContext(c) && user.Role == service.RoleAdmin {
+					continue
+				}
 				userIDs = append(userIDs, user.ID)
 			}
 			if len(users) < pageSize {

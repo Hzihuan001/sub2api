@@ -338,7 +338,7 @@
               <span
                 v-if="getUserGroups(row).exclusive.length > 0"
                 class="group/ex relative inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs"
-                @click.stop="toggleExpandedGroup(row.id)"
+                @click.stop="canManageUser(row) && toggleExpandedGroup(row.id)"
               >
                 <Icon name="shield" size="xs" class="h-3.5 w-3.5 text-purple-500 dark:text-purple-400" />
                 <span class="font-medium text-purple-600 dark:text-purple-400">{{ getUserGroups(row).exclusive.length }}</span>
@@ -438,6 +438,7 @@
                 </div>
               </div>
               <button
+                v-if="canManageUser(row)"
                 @click.stop="handleDeposit(row)"
                 class="rounded px-2 py-0.5 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
                 :title="t('admin.users.deposit')"
@@ -449,6 +450,7 @@
 
           <template #cell-balance_platform_quota="{ row }">
             <button
+              v-if="canManageUser(row)"
               type="button"
               class="block text-left underline decoration-dashed decoration-gray-300 underline-offset-4 transition-colors hover:decoration-primary-400 dark:decoration-dark-500"
               :title="t('admin.users.platformQuota.cellColumnTooltip')"
@@ -456,6 +458,7 @@
             >
               <UserPlatformQuotaCell :quotas="platformQuotaStats[row.id]" />
             </button>
+            <UserPlatformQuotaCell v-else :quotas="platformQuotaStats[row.id]" />
           </template>
 
           <!-- 用量列自定义表头：列名 + 单个排序图标按钮，点击展开"今日/近30天"菜单。
@@ -817,7 +820,8 @@ import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
-const canManageUser = (user: AdminUser): boolean => authStore.isSuperAdmin || user.role === 'user'
+const canManageUser = (user: AdminUser): boolean =>
+  authStore.isSuperAdmin || (user.role !== 'admin' && user.id !== authStore.user?.id)
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>
@@ -1308,11 +1312,11 @@ const {
 })
 
 const handleSelectedKeysUpdate = (keys: Array<string | number>) => {
-  const manageable = new Set(
-    sortedUsers.value.filter((user) => canManageUser(user)).map((user) => user.id)
+  const protectedIds = new Set(
+    sortedUsers.value.filter((user) => !canManageUser(user)).map((user) => user.id)
   )
   setSelectedIds(
-    keys.filter((key): key is number => typeof key === 'number' && manageable.has(key))
+    keys.filter((key): key is number => typeof key === 'number' && !protectedIds.has(key))
   )
 }
 

@@ -108,7 +108,10 @@ const roleOptions = computed(() => authStore.isSuperAdmin
       { value: 'manager', label: t('admin.users.roles.manager') },
       { value: 'admin', label: t('admin.users.roles.admin') }
     ]
-  : [{ value: 'user', label: t('admin.users.roles.user') }]
+  : [
+      { value: 'user', label: t('admin.users.roles.user') },
+      { value: 'manager', label: t('admin.users.roles.manager') }
+    ]
 )
 const form = reactive({
   email: '',

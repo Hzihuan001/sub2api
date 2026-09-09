@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.2-l1.11
+  CUSTOM_VERSION: 0.2.2-l1.12
 
 jobs:
   quality:
@@ -44,7 +44,7 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Verify release tag
-        run: test "$GITHUB_REF_NAME" = 'custom-l1-0.2.2.11'
+        run: test "$GITHUB_REF_NAME" = 'custom-l1-0.2.2.12'
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -54,6 +54,7 @@ jobs:
         working-directory: backend
         run: |
           go test ./internal/moshureseller ./internal/service
+          go test ./internal/handler/admin ./internal/server/routes
           go test -tags=unit ./internal/service -run '^TestMoshuReseller'
           go test ./internal/repository -run '^TestApplyMoshu'
 
@@ -61,6 +62,7 @@ jobs:
         working-directory: frontend
         run: |
           pnpm run typecheck
+          pnpm exec vitest run src/components/admin/user/__tests__/UserCreateModal.spec.ts src/components/admin/user/__tests__/UserEditModal.spec.ts src/views/admin/__tests__/UsersView.spec.ts
           pnpm exec vitest run src/i18n/__tests__/localeKeyCompleteness.spec.ts
 
       - name: Frontend production build

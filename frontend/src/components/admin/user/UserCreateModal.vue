@@ -29,7 +29,7 @@
         <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
         <select v-model="form.role" class="input">
           <option value="user">{{ t('admin.users.roles.user') }}</option>
-          <option v-if="authStore.isSuperAdmin" value="manager">{{ t('admin.users.roles.manager') }}</option>
+          <option v-if="authStore.isAdmin" value="manager">{{ t('admin.users.roles.manager') }}</option>
           <option v-if="authStore.isSuperAdmin" value="admin">{{ t('admin.users.roles.admin') }}</option>
         </select>
       </div>

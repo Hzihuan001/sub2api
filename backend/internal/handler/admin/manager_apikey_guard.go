@@ -4,12 +4,11 @@ import (
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
 // ManagerTargetUserWriteGuard resolves an API key without mutating it and
-// applies the same ordinary-user-only boundary as user management routes.
+// applies the same super-admin boundary as user management routes.
 func (h *AdminAPIKeyHandler) ManagerTargetUserWriteGuard() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !isManagerContext(c) {
@@ -39,8 +38,8 @@ func (h *AdminAPIKeyHandler) ManagerTargetUserWriteGuard() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if target == nil || target.Role != service.RoleUser {
-			response.Forbidden(c, "managers may only modify API keys owned by ordinary users")
+		if !managerMayMutateTarget(target) {
+			response.Forbidden(c, "managers cannot modify API keys owned by super admins")
 			c.Abort()
 			return
 		}

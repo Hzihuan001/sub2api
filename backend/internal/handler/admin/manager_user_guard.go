@@ -14,8 +14,16 @@ func isManagerContext(c *gin.Context) bool {
 	return ok && role == service.RoleManager
 }
 
-// ManagerTargetUserWriteGuard prevents a manager from mutating either of the
-// two administrative roles through any single-user management sub-route.
+func managerMayMutateTarget(target *service.User) bool {
+	return target != nil && target.Role != service.RoleAdmin
+}
+
+func managerMayAssignRole(role string) bool {
+	return role == "" || role == service.RoleUser || role == service.RoleManager
+}
+
+// ManagerTargetUserWriteGuard lets a manager administer ordinary users and
+// peer managers, while retaining a hard boundary around the super admin role.
 func (h *UserHandler) ManagerTargetUserWriteGuard() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !isManagerContext(c) {
@@ -34,8 +42,8 @@ func (h *UserHandler) ManagerTargetUserWriteGuard() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if target == nil || target.Role != service.RoleUser {
-			response.Forbidden(c, "managers may only modify ordinary users")
+		if !managerMayMutateTarget(target) {
+			response.Forbidden(c, "managers cannot modify super admin users")
 			c.Abort()
 			return
 		}
@@ -56,8 +64,8 @@ func (h *UserHandler) managerMayMutateUsers(c *gin.Context, userIDs []int64) boo
 			response.ErrorFrom(c, err)
 			return false
 		}
-		if target == nil || target.Role != service.RoleUser {
-			response.Forbidden(c, "batch contains an administrative user")
+		if !managerMayMutateTarget(target) {
+			response.Forbidden(c, "batch contains a super admin user")
 			return false
 		}
 	}

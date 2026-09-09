@@ -21,6 +21,10 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ showSuccess, showError })
 }))
 
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({ isAdmin: true, isSuperAdmin: false })
+}))
+
 vi.mock('@/composables/useClipboard', () => ({
   useClipboard: () => ({ copyToClipboard: vi.fn() })
 }))
@@ -86,5 +90,12 @@ describe('UserEditModal concurrency', () => {
 
     expect(showError).toHaveBeenCalledWith('admin.users.concurrencyNonNegative')
     expect(update).not.toHaveBeenCalled()
+  })
+
+  it('lets an ordinary administrator choose user or manager but not super admin', () => {
+    const wrapper = mountModal(3)
+    const options = wrapper.findComponent({ name: 'Select' }).props('options') as Array<{ value: string }>
+
+    expect(options.map((option) => option.value)).toEqual(['user', 'manager'])
   })
 })
