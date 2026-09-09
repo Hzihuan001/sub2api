@@ -8,8 +8,8 @@ import (
 	"log/slog"
 )
 
-// Future tenant-isolated restoration belongs here. This release only records
-// the attempt and rejects it before consuming the code or issuing keys.
+// Legacy callers cannot replace a binding implicitly. Station-preserving
+// reauthorization additionally requires an explicit mode and the old secret.
 func rebindNotSupported(currentID, targetID int64) error {
 	slog.Info("reseller.rebind_rejected", "current_reseller_id", currentID, "target_reseller_id", targetID, "reason", "not_supported")
 	return fmt.Errorf("%w: 本次仅支持同一代理商重新授权，不支持切换代理商", ErrInvalidInput)

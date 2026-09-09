@@ -99,12 +99,13 @@ type AccessClaims struct {
 }
 
 type EnrollmentExchangeResult struct {
-	Tenant       Tenant             `json:"tenant"`
-	AccessToken  string             `json:"access_token"`
-	RefreshToken string             `json:"refresh_token"`
-	ExpiresIn    int64              `json:"expires_in"`
-	Catalog      Catalog            `json:"catalog"`
-	Credentials  []IssuedCredential `json:"credentials"`
+	ReauthorizationMode string             `json:"reauthorization_mode,omitempty"`
+	Tenant              Tenant             `json:"tenant"`
+	AccessToken         string             `json:"access_token"`
+	RefreshToken        string             `json:"refresh_token"`
+	ExpiresIn           int64              `json:"expires_in"`
+	Catalog             Catalog            `json:"catalog"`
+	Credentials         []IssuedCredential `json:"credentials"`
 }
 
 type Balance struct {

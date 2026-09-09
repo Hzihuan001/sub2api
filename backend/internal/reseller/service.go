@@ -327,6 +327,17 @@ func (s *Service) CreateEnrollment(ctx context.Context, resellerID, createdBy in
 }
 
 func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remoteIP string, expectedResellerIDs ...int64) (*EnrollmentExchangeResult, error) {
+	var expectedID int64
+	if len(expectedResellerIDs) > 0 {
+		expectedID = expectedResellerIDs[0]
+	}
+	return s.exchangeEnrollment(ctx, code, instanceID, remoteIP, expectedID, "", "")
+}
+
+func (s *Service) exchangeEnrollment(ctx context.Context, code, instanceID, remoteIP string, expectedID int64, mode, previousRefresh string) (*EnrollmentExchangeResult, error) {
+	if mode != "" && mode != "preserve_station" {
+		return nil, fmt.Errorf("%w: unsupported reauthorization mode", ErrInvalidInput)
+	}
 	if !Enabled() {
 		return nil, ErrDisabled
 	}
@@ -362,8 +373,15 @@ func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remo
 	if tenant.InstanceID != nil && *tenant.InstanceID != instanceUUID.String() {
 		return nil, fmt.Errorf("%w: tenant is already bound to another instance", ErrInvalidInput)
 	}
-	if len(expectedResellerIDs) > 0 && expectedResellerIDs[0] > 0 && expectedResellerIDs[0] != resellerID {
-		return nil, rebindNotSupported(expectedResellerIDs[0], resellerID)
+	var invalidatedKeys []string
+	if expectedID > 0 && expectedID != resellerID {
+		if mode != "preserve_station" {
+			return nil, rebindNotSupported(expectedID, resellerID)
+		}
+		invalidatedKeys, err = s.releasePreviousBindingTx(ctx, tx, expectedID, instanceUUID.String(), previousRefresh)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := checkInstanceBindingTx(ctx, tx, resellerID, instanceUUID.String()); err != nil {
 		return nil, err
@@ -376,6 +394,24 @@ func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remo
 	products, err := listProductsTx(ctx, tx, resellerID, productIDs)
 	if err != nil || len(products) != len(normalizeIDs(productIDs)) {
 		return nil, ErrEnrollmentInvalid
+	}
+	if expectedID > 0 && expectedID != resellerID {
+		// L1 cannot reuse credentials from the old billing identity. Return keys
+		// for every existing grant as well as the products in the new code.
+		granted, err := listGrantedProductsTx(ctx, tx, resellerID)
+		if err != nil {
+			return nil, err
+		}
+		seen := make(map[int64]bool, len(products))
+		for _, p := range products {
+			seen[p.ID] = true
+		}
+		for _, p := range granted {
+			if !seen[p.ID] {
+				products = append(products, p)
+				seen[p.ID] = true
+			}
+		}
 	}
 
 	credentials := make([]IssuedCredential, 0, len(products))
@@ -409,6 +445,11 @@ func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remo
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
+	if s.apiKeys != nil {
+		for _, key := range invalidatedKeys {
+			s.apiKeys.InvalidateAuthCacheByKey(ctx, key)
+		}
+	}
 	tenant.InstanceID = stringPtr(instanceUUID.String())
 	access, err := s.signAccessToken(resellerID, instanceUUID.String())
 	if err != nil {
@@ -417,7 +458,7 @@ func (s *Service) ExchangeEnrollment(ctx context.Context, code, instanceID, remo
 	catalog := buildCatalog(*tenant, granted, s.now().UTC())
 	return &EnrollmentExchangeResult{
 		Tenant: *tenant, AccessToken: access, RefreshToken: refresh,
-		ExpiresIn: int64(accessTokenTTL.Seconds()), Catalog: catalog, Credentials: credentials,
+		ExpiresIn: int64(accessTokenTTL.Seconds()), Catalog: catalog, Credentials: credentials, ReauthorizationMode: mode,
 	}, nil
 }
 

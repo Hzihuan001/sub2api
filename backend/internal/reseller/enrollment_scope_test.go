@@ -26,6 +26,11 @@ func productRows(ids ...int64) *sqlmock.Rows {
 }
 
 func TestIncrementalEnrollmentPreservesGrantedProducts(t *testing.T) {
+	t.Run("same reseller", func(t *testing.T) { testEnrollmentPreservesGrantedProducts(t, false) })
+	t.Run("deleted reseller replacement", func(t *testing.T) { testEnrollmentPreservesGrantedProducts(t, true) })
+}
+
+func testEnrollmentPreservesGrantedProducts(t *testing.T, replace bool) {
 	t.Setenv("MOSHU_RESELLER_SERVER_ENABLED", "true")
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -33,21 +38,45 @@ func TestIncrementalEnrollmentPreservesGrantedProducts(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT id, reseller_id, product_ids, expires_at").WillReturnRows(sqlmock.NewRows([]string{"id", "reseller_id", "product_ids", "expires_at"}).AddRow(7, 1, []byte(`[3]`), time.Now().Add(time.Hour)))
 	mock.ExpectQuery("SELECT id,user_id,name,status").WillReturnRows(tenantRows())
+	if replace {
+		expectPreviousBindingRelease(mock, 2)
+	}
 	mock.ExpectQuery("SELECT id FROM reseller_tenants WHERE instance_id").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery("SELECT rp.id,rp.reseller_id").WillReturnRows(productRows(3))
+	if replace {
+		mock.ExpectQuery("SELECT rp.id,rp.reseller_id").WillReturnRows(productRows(2, 3))
+	}
 	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"ok"}).AddRow(true))
 	mock.ExpectExec("UPDATE reseller_credentials").WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery("INSERT INTO api_keys").WithArgs(int64(10), sqlmock.AnyArg(), "reseller:agent:product", int64(3)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
 	mock.ExpectExec("INSERT INTO reseller_credentials").WithArgs(int64(1), int64(3), int64(99)).WillReturnResult(sqlmock.NewResult(1, 1))
+	if replace {
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"ok"}).AddRow(true))
+		mock.ExpectExec("UPDATE reseller_credentials").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectQuery("INSERT INTO api_keys").WithArgs(int64(10), sqlmock.AnyArg(), "reseller:agent:product", int64(2)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(100))
+		mock.ExpectExec("INSERT INTO reseller_credentials").WithArgs(int64(1), int64(2), int64(100)).WillReturnResult(sqlmock.NewResult(1, 1))
+	}
 	mock.ExpectExec("UPDATE reseller_tenants SET instance_id").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE reseller_enrollment_codes SET used_at").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO reseller_refresh_tokens").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectQuery("SELECT rp.id,rp.reseller_id").WillReturnRows(productRows(2, 3))
 	mock.ExpectCommit()
-	result, err := NewService(db, nil, nil).ExchangeEnrollment(context.Background(), "test-code", testInstance, "127.0.0.1", 1)
+	var result *EnrollmentExchangeResult
+	if replace {
+		result, err = NewService(db, nil, nil).exchangeEnrollment(context.Background(), "test-code", testInstance, "127.0.0.1", 2, "preserve_station", "old-refresh")
+	} else {
+		result, err = NewService(db, nil, nil).ExchangeEnrollment(context.Background(), "test-code", testInstance, "127.0.0.1", 1)
+	}
 	require.NoError(t, err)
+	if replace {
+		require.Equal(t, "preserve_station", result.ReauthorizationMode)
+	}
 	require.Len(t, result.Catalog.Products, 2, "old and new grants must both be returned")
-	require.Len(t, result.Credentials, 1, "incremental exchange only rotates the requested product")
+	if replace {
+		require.Len(t, result.Credentials, 2, "replacement must issue all granted keys for the new billing identity")
+	} else {
+		require.Len(t, result.Credentials, 1, "incremental exchange only rotates the requested product")
+	}
 	require.EqualValues(t, 3, result.Credentials[0].ProductID)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

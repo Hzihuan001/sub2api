@@ -215,9 +215,11 @@ func (h *Handler) AdminListSettlements(c *gin.Context) {
 }
 
 type exchangeEnrollmentRequest struct {
-	EnrollmentCode     string `json:"enrollment_code" binding:"required"`
-	InstanceID         string `json:"instance_id" binding:"required"`
-	ExpectedResellerID int64  `json:"expected_reseller_id"`
+	EnrollmentCode       string `json:"enrollment_code" binding:"required"`
+	InstanceID           string `json:"instance_id" binding:"required"`
+	ExpectedResellerID   int64  `json:"expected_reseller_id"`
+	ReauthorizationMode  string `json:"reauthorization_mode"`
+	PreviousRefreshToken string `json:"previous_refresh_token"`
 }
 
 func (h *Handler) ExchangeEnrollment(c *gin.Context) {
@@ -226,7 +228,7 @@ func (h *Handler) ExchangeEnrollment(c *gin.Context) {
 		response.BadRequest(c, "invalid request")
 		return
 	}
-	result, err := h.service.ExchangeEnrollment(c.Request.Context(), req.EnrollmentCode, req.InstanceID, c.ClientIP(), req.ExpectedResellerID)
+	result, err := h.service.exchangeEnrollment(c.Request.Context(), req.EnrollmentCode, req.InstanceID, c.ClientIP(), req.ExpectedResellerID, req.ReauthorizationMode, req.PreviousRefreshToken)
 	if err != nil {
 		h.writeError(c, err)
 		return
