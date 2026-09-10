@@ -14,6 +14,8 @@ func RegisterResellerRoutes(v1 *gin.RouterGroup, handler *reseller.Handler) {
 	authenticated.Use(handler.Auth())
 	{
 		authenticated.GET("/catalog", handler.Catalog)
+		authenticated.GET("/pricing", handler.Pricing)
+		authenticated.GET("/pricing/changes", handler.PricingChanges)
 		authenticated.POST("/credentials/rotate", handler.RotateCredential)
 		authenticated.GET("/settlements", handler.ListSettlements)
 		authenticated.GET("/settlements/:request_id", handler.GetSettlement)

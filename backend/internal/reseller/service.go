@@ -41,11 +41,14 @@ var (
 )
 
 type Service struct {
-	db       *sql.DB
-	cfg      *config.Config
-	apiKeys  *service.APIKeyService
-	now      func() time.Time
-	randRead func([]byte) (int, error)
+	pricingAdmin    service.AdminService
+	pricingChannels *service.ChannelService
+	pricingBilling  *service.BillingService
+	db              *sql.DB
+	cfg             *config.Config
+	apiKeys         *service.APIKeyService
+	now             func() time.Time
+	randRead        func([]byte) (int, error)
 }
 
 func NewService(db *sql.DB, cfg *config.Config, apiKeys *service.APIKeyService) *Service {

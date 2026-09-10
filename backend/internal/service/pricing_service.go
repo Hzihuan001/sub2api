@@ -486,6 +486,7 @@ func (s *PricingService) reloadCustomPricingLayers() error {
 	s.mu.Lock()
 	warnDroppedLongContextLadders(s.pricingData, data)
 	s.pricingData = data
+	NotifyResellerPricingChanged()
 	s.customFilesHash = fingerprint
 	s.mu.Unlock()
 
@@ -553,6 +554,7 @@ func (s *PricingService) downloadPricingData() error {
 	s.mu.Lock()
 	warnDroppedLongContextLadders(s.pricingData, data)
 	s.pricingData = data
+	NotifyResellerPricingChanged()
 	s.lastUpdated = time.Now()
 	s.localHash = syncHash
 	s.customFilesHash = customFilesHash
@@ -974,6 +976,7 @@ func (s *PricingService) loadPricingData(filePath string) error {
 	s.mu.Lock()
 	warnDroppedLongContextLadders(s.pricingData, pricingData)
 	s.pricingData = pricingData
+	NotifyResellerPricingChanged()
 	s.localHash = hashStr
 	s.customFilesHash = customFilesHash
 

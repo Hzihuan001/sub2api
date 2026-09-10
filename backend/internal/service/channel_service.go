@@ -151,6 +151,7 @@ const (
 
 // ChannelService 渠道管理服务
 type ChannelService struct {
+	frozenPricing        bool // Internal immutable reseller snapshot; never query repositories.
 	repo                 ChannelRepository
 	groupRepo            GroupRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
@@ -175,6 +176,12 @@ func NewChannelService(repo ChannelRepository, groupRepo GroupRepository, authCa
 
 // loadCache 加载或返回缓存的渠道数据
 func (s *ChannelService) loadCache(ctx context.Context) (*channelCache, error) {
+	if s.frozenPricing {
+		if cache, ok := s.cache.Load().(*channelCache); ok && cache != nil {
+			return cache, nil
+		}
+		return nil, fmt.Errorf("missing frozen pricing cache")
+	}
 	if cached, ok := s.cache.Load().(*channelCache); ok && cached != nil {
 		if time.Since(cached.loadedAt) < channelCacheTTL {
 			return cached, nil
@@ -383,6 +390,7 @@ func (s *ChannelService) InvalidateCache() {
 }
 
 func (s *ChannelService) invalidateCache() {
+	defer NotifyResellerPricingChanged()
 	s.cache.Store((*channelCache)(nil))
 	s.cacheSF.Forget("channel_cache")
 
