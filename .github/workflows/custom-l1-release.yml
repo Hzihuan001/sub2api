@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.2-l1.14
+  CUSTOM_VERSION: 0.2.4-l1.2
 
 jobs:
   quality:
@@ -44,7 +44,7 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Verify release tag
-        run: test "$GITHUB_REF_NAME" = 'custom-l1-0.2.2.14'
+        run: test "$GITHUB_REF_NAME" = 'custom-l1-0.2.4.2'
 
       - name: Install frontend dependencies
         working-directory: frontend
