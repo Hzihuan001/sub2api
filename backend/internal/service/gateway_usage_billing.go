@@ -73,6 +73,7 @@ type usageLogBestEffortWriter interface {
 // postUsageBillingParams 统一扣费所需的参数
 type postUsageBillingParams struct {
 	Cost                  *CostBreakdown
+	UpstreamBaseCost      *float64
 	User                  *User
 	APIKey                *APIKey
 	Account               *Account
@@ -126,7 +127,14 @@ func (p *postUsageBillingParams) shouldUpdateRateLimits() bool {
 }
 
 func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
-	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
+	return p.accountBaseCost() > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
+}
+
+func (p *postUsageBillingParams) accountBaseCost() float64 {
+	if p.UpstreamBaseCost != nil {
+		return *p.UpstreamBaseCost
+	}
+	return p.Cost.TotalCost
 }
 
 // postUsageBilling is the legacy fallback billing path used when the unified
@@ -171,7 +179,7 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	}
 
 	if p.shouldUpdateAccountQuota() {
-		accountCost := cost.TotalCost * p.AccountRateMultiplier
+		accountCost := p.accountBaseCost() * p.AccountRateMultiplier
 		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
 			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
 		}
@@ -287,6 +295,12 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		AccountType:        p.Account.Type,
 		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
 	}
+	if p.APIKey.Group != nil && p.APIKey.Group.resellerPricing != nil {
+		cmd.ResellerPricingRevision = p.APIKey.Group.resellerPricing.Revision()
+		cmd.ResellerBaseCost = p.accountBaseCost()
+		cmd.ResellerCustomerCharge = p.Cost.ActualCost
+		cmd.ResellerCostRate = p.AccountRateMultiplier
+	}
 	if usageLog != nil {
 		cmd.Model = usageLog.Model
 		cmd.BillingType = usageLog.BillingType
@@ -324,7 +338,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 	}
 	if p.shouldUpdateAccountQuota() {
-		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
+		cmd.AccountQuotaCost = p.accountBaseCost() * p.AccountRateMultiplier
 	}
 
 	cmd.Normalize()
@@ -492,7 +506,7 @@ func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *Us
 			slog.Error("panic in notifyAccountQuota", "recover", r)
 		}
 	}()
-	if p.Cost.TotalCost <= 0 || p.Account == nil || !p.Account.IsAPIKeyOrBedrock() || deps.balanceNotifyService == nil {
+	if p.accountBaseCost() <= 0 || p.Account == nil || !p.Account.IsAPIKeyOrBedrock() || deps.balanceNotifyService == nil {
 		slog.Debug("notifyAccountQuota: skipped",
 			"total_cost", p.Cost.TotalCost,
 			"account_nil", p.Account == nil,
@@ -501,7 +515,7 @@ func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *Us
 		)
 		return
 	}
-	accountCost := p.Cost.TotalCost * p.AccountRateMultiplier
+	accountCost := p.accountBaseCost() * p.AccountRateMultiplier
 	var quotaState *AccountQuotaState
 	if result != nil {
 		quotaState = result.QuotaState
@@ -814,12 +828,12 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 创建使用日志
-	accountRateMultiplier := account.BillingRateMultiplier()
+	accountRateMultiplier := resellerAccountRate(apiKey.Group, account, pricingAt, result.ImageCount > 0 && cost.BillingMode != string(BillingModeToken), false)
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost)
 
-	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
-	if apiKey.GroupID != nil {
+	// Managed accounts use upstream cost rules, not local retail/account-stat rules.
+	if apiKey.GroupID != nil && (apiKey.Group == nil || apiKey.Group.resellerPricing == nil) {
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
 			// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
@@ -833,6 +847,20 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			},
 			cost.TotalCost, pricingAt,
 		)
+	}
+	if apiKey.Group != nil && apiKey.Group.resellerPricing != nil {
+		calculator := apiKey.Group.resellerPricing
+		costService := &GatewayService{cfg: s.cfg, billingService: calculator.billing, resolver: calculator.resolver, channelService: calculator.resolver.channelService}
+		costModel := calculator.costModel(ctx, firstNonEmpty(result.UpstreamModel, result.Model), concreteBillingModel, result.UpstreamResponseModel, result.UpstreamResponseModelConflict)
+		costResult := *result
+		if calculator.snapshot.Group.FreeOpenAIFast && groupSupportsOpenAIFast(calculator.snapshot.Platform) {
+			costResult.ServiceTier = nil
+		}
+		upstreamCost := costService.calculateRecordUsageCost(ctx, &costResult, calculator.costKey(apiKey), costModel, 1, 1, pricingAt)
+		base := upstreamCost.TotalCost
+		usageLog.AccountStatsCost = &base
+		accountRateMultiplier = resellerAccountRate(apiKey.Group, account, pricingAt, result.ImageCount > 0 && upstreamCost.BillingMode != string(BillingModeToken), false)
+		usageLog.AccountRateMultiplier = &accountRateMultiplier
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
@@ -855,6 +883,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	requestID := usageLog.RequestID
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 		Cost:                  cost,
+		UpstreamBaseCost:      resellerUsageBaseCost(apiKey, usageLog),
 		User:                  user,
 		APIKey:                apiKey,
 		Account:               account,
@@ -887,8 +916,21 @@ func (s *GatewayService) calculateRecordUsageCost(
 	pricingAt time.Time,
 ) *CostBreakdown {
 	// 图片生成：渠道定价为 token 计费时走 token 路径，否则走图片计费
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.resellerPricing != nil {
+		calculator := apiKey.Group.resellerPricing
+		media := result.ImageCount > 0
+		localMedia := apiKeyHasConfiguredImagePrice(apiKey, NormalizeImageBillingTierOrDefault(result.ImageSize))
+		if result.AudioUsage != nil {
+			media = true
+			localMedia = apiKeyHasConfiguredAudioPrice(apiKey, result.AudioUsage.Mode)
+		}
+		if media && calculator.billing != s.billingService && !localMedia && !hasLocalResellerModelPrice(ctx, s.resolver, apiKey.Group, billingModel) {
+			fallback := &GatewayService{billingService: calculator.billing, resolver: calculator.resolver}
+			return fallback.calculateRecordUsageCost(ctx, result, calculator.costKey(apiKey), billingModel, multiplier, imageMultiplier, pricingAt)
+		}
+	}
 	if result.ImageCount > 0 {
-		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
+		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resellerUseTokenPricing(resolved, apiKeyHasConfiguredImagePrice(apiKey, NormalizeImageBillingTierOrDefault(result.ImageSize))) {
 			return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt)
 		}
 		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
@@ -897,7 +939,7 @@ func (s *GatewayService) calculateRecordUsageCost(
 	// Voice audio (TTS / STT / realtime) when present on the forward result.
 	if result.AudioUsage != nil {
 		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
-			resolved.Mode == BillingModePerRequest {
+			resolved.Mode == BillingModePerRequest && (!resolved.resellerFallback || !apiKeyHasConfiguredAudioPrice(apiKey, result.AudioUsage.Mode)) {
 			gid := apiKey.Group.ID
 			cost, err := s.billingService.CalculateCostUnified(CostInput{
 				Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
@@ -977,7 +1019,11 @@ func (s *GatewayService) hasResolvableTokenPricing(ctx context.Context, model st
 	if s.billingService == nil {
 		return false
 	}
-	_, err := s.billingService.GetModelPricing(model)
+	billing := s.billingService
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.resellerPricing != nil {
+		billing = apiKey.Group.resellerPricing.billing
+	}
+	_, err := billing.GetModelPricing(model)
 	return err == nil
 }
 
@@ -994,7 +1040,11 @@ func (s *GatewayService) hasIdentifiedResponseModelPricing(ctx context.Context, 
 	if s.resolveChannelPricing(ctx, model, apiKey) != nil {
 		return true, true
 	}
-	return s.billingService.HasIdentifiedTokenPricing(model), false
+	billing := s.billingService
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.resellerPricing != nil {
+		billing = apiKey.Group.resellerPricing.billing
+	}
+	return billing.HasIdentifiedTokenPricing(model), false
 }
 
 // resolveChannelPricing 检查指定模型是否存在渠道级别定价。
@@ -1021,7 +1071,7 @@ func (s *GatewayService) calculateImageCost(
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := s.resolveChannelPricing(ctx, billingModel, apiKey)
-	if resolved != nil && resolved.Source == PricingSourceGroup {
+	if resolved != nil && resolved.Source == PricingSourceGroup && !resolved.resellerFallback {
 		gid := apiKey.Group.ID
 		cost, err := s.billingService.CalculateCostUnified(CostInput{
 			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
@@ -1036,7 +1086,7 @@ func (s *GatewayService) calculateImageCost(
 	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
 		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 	}
-	if resolved != nil && resolved.Source == PricingSourceChannel {
+	if resolved != nil && (resolved.Source == PricingSourceChannel || resolved.resellerFallback) {
 		tokens := UsageTokens{
 			InputTokens:       result.Usage.InputTokens,
 			OutputTokens:      result.Usage.OutputTokens,

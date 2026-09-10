@@ -78,6 +78,10 @@ const contextProbeDelta = 1000
 //
 // 非 token 计费模式返回 (nil, nil)；模型无任何定价来源时返回 ErrModelPricingUnavailable。
 func (s *BillingService) ResolveContextPricingSchedule(ctx context.Context, resolver *ModelPricingResolver, in ContextPricingScheduleInput) (*ContextPricingSchedule, error) {
+	if in.Group != nil && in.Group.resellerPricing != nil && in.Group.resellerPricing.billing != s {
+		calculator := in.Group.resellerPricing
+		return calculator.billing.ResolveContextPricingSchedule(ctx, calculator.retailResolver(resolver), in)
+	}
 	if s == nil || resolver == nil {
 		return nil, errContextPricingResolverRequired
 	}

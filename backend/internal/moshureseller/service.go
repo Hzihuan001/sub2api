@@ -25,13 +25,14 @@ var (
 )
 
 type Service struct {
-	db        *sql.DB
-	encryptor service.SecretEncryptor
-	admin     service.AdminService
-	client    *protocolClient
-	now       func() time.Time
-	authMu    sync.Mutex
-	configMu  sync.Mutex
+	pricingEnabled bool // set before runtime starts, not a user-controlled setting
+	db             *sql.DB
+	encryptor      service.SecretEncryptor
+	admin          service.AdminService
+	client         *protocolClient
+	now            func() time.Time
+	authMu         sync.Mutex
+	configMu       sync.Mutex
 }
 
 func NewService(db *sql.DB, encryptor service.SecretEncryptor, admin service.AdminService) *Service {
@@ -136,6 +137,7 @@ func (s *Service) reconcileSelectedProducts(ctx context.Context) error {
 func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string) (*Status, error) {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
+	defer s.restorePricingAfterConfiguration()
 	// Enrollment replaces the refresh token; do not race the settlement worker.
 	s.authMu.Lock()
 	defer s.authMu.Unlock()
@@ -276,6 +278,11 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
+	defer func() {
+		if syncErr == nil {
+			s.restorePricingAfterConfiguration()
+		}
+	}()
 	connection, token, err := s.authenticatedConnection(ctx)
 	if err != nil {
 		return nil, err
@@ -359,6 +366,7 @@ func (s *Service) Balance(ctx context.Context) (*Balance, error) {
 func (s *Service) ConfigureProduct(ctx context.Context, id int64, selected bool, salesName string, salesMultiplier float64, requestedCapacity int) (*Product, error) {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
+	defer s.restorePricingAfterConfiguration()
 	product, credentialCiphertext, err := s.loadProduct(ctx, id)
 	if err != nil {
 		return nil, err

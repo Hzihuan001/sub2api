@@ -141,9 +141,16 @@ func (c *protocolClient) doJSON(ctx context.Context, method, endpoint, token, et
 	if resp.StatusCode == http.StatusNotModified {
 		return nil
 	}
-	payload, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	limit := int64(2 << 20)
+	if strings.HasSuffix(req.URL.Path, "/reseller/v1/pricing") {
+		limit = 32 << 20
+	}
+	payload, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return err
+	}
+	if int64(len(payload)) > limit {
+		return fmt.Errorf("Moshu response exceeds size limit")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		message := fmt.Sprintf("主站请求失败（HTTP %d），请稍后重试", resp.StatusCode)

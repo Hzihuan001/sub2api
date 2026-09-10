@@ -17,10 +17,14 @@ var ErrUsageBillingRequestConflict = errors.New("usage billing request fingerpri
 
 // UsageBillingCommand describes one billable request that must be applied at most once.
 type UsageBillingCommand struct {
-	RequestID          string
-	APIKeyID           int64
-	RequestFingerprint string
-	RequestPayloadHash string
+	ResellerPricingRevision string
+	ResellerBaseCost        float64
+	ResellerCustomerCharge  float64
+	ResellerCostRate        float64
+	RequestID               string
+	APIKeyID                int64
+	RequestFingerprint      string
+	RequestPayloadHash      string
 
 	UserID              int64
 	AccountID           int64

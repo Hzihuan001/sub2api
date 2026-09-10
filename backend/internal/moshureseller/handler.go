@@ -39,6 +39,13 @@ func (h *Handler) Enroll(c *gin.Context) {
 		h.writeError(c, err)
 		return
 	}
+	// Enrollment has already consumed its one-time code. A pricing outage must
+	// not misreport successful enrollment as failed and encourage replaying it.
+	if h.service.pricingEnabled {
+		if err := h.service.SyncPricing(c.Request.Context()); err != nil {
+			slog.Warn("enrollment completed; pricing sync pending", "error", err)
+		}
+	}
 	response.Success(c, result)
 }
 
@@ -47,6 +54,12 @@ func (h *Handler) SyncCatalog(c *gin.Context) {
 	if err != nil {
 		h.writeError(c, err)
 		return
+	}
+	if h.service.pricingEnabled {
+		if err := h.service.SyncPricing(c.Request.Context()); err != nil {
+			h.writeError(c, err)
+			return
+		}
 	}
 	response.Success(c, result)
 }

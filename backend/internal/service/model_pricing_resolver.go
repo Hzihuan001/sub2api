@@ -41,13 +41,15 @@ type ResolvedPricing struct {
 	channelPricing *ChannelModelPricing
 
 	longContextPricingEnabled bool
+	resellerFallback          bool
 }
 
 // ModelPricingResolver 统一模型定价解析器。
 // 解析链：Group → Channel → LiteLLM → Fallback。
 type ModelPricingResolver struct {
-	channelService *ChannelService
-	billingService *BillingService
+	channelService   *ChannelService
+	billingService   *BillingService
+	resellerFallback *ResellerPricingCalculator
 }
 
 // NewModelPricingResolver 创建定价解析器实例
@@ -69,6 +71,13 @@ type PricingInput struct {
 // 1. 获取基础定价（LiteLLM → Fallback）
 // 2. 如果指定了 GroupID，查找渠道定价并覆盖
 func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) *ResolvedPricing {
+	calculator := resellerPricingFromContext(ctx)
+	if input.Group != nil && input.Group.resellerPricing != nil {
+		calculator = input.Group.resellerPricing
+	}
+	if calculator != nil && calculator.resolver != r && r.resellerFallback == nil {
+		return calculator.retailResolver(r).Resolve(ctx, input)
+	}
 	longContextPricingEnabled := input.Group == nil || input.Group.LongContextPricingEnabled
 	if groupPricing := matchGroupModelPricing(input.Group, input.Model); groupPricing != nil {
 		// Group token cards only override the first-tier / flat rates.
@@ -102,6 +111,15 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 				return resolved
 			}
 		}
+	}
+
+	if chPricing == nil && r.resellerFallback != nil {
+		calculator := r.resellerFallback
+		input.Group = calculator.ApplyPriceFields(input.Group)
+		input.GroupID = &calculator.groupID
+		resolved := calculator.resolver.Resolve(ctx, input)
+		resolved.resellerFallback = true
+		return resolved
 	}
 
 	// 1. 获取基础定价

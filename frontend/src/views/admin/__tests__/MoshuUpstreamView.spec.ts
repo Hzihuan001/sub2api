@@ -42,36 +42,17 @@ vi.mock('@/api/admin', () => ({
 
 describe('reseller configuration', () => {
   beforeEach(() => { mocks.costOverride = undefined })
-  it.each([0, 0.1234])('saves an independent cost override %s without enabling a group', async (rate) => {
+  it.each([0, 0.1234])('ignores legacy cost override %s and keeps retail editing', async (rate) => {
+    mocks.costOverride = rate
     mocks.auth.isSuperAdmin = false
     mocks.selected = false
     const wrapper = mount(MoshuUpstreamView)
     await flushPromises()
-    await wrapper.get('[data-test="cost-multiplier"]').setValue(rate)
-    await wrapper.get('article form').trigger('submit')
-    await flushPromises()
-    expect(mocks.setProductCost).toHaveBeenCalledWith(3, { cost_rate_multiplier: rate })
-    expect(mocks.configureProduct).not.toHaveBeenCalled()
-    wrapper.unmount()
-  })
-  it('shows a persisted zero override and can restore upstream tracking', async () => {
-    mocks.costOverride = 0
-    const wrapper = mount(MoshuUpstreamView)
-    await flushPromises()
-    expect(wrapper.get('[data-test="cost-multiplier"]').element.value).toBe('0')
-    await wrapper.findAll('button').find(b => b.text() === 'admin.moshuUpstream.followUpstreamCost')!.trigger('click')
-    await flushPromises()
-    expect(mocks.setProductCost).toHaveBeenCalledWith(3, { follow_upstream: true })
-    expect(mocks.configureProduct).not.toHaveBeenCalled()
-    wrapper.unmount()
-  })
-  it.each(['', '-1', '1000000'])('rejects invalid manual cost %s without writing', async (rate) => {
-    const wrapper = mount(MoshuUpstreamView)
-    await flushPromises()
-    await wrapper.get('[data-test="cost-multiplier"]').setValue(rate)
-    await wrapper.get('article form').trigger('submit')
+    expect(wrapper.find('[data-test="cost-multiplier"]').exists()).toBe(false)
+    expect(wrapper.get('article').text()).toContain('admin.moshuUpstream.costMultiplier 1')
+    expect(wrapper.get('article input[type="number"]').element.value).toBe('1.7')
     expect(mocks.setProductCost).not.toHaveBeenCalled()
-    expect(mocks.showError).toHaveBeenCalledWith('admin.moshuUpstream.invalidCost')
+    expect(mocks.configureProduct).not.toHaveBeenCalled()
     wrapper.unmount()
   })
   beforeEach(() => { vi.clearAllMocks(); mocks.auth.isSuperAdmin = true; mocks.selected = true; mocks.authorized = true; mocks.models = []; mocks.localAccountID = 2; mocks.probeUpstreamModels.mockResolvedValue({ models: ['model-a', 'model-b', 'model-b'] }) })

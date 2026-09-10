@@ -170,6 +170,12 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// authenticated key and must remain available after the completed
 		// generation consumes the key's remaining balance.
 		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path)
+		if pinned, pinErr := service.PinResellerPricing(apiKey); pinErr == nil {
+			apiKey = pinned
+		} else if !skipBilling {
+			AbortWithError(c, http.StatusServiceUnavailable, "UPSTREAM_PRICING_PENDING", pinErr.Error())
+			return
+		}
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 

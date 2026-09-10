@@ -54,6 +54,12 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	if err := r.applyUsageBillingEffects(ctx, tx, cmd, result); err != nil {
 		return nil, err
 	}
+	if cmd.ResellerPricingRevision != "" {
+		_, err := tx.ExecContext(ctx, `INSERT INTO moshu_request_pricing(request_id,api_key_id,revision,base_cost,customer_charge,upstream_cost_rate) VALUES($1::text,$2::bigint,$3::text,$4::numeric,$5::numeric,$6::numeric) ON CONFLICT(request_id,api_key_id) DO NOTHING`, cmd.RequestID, cmd.APIKeyID, cmd.ResellerPricingRevision, cmd.ResellerBaseCost, cmd.ResellerCustomerCharge, cmd.ResellerCostRate)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err

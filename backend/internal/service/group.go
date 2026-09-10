@@ -16,11 +16,13 @@ type GroupCodexModelsManifestConfig = domain.GroupCodexModelsManifestConfig
 type ReasoningEffortMapping = domain.ReasoningEffortMapping
 
 type Group struct {
-	ID             int64
-	Name           string
-	Description    string
-	Platform       string
-	RateMultiplier float64
+	resellerPricing   *ResellerPricingCalculator // request-owned, never persisted or exposed
+	resellerPricingAt time.Time
+	ID                int64
+	Name              string
+	Description       string
+	Platform          string
+	RateMultiplier    float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool
@@ -215,10 +217,11 @@ func (g *Group) VideoPriceConfig() *VideoPriceConfig {
 		return nil
 	}
 	return &VideoPriceConfig{
-		Price480P:   g.VideoPrice480P,
-		Price720P:   g.VideoPrice720P,
-		Price1080P:  g.VideoPrice1080P,
-		ModelPrices: NormalizeVideoModelPrices(g.VideoModelPrices),
+		resellerPricing: g.resellerPricing,
+		Price480P:       g.VideoPrice480P,
+		Price720P:       g.VideoPrice720P,
+		Price1080P:      g.VideoPrice1080P,
+		ModelPrices:     NormalizeVideoModelPrices(g.VideoModelPrices),
 	}
 }
 

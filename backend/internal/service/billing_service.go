@@ -1325,6 +1325,9 @@ type CostInput struct {
 // CalculateCostUnified 统一计费入口，支持三种计费模式。
 // 使用 ModelPricingResolver 解析定价，然后根据 BillingMode 分发计算。
 func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, error) {
+	if calculator := resellerCalculator(input); calculator != nil && calculator.billing != s {
+		return calculator.CalculateRetail(input)
+	}
 	if input.Resolver == nil {
 		// 无 Resolver，回退到旧路径
 		applyLongContextBilling := true
@@ -1857,16 +1860,18 @@ func (s *BillingService) ForceUpdatePricing() error {
 
 // ImagePriceConfig 图片计费配置
 type ImagePriceConfig struct {
-	Price1K *float64 // 1K 尺寸价格（nil 表示使用默认值）
-	Price2K *float64 // 2K 尺寸价格（nil 表示使用默认值）
-	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
+	resellerPricing *ResellerPricingCalculator
+	Price1K         *float64 // 1K 尺寸价格（nil 表示使用默认值）
+	Price2K         *float64 // 2K 尺寸价格（nil 表示使用默认值）
+	Price4K         *float64 // 4K 尺寸价格（nil 表示使用默认值）
 }
 
 // VideoPriceConfig 视频生成计费配置。所有价格均为**每秒**单价（USD/s），与 xAI 官方计费口径一致。
 type VideoPriceConfig struct {
-	Price480P  *float64 // 480p 每秒价格（nil 表示使用默认值）
-	Price720P  *float64 // 720p 每秒价格（nil 表示使用默认值）
-	Price1080P *float64 // 1080p 每秒价格（nil 表示使用默认值）
+	resellerPricing *ResellerPricingCalculator
+	Price480P       *float64 // 480p 每秒价格（nil 表示使用默认值）
+	Price720P       *float64 // 720p 每秒价格（nil 表示使用默认值）
+	Price1080P      *float64 // 1080p 每秒价格（nil 表示使用默认值）
 	// ModelPrices is optional per-model-family override: family → resolution → USD/s.
 	// When set for a model, it wins over Price* flat columns for that model only.
 	ModelPrices map[string]map[string]float64
@@ -2008,6 +2013,9 @@ func (s *BillingService) CalculateAudioCost(mode string, durationOrUnits float64
 // groupConfig: 分组配置的价格（可能为 nil，表示使用默认值）
 // rateMultiplier: 费率倍数
 func (s *BillingService) CalculateImageCost(model string, imageSize string, imageCount int, groupConfig *ImagePriceConfig, rateMultiplier float64) *CostBreakdown {
+	if groupConfig != nil && groupConfig.resellerPricing != nil && groupConfig.resellerPricing.billing != s {
+		return groupConfig.resellerPricing.billing.CalculateImageCost(model, imageSize, imageCount, groupConfig, rateMultiplier)
+	}
 	if imageCount <= 0 {
 		return &CostBreakdown{}
 	}
@@ -2040,6 +2048,9 @@ func (s *BillingService) CalculateImageCost(model string, imageSize string, imag
 // groupConfig: 分组配置的每秒价格（可能为 nil，表示使用默认值）
 // rateMultiplier: 费率倍数
 func (s *BillingService) CalculateVideoCost(model string, resolution string, videoCount int, durationSeconds int, groupConfig *VideoPriceConfig, rateMultiplier float64) *CostBreakdown {
+	if groupConfig != nil && groupConfig.resellerPricing != nil && groupConfig.resellerPricing.billing != s {
+		return groupConfig.resellerPricing.billing.CalculateVideoCost(model, resolution, videoCount, durationSeconds, groupConfig, rateMultiplier)
+	}
 	if videoCount <= 0 {
 		return &CostBreakdown{}
 	}
