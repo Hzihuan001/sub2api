@@ -12,7 +12,7 @@ import (
 // expectedChannelMonitorProviders 是数据库约束允许的平台集合。
 // Cursor 运行时代码已经移除，但约束保留历史值以维持已发布迁移不可变并保护存量数据。
 var expectedChannelMonitorProviders = []string{
-	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "zhipu",
+	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
 }
 
 // channelMonitorProviderConstraints 是承载 provider CHECK 的两个约束名。

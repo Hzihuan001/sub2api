@@ -12,7 +12,7 @@ import (
 // expectedCompositeRouteTargetPlatforms 是数据库约束允许的平台集合。
 // Cursor 运行时代码已经移除，但约束保留历史值以维持已发布迁移不可变并保护存量数据。
 var expectedCompositeRouteTargetPlatforms = []string{
-	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "zhipu",
+	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu",
 }
 
 const compositeRouteTargetPlatformConstraint = "composite_model_routes_target_platform_check"
