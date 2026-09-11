@@ -284,7 +284,7 @@ func TestResolve_KiroGPT56FallsBackToDefaultOpenAIPricingWhenNoChannelPrice(t *t
 
 	require.NotNil(t, resolved)
 	require.Equal(t, BillingModeToken, resolved.Mode)
-	require.Equal(t, PricingSourceLiteLLM, resolved.Source)
+	require.Equal(t, PricingSourceFallback, resolved.Source)
 	require.NotNil(t, resolved.BasePricing)
 	require.GreaterOrEqual(t, resolved.BasePricing.InputPricePerToken, float64(0))
 	require.GreaterOrEqual(t, resolved.BasePricing.OutputPricePerToken, float64(0))
