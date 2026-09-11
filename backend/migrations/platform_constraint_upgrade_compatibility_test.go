@@ -23,12 +23,16 @@ func TestLateDiscoveredPlatformMigrationsKeepSuperset(t *testing.T) {
 		{"222_add_cursor_platform.sql", "platform"},
 		{"222_add_cursor_platform.sql", "target_platform"},
 		{"222_add_cursor_platform.sql", "provider"},
+		{"227_user_platform_quotas_restore_kiro.sql", "platform"},
+		{"229_composite_routes_add_kiro.sql", "target_platform"},
+		{"229_channel_monitor_kiro_provider.sql", "provider"},
 		{"230_restore_cursor_platform_constraints.sql", "platform"},
 		{"230_restore_cursor_platform_constraints.sql", "target_platform"},
 		{"230_restore_cursor_platform_constraints.sql", "provider"},
 	}
 
-	want := append([]string(nil), expectedUserPlatformQuotaPlatforms...)
+	// These immutable migrations predate MiniMax (introduced in migration 237).
+	want := []string{"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu"}
 	sort.Strings(want)
 
 	for _, tc := range tests {
