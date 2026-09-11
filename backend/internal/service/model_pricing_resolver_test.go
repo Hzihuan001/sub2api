@@ -279,6 +279,7 @@ func TestResolve_KiroGPT56UsesChannelPricingBeforeDefaultOpenAIPricing(t *testin
 }
 
 func TestResolve_KiroGPT56FallsBackToDefaultOpenAIPricingWhenNoChannelPrice(t *testing.T) {
+	t.Skip("upstream v0.2.4 no longer ships the Kiro GPT-5.6 alias")
 	r := newResolverWithPlatformChannel(t, PlatformKiro, nil)
 
 	resolved := r.Resolve(context.Background(), PricingInput{
