@@ -557,7 +557,7 @@ function extensionFor(item: GalleryItem): string {
 function downloadItem(item: GalleryItem): void {
   const anchor = document.createElement('a')
   anchor.href = item.url
-  anchor.download = `sub2api-image-${new Date(item.createdAt).toISOString().replace(/[:.]/g, '-')}.${extensionFor(item)}`
+  anchor.download = `moshu-image-${new Date(item.createdAt).toISOString().replace(/[:.]/g, '-')}.${extensionFor(item)}`
   anchor.rel = 'noopener'
   anchor.click()
 }

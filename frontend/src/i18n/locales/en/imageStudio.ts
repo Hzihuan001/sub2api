@@ -1,7 +1,7 @@
 export default {
   imageStudio: {
     title: 'Image Studio',
-    description: 'Create and edit images with your own Sub2API key.',
+    description: 'Create and edit images with your own Moshu key.',
     openBatchImage: 'Batch images',
     apiKey: 'Image API key',
     selectKey: 'Select a key',
