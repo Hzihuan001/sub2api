@@ -32,7 +32,7 @@ func TestLateDiscoveredPlatformMigrationsKeepSuperset(t *testing.T) {
 	}
 
 	// These immutable migrations predate MiniMax (introduced in migration 237).
-	want := []string{"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "kiro", "openai", "zhipu"}
+	want := []string{"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kiro", "kimi", "openai", "zhipu"}
 	sort.Strings(want)
 
 	for _, tc := range tests {
