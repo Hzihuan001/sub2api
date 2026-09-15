@@ -730,7 +730,7 @@ export interface SystemSettings {
   available_channels_enabled: boolean;
 
   // Subscription feature switch (user sidebar "My Subscriptions" entry)
-  subscription_enabled: boolean;
+  subscription_enabled?: boolean;
 
   // Model Plaza feature switches + description
   model_plaza_enabled: boolean;

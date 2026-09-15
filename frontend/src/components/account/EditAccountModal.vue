@@ -2002,7 +2002,7 @@
               {{ t('admin.accounts.openai.wsModeDesc') }}
             </p>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t(openAIWSModeConcurrencyHintKey) }}
+              {{ t(openAIWSModeConcurrencyHintKey || '') }}
             </p>
           </div>
           <div class="w-52">

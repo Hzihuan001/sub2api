@@ -63,6 +63,8 @@ export const resolveOpenAIWSModeHintKey = (
   }
 }
 
+export const resolveOpenAIWSModeConcurrencyHintKey = resolveOpenAIWSModeHintKey
+
 export const resolveOpenAIWSModeFromExtra = (
   extra: Record<string, unknown> | null | undefined,
   options: ResolveOpenAIWSModeOptions
