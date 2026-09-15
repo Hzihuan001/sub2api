@@ -13,7 +13,7 @@ import (
 // Cursor 运行时代码已经移除，但已发布迁移必须保持不可变，约束继续接受历史 Cursor 行，
 // 避免升级时删除用户数据或触发 checksum mismatch。
 var expectedUserPlatformQuotaPlatforms = []string{
-	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "zhipu",
+	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "minimax", "opencode_go", "openai", "zhipu",
 }
 
 // TestUserPlatformQuotasRestoreKiroMigration 校验 227 号迁移把 224 漏掉的 kiro
@@ -80,3 +80,4 @@ func TestUserPlatformQuotaPlatformCheckFinalStateCoversAllPlatforms(t *testing.T
 		"migration %s 定义的平台列表与 service.AllowedQuotaPlatforms 不一致；"+
 			"重建 CHECK 约束时必须列出全部允许平台，漏项会让对应平台的配额行插入失败", last)
 }
+

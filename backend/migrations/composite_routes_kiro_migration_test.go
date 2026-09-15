@@ -12,7 +12,7 @@ import (
 // expectedCompositeRouteTargetPlatforms 是数据库约束允许的平台集合。
 // Cursor 运行时代码已经移除，但约束保留历史值以维持已发布迁移不可变并保护存量数据。
 var expectedCompositeRouteTargetPlatforms = []string{
-	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "zhipu",
+	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "minimax", "opencode_go", "openai", "zhipu",
 }
 
 const compositeRouteTargetPlatformConstraint = "composite_model_routes_target_platform_check"
@@ -81,3 +81,4 @@ func TestCompositeRouteTargetPlatformFinalStateCoversAllPlatforms(t *testing.T) 
 		"migration %s 定义的平台列表与 service.isConcreteRequestPlatform 不一致；"+
 			"重建 CHECK 约束时必须列出全部允许平台，漏项会让对应平台的 composite 路由无法保存", last)
 }
+
