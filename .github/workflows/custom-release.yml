@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.4-custom.5
+  CUSTOM_VERSION: 0.2.5-custom.1
 
 jobs:
   quality:
