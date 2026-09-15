@@ -107,6 +107,7 @@ export function emptyEventFilters(): PromptEventFilters {
     request_id: '',
     prompt_hash: '',
     keyword: '',
+    request_type: '',
     start_at: '',
     end_at: '',
   }
@@ -120,7 +121,7 @@ function toISO(value: string): string | undefined {
 
 export function eventQueryParams(filters: PromptEventFilters): Record<string, string | number> {
   const result: Record<string, string | number> = {}
-  for (const key of ['capture_mode', 'decision', 'risk_level', 'endpoint', 'request_id', 'prompt_hash', 'keyword'] as const) {
+  for (const key of ['capture_mode', 'decision', 'risk_level', 'endpoint', 'request_id', 'prompt_hash', 'keyword', 'request_type'] as const) {
     const value = filters[key].trim()
     if (value) result[key] = value
   }

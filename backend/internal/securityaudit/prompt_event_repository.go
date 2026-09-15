@@ -27,6 +27,7 @@ type EventFilter struct {
 	Keyword     string     `json:"keyword,omitempty"`
 	StartAt     *time.Time `json:"start_at,omitempty"`
 	EndAt       *time.Time `json:"end_at,omitempty"`
+	RequestType string     `json:"request_type,omitempty"`
 }
 
 type RecordingStats struct {
@@ -390,6 +391,7 @@ func canonicalEventFilter(filter EventFilter) EventFilter {
 	filter.RequestID = strings.TrimSpace(filter.RequestID)
 	filter.PromptHash = strings.ToLower(strings.TrimSpace(filter.PromptHash))
 	filter.Keyword = strings.TrimSpace(filter.Keyword)
+	filter.RequestType = strings.TrimSpace(filter.RequestType)
 	if filter.StartAt != nil {
 		value := filter.StartAt.UTC()
 		filter.StartAt = &value
@@ -435,6 +437,9 @@ func buildEventWhere(filter EventFilter, firstIndex int) (string, []any) {
 	}
 	if filter.PromptHash != "" {
 		add(" AND e.prompt_hash=$%d", filter.PromptHash)
+	}
+	if filter.RequestType != "" {
+		add(" AND COALESCE(e.snapshot->>'request_type', '')=$%d", filter.RequestType)
 	}
 	if filter.Keyword != "" {
 		add(` AND (e.request_id ILIKE $%d OR e.prompt_hash ILIKE $%d OR e.redacted_preview ILIKE $%d

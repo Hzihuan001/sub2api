@@ -397,6 +397,7 @@ func eventFilterFromQuery(c *gin.Context) (EventFilter, error) {
 		CaptureMode: c.Query("capture_mode"), Decision: c.Query("decision"), RiskLevel: c.Query("risk_level"), Endpoint: c.Query("endpoint"),
 		GroupID: groupID, UserID: userID, APIKeyID: apiKeyID, RequestID: c.Query("request_id"),
 		PromptHash: c.Query("prompt_hash"), Keyword: c.Query("keyword"),
+		RequestType: c.Query("request_type"),
 	}
 	if value := strings.TrimSpace(c.Query("start_at")); value != "" {
 		filter.StartAt = parseTimeQuery(value)

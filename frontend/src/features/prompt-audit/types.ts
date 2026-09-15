@@ -161,6 +161,7 @@ export interface PromptSnapshot {
   prompt_length: number
   message_count: number
   stage: string
+  request_type?: string
 }
 
 export interface PromptIssueSummary {
@@ -218,6 +219,7 @@ export interface PromptEventFilters {
   keyword: string
   start_at: string
   end_at: string
+  request_type: string
 }
 
 export interface PromptRecordingStats {

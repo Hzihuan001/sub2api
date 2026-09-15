@@ -94,7 +94,7 @@ export default {
       evidence: 'Redacted evidence',
       score: 'Score',
       categories: 'Categories', model: 'Model', stage: 'Request stage', noRisks: 'No derived risk summaries for this event.',
-      requestId: 'Request ID', promptHash: 'Prompt SHA-256',
+      requestId: 'Request ID', promptHash: 'Prompt SHA-256', requestType: 'Type', requestTypes: { sync: 'Sync', stream: 'Stream', ws_v2: 'WebSocket', live: 'Live', cyber: 'Security policy' },
       technical: {
         scanner: 'Scanner', policy: 'Policy', guardEndpoint: 'Guard endpoint', config: 'Config',
         chunks: 'Chunks', latency: 'Latency', protocol: 'Protocol',

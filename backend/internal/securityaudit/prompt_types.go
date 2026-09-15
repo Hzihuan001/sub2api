@@ -84,6 +84,7 @@ type Request struct {
 	Model      string
 	Body       []byte
 	Stage      string
+	RequestType string
 }
 
 func (r Request) Clone() Request {
@@ -114,6 +115,7 @@ type PromptSnapshot struct {
 	PromptLength       int    `json:"prompt_length"`
 	MessageCount       int    `json:"message_count"`
 	Stage              string `json:"stage"`
+	RequestType        string `json:"request_type,omitempty"`
 
 	ScanText string `json:"-"`
 }

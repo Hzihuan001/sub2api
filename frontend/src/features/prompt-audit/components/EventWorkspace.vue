@@ -58,6 +58,10 @@
           @change="filtersChanged"
         />
       </label>
+      <label class="text-xs text-gray-600 dark:text-dark-200">
+        <span>{{ t('admin.promptAudit.events.requestType') }}</span>
+        <Select v-model="localFilters.request_type" :options="requestTypeOptions" size="sm" class="mt-1" :aria-label="t('admin.promptAudit.events.requestType')" @change="filtersChanged" />
+      </label>
       <FilterInput v-model="localFilters.endpoint" :label="t('admin.promptAudit.events.endpoint')" @change="filtersChanged" />
       <div ref="userSearchRef" class="relative text-xs text-gray-600 dark:text-dark-200">
         <span>{{ t('admin.promptAudit.events.userAccount') }}</span>
@@ -223,6 +227,14 @@ const riskLevelOptions = computed(() => [
   { value: 'medium', label: t('admin.promptAudit.riskLevels.medium') },
   { value: 'high', label: t('admin.promptAudit.riskLevels.high') },
   { value: 'critical', label: t('admin.promptAudit.riskLevels.critical') },
+])
+const requestTypeOptions = computed(() => [
+  { value: '', label: t('common.all') },
+  { value: 'sync', label: t('admin.promptAudit.events.requestTypes.sync') },
+  { value: 'stream', label: t('admin.promptAudit.events.requestTypes.stream') },
+  { value: 'ws_v2', label: t('admin.promptAudit.events.requestTypes.ws_v2') },
+  { value: 'live', label: t('admin.promptAudit.events.requestTypes.live') },
+  { value: 'cyber', label: t('admin.promptAudit.events.requestTypes.cyber') },
 ])
 const groupOptions = computed(() => [
   { value: '', label: t('common.all') },

@@ -165,6 +165,11 @@ func buildSecurityAuditRequest(c *gin.Context, apiKey *service.APIKey, subject m
 		GroupName: legacy.GroupName, Provider: legacy.Provider, Endpoint: legacy.Endpoint,
 		Protocol: legacy.Protocol, Model: legacy.Model, Body: body, Stage: strings.TrimSpace(stage),
 	}
+	if value, ok := c.Get(opsRequestTypeKey); ok {
+		if requestType, ok := value.(int16); ok {
+			request.RequestType = service.RequestTypeFromInt16(requestType).String()
+		}
+	}
 	if apiKey != nil && apiKey.User != nil {
 		request.Username = apiKey.User.Username
 		if request.UserEmail == "" {
