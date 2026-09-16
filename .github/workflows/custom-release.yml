@@ -15,12 +15,34 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.5-custom.10
+  CUSTOM_VERSION: 0.2.5-custom.11
 
 jobs:
   quality:
     name: Full quality gate
     runs-on: ubuntu-latest
+    services:
+      prompt-audit-postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: prompt-audit-ci-only
+          POSTGRES_DB: prompt_audit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d prompt_audit_test"
+          --health-interval=5s --health-timeout=5s --health-retries=12
+      prompt-audit-redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=5s --health-retries=12
+    env:
+      PROMPT_AUDIT_TEST_POSTGRES_DSN: postgres://postgres:prompt-audit-ci-only@127.0.0.1:5432/prompt_audit_test?sslmode=disable
+      PROMPT_AUDIT_TEST_REDIS_ADDR: 127.0.0.1:6379
     steps:
       - uses: actions/checkout@v6
         with:
