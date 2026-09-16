@@ -32,7 +32,7 @@ func TestPromptRequestTypeQueryUsesBoundParameter(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "stream", filter.RequestType)
 	where, args := buildEventWhere(filter, 3)
-	require.Contains(t, where, "COALESCE(e.snapshot->>'request_type', '')=$3")
+	require.Contains(t, where, "COALESCE(e.request_type, '')=$3")
 	require.Equal(t, []any{"stream"}, args)
 
 	// Legacy records have no known request type; an unfiltered query includes them.
