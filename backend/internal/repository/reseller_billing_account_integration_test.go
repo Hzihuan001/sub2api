@@ -20,6 +20,9 @@ func TestResellerBillingAccountTransferPreservesOwnership(t *testing.T) {
 	db := integrationDB // Disposable integration container; services own their transactions.
 	suffix := uuid.NewString()
 	var oldUser, newUser, operator, groupID, tenantID, productID, keyID int64
+	t.Cleanup(func() {
+		cleanupResellerFixture(t, tenantID, groupID, oldUser, newUser, operator)
+	})
 	for _, item := range []struct {
 		role string
 		id   *int64
@@ -98,4 +101,24 @@ func TestResellerBillingAccountTransferPreservesOwnership(t *testing.T) {
 	_, err = db.ExecContext(ctx, `UPDATE api_keys SET user_id=$2 WHERE id=$1`, newKeyID, oldUser)
 	require.NoError(t, err)
 	require.ErrorIs(t, request(), reseller.ErrForbidden, "mismatched key ownership must be refused even when auth cache still has the reseller")
+}
+
+// These tests exercise services that commit their own transactions. Remove only
+// their fixtures, in foreign-key order, so subsequent repository suites are isolated.
+func cleanupResellerFixture(t *testing.T, tenantID, groupID int64, userIDs ...int64) {
+	t.Helper()
+	for _, query := range []string{
+		"DELETE FROM reseller_request_settlements WHERE reseller_id=$1",
+		"DELETE FROM reseller_request_reservations WHERE reseller_id=$1",
+		"DELETE FROM reseller_tenants WHERE id=$1",
+	} {
+		_, err := integrationDB.ExecContext(context.Background(), query, tenantID)
+		require.NoError(t, err, "clean reseller fixture")
+	}
+	for _, id := range userIDs {
+		_, err := integrationDB.ExecContext(context.Background(), "DELETE FROM users WHERE id=$1", id)
+		require.NoError(t, err, "clean reseller user and API keys")
+	}
+	_, err := integrationDB.ExecContext(context.Background(), "DELETE FROM groups WHERE id=$1", groupID)
+	require.NoError(t, err, "clean reseller group")
 }

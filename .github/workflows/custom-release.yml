@@ -79,13 +79,9 @@ jobs:
         working-directory: backend
         run: make test-unit
 
-      - name: Reseller repository integration tests
+      - name: Full backend integration tests
         working-directory: backend
-        run: go test -tags=integration ./internal/repository -run '^TestReseller'
-
-      - name: Critical request-path integration tests
-        working-directory: backend
-        run: go test -p=1 -tags=integration ./internal/handler/... ./internal/server/routes/... ./internal/service/... ./internal/securityaudit/... ./internal/reseller/... ./migrations/...
+        run: go test -p=1 -tags=integration ./...
 
       - name: Backend lint
         uses: golangci/golangci-lint-action@v9

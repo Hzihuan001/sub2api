@@ -15,12 +15,16 @@ func TestResellerCatalogRefreshesGroupChangesWithoutReauthorization(t *testing.T
 	ctx := context.Background()
 	db := integrationDB
 	suffix := uuid.NewString()
-	var userID, groupID int64
+	var userID, groupID, tenantID int64
+	t.Cleanup(func() {
+		cleanupResellerFixture(t, tenantID, groupID, userID)
+	})
 	require.NoError(t, db.QueryRow(`INSERT INTO users(email,password_hash,role,status) VALUES($1,'test','user','active') RETURNING id`, suffix+"@example.test").Scan(&userID))
 	require.NoError(t, db.QueryRow(`INSERT INTO groups(name,platform,rate_multiplier,model_allowlist) VALUES($1,'openai',1,'{"enabled":true,"models":["old-model"]}') RETURNING id`, suffix).Scan(&groupID))
 	sut := reseller.NewService(db, nil, nil)
 	tenant, err := sut.CreateTenant(ctx, userID, suffix, nil)
 	require.NoError(t, err)
+	tenantID = tenant.ID
 	product, err := sut.UpsertProduct(ctx, tenant.ID, groupID, "test", "Sales name", true)
 	require.NoError(t, err)
 	ungranted, err := sut.Catalog(ctx, tenant.ID)
