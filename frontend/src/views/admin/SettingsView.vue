@@ -6765,6 +6765,13 @@
                     />
                   </div>
 
+                  <div class="flex items-start justify-between gap-4 rounded-lg bg-gray-50 px-3 py-2.5 sm:col-span-2 dark:bg-dark-700/50">
+                    <div>
+                      <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.customMenu.hideOpenButton") }}</p>
+                    </div>
+                    <Toggle data-testid="custom-menu-hide-open-button" :model-value="item.hide_open_button === true" @update:model-value="(value: boolean) => (item.hide_open_button = value)" />
+                  </div>
+
                   <!-- SVG Icon (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -9676,6 +9683,7 @@ const form = reactive<SettingsForm>({
     url: string;
     page_slug?: string;
     pass_auth_context: boolean;
+    hide_open_button?: boolean;
     visibility: "user" | "admin";
     sort_order: number;
   }>,

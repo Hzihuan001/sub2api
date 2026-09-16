@@ -5,11 +5,6 @@ const platformOrder = new Map(
   GROUP_PLATFORM_OPTIONS.map((option, index) => [option.value, index])
 )
 
-const groupNameCollator = new Intl.Collator(['zh-CN', 'en'], {
-  numeric: true,
-  sensitivity: 'base'
-})
-
 /**
  * Keep API-key group selectors stable and easy to scan: platforms stay
  * together in the shared catalog order, then group names are sorted within
@@ -21,8 +16,6 @@ export function sortGroupsForKeySelection(groups: readonly Group[]): Group[] {
     const rightPlatform = platformOrder.get(right.platform) ?? Number.MAX_SAFE_INTEGER
     if (leftPlatform !== rightPlatform) return leftPlatform - rightPlatform
 
-    const byName = groupNameCollator.compare(left.name, right.name)
-    if (byName !== 0) return byName
     return left.id - right.id
   })
 }
