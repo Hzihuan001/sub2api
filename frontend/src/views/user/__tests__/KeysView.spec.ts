@@ -579,7 +579,8 @@ describe('user KeysView column settings', () => {
       await chooseProvider(wrapper, 'domestic')
       expect(optionIds(wrapper)).toEqual([3, 4, 5, 6])
       await chooseProvider(wrapper, 'other')
-      expect(optionIds(wrapper)).toEqual([7, 8, 9, 10, 11])
+      // The custom selector groups by platform catalog order, not creation time.
+      expect(optionIds(wrapper)).toEqual([7, 9, 8, 11, 10])
       expect(wrapper.findAllComponents({ name: 'Select' })[0].props('options')).toHaveLength(13)
     })
 

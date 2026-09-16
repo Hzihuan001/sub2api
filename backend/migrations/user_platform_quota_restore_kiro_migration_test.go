@@ -13,7 +13,7 @@ import (
 // Cursor 运行时代码已经移除，但已发布迁移必须保持不可变，约束继续接受历史 Cursor 行，
 // 避免升级时删除用户数据或触发 checksum mismatch。
 var expectedUserPlatformQuotaPlatforms = []string{
-	"anthropic", "antigravity", "deepseek", "gemini", "grok", "kimi", "minimax", "openai", "opencode_go", "zhipu",
+	"anthropic", "antigravity", "cursor", "deepseek", "gemini", "grok", "kimi", "kiro", "minimax", "openai", "opencode_go", "zhipu",
 }
 
 // TestUserPlatformQuotasRestoreKiroMigration 校验 227 号迁移把 224 漏掉的 kiro

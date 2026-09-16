@@ -15,6 +15,7 @@ type CustomMenuItem struct {
 	URL             string `json:"url"`
 	PageSlug        string `json:"page_slug,omitempty"`
 	PassAuthContext *bool  `json:"pass_auth_context,omitempty"`
+	HideOpenButton  bool   `json:"hide_open_button,omitempty"`
 	Visibility      string `json:"visibility"` // "user" or "admin"
 	SortOrder       int    `json:"sort_order"`
 }
@@ -28,7 +29,7 @@ type CustomEndpoint struct {
 
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
-	SubscriptionEnabled               bool                     `json:"subscription_enabled"`
+	SubscriptionEnabled                 bool                     `json:"subscription_enabled"`
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
@@ -354,8 +355,8 @@ type DefaultSubscriptionSetting struct {
 }
 
 type PublicSettings struct {
-	SubscriptionEnabled               bool                     `json:"subscription_enabled"`
-	PaymentBalanceDisabled            bool                     `json:"payment_balance_disabled"`
+	SubscriptionEnabled                 bool                     `json:"subscription_enabled"`
+	PaymentBalanceDisabled              bool                     `json:"payment_balance_disabled"`
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
 	ForceEmailOnThirdPartySignup        bool                     `json:"force_email_on_third_party_signup"`

@@ -6,6 +6,7 @@ import {
   draftFingerprint,
   emptyEventFilters,
   eventFilterPayload,
+  eventQueryParams,
   hasExplicitDeleteRange,
   SCANNER_CATALOG,
 } from '../viewModel'
@@ -38,6 +39,15 @@ const config = (): PromptAuditConfig => ({
 })
 
 describe('Prompt Audit view model', () => {
+  it('uses the same request type for list, export and bulk-delete filters', () => {
+    const filters = emptyEventFilters()
+    expect(eventQueryParams(filters)).not.toHaveProperty('request_type')
+    for (const kind of ['sync', 'stream', 'ws_v2', 'live', 'cyber']) {
+      filters.request_type = kind
+      expect(eventQueryParams(filters)).toMatchObject({ request_type: kind })
+      expect(eventFilterPayload(filters)).toMatchObject({ request_type: kind })
+    }
+  })
   it('normalizes legacy null collections from the public config', () => {
     const legacy = { ...config(), group_ids: null, scanners: null, endpoints: null } as unknown as PromptAuditConfig
     expect(configToDraft(legacy)).toMatchObject({ group_ids: [], scanners: [], endpoints: [] })

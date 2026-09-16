@@ -63,7 +63,7 @@ func ExtractLatestUserPromptSnapshot(req Request) (PromptSnapshot, error) {
 		GroupID: cloneInt64Ptr(req.GroupID), GroupName: req.GroupName, Provider: req.Provider,
 		Endpoint: req.Endpoint, Protocol: req.Protocol, Model: req.Model,
 		RequestType: req.RequestType,
-		PromptHash: hex.EncodeToString(digest[:]), RedactedPreview: BuildCaptureOnlyPreview(text, DefaultCaptureOnlyPreviewMaxRunes),
+		PromptHash:  hex.EncodeToString(digest[:]), RedactedPreview: BuildCaptureOnlyPreview(text, DefaultCaptureOnlyPreviewMaxRunes),
 		FullPrompt: BuildFullPrompt(text, DefaultFullPromptMaxRunes), PromptLength: utf8.RuneCountInString(text),
 		MessageCount: len(segments), Stage: stage, ScanText: text,
 	}, nil
@@ -101,7 +101,7 @@ func extractPromptSnapshot(req Request, latestTurnOnly bool) (PromptSnapshot, er
 		GroupID: cloneInt64Ptr(req.GroupID), GroupName: req.GroupName, Provider: req.Provider,
 		Endpoint: req.Endpoint, Protocol: req.Protocol, Model: req.Model,
 		RequestType: req.RequestType,
-		PromptHash: hex.EncodeToString(digest[:]), RedactedPreview: BuildPromptPreview(metadataText, DefaultPromptPreviewMaxRunes),
+		PromptHash:  hex.EncodeToString(digest[:]), RedactedPreview: BuildPromptPreview(metadataText, DefaultPromptPreviewMaxRunes),
 		FullPrompt:   BuildFullPrompt(metadataText, DefaultFullPromptMaxRunes),
 		PromptLength: utf8.RuneCountInString(metadataText), MessageCount: len(segments), Stage: stage,
 		ScanText: scanText,
