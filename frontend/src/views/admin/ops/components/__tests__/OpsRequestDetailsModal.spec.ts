@@ -14,6 +14,7 @@ vi.mock('@vueuse/core', () => ({ useMediaQuery: () => ref(viewport.desktop) }))
 vi.mock('@/api/admin/ops', () => ({ opsAPI: { listRequestDetails } }))
 vi.mock('@/api', () => ({ adminAPI: { groups: { getAll: vi.fn().mockResolvedValue([]) } } }))
 vi.mock('@/stores', () => ({
+  useAuthStore: () => ({ isAdmin: true }),
   useAppStore: () => ({ showError: vi.fn() }),
   useAdminSettingsStore: () => ({ opsRealtimeMonitoringEnabled: false }),
 }))

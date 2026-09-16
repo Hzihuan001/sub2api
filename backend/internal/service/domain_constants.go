@@ -51,9 +51,9 @@ const (
 	PlatformMiniMax  = domain.PlatformMiniMax
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
-	PlatformKiro      = domain.PlatformKiro
+	PlatformKiro       = domain.PlatformKiro
 	PlatformOpenCodeGo = domain.PlatformOpenCodeGo
-	PlatformComposite = domain.PlatformComposite
+	PlatformComposite  = domain.PlatformComposite
 )
 
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
@@ -81,20 +81,20 @@ const (
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
 	// MiniMax 按量付费与 Coding/Token Plan 共用推理域名，靠 API Key 区分套餐。
-	DefaultMiniMaxBaseURL = "https://api.minimaxi.com/v1"
-	DefaultOpenCodeGoBaseURL = "https://opencode.ai/zen/go/v1"
+	DefaultMiniMaxBaseURL     = "https://api.minimaxi.com/v1"
+	DefaultOpenCodeGoBaseURL  = "https://opencode.ai/zen/go/v1"
 	DefaultOpenCodeZenBaseURL = "https://opencode.ai/zen/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
-	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
-	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
-	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
-	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
-	DefaultMiniMaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
-	DefaultOpenCodeGoAnthropicBaseURL = "https://opencode.ai/zen/go"
+	DefaultKimiPayGAnthropicBaseURL    = "https://api.moonshot.cn/anthropic"
+	DefaultKimiCodingAnthropicBaseURL  = "https://api.kimi.com/coding"
+	DefaultZhipuAnthropicBaseURL       = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL    = "https://api.deepseek.com/anthropic"
+	DefaultMiniMaxAnthropicBaseURL     = "https://api.minimaxi.com/anthropic"
+	DefaultOpenCodeGoAnthropicBaseURL  = "https://opencode.ai/zen/go"
 	DefaultOpenCodeZenAnthropicBaseURL = "https://opencode.ai/zen"
 )
 
@@ -379,7 +379,7 @@ const (
 	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
 	SettingKeyCompactHomeEnabled          = "compact_home_enabled"          // 是否启用内置简洁首页
 	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮
-	SettingKeySubscriptionEnabled         = "subscription_enabled"         // 是否启用订阅功能
+	SettingKeySubscriptionEnabled         = "subscription_enabled"          // 是否启用订阅功能
 	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口
 	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作为 iframe src）
 	SettingKeyTableDefaultPageSize        = "table_default_page_size"       // 表格默认每页条数

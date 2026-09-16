@@ -81,4 +81,3 @@ func TestCompositeRouteTargetPlatformFinalStateCoversAllPlatforms(t *testing.T) 
 		"migration %s 定义的平台列表与 service.isConcreteRequestPlatform 不一致；"+
 			"重建 CHECK 约束时必须列出全部允许平台，漏项会让对应平台的 composite 路由无法保存", last)
 }
-

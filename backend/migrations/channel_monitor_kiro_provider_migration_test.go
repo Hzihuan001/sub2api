@@ -104,4 +104,3 @@ func TestChannelMonitorProviderCheckFinalStateCoversAllProviders(t *testing.T) {
 			last, constraint)
 	}
 }
-
