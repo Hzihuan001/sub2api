@@ -224,6 +224,24 @@ describe('Prompt Audit components', () => {
     expect(wrapper.text()).not.toContain('#9')
   })
 
+  it('offers usage-record request types and emits the selected type with the filters', async () => {
+    const wrapper = mount(EventWorkspace, {
+      props: { events: [], total: 0, page: 1, pageSize: 20, filters: emptyEventFilters(), groups: [], selectedIds: [], loading: false, error: '' },
+      global: { stubs: { Pagination: PaginationStub, Select: SelectStub } },
+    })
+    const select = wrapper.get('[aria-label="admin.promptAudit.events.requestType"]')
+    expect(select.findAll('option').map(option => option.attributes('value')))
+      .toEqual(['', 'sync', 'stream', 'ws_v2', 'live', 'cyber'])
+    await select.setValue('stream')
+    expect(wrapper.emitted('filters-change')?.at(-1)?.[0]).toMatchObject({ request_type: 'stream' })
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('search')?.at(-1)?.[0]).toMatchObject({ request_type: 'stream' })
+    await select.setValue('')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('search')?.at(-1)?.[0]).toMatchObject({ request_type: '' })
+    wrapper.unmount()
+  })
+
   it('resolves delete range presets to an epoch start and a cutoff end', () => {
     const now = Date.parse('2026-07-17T12:00:00.000Z')
     const sevenDays = resolveDeleteRangeFilters(emptyEventFilters(), '7d', now)

@@ -80,4 +80,3 @@ func TestUserPlatformQuotaPlatformCheckFinalStateCoversAllPlatforms(t *testing.T
 		"migration %s 定义的平台列表与 service.AllowedQuotaPlatforms 不一致；"+
 			"重建 CHECK 约束时必须列出全部允许平台，漏项会让对应平台的配额行插入失败", last)
 }
-
