@@ -140,6 +140,7 @@ deploy/docker-compose.override.yml
 vite.config.js
 docs/*
 !docs/RESELLER_RELIABILITY_20260907.md
+!docs/V0.2.5_RESELLER_ACCEPTANCE.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
