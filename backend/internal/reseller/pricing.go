@@ -25,6 +25,29 @@ type PricingCatalog struct {
 	Fallbacks  map[string]*service.ModelPricing           `json:"fallbacks"`
 }
 
+type PricingEnvelopeV2 struct {
+	Schema                  int             `json:"schema"`
+	DigestAlgorithm         string          `json:"digest_algorithm"`
+	Digest                  string          `json:"digest"`
+	BillingSemanticsVersion int             `json:"billing_semantics_version"`
+	RequiredCapabilities    []string        `json:"required_capabilities"`
+	Payload                 json.RawMessage `json:"payload"`
+}
+
+func buildPricingEnvelopeV2(prices *PricingCatalog) (*PricingEnvelopeV2, error) {
+	payload, err := json.Marshal(prices)
+	if err != nil {
+		return nil, err
+	}
+	digest := sha256.Sum256(payload)
+	return &PricingEnvelopeV2{
+		Schema: 2, DigestAlgorithm: "sha256", Digest: hex.EncodeToString(digest[:]),
+		BillingSemanticsVersion: 1,
+		RequiredCapabilities:    []string{"token_pricing", "cache_pricing", "media_pricing", "service_tier_pricing"},
+		Payload:                 payload,
+	}, nil
+}
+
 func NewServiceWithPricing(db *sql.DB, cfg *config.Config, apiKeys *service.APIKeyService, admin service.AdminService, channels *service.ChannelService, billing *service.BillingService) *Service {
 	s := NewService(db, cfg, apiKeys)
 	s.pricingAdmin, s.pricingChannels, s.pricingBilling = admin, channels, billing
@@ -91,14 +114,42 @@ func (h *Handler) Pricing(c *gin.Context) {
 		h.writeError(c, err)
 		return
 	}
-	etag := `"` + prices.Revision + `"`
+	schema := c.DefaultQuery("schema", "1")
+	if schema != "1" && schema != "2" {
+		response.BadRequest(c, "unsupported pricing schema")
+		return
+	}
+	var body any = prices
+	revision := prices.Revision
+	if schema == "2" {
+		envelope, marshalErr := buildPricingEnvelopeV2(prices)
+		if marshalErr != nil {
+			h.writeError(c, marshalErr)
+			return
+		}
+		revision = envelope.Digest
+		body = envelope
+	}
+	etag := `"v` + schema + `-` + revision + `"`
 	c.Header("Cache-Control", "private, no-cache")
 	c.Header("ETag", etag)
 	if c.GetHeader("If-None-Match") == etag {
 		c.Status(http.StatusNotModified)
 		return
 	}
-	response.Success(c, prices)
+	response.Success(c, body)
+}
+
+func (h *Handler) Capabilities(c *gin.Context) {
+	if _, ok := resellerIDFromContext(c); !ok {
+		return
+	}
+	c.Header("Cache-Control", "private, no-cache")
+	response.Success(c, ProtocolCapabilities{
+		ProtocolVersion: ProtocolVersion, PricingSchemas: []int{1, 2},
+		PricingDigestAlgorithm: "sha256", BillingSemanticsVersion: 1,
+		SettlementEvents: true,
+	})
 }
 
 // PricingChanges is a bounded authenticated long poll. L1 initiates the

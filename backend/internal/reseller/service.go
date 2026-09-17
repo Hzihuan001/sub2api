@@ -680,6 +680,12 @@ func (s *Service) BeginGatewayRequest(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
+	requestSource := strings.ToLower(strings.TrimSpace(c.GetHeader("X-Reseller-Request-Source")))
+	switch requestSource {
+	case "monitor", "account_test":
+	default:
+		requestSource = "user"
+	}
 	// Reject stale cached owners instead of charging another account. Never
 	// rewrite the authenticated user: billing, concurrency and usage share it.
 	if apiKey.UserID != billingUserID || apiKey.User == nil || apiKey.User.ID != billingUserID {
@@ -697,10 +703,10 @@ func (s *Service) BeginGatewayRequest(c *gin.Context) error {
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO reseller_request_reservations
 		(request_id,reseller_id,product_id,api_key_id,moshu_group_id,
-		 price_catalog_version,cost_rate_multiplier)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		 price_catalog_version,cost_rate_multiplier,request_source)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		ON CONFLICT (reseller_id,request_id) DO NOTHING`, requestUUID, resellerID,
-		productID, apiKey.ID, groupID, catalogVersion, costRateMultiplier)
+		productID, apiKey.ID, groupID, catalogVersion, costRateMultiplier, requestSource)
 	if err != nil {
 		return err
 	}
@@ -926,7 +932,7 @@ func buildCatalog(tenant Tenant, products []Product, now time.Time) Catalog {
 }
 
 const settlementSelect = `
-	SELECT rs.id,rs.request_id::text,rs.upstream_request_id,rs.product_id,
+	SELECT rs.id,rs.revision,rs.request_source,rs.request_id::text,rs.upstream_request_id,rs.product_id,
 	       rp.product_code,rp.display_name,rs.moshu_group_id,rs.requested_model,
 	       rs.upstream_model,rs.service_tier,rs.input_tokens,rs.output_tokens,
 	       rs.cache_creation_tokens,rs.cache_read_tokens,rs.image_count,
@@ -940,7 +946,7 @@ func scanSettlement(row scanner) (*Settlement, error) {
 	var item Settlement
 	var upstreamID, requestedModel, upstreamModel, tier, errorType sql.NullString
 	var completedAt sql.NullTime
-	if err := row.Scan(&item.ID, &item.RequestID, &upstreamID, &item.ProductID,
+	if err := row.Scan(&item.ID, &item.Revision, &item.RequestSource, &item.RequestID, &upstreamID, &item.ProductID,
 		&item.ProductCode, &item.DisplayName, &item.MoshuGroupID, &requestedModel,
 		&upstreamModel, &tier, &item.InputTokens, &item.OutputTokens,
 		&item.CacheCreationTokens, &item.CacheReadTokens, &item.ImageCount,

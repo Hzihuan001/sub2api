@@ -66,6 +66,8 @@ type Catalog struct {
 
 type Settlement struct {
 	ID                  int64      `json:"id"`
+	Revision            int64      `json:"revision"`
+	RequestSource       string     `json:"request_source"`
 	RequestID           string     `json:"request_id"`
 	UpstreamRequestID   *string    `json:"upstream_request_id,omitempty"`
 	ProductID           int64      `json:"product_id"`
@@ -117,4 +119,22 @@ type Balance struct {
 type ListSettlementsResult struct {
 	Items      []Settlement `json:"items"`
 	NextCursor int64        `json:"next_cursor,omitempty"`
+}
+
+type SettlementEvent struct {
+	EventID    int64      `json:"event_id"`
+	Revision   int64      `json:"revision"`
+	Settlement Settlement `json:"settlement"`
+}
+
+type SettlementEventPage struct {
+	Items []SettlementEvent `json:"items"`
+}
+
+type ProtocolCapabilities struct {
+	ProtocolVersion         string `json:"protocol_version"`
+	PricingSchemas          []int  `json:"pricing_schemas"`
+	PricingDigestAlgorithm  string `json:"pricing_digest_algorithm"`
+	BillingSemanticsVersion int    `json:"billing_semantics_version"`
+	SettlementEvents        bool   `json:"settlement_events"`
 }

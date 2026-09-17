@@ -13,12 +13,15 @@ func RegisterResellerRoutes(v1 *gin.RouterGroup, handler *reseller.Handler) {
 	authenticated := protocol.Group("")
 	authenticated.Use(handler.Auth())
 	{
+		authenticated.GET("/capabilities", handler.Capabilities)
 		authenticated.GET("/catalog", handler.Catalog)
 		authenticated.GET("/pricing", handler.Pricing)
 		authenticated.GET("/pricing/changes", handler.PricingChanges)
 		authenticated.POST("/credentials/rotate", handler.RotateCredential)
 		authenticated.GET("/settlements", handler.ListSettlements)
 		authenticated.GET("/settlements/:request_id", handler.GetSettlement)
+		authenticated.GET("/settlement-events", handler.ListSettlementEvents)
+		authenticated.POST("/settlement-events/ack", handler.AcknowledgeSettlementEvents)
 		authenticated.GET("/balance", handler.Balance)
 	}
 }

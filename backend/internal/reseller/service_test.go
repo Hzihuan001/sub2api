@@ -52,7 +52,7 @@ func TestBeginGatewayRequestRejectsDuplicateBeforeUpstream(t *testing.T) {
 			AddRow(int64(2), int64(3), int64(4), int64(5), float64(0.35), []byte(`[]`), int64(12), 10.0),
 	)
 	mock.ExpectExec("INSERT INTO reseller_request_reservations").
-		WithArgs(anyUUID{}, int64(2), int64(3), int64(7), int64(4), int64(5), float64(0.35)).
+		WithArgs(anyUUID{}, int64(2), int64(3), int64(7), int64(4), int64(5), float64(0.35), "user").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -95,7 +95,7 @@ func TestFailedGatewayRequestUsesReservedPricingSnapshot(t *testing.T) {
 			AddRow(int64(2), int64(3), int64(4), int64(5), float64(0.35), []byte(`[]`), int64(12), 10.0),
 	)
 	mock.ExpectExec("INSERT INTO reseller_request_reservations").
-		WithArgs(anyUUID{}, int64(2), int64(3), int64(7), int64(4), int64(5), float64(0.35)).
+		WithArgs(anyUUID{}, int64(2), int64(3), int64(7), int64(4), int64(5), float64(0.35), "user").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("INSERT INTO reseller_request_settlements").
 		WithArgs(anyUUID{}, int64(2), int64(3), int64(4), float64(0.35), int64(5), "http_502").
