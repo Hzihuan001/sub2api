@@ -13,10 +13,11 @@ import (
 type productSnapshotAdmin struct {
 	service.AdminService
 	models []string
+	err    error
 }
 
 func (a *productSnapshotAdmin) GetGroupModelsListCandidates(context.Context, int64, string) ([]string, error) {
-	return append([]string(nil), a.models...), nil
+	return append([]string(nil), a.models...), a.err
 }
 
 func TestRefreshProductSnapshotsUsesEffectiveBillingRate(t *testing.T) {
@@ -67,4 +68,68 @@ func TestResolveProductModelsSnapshotKeepsExplicitMainGroupAllowlist(t *testing.
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"kimi-k2.5"}, models)
+}
+
+func TestResolveProductModelsSnapshotExpandsAllowlistWithoutAdvertisingWildcards(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		raw        string
+		candidates []string
+		want       []string
+	}{
+		{
+			name:       "exact custom model absent from defaults",
+			raw:        `{"enabled":true,"models":["private-model"]}`,
+			candidates: []string{"kimi-k2.6"},
+			want:       []string{"private-model"},
+		},
+		{
+			name:       "wildcard expands defaults and concrete account mapping aliases",
+			raw:        `{"enabled":true,"models":["kimi-*","private-model","kimi-k2.6"]}`,
+			candidates: []string{"kimi-k2.6", "kimi-custom-alias", "deepseek-flash", "kimi-*", "*"},
+			want:       []string{"kimi-k2.6", "kimi-custom-alias", "private-model"},
+		},
+		{
+			name:       "unmatched wildcard yields empty catalogue",
+			raw:        `{"enabled":true,"models":["unavailable-*"]}`,
+			candidates: []string{"kimi-k2.6", "unavailable-*"},
+			want:       []string{},
+		},
+		{
+			name:       "global wildcard excludes mapping patterns",
+			raw:        `{"enabled":true,"models":["*"]}`,
+			candidates: []string{"kimi-k2.6", "kimi-custom-alias", "kimi-*", "*"},
+			want:       []string{"kimi-k2.6", "kimi-custom-alias"},
+		},
+		{
+			name:       "disabled allowlist still excludes mapping patterns",
+			raw:        `{"enabled":false,"models":["private-model"]}`,
+			candidates: []string{"kimi-k2.6", "kimi-*", "*"},
+			want:       []string{"kimi-k2.6"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewService(nil, nil, nil)
+			svc.pricingAdmin = &productSnapshotAdmin{models: tt.candidates}
+			models, err := svc.resolveProductModelsSnapshot(context.Background(), 7, service.PlatformKimi, []byte(tt.raw))
+			require.NoError(t, err)
+			require.Equal(t, tt.want, models)
+		})
+	}
+}
+
+func TestResolveProductModelsSnapshotWildcardWithoutCandidateProviderKeepsOnlyExplicitIDs(t *testing.T) {
+	svc := NewService(nil, nil, nil)
+	models, err := svc.resolveProductModelsSnapshot(context.Background(), 7, service.PlatformKimi,
+		[]byte(`{"enabled":true,"models":["kimi-*","private-model"]}`))
+	require.NoError(t, err)
+	require.Equal(t, []string{"private-model"}, models)
+}
+
+func TestResolveProductModelsSnapshotPropagatesWildcardCandidateFailure(t *testing.T) {
+	svc := NewService(nil, nil, nil)
+	svc.pricingAdmin = &productSnapshotAdmin{err: errors.New("candidate source unavailable")}
+	_, err := svc.resolveProductModelsSnapshot(context.Background(), 7, service.PlatformKimi,
+		[]byte(`{"enabled":true,"models":["kimi-*"]}`))
+	require.ErrorContains(t, err, "candidate source unavailable")
 }

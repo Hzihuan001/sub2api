@@ -103,7 +103,9 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		return candidates, nil
 	}
 
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, id)
+	// Configuration candidates must stay stable while an account is paused,
+	// rate-limited or temporarily unavailable.
+	accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", id, "")
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +114,7 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	for _, model := range candidates {
 		seen[model] = struct{}{}
 	}
+	extraModels := make([]string, 0)
 	for _, acc := range accounts {
 		if platform == PlatformComposite {
 			if !isConcreteRequestPlatform(acc.Platform) {
@@ -129,9 +132,11 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 				continue
 			}
 			seen[model] = struct{}{}
-			candidates = append(candidates, model)
+			extraModels = append(extraModels, model)
 		}
 	}
+	sort.Strings(extraModels)
+	candidates = append(candidates, extraModels...)
 	return candidates, nil
 }
 

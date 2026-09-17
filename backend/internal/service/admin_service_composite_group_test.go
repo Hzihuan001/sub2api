@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +15,11 @@ type accountRepoStubForCompositeModelsList struct {
 	accounts []Account
 }
 
-func (s *accountRepoStubForCompositeModelsList) ListSchedulableByGroupID(_ context.Context, _ int64) ([]Account, error) {
+func (s *accountRepoStubForCompositeModelsList) ListByGroup(_ context.Context, _ int64) ([]Account, error) {
+	return s.accounts, nil
+}
+
+func (s *accountRepoStubForCompositeModelsList) ListAllWithFilters(_ context.Context, _, _, _, _ string, _ int64, _ string) ([]Account, error) {
 	return s.accounts, nil
 }
 
@@ -213,4 +218,50 @@ func TestAdminService_CNProviderModelsListCandidatesUseNativeDefaults(t *testing
 			require.NotContains(t, model, "claude")
 		}
 	}
+}
+
+func TestAdminService_GroupModelsListCandidatesStableMappingOrder(t *testing.T) {
+	accountRepo := &accountRepoStubForCompositeModelsList{accounts: []Account{{
+		Platform: PlatformKimi,
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"custom-z": "kimi-k2", "custom-a": "kimi-k2", "custom-m": "kimi-k2",
+		}},
+	}}}
+	groupRepo := &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{77: {ID: 77, Platform: PlatformKimi}}}
+	svc := &adminServiceImpl{accountRepo: accountRepo, groupRepo: groupRepo}
+	want := append(DefaultCNProviderModelIDs(PlatformKimi), "custom-a", "custom-m", "custom-z")
+	for i := 0; i < 20; i++ {
+		models, err := svc.GetGroupModelsListCandidates(context.Background(), 77, "")
+		require.NoError(t, err)
+		require.Equal(t, want, models)
+	}
+}
+
+func TestAdminService_ModelsListCandidatesRetainUnavailableAccountMappings(t *testing.T) {
+	resetAt := time.Now().Add(time.Hour)
+	svc := &adminServiceImpl{
+		accountRepo: &accountRepoStubForCompositeModelsList{accounts: []Account{
+			{
+				ID: 1, Platform: PlatformDeepseek, Status: StatusDisabled, Schedulable: false,
+				Credentials: map[string]any{"model_mapping": map[string]any{"deepseek-custom-paused": "deepseek-flash"}},
+			},
+			{
+				ID: 2, Platform: PlatformDeepseek, Status: StatusActive, Schedulable: true, RateLimitResetAt: &resetAt,
+				Credentials: map[string]any{"model_mapping": map[string]any{"deepseek-custom-limited": "deepseek-flash"}},
+			},
+			{
+				ID: 3, Platform: PlatformKimi,
+				Credentials: map[string]any{"model_mapping": map[string]any{"kimi-other-group-platform": "kimi-k2.6"}},
+			},
+		}},
+		groupRepo: &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{
+			99: {ID: 99, Platform: PlatformDeepseek},
+		}},
+	}
+
+	models, err := svc.GetGroupModelsListCandidates(context.Background(), 99, PlatformDeepseek)
+	require.NoError(t, err)
+	require.Contains(t, models, "deepseek-custom-paused")
+	require.Contains(t, models, "deepseek-custom-limited")
+	require.NotContains(t, models, "kimi-other-group-platform")
 }

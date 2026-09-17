@@ -999,14 +999,35 @@ func extractModelsSnapshot(raw []byte) []string {
 
 func (s *Service) resolveProductModelsSnapshot(ctx context.Context, groupID int64, platform string, raw []byte) ([]string, error) {
 	models := extractModelsSnapshot(raw)
-	if modelAllowlistSnapshotEnabled(raw) || s.pricingAdmin == nil {
-		return models, nil
+	explicitModels := concreteProductModelIDs(models)
+	allowlistEnabled := modelAllowlistSnapshotEnabled(raw)
+	if (allowlistEnabled && len(explicitModels) == len(models)) || s.pricingAdmin == nil {
+		return explicitModels, nil
 	}
 	candidates, err := s.pricingAdmin.GetGroupModelsListCandidates(ctx, groupID, platform)
 	if err != nil {
 		return nil, err
 	}
-	return normalizeStrings(candidates), nil
+	candidates = concreteProductModelIDs(candidates)
+	if allowlistEnabled {
+		// Expand wildcard rules into known model IDs while retaining explicit
+		// custom IDs, including those absent from platform defaults. Wildcard
+		// mapping keys describe routing rules, not callable model IDs.
+		candidates = append(candidates, explicitModels...)
+		allowlist := service.GroupModelAllowlist{Enabled: true, Models: models}
+		return allowlist.FilterForListing(candidates), nil
+	}
+	return candidates, nil
+}
+
+func concreteProductModelIDs(models []string) []string {
+	result := make([]string, 0, len(models))
+	for _, model := range normalizeStrings(models) {
+		if !strings.Contains(model, "*") {
+			result = append(result, model)
+		}
+	}
+	return result
 }
 
 func modelAllowlistSnapshotEnabled(raw []byte) bool {
