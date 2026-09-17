@@ -259,17 +259,28 @@ func applyMoshuResellerRequestID(req *http.Request) {
 	if !isMoshuResellerRequest(req) {
 		return
 	}
-	requestID, _ := req.Context().Value(ctxkey.ClientRequestID).(string)
-	requestID = strings.TrimSpace(requestID)
-	if requestID == "" {
-		requestID, _ = req.Context().Value(ctxkey.RequestID).(string)
-		requestID = strings.TrimSpace(requestID)
+	requestID := ""
+	for _, candidate := range []string{
+		contextString(req.Context(), ctxkey.ClientRequestID),
+		contextString(req.Context(), ctxkey.RequestID),
+	} {
+		parsed, err := uuid.Parse(candidate)
+		if err == nil {
+			requestID = parsed.String()
+			break
+		}
 	}
 	if requestID == "" {
-		// Account tests/probes do not pass through gateway correlation middleware.
+		// Account tests, monitor probes and internal jobs may use non-UUID local
+		// correlation IDs. The reseller protocol requires a UUID reservation key.
 		requestID = uuid.NewString()
 	}
 	req.Header.Set(moshuResellerRequestIDHeader, requestID)
+}
+
+func contextString(ctx context.Context, key any) string {
+	value, _ := ctx.Value(key).(string)
+	return strings.TrimSpace(value)
 }
 
 func envFlagEnabled(name string) bool {
