@@ -34,7 +34,7 @@ func (s *Service) ListSettlementEvents(ctx context.Context, resellerID int64, li
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := &SettlementEventPage{Items: make([]SettlementEvent, 0, limit)}
 	for rows.Next() {
 		var event SettlementEvent
