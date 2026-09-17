@@ -161,4 +161,14 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		)
 		require.False(t, ok)
 	})
+
+	t.Run("238定制版与官方版校验值兼容", func(t *testing.T) {
+		const upstream = "6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2"
+		const custom = "facd00346c881c965080788f81718c22eaa7e89eee57a9c8e5a5de99ace73908"
+		require.True(t, isMigrationChecksumCompatible("238_opencode_go_platform.sql", custom, upstream))
+		require.True(t, isMigrationChecksumCompatible("238_opencode_go_platform.sql", upstream, custom))
+		require.False(t, isMigrationChecksumCompatible("238_opencode_go_platform.sql", "unknown", upstream))
+		require.False(t, isMigrationChecksumCompatible("238_opencode_go_platform.sql", custom, "unknown"))
+		require.False(t, isMigrationChecksumCompatible("238_purge_unlimited_user_platform_quotas.sql", custom, upstream))
+	})
 }

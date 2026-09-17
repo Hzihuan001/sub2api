@@ -98,6 +98,9 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	"218_group_audio_voice_pricing.sql":              newMigrationChecksumCompatibilityRule("40ee9f3a2af0e0a5e99dabc878fd0fe98be1011f26bcfcefcac7197f7081f0e7", "c2a5e5b4ffd6968ad1c10593289fbc11192cdea19fec3ed9bce3a84eff9a8351"),
 	// 237 was shipped with equivalent line-ending/content variants across L1 builds.
 	"237_add_minimax_platform.sql": newMigrationChecksumCompatibilityRule("2436aa33344279da9da78dc51ec544fda7dd4e4d8a3b437f2488a5747a282fd8", "f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b"),
+	// An earlier custom build applied the OpenCode migration with Kiro/Cursor
+	// retained in its checks. L1 embeds the upstream file; both are known builds.
+	"238_opencode_go_platform.sql": newMigrationChecksumCompatibilityRule("6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2", "facd00346c881c965080788f81718c22eaa7e89eee57a9c8e5a5de99ace73908"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。
