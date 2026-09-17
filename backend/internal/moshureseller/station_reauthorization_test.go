@@ -42,7 +42,7 @@ func TestReplacementEnrollmentPreservesStationAndRemapsChannel(t *testing.T) {
 			defer server.Close()
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			mock.ExpectQuery("SELECT base_url").WillReturnRows(connectionRows(server.URL))
 			mock.ExpectBegin()
 			mock.ExpectExec("INSERT INTO moshu_reseller_connections").WillReturnResult(sqlmock.NewResult(1, 1))
@@ -78,7 +78,7 @@ func TestReplacementEnrollmentPreservesStationAndRemapsChannel(t *testing.T) {
 func TestReplacementDoesNotMatchUnrelatedGroupByName(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
 	tx, err := db.Begin()
 	require.NoError(t, err)

@@ -198,6 +198,7 @@ func TestAccountHandlerGetAvailableModels_CNProvidersNeverFallBackToClaude(t *te
 			name:     "kimi uses reseller catalog snapshot",
 			platform: service.PlatformKimi,
 			extra: map[string]any{
+				"moshu_reseller_managed":                   true,
 				service.MoshuResellerModelSnapshotExtraKey: []any{"kimi-k2.6", "kimi-k2.5"},
 			},
 			mapping: map[string]any{"claude-sonnet-4-6": "kimi-k2.6"},
@@ -256,6 +257,81 @@ func TestAccountHandlerGetAvailableModels_CNProvidersNeverFallBackToClaude(t *te
 			require.Equal(t, tt.want, ids)
 		})
 	}
+}
+
+func TestAccountHandlerGetAvailableModels_ResellerSnapshotWinsAcrossPlatforms(t *testing.T) {
+	platforms := []string{
+		service.PlatformAnthropic, service.PlatformOpenAI, service.PlatformGemini,
+		service.PlatformAntigravity, service.PlatformGrok, service.PlatformKiro,
+		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
+		service.PlatformMiniMax, service.PlatformOpenCodeGo,
+	}
+	catalogs := []struct {
+		name string
+		raw  any
+		want []string
+	}{
+		{name: "synced catalog", raw: []any{" main-group-model ", "main-group-model", "second-model", ""}, want: []string{"main-group-model", "second-model"}},
+		{name: "empty catalog", raw: []any{}, want: []string{}},
+		{name: "null catalog", raw: nil, want: []string{}},
+	}
+	for _, platform := range platforms {
+		for _, catalog := range catalogs {
+			t.Run(platform+"/"+catalog.name, func(t *testing.T) {
+				svc := &availableModelsAdminService{
+					stubAdminService: newStubAdminService(),
+					account: service.Account{
+						ID: 150, Platform: platform, Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+						Credentials: map[string]any{"model_mapping": map[string]any{"stale-model": "upstream-model"}},
+						Extra: map[string]any{
+							"moshu_reseller_managed":                   true,
+							"openai_passthrough":                       true,
+							service.MoshuResellerModelSnapshotExtraKey: catalog.raw,
+						},
+					},
+				}
+				router := setupAvailableModelsRouter(svc)
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/150/models", nil))
+				require.Equal(t, http.StatusOK, rec.Code)
+				var resp struct {
+					Data []struct {
+						ID string `json:"id"`
+					} `json:"data"`
+				}
+				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+				require.NotNil(t, resp.Data, "empty catalogs must serialize as [], not null")
+				ids := make([]string, 0, len(resp.Data))
+				for _, model := range resp.Data {
+					ids = append(ids, model.ID)
+				}
+				require.Equal(t, catalog.want, ids)
+			})
+		}
+	}
+}
+
+func TestAccountHandlerGetAvailableModels_ResellerWithoutSnapshotUsesPlatformFallback(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID: 151, Platform: service.PlatformDeepseek, Type: service.AccountTypeAPIKey,
+			Status: service.StatusActive, Extra: map[string]any{"moshu_reseller_managed": true},
+			Credentials: map[string]any{"model_mapping": map[string]any{"custom-deepseek": "deepseek-v4-pro"}},
+		},
+	}
+	router := setupAvailableModelsRouter(svc)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/151/models", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "custom-deepseek", resp.Data[0].ID)
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t *testing.T) {

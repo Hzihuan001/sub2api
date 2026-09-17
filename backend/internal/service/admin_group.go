@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -101,21 +102,25 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		return candidates, nil
 	}
 
-	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, id)
+	// Management candidates describe configured capabilities, even when a
+	// linked upstream is paused, rate-limited or temporarily unhealthy.
+	accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", id, "")
 	if err != nil {
 		return nil, err
 	}
 
 	resellerModels := make([]string, 0)
+	hasResellerSnapshot := false
 	for _, acc := range accounts {
 		if platform != PlatformComposite && acc.Platform != platform {
 			continue
 		}
-		if acc.IsMoshuResellerManaged() {
+		if acc.IsMoshuResellerManaged() && acc.HasMoshuResellerModelSnapshot() {
+			hasResellerSnapshot = true
 			resellerModels = append(resellerModels, acc.GetMoshuResellerModelSnapshot()...)
 		}
 	}
-	if len(resellerModels) > 0 {
+	if hasResellerSnapshot {
 		candidates = normalizeModelCandidateIDs(resellerModels)
 	}
 
@@ -123,7 +128,11 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	for _, model := range candidates {
 		seen[model] = struct{}{}
 	}
+	extraModels := make([]string, 0)
 	for _, acc := range accounts {
+		if acc.IsMoshuResellerManaged() && acc.HasMoshuResellerModelSnapshot() {
+			continue
+		}
 		if platform == PlatformComposite {
 			if !isConcreteRequestPlatform(acc.Platform) {
 				continue
@@ -140,9 +149,11 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 				continue
 			}
 			seen[model] = struct{}{}
-			candidates = append(candidates, model)
+			extraModels = append(extraModels, model)
 		}
 	}
+	sort.Strings(extraModels)
+	candidates = append(candidates, extraModels...)
 	return candidates, nil
 }
 

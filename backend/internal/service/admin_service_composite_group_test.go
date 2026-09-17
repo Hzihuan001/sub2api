@@ -18,6 +18,14 @@ func (s *accountRepoStubForCompositeModelsList) ListSchedulableByGroupID(_ conte
 	return s.accounts, nil
 }
 
+func (s *accountRepoStubForCompositeModelsList) ListByGroup(_ context.Context, _ int64) ([]Account, error) {
+	return s.accounts, nil
+}
+
+func (s *accountRepoStubForCompositeModelsList) ListAllWithFilters(_ context.Context, _, _, _, _ string, _ int64, _ string) ([]Account, error) {
+	return s.accounts, nil
+}
+
 func TestAdminService_CreateCompositeGroupCopiesAccountsFromConcreteGroups(t *testing.T) {
 	var copiedFrom []int64
 	var boundGroupID int64
@@ -220,7 +228,7 @@ func TestAdminService_ResellerGroupCandidatesUseMainSiteSnapshot(t *testing.T) {
 		accounts: []Account{{
 			ID: 7, Platform: PlatformKimi, Type: AccountTypeAPIKey,
 			Extra: map[string]any{
-				"moshu_reseller_managed": true,
+				"moshu_reseller_managed":           true,
 				MoshuResellerModelSnapshotExtraKey: []any{"kimi-k2.6", "kimi-k2.5"},
 			},
 		}},
@@ -234,4 +242,19 @@ func TestAdminService_ResellerGroupCandidatesUseMainSiteSnapshot(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, []string{"kimi-k2.6", "kimi-k2.5"}, candidates)
+}
+
+func TestAdminService_ResellerGroupCandidatesKeepEmptySnapshotAndPausedAccounts(t *testing.T) {
+	for _, models := range [][]string{{}, {"deepseek-main-only"}} {
+		accountRepo := &accountRepoStubForCompositeModelsList{accounts: []Account{{
+			ID: 8, Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Status: StatusDisabled,
+			Credentials: map[string]any{"model_mapping": map[string]any{"claude-stale": "stale"}},
+			Extra:       map[string]any{"moshu_reseller_managed": true, MoshuResellerModelSnapshotExtraKey: models},
+		}}}
+		groupRepo := &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{78: {ID: 78, Platform: PlatformDeepseek}}}
+		svc := &adminServiceImpl{accountRepo: accountRepo, groupRepo: groupRepo}
+		candidates, err := svc.GetGroupModelsListCandidates(context.Background(), 78, "")
+		require.NoError(t, err)
+		require.Equal(t, models, candidates)
+	}
 }

@@ -20,7 +20,7 @@ func TestSyncSettlementsSurfacesReconciliationFailure(t *testing.T) {
 	defer server.Close()
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectQuery("SELECT base_url").WillReturnRows(sqlmock.NewRows([]string{"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh", "expiry", "etag", "version", "catalog_at", "settlement_at", "error"}).AddRow(server.URL, "instance", 1, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "etag", 1, nil, nil, nil))
 	mock.ExpectQuery("SELECT last_remote_id").WillReturnRows(sqlmock.NewRows([]string{"cursor"}).AddRow(10))
 	mock.ExpectExec("UPDATE moshu_settlement_cursors").WithArgs(int64(10)).WillReturnResult(sqlmock.NewResult(0, 1))

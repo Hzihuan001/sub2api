@@ -2779,6 +2779,14 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	// Reseller accounts use the main group's catalog for every platform. An
+	// explicitly empty snapshot must stay empty instead of advertising defaults
+	// or probing models outside that group's authorization.
+	if account.IsMoshuResellerManaged() && account.HasMoshuResellerModelSnapshot() {
+		response.Success(c, accountTestModelsFromIDs(account.Platform, account.GetMoshuResellerModelSnapshot()))
+		return
+	}
+
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
@@ -2929,8 +2937,8 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	// CN-provider accounts are OpenAI-compatible, but they are not Anthropic
 	// accounts. Falling through to the generic Claude branch made Kimi,
 	// DeepSeek, Zhipu and MiniMax test dialogs advertise only Claude models.
-	// Prefer the main-site reseller catalog snapshot, then an explicit account
-	// mapping, and finally a conservative platform-native catalog.
+	// Reseller snapshots have already been handled above. Other accounts use an
+	// explicit mapping and then a conservative platform-native catalog.
 	if account.IsCNProvider() {
 		response.Success(c, cnProviderAccountTestModels(account))
 		return
@@ -2978,19 +2986,19 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 }
 
 func cnProviderAccountTestModels(account *service.Account) []openai.Model {
-	modelIDs := resellerAccountModelSnapshot(account)
-	if len(modelIDs) == 0 {
-		mapping := account.GetModelMapping()
-		modelIDs = make([]string, 0, len(mapping))
-		for modelID := range mapping {
-			modelIDs = append(modelIDs, modelID)
-		}
-		sort.Strings(modelIDs)
+	mapping := account.GetModelMapping()
+	modelIDs := make([]string, 0, len(mapping))
+	for modelID := range mapping {
+		modelIDs = append(modelIDs, modelID)
 	}
+	sort.Strings(modelIDs)
 	if len(modelIDs) == 0 {
 		modelIDs = defaultCNProviderAccountTestModelIDs(account.Platform)
 	}
+	return accountTestModelsFromIDs(account.Platform, modelIDs)
+}
 
+func accountTestModelsFromIDs(platform string, modelIDs []string) []openai.Model {
 	seen := make(map[string]struct{}, len(modelIDs))
 	models := make([]openai.Model, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
@@ -3005,16 +3013,12 @@ func cnProviderAccountTestModels(account *service.Account) []openai.Model {
 		models = append(models, openai.Model{
 			ID:          modelID,
 			Object:      "model",
-			OwnedBy:     account.Platform,
+			OwnedBy:     platform,
 			Type:        "model",
 			DisplayName: modelID,
 		})
 	}
 	return models
-}
-
-func resellerAccountModelSnapshot(account *service.Account) []string {
-	return account.GetMoshuResellerModelSnapshot()
 }
 
 func defaultCNProviderAccountTestModelIDs(platform string) []string {

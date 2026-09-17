@@ -13,6 +13,24 @@ func (a *Account) IsMoshuResellerManaged() bool {
 	return managed
 }
 
+// HasMoshuResellerModelSnapshot distinguishes an explicit empty catalog from
+// an older account that has not received a catalog snapshot yet.
+func (a *Account) HasMoshuResellerModelSnapshot() bool {
+	if a == nil || a.Extra == nil {
+		return false
+	}
+	raw, exists := a.Extra[MoshuResellerModelSnapshotExtraKey]
+	if !exists {
+		return false
+	}
+	switch raw.(type) {
+	case nil, []string, []any:
+		return true
+	default:
+		return false
+	}
+}
+
 // GetMoshuResellerModelSnapshot returns the model candidates synchronized from
 // the main-site product catalog. The snapshot is metadata for management UIs
 // and account tests; the local group remains the routing authorization source.

@@ -85,3 +85,11 @@ func TestWithProductModelSnapshotUpdatesDisplayMetadataOnly(t *testing.T) {
 	require.False(t, changed)
 	require.Equal(t, extra, unchanged)
 }
+
+func TestWithProductModelSnapshotPersistsEmptyCatalog(t *testing.T) {
+	extra, changed := withProductModelSnapshot(nil, nil)
+	require.True(t, changed)
+	require.Equal(t, []string{}, extra[service.MoshuResellerModelSnapshotExtraKey])
+	_, changed = withProductModelSnapshot(extra, nil)
+	require.False(t, changed)
+}

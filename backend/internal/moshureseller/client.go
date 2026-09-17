@@ -116,7 +116,7 @@ func (c *protocolClient) doJSON(ctx context.Context, method, endpoint, token, et
 		}
 		reader = bytes.NewReader(payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader) //nolint:gosec // G704: upstream URL is configured by a super administrator, validated at enrollment; private Docker upstreams are intentional.
 	if err != nil {
 		return err
 	}
@@ -130,11 +130,11 @@ func (c *protocolClient) doJSON(ctx context.Context, method, endpoint, token, et
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Do(req) //nolint:gosec // G704: same trusted, administrator-configured reseller upstream as above.
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if inspect != nil {
 		inspect(resp)
 	}
@@ -150,7 +150,7 @@ func (c *protocolClient) doJSON(ctx context.Context, method, endpoint, token, et
 		return err
 	}
 	if int64(len(payload)) > limit {
-		return fmt.Errorf("Moshu response exceeds size limit")
+		return fmt.Errorf("moshu response exceeds size limit")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		message := fmt.Sprintf("主站请求失败（HTTP %d），请稍后重试", resp.StatusCode)

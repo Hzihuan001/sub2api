@@ -77,8 +77,9 @@ func withProductModelSnapshot(extra map[string]any, models []string) (map[string
 			normalized = append(normalized, model)
 		}
 	}
-	existing := resellerModelSnapshot(extra[service.MoshuResellerModelSnapshotExtraKey])
-	if slices.Equal(existing, normalized) {
+	raw, exists := extra[service.MoshuResellerModelSnapshotExtraKey]
+	existing := resellerModelSnapshot(raw)
+	if exists && slices.Equal(existing, normalized) {
 		return extra, false
 	}
 	updated := cloneMap(extra)
