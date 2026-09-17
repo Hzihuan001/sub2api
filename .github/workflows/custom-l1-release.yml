@@ -15,12 +15,34 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.4-l1.1
+  CUSTOM_VERSION: 0.2.5-l1.1
 
 jobs:
   quality:
-    name: Focused quality gate
+    name: Full quality gate
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: proxy-ci-only
+          POSTGRES_DB: proxy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d proxy_test"
+          --health-interval=5s --health-timeout=5s --health-retries=12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=5s --health-retries=12
+    env:
+      PROMPT_AUDIT_TEST_POSTGRES_DSN: postgres://postgres:proxy-ci-only@127.0.0.1:5432/proxy_test?sslmode=disable
+      PROMPT_AUDIT_TEST_REDIS_ADDR: 127.0.0.1:6379
     steps:
       - uses: actions/checkout@v6
         with:
@@ -43,24 +65,37 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
+      - name: Verify locked toolchain
+        run: |
+          go version | grep -q 'go1.27.0'
+          node --version | grep -q '^v20\.'
+          test "$(pnpm --version)" = '9.15.9'
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
-      - name: Backend reseller tests
+      - name: Backend unit tests
         working-directory: backend
-        run: |
-          go test ./internal/moshureseller ./internal/service
-          go test ./internal/handler/admin ./internal/server/routes
-          go test -tags=unit ./internal/service -run '^TestMoshuReseller'
-          go test ./internal/repository -run '^TestApplyMoshu'
+        run: make test-unit
 
-      - name: Frontend typecheck and locale tests
+      - name: Full backend integration tests
+        working-directory: backend
+        run: go test -p=1 -tags=integration ./...
+
+      - name: Backend lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13
+          args: --timeout=30m
+          working-directory: backend
+
+      - name: Frontend quality
         working-directory: frontend
         run: |
+          pnpm run lint:check
           pnpm run typecheck
-          pnpm exec vitest run src/components/admin/user/__tests__/UserCreateModal.spec.ts src/components/admin/user/__tests__/UserEditModal.spec.ts src/views/admin/__tests__/UsersView.spec.ts
-          pnpm exec vitest run src/i18n/__tests__/localeKeyCompleteness.spec.ts
+          pnpm run test:run
 
       - name: Frontend production build
         working-directory: frontend

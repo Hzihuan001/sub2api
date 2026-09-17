@@ -73,3 +73,15 @@ func TestApplyCatalogPreservesSalesAndRetriesOnlyChangedFields(t *testing.T) {
 	require.Equal(t, 5.0, *admin.account.RateMultiplier)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestWithProductModelSnapshotUpdatesDisplayMetadataOnly(t *testing.T) {
+	extra, changed := withProductModelSnapshot(map[string]any{"custom": "preserved"}, []string{" kimi-k2.6 ", "kimi-k2.5"})
+
+	require.True(t, changed)
+	require.Equal(t, "preserved", extra["custom"])
+	require.Equal(t, []string{"kimi-k2.6", "kimi-k2.5"}, extra[service.MoshuResellerModelSnapshotExtraKey])
+
+	unchanged, changed := withProductModelSnapshot(extra, []string{"kimi-k2.6", "kimi-k2.5"})
+	require.False(t, changed)
+	require.Equal(t, extra, unchanged)
+}

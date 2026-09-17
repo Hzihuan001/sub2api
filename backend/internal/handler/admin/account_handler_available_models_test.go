@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -183,6 +184,78 @@ func TestAccountHandlerGetAvailableModels_GrokDefaultsToXAIModelsWithoutMapping(
 	}
 	require.Contains(t, ids, "grok-4.3")
 	require.Contains(t, ids, "grok-build-0.1")
+}
+
+func TestAccountHandlerGetAvailableModels_CNProvidersNeverFallBackToClaude(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform string
+		extra    map[string]any
+		mapping  map[string]any
+		want     []string
+	}{
+		{
+			name:     "kimi uses reseller catalog snapshot",
+			platform: service.PlatformKimi,
+			extra: map[string]any{
+				service.MoshuResellerModelSnapshotExtraKey: []any{"kimi-k2.6", "kimi-k2.5"},
+			},
+			mapping: map[string]any{"claude-sonnet-4-6": "kimi-k2.6"},
+			want:    []string{"kimi-k2.6", "kimi-k2.5"},
+		},
+		{
+			name:     "deepseek uses explicit mapping without snapshot",
+			platform: service.PlatformDeepseek,
+			mapping:  map[string]any{"deepseek-custom": "deepseek-v4-pro"},
+			want:     []string{"deepseek-custom"},
+		},
+		{
+			name:     "kimi uses native defaults",
+			platform: service.PlatformKimi,
+			want:     service.DefaultCNProviderModelIDs(service.PlatformKimi),
+		},
+		{
+			name:     "deepseek uses native defaults",
+			platform: service.PlatformDeepseek,
+			want:     service.DefaultCNProviderModelIDs(service.PlatformDeepseek),
+		},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			credentials := map[string]any{"api_key": "test-key"}
+			if tt.mapping != nil {
+				credentials["model_mapping"] = tt.mapping
+			}
+			accountID := int64(100 + index)
+			svc := &availableModelsAdminService{
+				stubAdminService: newStubAdminService(),
+				account: service.Account{
+					ID: accountID, Name: tt.name, Platform: tt.platform,
+					Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+					Credentials: credentials, Extra: tt.extra,
+				},
+			}
+			router := setupAvailableModelsRouter(svc)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/admin/accounts/%d/models", accountID), nil)
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			var resp struct {
+				Data []struct {
+					ID string `json:"id"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+			ids := make([]string, 0, len(resp.Data))
+			for _, model := range resp.Data {
+				ids = append(ids, model.ID)
+				require.NotContains(t, strings.ToLower(model.ID), "claude")
+			}
+			require.Equal(t, tt.want, ids)
+		})
+	}
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t *testing.T) {

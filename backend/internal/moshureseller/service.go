@@ -558,6 +558,7 @@ func (s *Service) ensureProductAccount(ctx context.Context, id int64) (int64, er
 	extra := map[string]any{
 		"moshu_reseller_managed": true, "moshu_product_code": product.ProductCode,
 		"moshu_remote_product_id": product.RemoteProductID, "moshu_cost_read_only": true,
+		service.MoshuResellerModelSnapshotExtraKey: append([]string(nil), product.Models...),
 	}
 	extra, _ = withPassthroughExtra(extra, product.Platform, service.AccountTypeAPIKey)
 	groupIDs := []int64{}
@@ -935,6 +936,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 	extra := map[string]any{
 		"moshu_reseller_managed": true, "moshu_product_code": product.ProductCode,
 		"moshu_remote_product_id": product.RemoteProductID, "moshu_cost_read_only": true,
+		service.MoshuResellerModelSnapshotExtraKey: append([]string(nil), product.Models...),
 	}
 	extra, _ = withPassthroughExtra(extra, product.Platform, service.AccountTypeAPIKey)
 	groupIDs := []int64{groupID}

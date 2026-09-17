@@ -1545,6 +1545,7 @@ func (h *AccountHandler) Refresh(c *gin.Context) {
 
 	if warning == "missing_project_id_temporary" {
 		response.Success(c, gin.H{
+			"account": h.buildAccountResponseWithRuntime(c.Request.Context(), updatedAccount),
 			"message": "Token refreshed successfully, but project_id could not be retrieved (will retry automatically)",
 			"warning": "missing_project_id_temporary",
 		})
@@ -2925,6 +2926,16 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	// CN-provider accounts are OpenAI-compatible, but they are not Anthropic
+	// accounts. Falling through to the generic Claude branch made Kimi,
+	// DeepSeek, Zhipu and MiniMax test dialogs advertise only Claude models.
+	// Prefer the main-site reseller catalog snapshot, then an explicit account
+	// mapping, and finally a conservative platform-native catalog.
+	if account.IsCNProvider() {
+		response.Success(c, cnProviderAccountTestModels(account))
+		return
+	}
+
 	// Handle Claude/Anthropic accounts
 	// For OAuth and Setup-Token accounts: return default models
 	if account.IsOAuth() {
@@ -2964,6 +2975,50 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	}
 
 	response.Success(c, models)
+}
+
+func cnProviderAccountTestModels(account *service.Account) []openai.Model {
+	modelIDs := resellerAccountModelSnapshot(account)
+	if len(modelIDs) == 0 {
+		mapping := account.GetModelMapping()
+		modelIDs = make([]string, 0, len(mapping))
+		for modelID := range mapping {
+			modelIDs = append(modelIDs, modelID)
+		}
+		sort.Strings(modelIDs)
+	}
+	if len(modelIDs) == 0 {
+		modelIDs = defaultCNProviderAccountTestModelIDs(account.Platform)
+	}
+
+	seen := make(map[string]struct{}, len(modelIDs))
+	models := make([]openai.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			continue
+		}
+		if _, exists := seen[modelID]; exists {
+			continue
+		}
+		seen[modelID] = struct{}{}
+		models = append(models, openai.Model{
+			ID:          modelID,
+			Object:      "model",
+			OwnedBy:     account.Platform,
+			Type:        "model",
+			DisplayName: modelID,
+		})
+	}
+	return models
+}
+
+func resellerAccountModelSnapshot(account *service.Account) []string {
+	return account.GetMoshuResellerModelSnapshot()
+}
+
+func defaultCNProviderAccountTestModelIDs(platform string) []string {
+	return service.DefaultCNProviderModelIDs(platform)
 }
 
 // ProbeUpstreamModels fetches the live model IDs exposed by an account's
