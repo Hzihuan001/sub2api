@@ -37,6 +37,51 @@ func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
 	return router
 }
 
+func TestAccountHandlerGetAvailableModels_ResellerUsesMainCatalog(t *testing.T) {
+	for _, tt := range []struct {
+		platform string
+		models   []any
+	}{
+		{platform: service.PlatformKimi, models: []any{"kimi-k3", "kimi-k2.6"}},
+		{platform: service.PlatformDeepseek, models: []any{"deepseek-v4-pro", "deepseek-v4-flash"}},
+	} {
+		t.Run(tt.platform, func(t *testing.T) {
+			svc := &availableModelsAdminService{
+				stubAdminService: newStubAdminService(),
+				account: service.Account{
+					ID: 90, Platform: tt.platform, Type: service.AccountTypeAPIKey, Status: service.StatusActive,
+					Extra: map[string]any{
+						"moshu_reseller_managed":                   true,
+						service.MoshuResellerModelSnapshotExtraKey: tt.models,
+					},
+				},
+			}
+			rec := httptest.NewRecorder()
+			setupAvailableModelsRouter(svc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/90/models", nil))
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			var resp struct {
+				Data []struct {
+					ID string `json:"id"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+			ids := make([]string, 0, len(resp.Data))
+			for _, model := range resp.Data {
+				ids = append(ids, model.ID)
+			}
+			want := make([]string, 0, len(tt.models))
+			for _, model := range tt.models {
+				want = append(want, model.(string))
+			}
+			require.Equal(t, want, ids)
+			for _, id := range ids {
+				require.NotContains(t, strings.ToLower(id), "claude")
+			}
+		})
+	}
+}
+
 type syncUpstreamHTTPUpstream struct {
 	resp      *http.Response
 	responses []*http.Response

@@ -2778,6 +2778,17 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	// Accounts provisioned from the reseller catalog must advertise exactly the
+	// models authorized by their main-station group, regardless of platform.
+	if account.IsMoshuResellerManaged() && account.HasMoshuResellerModelSnapshot() {
+		models := make([]openai.Model, 0)
+		for _, modelID := range account.GetMoshuResellerModelSnapshot() {
+			models = append(models, openai.Model{ID: modelID, Object: "model", Type: "model", DisplayName: modelID})
+		}
+		response.Success(c, models)
+		return
+	}
+
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,

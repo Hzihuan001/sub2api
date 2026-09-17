@@ -106,11 +106,29 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		return nil, err
 	}
 
+	resellerModels := make([]string, 0)
+	hasResellerSnapshot := false
+	for _, account := range accounts {
+		if platform != PlatformComposite && account.Platform != platform {
+			continue
+		}
+		if account.IsMoshuResellerManaged() && account.HasMoshuResellerModelSnapshot() {
+			hasResellerSnapshot = true
+			resellerModels = append(resellerModels, account.GetMoshuResellerModelSnapshot()...)
+		}
+	}
+	if hasResellerSnapshot {
+		candidates = normalizeModelCandidateIDs(resellerModels)
+	}
+
 	seen := make(map[string]struct{}, len(candidates))
 	for _, model := range candidates {
 		seen[model] = struct{}{}
 	}
 	for _, acc := range accounts {
+		if acc.IsMoshuResellerManaged() && acc.HasMoshuResellerModelSnapshot() {
+			continue
+		}
 		if platform == PlatformComposite {
 			if !isConcreteRequestPlatform(acc.Platform) {
 				continue
@@ -131,6 +149,23 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		}
 	}
 	return candidates, nil
+}
+
+func normalizeModelCandidateIDs(models []string) []string {
+	seen := make(map[string]struct{}, len(models))
+	result := make([]string, 0, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if _, exists := seen[model]; exists {
+			continue
+		}
+		seen[model] = struct{}{}
+		result = append(result, model)
+	}
+	return result
 }
 
 func (s *adminServiceImpl) ListCompositeRoutes(ctx context.Context, groupID int64) ([]CompositeModelRoute, error) {

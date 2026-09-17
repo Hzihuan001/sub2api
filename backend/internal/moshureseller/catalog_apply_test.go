@@ -32,6 +32,7 @@ func (a *catalogAdmin) UpdateAccount(_ context.Context, _ int64, input *service.
 	require.False(a.t, hasMapping)
 	require.Equal(a.t, true, input.Extra["openai_passthrough"])
 	require.Equal(a.t, "preserved", input.Extra["custom"])
+	require.Equal(a.t, []string{}, input.Extra[service.MoshuResellerModelSnapshotExtraKey])
 	require.Equal(a.t, a.account.Status, input.Status)
 	require.Equal(a.t, a.account.GroupIDs, *input.GroupIDs)
 	a.account.RateMultiplier = input.RateMultiplier
@@ -72,4 +73,15 @@ func TestApplyCatalogPreservesSalesAndRetriesOnlyChangedFields(t *testing.T) {
 	require.Equal(t, []string{"old-model"}, admin.group.ModelAllowlist.Models)
 	require.Equal(t, 5.0, *admin.account.RateMultiplier)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestWithProductModelSnapshot(t *testing.T) {
+	extra, changed := withProductModelSnapshot(map[string]any{"custom": "preserved"}, []string{" kimi-k3 ", "kimi-k2.6"})
+	require.True(t, changed)
+	require.Equal(t, "preserved", extra["custom"])
+	require.Equal(t, []string{"kimi-k3", "kimi-k2.6"}, extra[service.MoshuResellerModelSnapshotExtraKey])
+
+	unchanged, changed := withProductModelSnapshot(extra, []string{"kimi-k3", "kimi-k2.6"})
+	require.False(t, changed)
+	require.Equal(t, extra, unchanged)
 }

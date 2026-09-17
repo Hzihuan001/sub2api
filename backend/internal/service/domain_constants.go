@@ -55,6 +55,10 @@ const (
 	PlatformKiro = "kiro"
 )
 
+// MoshuResellerModelSnapshotExtraKey stores the model catalog synchronized
+// from the main station for a reseller-managed account.
+const MoshuResellerModelSnapshotExtraKey = "moshu_reseller_model_snapshot"
+
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
 const (
 	AccountModePayG   = domain.AccountModePayG

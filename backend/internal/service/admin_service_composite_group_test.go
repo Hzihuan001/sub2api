@@ -217,3 +217,37 @@ func TestAdminService_CNProviderModelsListCandidatesKeepClaudeDefaults(t *testin
 		require.Equal(t, want, defaultModelsListCandidateIDs(platform), "platform=%s", platform)
 	}
 }
+
+func TestAdminService_ResellerGroupCandidatesUseMainCatalog(t *testing.T) {
+	for _, tt := range []struct {
+		platform string
+		models   []any
+	}{
+		{platform: PlatformKimi, models: []any{"kimi-k3", "kimi-k2.6"}},
+		{platform: PlatformDeepseek, models: []any{"deepseek-v4-pro", "deepseek-v4-flash"}},
+	} {
+		t.Run(tt.platform, func(t *testing.T) {
+			accountRepo := &accountRepoStubForCompositeModelsList{accounts: []Account{{
+				ID: 7, Platform: tt.platform, Type: AccountTypeAPIKey,
+				Extra: map[string]any{
+					"moshu_reseller_managed":           true,
+					MoshuResellerModelSnapshotExtraKey: tt.models,
+				},
+			}}}
+			groupRepo := &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{11: {ID: 11, Platform: tt.platform}}}
+			svc := &adminServiceImpl{accountRepo: accountRepo, groupRepo: groupRepo}
+
+			candidates, err := svc.GetGroupModelsListCandidates(context.Background(), 11, tt.platform)
+
+			require.NoError(t, err)
+			want := make([]string, 0, len(tt.models))
+			for _, model := range tt.models {
+				want = append(want, model.(string))
+			}
+			require.Equal(t, want, candidates)
+			for _, model := range candidates {
+				require.NotContains(t, model, "claude")
+			}
+		})
+	}
+}
