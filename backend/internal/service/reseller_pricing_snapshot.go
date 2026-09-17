@@ -175,6 +175,17 @@ type ResellerPricingCalculator struct {
 }
 
 func CompileResellerPricing(source *ResellerPricingSnapshot, localGroupID int64, cfg *config.Config) (*ResellerPricingCalculator, error) {
+	return compileResellerPricing(source, localGroupID, cfg, true)
+}
+
+// CompileValidatedResellerPricing compiles a snapshot from a schema-2 payload
+// whose exact raw bytes have already passed the envelope digest check. It keeps
+// structural and numeric validation, but does not re-marshal the nested value.
+func CompileValidatedResellerPricing(source *ResellerPricingSnapshot, localGroupID int64, cfg *config.Config) (*ResellerPricingCalculator, error) {
+	return compileResellerPricing(source, localGroupID, cfg, false)
+}
+
+func compileResellerPricing(source *ResellerPricingSnapshot, localGroupID int64, cfg *config.Config, verifyRevision bool) (*ResellerPricingCalculator, error) {
 	if source == nil || source.Schema != 1 || localGroupID <= 0 {
 		return nil, fmt.Errorf("unsupported reseller pricing snapshot")
 	}
@@ -182,9 +193,11 @@ func CompileResellerPricing(source *ResellerPricingSnapshot, localGroupID int64,
 	if err != nil {
 		return nil, err
 	}
-	revision, err := detached.contentRevision()
-	if err != nil || revision != detached.Revision || len(revision) != 64 {
-		return nil, fmt.Errorf("reseller pricing revision mismatch")
+	if verifyRevision {
+		revision, revisionErr := detached.contentRevision()
+		if revisionErr != nil || revision != detached.Revision || len(revision) != 64 {
+			return nil, fmt.Errorf("reseller pricing revision mismatch")
+		}
 	}
 	if math.IsNaN(detached.CostRate) || math.IsInf(detached.CostRate, 0) || detached.CostRate < 0 {
 		return nil, fmt.Errorf("invalid reseller cost rate")

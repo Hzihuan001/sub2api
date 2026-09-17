@@ -94,6 +94,12 @@ func (c *protocolClient) balance(ctx context.Context, baseURL, token string) (*B
 	return &result, err
 }
 
+func (c *protocolClient) capabilities(ctx context.Context, baseURL, token string) (*RemoteCapabilities, error) {
+	var result RemoteCapabilities
+	err := c.doJSON(ctx, http.MethodGet, baseURL+"/api/v1/reseller/v1/capabilities", token, "", nil, &result, nil)
+	return &result, err
+}
+
 func (c *protocolClient) rotate(ctx context.Context, baseURL, token string, productID int64) (*RemoteCredential, error) {
 	var result RemoteCredential
 	err := c.doJSON(ctx, http.MethodPost, baseURL+"/api/v1/reseller/v1/credentials/rotate", token, "", map[string]any{"product_id": productID}, &result, nil)
@@ -107,7 +113,21 @@ func (c *protocolClient) settlements(ctx context.Context, baseURL, token string,
 	return &result, err
 }
 
+func (c *protocolClient) settlementEvents(ctx context.Context, baseURL, token string) (*RemoteSettlementEventPage, error) {
+	var result RemoteSettlementEventPage
+	err := c.doJSON(ctx, http.MethodGet, baseURL+"/api/v1/reseller/v1/settlement-events?limit=500", token, "", nil, &result, nil)
+	return &result, err
+}
+
+func (c *protocolClient) acknowledgeSettlementEvents(ctx context.Context, baseURL, token string, eventIDs []int64) error {
+	return c.doJSON(ctx, http.MethodPost, baseURL+"/api/v1/reseller/v1/settlement-events/ack", token, "", map[string]any{"event_ids": eventIDs}, nil, nil)
+}
+
 func (c *protocolClient) doJSON(ctx context.Context, method, endpoint, token, etag string, body any, out any, inspect func(*http.Response)) error {
+	return c.doJSONWithRawData(ctx, method, endpoint, token, etag, body, out, inspect, nil)
+}
+
+func (c *protocolClient) doJSONWithRawData(ctx context.Context, method, endpoint, token, etag string, body any, out any, inspect func(*http.Response), rawData *[]byte) error {
 	var reader io.Reader
 	if body != nil {
 		payload, err := json.Marshal(body)
@@ -166,6 +186,9 @@ func (c *protocolClient) doJSON(ctx context.Context, method, endpoint, token, et
 	}
 	if envelope.Code != 0 {
 		return &upstreamRequestError{Status: http.StatusBadGateway, Message: "主站拒绝了授权请求，请检查授权码和代理商状态"}
+	}
+	if rawData != nil {
+		*rawData = append((*rawData)[:0], envelope.Data...)
 	}
 	if out != nil && len(envelope.Data) > 0 {
 		if err := json.Unmarshal(envelope.Data, out); err != nil {

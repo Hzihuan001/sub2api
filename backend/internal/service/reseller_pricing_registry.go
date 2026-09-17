@@ -11,6 +11,7 @@ import (
 
 type resellerPricingSet struct {
 	groups      map[int64]*ResellerPricingCalculator
+	accounts    map[int64]*ResellerPricingCalculator
 	unavailable bool
 }
 
@@ -37,11 +38,19 @@ func ResellerPricingNeedsSync() bool {
 // ReplaceResellerPricing publishes an entire generation in one atomic swap.
 // A nil entry marks a managed group whose valid price has not arrived yet.
 func ReplaceResellerPricing(groups map[int64]*ResellerPricingCalculator) {
+	ReplaceResellerPricingWithAccounts(groups, nil)
+}
+
+func ReplaceResellerPricingWithAccounts(groups, accounts map[int64]*ResellerPricingCalculator) {
 	copy := make(map[int64]*ResellerPricingCalculator, len(groups))
 	for id, calculator := range groups {
 		copy[id] = calculator
 	}
-	activeResellerPrices.Store(&resellerPricingSet{groups: copy})
+	accountCopy := make(map[int64]*ResellerPricingCalculator, len(accounts))
+	for id, calculator := range accounts {
+		accountCopy[id] = calculator
+	}
+	activeResellerPrices.Store(&resellerPricingSet{groups: copy, accounts: accountCopy})
 }
 
 // PinResellerPricing only reads memory and returns a request-owned API key copy.
@@ -68,8 +77,38 @@ func PinResellerPricing(key *APIKey) (*APIKey, error) {
 	group := *key.Group
 	copy.Group = &group
 	copy.Group.resellerPricing = calculator
+	copy.Group.resellerPricingAccounts = set.accounts
 	copy.Group.resellerPricingAt = time.Now()
 	return &copy, nil
+}
+
+// PinResellerPricingForAccount selects the upstream product pricing after the
+// scheduler has chosen the account that actually served this request.
+func PinResellerPricingForAccount(key *APIKey, accountID int64) *APIKey {
+	if key == nil || key.Group == nil || accountID <= 0 {
+		return key
+	}
+	accounts := key.Group.resellerPricingAccounts
+	if accounts == nil {
+		set := activeResellerPrices.Load()
+		if set == nil || set.unavailable {
+			return key
+		}
+		accounts = set.accounts
+	}
+	calculator := accounts[accountID]
+	if calculator == nil {
+		return key
+	}
+	copy := *key
+	group := *key.Group
+	group.resellerPricing = calculator
+	group.resellerPricingAccounts = accounts
+	if group.resellerPricingAt.IsZero() {
+		group.resellerPricingAt = time.Now()
+	}
+	copy.Group = &group
+	return &copy
 }
 
 func resellerPricingFromContext(ctx context.Context) *ResellerPricingCalculator {

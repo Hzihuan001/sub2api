@@ -19,11 +19,25 @@ func TestApplyMoshuResellerRequestIDScopesHeaderToConfiguredOrigin(t *testing.T)
 	if got := req.Header.Get(moshuResellerRequestIDHeader); got != requestID {
 		t.Fatalf("header = %q, want %q", got, requestID)
 	}
+	if got := req.Header.Get(moshuResellerRequestSourceHeader); got != "user" {
+		t.Fatalf("source = %q, want user", got)
+	}
 
 	external, _ := http.NewRequestWithContext(req.Context(), http.MethodPost, "https://other.example/v1/messages", nil)
 	applyMoshuResellerRequestID(external)
 	if got := external.Header.Get(moshuResellerRequestIDHeader); got != "" {
 		t.Fatalf("external upstream received private reseller header %q", got)
+	}
+}
+
+func TestApplyMoshuResellerRequestIDUsesExplicitAccountTestSource(t *testing.T) {
+	t.Setenv("MOSHU_RESELLER_CLIENT_ENABLED", "true")
+	t.Setenv("MOSHU_RESELLER_URL", "https://main.example")
+	ctx := context.WithValue(context.Background(), ctxkey.ResellerRequestSource, "account_test")
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://main.example/v1/chat/completions", nil)
+	applyMoshuResellerRequestID(req)
+	if got := req.Header.Get(moshuResellerRequestSourceHeader); got != "account_test" {
+		t.Fatalf("source = %q, want account_test", got)
 	}
 }
 
@@ -40,6 +54,9 @@ func TestApplyMoshuResellerRequestIDMonitorUsesValidFallbackUUID(t *testing.T) {
 	if got := req.Header.Get(moshuResellerRequestIDHeader); got != requestID {
 		t.Fatalf("header = %q, want fallback UUID %q", got, requestID)
 	}
+	if got := req.Header.Get(moshuResellerRequestSourceHeader); got != "monitor" {
+		t.Fatalf("source = %q, want monitor", got)
+	}
 }
 
 func TestApplyMoshuResellerRequestIDMonitorGeneratesUUIDWhenContextIDsInvalid(t *testing.T) {
@@ -53,6 +70,9 @@ func TestApplyMoshuResellerRequestIDMonitorGeneratesUUIDWhenContextIDsInvalid(t 
 
 	if _, err := uuid.Parse(req.Header.Get(moshuResellerRequestIDHeader)); err != nil {
 		t.Fatalf("header is not a UUID: %v", err)
+	}
+	if got := req.Header.Get(moshuResellerRequestSourceHeader); got != "monitor" {
+		t.Fatalf("source = %q, want monitor", got)
 	}
 }
 

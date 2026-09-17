@@ -243,6 +243,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 }
 
 const moshuResellerRequestIDHeader = "X-Reseller-Request-ID"
+const moshuResellerRequestSourceHeader = "X-Reseller-Request-Source"
 
 func isMoshuResellerRequest(req *http.Request) bool {
 	if req == nil || req.URL == nil || !envFlagEnabled("MOSHU_RESELLER_CLIENT_ENABLED") {
@@ -260,8 +261,18 @@ func applyMoshuResellerRequestID(req *http.Request) {
 		return
 	}
 	requestID := ""
+	source := strings.ToLower(strings.TrimSpace(contextString(req.Context(), ctxkey.ResellerRequestSource)))
+	if source != "monitor" && source != "account_test" {
+		source = "user"
+	}
+	clientID := contextString(req.Context(), ctxkey.ClientRequestID)
+	if source == "user" && strings.HasPrefix(strings.ToLower(clientID), "channel-monitor:") {
+		source = "monitor"
+	} else if source == "user" && strings.HasPrefix(strings.ToLower(clientID), "account-test:") {
+		source = "account_test"
+	}
 	for _, candidate := range []string{
-		contextString(req.Context(), ctxkey.ClientRequestID),
+		clientID,
 		contextString(req.Context(), ctxkey.RequestID),
 	} {
 		parsed, err := uuid.Parse(candidate)
@@ -274,8 +285,12 @@ func applyMoshuResellerRequestID(req *http.Request) {
 		// Account tests, monitor probes and internal jobs may use non-UUID local
 		// correlation IDs. The reseller protocol requires a UUID reservation key.
 		requestID = uuid.NewString()
+		if source == "user" && clientID == "" {
+			source = "account_test"
+		}
 	}
 	req.Header.Set(moshuResellerRequestIDHeader, requestID)
+	req.Header.Set(moshuResellerRequestSourceHeader, source)
 }
 
 func contextString(ctx context.Context, key any) string {

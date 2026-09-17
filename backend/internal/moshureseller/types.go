@@ -13,6 +13,16 @@ type Connection struct {
 	LastCatalogSyncAt    *time.Time `json:"last_catalog_sync_at,omitempty"`
 	LastSettlementSyncAt *time.Time `json:"last_settlement_sync_at,omitempty"`
 	LastError            string     `json:"last_error,omitempty"`
+	AuthSync             SyncDomain `json:"auth_sync"`
+	CatalogSync          SyncDomain `json:"catalog_sync"`
+	PricingSync          SyncDomain `json:"pricing_sync"`
+	SettlementSync       SyncDomain `json:"settlement_sync"`
+}
+
+type SyncDomain struct {
+	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
+	LastErrorAt   *time.Time `json:"last_error_at,omitempty"`
+	LastError     string     `json:"last_error,omitempty"`
 }
 
 type Product struct {
@@ -99,6 +109,8 @@ type EnrollmentExchange struct {
 
 type RemoteSettlement struct {
 	ID                  int64      `json:"id"`
+	Revision            int64      `json:"revision"`
+	RequestSource       string     `json:"request_source"`
 	RequestID           string     `json:"request_id"`
 	ProductID           int64      `json:"product_id"`
 	ProductCode         string     `json:"product_code"`
@@ -111,6 +123,24 @@ type RemoteSettlement struct {
 	PriceCatalogVersion int64      `json:"price_catalog_version"`
 	Status              string     `json:"status"`
 	CompletedAt         *time.Time `json:"completed_at"`
+}
+
+type RemoteSettlementEvent struct {
+	EventID    int64            `json:"event_id"`
+	Revision   int64            `json:"revision"`
+	Settlement RemoteSettlement `json:"settlement"`
+}
+
+type RemoteSettlementEventPage struct {
+	Items []RemoteSettlementEvent `json:"items"`
+}
+
+type RemoteCapabilities struct {
+	ProtocolVersion         string `json:"protocol_version"`
+	PricingSchemas          []int  `json:"pricing_schemas"`
+	PricingDigestAlgorithm  string `json:"pricing_digest_algorithm"`
+	BillingSemanticsVersion int    `json:"billing_semantics_version"`
+	SettlementEvents        bool   `json:"settlement_events"`
 }
 
 type RemoteSettlementPage struct {

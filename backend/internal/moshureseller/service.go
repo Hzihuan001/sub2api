@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -65,6 +66,7 @@ func (s *Service) status(ctx context.Context, reconcile bool) (*Status, error) {
 		return nil, err
 	}
 	result.Connection = &connection.Connection
+	s.loadSyncDomains(ctx, result.Connection)
 	result.Connected = connection.Status == "active" || connection.Status == "error"
 	if reconcile && s.admin != nil {
 		if err := s.reconcileSelectedProducts(ctx); err != nil {
@@ -285,12 +287,15 @@ func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 	}()
 	connection, token, err := s.authenticatedConnection(ctx)
 	if err != nil {
+		s.recordSyncDomainFailure(context.Background(), "auth", err)
 		return nil, err
 	}
+	s.recordSyncDomainSuccess(ctx, "auth")
 	var runID int64
 	defer func() {
 		if syncErr != nil {
 			s.recordSyncFailure(ctx, runID, syncErr)
+			s.recordSyncDomainFailure(context.Background(), "catalog", syncErr)
 		}
 	}()
 	_ = s.db.QueryRowContext(ctx, `INSERT INTO moshu_catalog_sync_runs(status,from_version) VALUES('running',$1) RETURNING id`, connection.CatalogVersion).Scan(&runID)
@@ -310,6 +315,7 @@ func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 			return nil, err
 		}
 		_, _ = s.db.ExecContext(ctx, `UPDATE moshu_reseller_connections SET status='active',last_catalog_sync_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=1`)
+		s.recordSyncDomainSuccess(ctx, "catalog")
 		_, _ = s.db.ExecContext(ctx, `UPDATE moshu_catalog_sync_runs SET status='succeeded',to_version=$2,completed_at=NOW() WHERE id=$1`, runID, connection.CatalogVersion)
 		return s.status(ctx, false)
 	}
@@ -340,6 +346,7 @@ func (s *Service) SyncCatalog(ctx context.Context) (_ *Status, syncErr error) {
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.recordSyncDomainSuccess(ctx, "catalog")
 	if err := s.disableRevokedProducts(ctx); err != nil {
 		return nil, err
 	}
@@ -618,11 +625,33 @@ func (s *Service) SyncSettlements(ctx context.Context) (synced int, syncErr erro
 	defer func() {
 		if syncErr != nil {
 			s.recordSyncFailure(ctx, 0, syncErr)
+			s.recordSyncDomainFailure(context.Background(), "settlement", syncErr)
 		}
 	}()
 	connection, token, err := s.authenticatedConnection(ctx)
 	if err != nil {
+		s.recordSyncDomainFailure(context.Background(), "auth", err)
 		return 0, err
+	}
+	s.recordSyncDomainSuccess(ctx, "auth")
+	capabilities, capabilityErr := s.client.capabilities(ctx, connection.BaseURL, token)
+	if capabilityErr == nil && capabilities.SettlementEvents {
+		total, eventErr := s.syncSettlementEvents(ctx, connection, token)
+		if eventErr != nil {
+			return total, eventErr
+		}
+		if err := s.reconcilePendingProfits(ctx); err != nil {
+			return total, fmt.Errorf("reconcile pending profits: %w", err)
+		}
+		s.recordSyncDomainSuccess(ctx, "settlement")
+		_, _ = s.db.ExecContext(ctx, `UPDATE moshu_reseller_connections SET status='active',last_settlement_sync_at=NOW(),updated_at=NOW() WHERE id=1`)
+		return total, nil
+	}
+	if capabilityErr != nil {
+		var upstreamErr *upstreamRequestError
+		if !errors.As(capabilityErr, &upstreamErr) || upstreamErr.Status != http.StatusNotFound {
+			return 0, capabilityErr
+		}
 	}
 	var cursor int64
 	if err := s.db.QueryRowContext(ctx, `SELECT last_remote_id FROM moshu_settlement_cursors WHERE id=1`).Scan(&cursor); err != nil {
@@ -657,7 +686,47 @@ func (s *Service) SyncSettlements(ctx context.Context) (synced int, syncErr erro
 	if _, err := s.db.ExecContext(ctx, `UPDATE moshu_reseller_connections SET status='active',last_settlement_sync_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=1`); err != nil {
 		return total, err
 	}
+	s.recordSyncDomainSuccess(ctx, "settlement")
 	return total, nil
+}
+
+func (s *Service) syncSettlementEvents(ctx context.Context, connection *storedConnection, token string) (int, error) {
+	total := 0
+	for {
+		page, err := s.client.settlementEvents(ctx, connection.BaseURL, token)
+		if err != nil {
+			return total, err
+		}
+		if len(page.Items) == 0 {
+			return total, nil
+		}
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return total, err
+		}
+		eventIDs := make([]int64, 0, len(page.Items))
+		for _, event := range page.Items {
+			settlement := event.Settlement
+			if settlement.Revision < event.Revision {
+				settlement.Revision = event.Revision
+			}
+			if err := s.persistSettlementWithDB(ctx, tx, settlement); err != nil {
+				_ = tx.Rollback()
+				return total, err
+			}
+			eventIDs = append(eventIDs, event.EventID)
+		}
+		if err := tx.Commit(); err != nil {
+			return total, err
+		}
+		if err := s.client.acknowledgeSettlementEvents(ctx, connection.BaseURL, token, eventIDs); err != nil {
+			return total, err
+		}
+		total += len(eventIDs)
+		if len(eventIDs) < 500 {
+			return total, nil
+		}
+	}
 }
 
 func (s *Service) ListProfits(ctx context.Context, page, pageSize int) ([]ProfitRecord, int64, error) {
@@ -1032,39 +1101,73 @@ func (s *Service) disableRevokedProducts(ctx context.Context) error {
 }
 
 func (s *Service) persistSettlement(ctx context.Context, settlement RemoteSettlement) error {
+	return s.persistSettlementWithDB(ctx, s.db, settlement)
+}
+
+type settlementDB interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (s *Service) persistSettlementWithDB(ctx context.Context, db settlementDB, settlement RemoteSettlement) error {
 	var localGroupID, usageLogID sql.NullInt64
-	var salesMultiplier, customerCharge sql.NullFloat64
-	err := s.db.QueryRowContext(ctx, `
-		SELECT mp.local_group_id,mp.sales_rate_multiplier,ul.id,ul.actual_cost
+	var salesMultiplier, customerCharge, estimatedCost sql.NullFloat64
+	err := db.QueryRowContext(ctx, `
+		SELECT mp.local_group_id,mp.sales_rate_multiplier,ul.id,ul.actual_cost,ul.account_stats_cost
 		FROM moshu_products mp
 		LEFT JOIN usage_logs ul ON ul.request_id::text IN (
 			$2::text,'client:'::text || $2::text,'local:'::text || $2::text
 		)
 		WHERE mp.remote_product_id=$1 ORDER BY ul.id DESC NULLS LAST LIMIT 1`, settlement.ProductID, settlement.RequestID).
-		Scan(&localGroupID, &salesMultiplier, &usageLogID, &customerCharge)
+		Scan(&localGroupID, &salesMultiplier, &usageLogID, &customerCharge, &estimatedCost)
 	if err != nil {
 		return err
 	}
 	charge := customerCharge.Float64
 	grossProfit := charge - settlement.ActualCost
-	_, err = s.db.ExecContext(ctx, `
+	revision := settlement.Revision
+	if revision <= 0 {
+		revision = 1
+	}
+	source := strings.TrimSpace(settlement.RequestSource)
+	if source == "" {
+		source = "user"
+	}
+	result, err := db.ExecContext(ctx, `
 		INSERT INTO moshu_request_profit_records
 		(remote_settlement_id,request_id,remote_product_id,product_code,local_group_id,
 		 local_usage_log_id,requested_model,upstream_model,service_tier,standard_cost,
 		 moshu_cost_rate_multiplier,moshu_actual_cost,l1_sales_rate_multiplier,
-		 l1_customer_charge,gross_profit,price_catalog_version,settlement_status,remote_completed_at)
-		VALUES($1,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+		 l1_customer_charge,gross_profit,price_catalog_version,settlement_status,remote_completed_at,
+		 remote_revision,estimated_cost,cost_difference,request_source,settlement_confirmed)
+		VALUES($1,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,TRUE)
 		ON CONFLICT(remote_settlement_id) DO UPDATE SET
 		 local_group_id=EXCLUDED.local_group_id,local_usage_log_id=EXCLUDED.local_usage_log_id,
 		 l1_sales_rate_multiplier=EXCLUDED.l1_sales_rate_multiplier,
-		 l1_customer_charge=EXCLUDED.l1_customer_charge,gross_profit=EXCLUDED.gross_profit,
+		 l1_customer_charge=EXCLUDED.l1_customer_charge,moshu_actual_cost=EXCLUDED.moshu_actual_cost,
+		 standard_cost=EXCLUDED.standard_cost,moshu_cost_rate_multiplier=EXCLUDED.moshu_cost_rate_multiplier,
+		 gross_profit=EXCLUDED.gross_profit,price_catalog_version=EXCLUDED.price_catalog_version,
 		 settlement_status=EXCLUDED.settlement_status,remote_completed_at=EXCLUDED.remote_completed_at,
-		 updated_at=NOW()`, settlement.ID, settlement.RequestID, settlement.ProductID,
+		 remote_revision=EXCLUDED.remote_revision,estimated_cost=EXCLUDED.estimated_cost,
+		 cost_difference=EXCLUDED.cost_difference,request_source=EXCLUDED.request_source,
+		 settlement_confirmed=TRUE,updated_at=NOW()
+		 WHERE moshu_request_profit_records.remote_revision <= EXCLUDED.remote_revision`, settlement.ID, settlement.RequestID, settlement.ProductID,
 		settlement.ProductCode, nullableInt64(localGroupID), nullableInt64(usageLogID),
 		settlement.RequestedModel, settlement.UpstreamModel, settlement.ServiceTier,
 		settlement.StandardCost, settlement.CostRateMultiplier, settlement.ActualCost,
 		salesMultiplier.Float64, charge, grossProfit, settlement.PriceCatalogVersion,
-		settlement.Status, settlement.CompletedAt)
+		settlement.Status, settlement.CompletedAt, revision, estimatedCost.Float64,
+		settlement.ActualCost-estimatedCost.Float64, source)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed == 0 || !usageLogID.Valid {
+		return err
+	}
+	// Final upstream cost replaces only the administrator-facing cost estimate.
+	// User actual_cost, balance, subscription and quota accounting are immutable.
+	_, err = db.ExecContext(ctx, `UPDATE usage_logs SET account_stats_cost=$1 WHERE id=$2`, settlement.ActualCost, usageLogID.Int64)
 	return err
 }
 

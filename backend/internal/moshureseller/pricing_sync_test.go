@@ -39,6 +39,22 @@ func sealTestCatalog(t *testing.T, catalog *remotePricingCatalog) {
 	catalog.Revision = hex.EncodeToString(hash[:])
 }
 
+func TestValidatePricingEnvelopeV2UsesRawPayloadAndRejectsUnknownSemantics(t *testing.T) {
+	payload := json.RawMessage(`{"schema":1,"reseller_id":3,"revision":"opaque","products":{},"defaults":{},"fallbacks":{}}`)
+	hash := sha256.Sum256(payload)
+	envelope := &remotePricingEnvelopeV2{
+		Schema: 2, DigestAlgorithm: "sha256", Digest: hex.EncodeToString(hash[:]),
+		BillingSemanticsVersion: 1, RequiredCapabilities: []string{"token_pricing", "cache_pricing"}, Payload: payload,
+	}
+	require.NoError(t, validatePricingEnvelopeV2(envelope))
+
+	envelope.Payload = append(append(json.RawMessage(nil), payload...), ' ')
+	require.ErrorContains(t, validatePricingEnvelopeV2(envelope), "digest")
+	envelope.Payload = payload
+	envelope.RequiredCapabilities = append(envelope.RequiredCapabilities, "future_unpriced_feature")
+	require.ErrorContains(t, validatePricingEnvelopeV2(envelope), "unsupported pricing capability")
+}
+
 func TestCompilePricingCatalogRestoresAndScopesProducts(t *testing.T) {
 	catalog, connection, products := pricingFixture(t)
 	compiled, err := compilePricingCatalog(catalog, connection, products)
@@ -121,6 +137,10 @@ func TestSyncPricingPublishesOnlyAfterDurableCommit(t *testing.T) {
 			sealTestCatalog(t, catalog)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				require.Equal(t, "Bearer access", r.Header.Get("Authorization"))
+				if r.URL.Path == "/api/v1/reseller/v1/capabilities" {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
 				require.Equal(t, "/api/v1/reseller/v1/pricing", r.URL.Path)
 				require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": catalog}))
 			}))
@@ -131,6 +151,7 @@ func TestSyncPricingPublishesOnlyAfterDurableCommit(t *testing.T) {
 			mock.ExpectQuery("SELECT base_url").WillReturnRows(sqlmock.NewRows([]string{"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh", "expiry", "etag", "version", "catalog_at", "settlement_at", "error"}).AddRow(server.URL, "00000000-0000-0000-0000-000000000001", 3, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "", 1, nil, nil, nil))
 			mock.ExpectQuery("SELECT id,remote_product_id").WillReturnRows(pricingRows(true, 1.7, 10, 20))
 			mock.ExpectQuery("SELECT revision").WillReturnError(sql.ErrNoRows)
+			mock.ExpectQuery("SELECT group_id FROM account_groups").WithArgs(int64(20)).WillReturnRows(sqlmock.NewRows([]string{"group_id"}).AddRow(10))
 			mock.ExpectBegin()
 			write := mock.ExpectExec("INSERT INTO moshu_pricing_history")
 			if failWrite {
@@ -179,10 +200,28 @@ func TestSyncPricingOutageKeepsLastValidGeneration(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	mock.ExpectQuery("SELECT base_url").WillReturnRows(sqlmock.NewRows([]string{"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh", "expiry", "etag", "version", "catalog_at", "settlement_at", "error"}).AddRow(server.URL, "00000000-0000-0000-0000-000000000001", 3, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "", 1, nil, nil, nil))
 	mock.ExpectQuery("SELECT id,remote_product_id").WillReturnRows(pricingRows(true, 1.7, 7, 20))
-	mock.ExpectQuery("SELECT revision").WillReturnRows(sqlmock.NewRows([]string{"revision"}).AddRow(catalog.Revision))
 	require.Error(t, NewService(db, testEncryptor{}, nil).SyncPricing(context.Background()))
 	key, err := service.PinResellerPricing(&service.APIKey{Group: &service.Group{ID: 7}})
 	require.NoError(t, err)
 	require.NotNil(t, key)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestLoadPricingSchemaReadsExactProtocolSlot(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	resellerID := int64(3)
+	connection := &storedConnection{Connection: Connection{
+		BaseURL: "https://main.example", InstanceID: "00000000-0000-0000-0000-000000000001", ResellerID: &resellerID,
+	}}
+	mock.ExpectQuery(`FROM moshu_pricing_snapshots[\s\S]+AND id=\$4`).
+		WithArgs(connection.BaseURL, resellerID, connection.InstanceID, 2).
+		WillReturnRows(sqlmock.NewRows([]string{"payload", "schema", "revision", "algorithm", "raw", "semantics"}).
+			AddRow([]byte(`{"schema":1}`), 2, "not-the-digest", "sha256", []byte(`{"schema":1}`), 1))
+
+	_, err = NewService(db, testEncryptor{}, nil).loadPricingSchema(context.Background(), connection, nil, 2)
+	require.ErrorContains(t, err, "digest mismatch")
 	require.NoError(t, mock.ExpectationsWereMet())
 }

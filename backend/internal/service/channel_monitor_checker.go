@@ -539,6 +539,7 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Reseller-Request-Source", "monitor")
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

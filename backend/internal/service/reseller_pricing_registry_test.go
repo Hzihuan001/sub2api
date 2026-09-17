@@ -49,6 +49,41 @@ func TestResellerPricingPinnedAcrossUpdatesAndLegacyFallback(t *testing.T) {
 	require.Same(t, manual, got)
 }
 
+func TestResellerPricingPinsActualUpstreamAccount(t *testing.T) {
+	defer ReplaceResellerPricing(nil)
+	cfg := &config.Config{}
+	billing := NewBillingService(cfg, nil)
+	groupSnapshot, err := billing.ExportResellerPricing(&Group{Platform: "openai"}, nil, 0.2)
+	require.NoError(t, err)
+	accountSnapshot, err := billing.ExportResellerPricing(&Group{Platform: "openai"}, nil, 0.4)
+	require.NoError(t, err)
+	groupPricing, err := CompileResellerPricing(groupSnapshot, 7, cfg)
+	require.NoError(t, err)
+	accountPricing, err := CompileResellerPricing(accountSnapshot, 7, cfg)
+	require.NoError(t, err)
+	ReplaceResellerPricingWithAccounts(
+		map[int64]*ResellerPricingCalculator{7: groupPricing},
+		map[int64]*ResellerPricingCalculator{99: accountPricing},
+	)
+
+	requestKey, err := PinResellerPricing(&APIKey{Group: &Group{ID: 7, Platform: "openai"}})
+	require.NoError(t, err)
+	pinnedAt := requestKey.Group.resellerPricingAt
+	selected := PinResellerPricingForAccount(requestKey, 99)
+	require.NotSame(t, requestKey, selected)
+	require.Equal(t, 0.4, selected.Group.resellerPricing.CostRate())
+	require.Equal(t, pinnedAt, selected.Group.resellerPricingAt)
+	require.Same(t, requestKey, PinResellerPricingForAccount(requestKey, 100))
+
+	newerSnapshot, err := billing.ExportResellerPricing(&Group{Platform: "openai"}, nil, 0.9)
+	require.NoError(t, err)
+	newer, err := CompileResellerPricing(newerSnapshot, 7, cfg)
+	require.NoError(t, err)
+	ReplaceResellerPricingWithAccounts(map[int64]*ResellerPricingCalculator{7: newer}, map[int64]*ResellerPricingCalculator{99: newer})
+	stillPinned := PinResellerPricingForAccount(requestKey, 99)
+	require.Equal(t, 0.4, stillPinned.Group.resellerPricing.CostRate(), "in-flight request must keep one pricing generation")
+}
+
 func TestResellerMediaCostUsesPinnedGroupAndDefaultPrices(t *testing.T) {
 	defer ReplaceResellerPricing(nil)
 	cfg := &config.Config{}

@@ -63,6 +63,23 @@ func TestProtocolClientCatalogHonorsETagAndNotModified(t *testing.T) {
 	require.Equal(t, `W/"3"`, etag)
 }
 
+func TestProtocolClientPreservesRawResponseData(t *testing.T) {
+	raw := []byte(`{"schema": 1, "revision": "exact-bytes"}`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(append(append([]byte(`{"code":0,"data":`), raw...), '}'))
+	}))
+	defer server.Close()
+
+	client := newProtocolClient()
+	var decoded map[string]any
+	var retained []byte
+	err := client.doJSONWithRawData(context.Background(), http.MethodGet, server.URL, "", "", nil, &decoded, nil, &retained)
+	require.NoError(t, err)
+	require.Equal(t, raw, retained)
+	require.Equal(t, "exact-bytes", decoded["revision"])
+}
+
 func TestProtocolClientBalanceUsesScopedResellerEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodGet, r.Method)
