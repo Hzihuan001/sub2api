@@ -108,6 +108,24 @@ func IsCNProvider(platform string) bool {
 	}
 }
 
+// DefaultCNProviderModelIDs returns conservative native model candidates for
+// the built-in OpenAI-compatible providers. These IDs are used by management
+// selectors only; they do not authorize routing by themselves.
+func DefaultCNProviderModelIDs(platform string) []string {
+	switch platform {
+	case PlatformKimi:
+		return []string{"kimi-k3", "k3-256k", "kimi-k2.6", "kimi-for-coding", "kimi-k2.5", "kimi-k2-thinking", "kimi-k2"}
+	case PlatformZhipu:
+		return []string{"glm-5.3", "glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7"}
+	case PlatformDeepseek:
+		return []string{"deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp", "deepseek-flash"}
+	case PlatformMiniMax:
+		return []string{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5", "MiniMax-M2.5-highspeed"}
+	default:
+		return nil
+	}
+}
+
 func IsOpenCodeGo(platform string) bool { return platform == PlatformOpenCodeGo }
 
 func IsMultiProtocolAPIKeyProvider(platform string) bool {

@@ -160,7 +160,10 @@ func (s *Service) UpsertProduct(ctx context.Context, resellerID, groupID int64, 
 	if err != nil {
 		return nil, err
 	}
-	models := extractModelsSnapshot(modelsRaw)
+	models, err := s.resolveProductModelsSnapshot(ctx, groupID, platform, modelsRaw)
+	if err != nil {
+		return nil, err
+	}
 	modelsJSON, _ := json.Marshal(models)
 	capabilitiesJSON, _ := json.Marshal(map[string]any{"platform": platform})
 	row := tx.QueryRowContext(ctx, `
@@ -992,6 +995,25 @@ func extractModelsSnapshot(raw []byte) []string {
 	}
 	walk(value)
 	return result
+}
+
+func (s *Service) resolveProductModelsSnapshot(ctx context.Context, groupID int64, platform string, raw []byte) ([]string, error) {
+	models := extractModelsSnapshot(raw)
+	if modelAllowlistSnapshotEnabled(raw) || s.pricingAdmin == nil {
+		return models, nil
+	}
+	candidates, err := s.pricingAdmin.GetGroupModelsListCandidates(ctx, groupID, platform)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeStrings(candidates), nil
+}
+
+func modelAllowlistSnapshotEnabled(raw []byte) bool {
+	var config struct {
+		Enabled bool `json:"enabled"`
+	}
+	return json.Unmarshal(raw, &config) == nil && config.Enabled
 }
 
 func normalizeStrings(values []string) []string {

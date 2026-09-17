@@ -40,7 +40,11 @@ func (s *Service) refreshProductSnapshots(ctx context.Context, resellerID int64)
 		return err
 	}
 	for _, item := range snapshots {
-		models, err := json.Marshal(extractModelsSnapshot(item.raw))
+		modelSnapshot, err := s.resolveProductModelsSnapshot(ctx, item.groupID, item.platform, item.raw)
+		if err != nil {
+			return err
+		}
+		models, err := json.Marshal(modelSnapshot)
 		if err != nil {
 			return err
 		}
