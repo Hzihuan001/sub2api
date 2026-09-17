@@ -149,6 +149,7 @@ docs/screenshots/*
 .serena/
 .codex/
 frontend/coverage/
+frontend/.pnpm-store/
 aicodex
 output/
 .codegraph/

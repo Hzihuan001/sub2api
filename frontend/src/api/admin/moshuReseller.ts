@@ -11,6 +11,16 @@ export interface MoshuResellerConnection {
   last_catalog_sync_at?: string
   last_settlement_sync_at?: string
   last_error?: string
+  auth_sync: MoshuSyncDomain
+  catalog_sync: MoshuSyncDomain
+  pricing_sync: MoshuSyncDomain
+  settlement_sync: MoshuSyncDomain
+}
+
+export interface MoshuSyncDomain {
+  last_success_at?: string
+  last_error_at?: string
+  last_error?: string
 }
 
 export interface MoshuProduct {

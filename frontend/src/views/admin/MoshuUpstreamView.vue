@@ -39,6 +39,13 @@
               <button class="text-primary-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50" :disabled="loadingBalance" @click="loadBalance(true)">{{ t('admin.moshuUpstream.refreshBalance') }}</button>
             </div>
             <p v-if="status.connection?.last_error" class="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{{ status.connection.last_error }}</p>
+            <div class="mt-4 grid gap-3 sm:grid-cols-3">
+              <div v-for="item in syncDomains" :key="item.key" class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+                <div class="flex items-center justify-between gap-2"><span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ item.label }}</span><span class="rounded px-2 py-0.5 text-xs" :class="item.problem ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'">{{ item.problem ? t('admin.moshuUpstream.syncAbnormal') : t('admin.moshuUpstream.syncHealthy') }}</span></div>
+                <p class="mt-2 text-xs text-gray-500">{{ item.success ? formatDateTime(item.success) : t('admin.moshuUpstream.neverSynced') }}</p>
+                <p v-if="item.error" class="mt-1 break-words text-xs text-red-600 dark:text-red-400">{{ item.error }}</p>
+              </div>
+            </div>
             <p class="mt-2 text-xs text-gray-500">成本倍率自动跟随主站绑定账号的生效倍率；本地分组名称、收费倍率和容量保持独立。</p>
             <details v-if="authStore.isSuperAdmin" class="mt-4">
               <summary>重新授权 / 计费账号换绑后同步 Key</summary>
@@ -88,7 +95,7 @@ import { accountsAPI, groupsAPI, moshuResellerAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { runResellerBatch, type BatchResult } from '@/utils/resellerBatch'
-import { formatCurrency } from '@/utils/format'
+import { formatCurrency, formatDateTime } from '@/utils/format'
 import { reloadAfterResellerEnrollment } from '@/utils/resellerRefresh'
 import type { MoshuProduct, MoshuResellerBalance, MoshuResellerStatus } from '@/api/admin/moshuReseller'
 import type { Account } from '@/types'
@@ -105,6 +112,21 @@ const enrollment = reactive({ base_url: '', enrollment_code: '' })
 const batchIDs = ref<number[]>([]), batchResults = ref<BatchResult[]>([])
 const drafts = reactive<Record<number, { name: string; multiplier: number; capacity: number }>>({})
 const authorizedProducts = computed(() => status.value?.products.filter(product => product.authorized) ?? [])
+const syncDomains = computed(() => {
+  const connection = status.value?.connection
+  const entries = [
+    { key: 'auth', label: t('admin.moshuUpstream.authSync'), domain: connection?.auth_sync },
+    { key: 'catalog', label: t('admin.moshuUpstream.catalogSync'), domain: connection?.catalog_sync },
+    { key: 'pricing', label: t('admin.moshuUpstream.pricingSync'), domain: connection?.pricing_sync },
+    { key: 'settlement', label: t('admin.moshuUpstream.settlementSync'), domain: connection?.settlement_sync }
+  ]
+  return entries.map(({ key, label, domain }) => {
+    const success = domain?.last_success_at
+    const stale = !success || Date.now() - new Date(success).getTime() > 10 * 60 * 1000
+    const newerError = !!domain?.last_error && (!success || new Date(domain.last_error_at || 0).getTime() >= new Date(success).getTime())
+    return { key, label, success, error: newerError ? domain?.last_error : '', problem: stale || newerError }
+  })
+})
 const testingProductID = ref<number | null>(null)
 const testingAccount = ref<Account | null>(null)
 const showTest = ref(false)
