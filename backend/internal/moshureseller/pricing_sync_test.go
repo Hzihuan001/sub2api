@@ -57,6 +57,34 @@ func TestCompilePricingCatalogRestoresAndScopesProducts(t *testing.T) {
 	require.Empty(t, revoked)
 }
 
+func TestCompilePricingCatalogAcceptsMainImageCachePricingField(t *testing.T) {
+	catalog, connection, products := pricingFixture(t)
+	defaults := map[string]*service.LiteLLMModelPricing{
+		"gpt-image-2.5-flare": {
+			InputCostPerToken:            5e-6,
+			InputCostPerImageToken:       8e-6,
+			CacheReadInputImageTokenCost: 2e-6,
+		},
+	}
+	snapshot := catalog.Products[10]
+	snapshot.Defaults, snapshot.Fallbacks = defaults, catalog.Fallbacks
+	require.NoError(t, snapshot.SealRevision())
+	snapshot.Defaults, snapshot.Fallbacks = nil, nil
+	catalog.Defaults = defaults
+	sealTestCatalog(t, catalog)
+
+	raw, err := json.Marshal(catalog)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"cache_read_input_image_token_cost":0.000002`)
+
+	var received remotePricingCatalog
+	require.NoError(t, json.Unmarshal(raw, &received))
+	compiled, err := compilePricingCatalog(&received, connection, products)
+	require.NoError(t, err)
+	require.Equal(t, 2e-6, received.Defaults["gpt-image-2.5-flare"].CacheReadInputImageTokenCost)
+	require.NotNil(t, compiled[7])
+}
+
 func TestCompilePricingCatalogRejectsWrongTenantOrCorruption(t *testing.T) {
 	catalog, connection, products := pricingFixture(t)
 	other := int64(99)
