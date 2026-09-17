@@ -66,6 +66,13 @@ func TestCompilePricingCatalogAcceptsMainImageCachePricingField(t *testing.T) {
 			CacheReadInputImageTokenCost: 2e-6,
 		},
 	}
+	catalog.Fallbacks = map[string]*service.ModelPricing{
+		"gpt-image-2.5-flare": {
+			InputPricePerToken:          5e-6,
+			ImageInputPricePerToken:     8e-6,
+			ImageCacheReadPricePerToken: 2e-6,
+		},
+	}
 	snapshot := catalog.Products[10]
 	snapshot.Defaults, snapshot.Fallbacks = defaults, catalog.Fallbacks
 	require.NoError(t, snapshot.SealRevision())
@@ -76,12 +83,14 @@ func TestCompilePricingCatalogAcceptsMainImageCachePricingField(t *testing.T) {
 	raw, err := json.Marshal(catalog)
 	require.NoError(t, err)
 	require.Contains(t, string(raw), `"cache_read_input_image_token_cost":0.000002`)
+	require.Contains(t, string(raw), `"ImageCacheReadPricePerToken":0.000002`)
 
 	var received remotePricingCatalog
 	require.NoError(t, json.Unmarshal(raw, &received))
 	compiled, err := compilePricingCatalog(&received, connection, products)
 	require.NoError(t, err)
 	require.Equal(t, 2e-6, received.Defaults["gpt-image-2.5-flare"].CacheReadInputImageTokenCost)
+	require.Equal(t, 2e-6, received.Fallbacks["gpt-image-2.5-flare"].ImageCacheReadPricePerToken)
 	require.NotNil(t, compiled[7])
 }
 
