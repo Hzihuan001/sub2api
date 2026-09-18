@@ -127,6 +127,14 @@ vi.mock("@/stores", () => ({
     showInfo: vi.fn(),
     fetchPublicSettings,
   }),
+  // SettingsView reads the authenticated role to decide whether privileged
+  // tabs (for example backups) should be rendered.  Keep the test fixture
+  // explicit instead of relying on the real auth store implementation.
+  useAuthStore: () => ({
+    isSuperAdmin: true,
+    isAdmin: true,
+    isManagement: true,
+  }),
 }));
 
 vi.mock("@/stores/adminSettings", () => ({
