@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.5-l1.9
+  CUSTOM_VERSION: 0.2.5-l1.10
 
 jobs:
   compatibility:
@@ -111,6 +111,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: buildmeta
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - id: image
+        name: Resolve lowercase image name
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sub2api" >> "$GITHUB_OUTPUT"
       - id: build
         uses: docker/build-push-action@v7
         with:
@@ -118,7 +122,7 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/sub2api:${{ env.CUSTOM_VERSION }}
+          tags: ${{ steps.image.outputs.name }}:${{ env.CUSTOM_VERSION }}
           build-args: |
             NODE_IMAGE=node:24-alpine
             VERSION=${{ env.CUSTOM_VERSION }}
