@@ -68,10 +68,34 @@ func (s *Service) AcknowledgeSettlementEvents(ctx context.Context, resellerID in
 	if len(eventIDs) == 0 || len(eventIDs) > 500 {
 		return ErrInvalidInput
 	}
-	_, err := s.db.ExecContext(ctx, `
+	normalized := normalizeIDs(eventIDs)
+	if len(normalized) == 0 {
+		return ErrInvalidInput
+	}
+	var known int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM reseller_settlement_events
+		WHERE reseller_id=$1 AND id=ANY($2::bigint[])`, resellerID, pgInt64Array(normalized)).Scan(&known); err != nil {
+		return err
+	}
+	// Acknowledge is idempotent for known IDs, but silently accepting an ID
+	// belonging to another tenant (or a typo) hides a delivery bug and can
+	// make the proxy believe settlement data was persisted when it was not.
+	if known != len(normalized) {
+		return ErrNotFound
+	}
+	result, err := s.db.ExecContext(ctx, `
 		UPDATE reseller_settlement_events SET acknowledged_at=COALESCE(acknowledged_at,NOW())
-		WHERE reseller_id=$1 AND id=ANY($2::bigint[])`, resellerID, pgInt64Array(normalizeIDs(eventIDs)))
-	return err
+		WHERE reseller_id=$1 AND id=ANY($2::bigint[])`, resellerID, pgInt64Array(normalized))
+	if err != nil {
+		return err
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return err
+	} else if affected != int64(len(normalized)) {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (h *Handler) ListSettlementEvents(c *gin.Context) {

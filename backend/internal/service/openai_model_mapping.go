@@ -84,19 +84,25 @@ func isOpenAIOAuthServableModel(requestedModel string) bool {
 
 // deepseekServableModels 列出 DeepSeek 平台账号在「未配置 model_mapping」时
 // 可服务的官方模型名（精确匹配，小写比较）。deepseek-flash 与 deepseek-v4-pro
-// 为官方现行名；deepseek-v4-flash / deepseek-v4-flash-vision-exp 为处于兼容
-// 路由期的旧名（上游仍接受并按 flash 价计费）；deepseek-v4-pro-0813 为与
-// 计费 pro 档口径一致的版本化名。
+// 为官方现行名；deepseek-v4.1-flash 是兼容 API 暴露的版本化 flash 别名；
+// deepseek-v4-flash / deepseek-v4-flash-vision-exp 为处于兼容路由期的旧名
+// （上游仍接受并按 flash 价计费）；deepseek-v4-pro-0813 为与计费 pro 档口一致
+// 的版本化名。
 var deepseekServableModels = []string{
 	"deepseek-flash",
 	"deepseek-v4-pro",
 	"deepseek-v4-flash",
+	// DeepSeek's v4.1 flash alias is exposed by the reseller catalogue and is
+	// accepted by the compatible upstream. Keep it in the empty-mapping
+	// allowlist so a passthrough account is not filtered before routing.
+	"deepseek-v4.1-flash",
 	"deepseek-v4-flash-vision-exp",
 	"deepseek-v4-pro-0813",
 }
 
 // isDeepseekServableModel 报告 DeepSeek 平台账号在「未配置 model_mapping」时
-// 可服务的模型名。官方现行模型为 deepseek-flash 与 deepseek-v4-pro；旧名
+// 可服务的模型名。官方现行模型为 deepseek-flash 与 deepseek-v4-pro；
+// deepseek-v4.1-flash 为兼容 API 暴露的版本化 flash 别名；旧名
 // deepseek-v4-flash / deepseek-v4-flash-vision-exp 处于兼容路由期（上游仍接受并
 // 按 flash 价计费），deepseek-v4-pro-0813 为版本化名。其余一律拒绝：既避免把
 // 未知模型透传给上游（上游 404/400 会触发 per-model 冷却并掩盖真实配置错误），

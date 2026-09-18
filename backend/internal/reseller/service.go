@@ -148,12 +148,32 @@ func (s *Service) UpsertProduct(ctx context.Context, resellerID, groupID int64, 
 	if err != nil {
 		return nil, err
 	}
+	// A product with an issued credential is already part of the station's
+	// public contract.  Re-pointing it at another group would leave the old
+	// key, cached model manifest and settlement snapshot referring to a
+	// different group.  Require an explicit revoke/reauthorization first.
+	var existingGroupID int64
+	var existingCredential bool
+	existingErr := tx.QueryRowContext(ctx, `
+		SELECT moshu_group_id,
+		       EXISTS(SELECT 1 FROM reseller_credentials rc
+		                WHERE rc.product_id=rp.id AND rc.status IN ('active','retiring')
+		                  AND (rc.status<>'retiring' OR rc.overlap_until IS NULL OR rc.overlap_until>NOW()))
+		FROM reseller_products rp
+		WHERE rp.reseller_id=$1 AND rp.product_code=$2
+		FOR UPDATE`, resellerID, productCode).Scan(&existingGroupID, &existingCredential)
+	if existingErr != nil && !errors.Is(existingErr, sql.ErrNoRows) {
+		return nil, existingErr
+	}
+	if existingErr == nil && existingCredential && existingGroupID != groupID {
+		return nil, fmt.Errorf("%w: revoke the existing product credential before changing its group", ErrInvalidInput)
+	}
 	var platform string
 	var costRate float64
 	var modelsRaw []byte
 	err = tx.QueryRowContext(ctx, `
 		SELECT platform, rate_multiplier, COALESCE(model_allowlist, '{}'::jsonb)
-		FROM groups WHERE id=$1 AND deleted_at IS NULL AND subscription_type='standard'`, groupID).Scan(&platform, &costRate, &modelsRaw)
+		FROM groups WHERE id=$1 AND status='active' AND deleted_at IS NULL AND subscription_type='standard'`, groupID).Scan(&platform, &costRate, &modelsRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: select a balance-billed group for the prepaid reseller account", ErrInvalidInput)
 	}
@@ -244,6 +264,10 @@ func (s *Service) ChangeBillingAccount(ctx context.Context, resellerID, userID i
 		return tenant, nil
 	}
 	// Locking the tenant serializes this change with enrollment and rotation.
+	invalidatedKeys, err := s.keysForInvalidationTx(ctx, tx, resellerID, 0)
+	if err != nil {
+		return nil, err
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE api_keys SET status='inactive',updated_at=NOW()
 		WHERE id IN (SELECT api_key_id FROM reseller_credentials WHERE reseller_id=$1)
 		AND deleted_at IS NULL`, resellerID); err != nil {
@@ -260,6 +284,9 @@ func (s *Service) ChangeBillingAccount(ctx context.Context, resellerID, userID i
 		return nil, err
 	}
 	if s.apiKeys != nil {
+		for _, key := range invalidatedKeys {
+			s.apiKeys.InvalidateAuthCacheByKey(ctx, key)
+		}
 		s.apiKeys.InvalidateAuthCacheByUserID(ctx, tenant.UserID)
 	}
 	tenant.UserID = targetID
@@ -308,8 +335,10 @@ func (s *Service) CreateEnrollment(ctx context.Context, resellerID, createdBy in
 	}
 	var count int
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM reseller_products
-		WHERE reseller_id=$1 AND enabled=TRUE AND id = ANY($2::bigint[])`, resellerID, pgInt64Array(productIDs)).Scan(&count); err != nil {
+		SELECT COUNT(*) FROM reseller_products rp
+		JOIN groups g ON g.id=rp.moshu_group_id
+		WHERE rp.reseller_id=$1 AND rp.enabled=TRUE AND rp.id = ANY($2::bigint[])
+		  AND g.status='active' AND g.deleted_at IS NULL AND g.subscription_type='standard'`, resellerID, pgInt64Array(productIDs)).Scan(&count); err != nil {
 		return "", time.Time{}, err
 	}
 	if count != len(productIDs) {
@@ -479,8 +508,10 @@ func (s *Service) RefreshAccessToken(ctx context.Context, refreshToken, instance
 	var tokenID uuid.UUID
 	var resellerID int64
 	err = tx.QueryRowContext(ctx, `
-		SELECT id,reseller_id FROM reseller_refresh_tokens
-		WHERE token_hash=$1 AND instance_id=$2 AND revoked_at IS NULL AND expires_at > NOW()
+		SELECT rrt.id,rrt.reseller_id FROM reseller_refresh_tokens rrt
+		JOIN reseller_tenants rt ON rt.id=rrt.reseller_id AND rt.deleted_at IS NULL
+		JOIN users u ON u.id=rt.user_id AND u.role='user' AND u.status='active' AND u.deleted_at IS NULL
+		WHERE rrt.token_hash=$1 AND rrt.instance_id=$2 AND rrt.revoked_at IS NULL AND rrt.expires_at > NOW()
 		FOR UPDATE`, hash[:], instanceUUID).Scan(&tokenID, &resellerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", 0, ErrUnauthorized
@@ -536,6 +567,14 @@ func (s *Service) ValidateAccessToken(ctx context.Context, rawToken, remoteIP st
 	}
 	tenant, err := s.getTenant(ctx, resellerID)
 	if err != nil || tenant.Status != "active" || tenant.InstanceID == nil || *tenant.InstanceID != instanceID || !ipAllowed(remoteIP, tenant.AllowedCIDRs) {
+		return nil, ErrForbidden
+	}
+	var billingActive bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='user' AND status='active' AND deleted_at IS NULL)`, tenant.UserID).Scan(&billingActive); err != nil {
+		return nil, err
+	}
+	if !billingActive {
 		return nil, ErrForbidden
 	}
 	exp, err := claims.GetExpirationTime()
@@ -629,7 +668,7 @@ func (s *Service) Balance(ctx context.Context, resellerID int64) (*Balance, erro
 		SELECT u.balance,u.frozen_balance,
 		       (u.balance-u.frozen_balance) <= COALESCE(u.balance_notify_threshold,0)
 		FROM reseller_tenants rt JOIN users u ON u.id=rt.user_id
-		WHERE rt.id=$1`, resellerID).Scan(&result.Balance, &result.FrozenBalance, &result.Warning)
+		WHERE rt.id=$1 AND rt.deleted_at IS NULL AND u.role='user' AND u.status='active' AND u.deleted_at IS NULL`, resellerID).Scan(&result.Balance, &result.FrozenBalance, &result.Warning)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -666,8 +705,9 @@ func (s *Service) BeginGatewayRequest(c *gin.Context) error {
 		JOIN reseller_tenants rt ON rt.id=rc.reseller_id
 		JOIN api_keys ak ON ak.id=rc.api_key_id AND ak.user_id=rt.user_id
 		JOIN users u ON u.id=rt.user_id AND u.role='user' AND u.status='active' AND u.deleted_at IS NULL
-		JOIN groups g ON g.id=rp.moshu_group_id AND g.subscription_type='standard' AND g.deleted_at IS NULL
+		JOIN groups g ON g.id=rp.moshu_group_id AND g.status='active' AND g.subscription_type='standard' AND g.deleted_at IS NULL
 		WHERE rc.api_key_id=$1 AND rc.status IN ('active','retiring')
+		  AND ak.status='active' AND ak.deleted_at IS NULL AND ak.group_id=rp.moshu_group_id
 		  AND (rc.expires_at IS NULL OR rc.expires_at>NOW())
 		  AND (rc.status<>'retiring' OR rc.overlap_until IS NULL OR rc.overlap_until>NOW())
 		  AND rp.enabled=TRUE AND rt.status='active'`, apiKey.ID).Scan(
@@ -701,11 +741,19 @@ func (s *Service) BeginGatewayRequest(c *gin.Context) error {
 	ctx := context.WithValue(c.Request.Context(), ctxkey.ClientRequestID, requestUUID.String())
 	c.Request = c.Request.WithContext(ctx)
 	result, err := s.db.ExecContext(ctx, `
+		WITH expired AS (
+			UPDATE reseller_request_reservations
+			   SET status='expired'
+			 WHERE reseller_id=$2 AND status='pending' AND expires_at<=NOW()
+		)
 		INSERT INTO reseller_request_reservations
 		(request_id,reseller_id,product_id,api_key_id,moshu_group_id,
 		 price_catalog_version,cost_rate_multiplier,request_source)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		ON CONFLICT (reseller_id,request_id) DO NOTHING`, requestUUID, resellerID,
+		ON CONFLICT (reseller_id,request_id) DO UPDATE SET
+			status='pending', expires_at=NOW()+INTERVAL '2 hours'
+		WHERE reseller_request_reservations.status='expired'
+		   OR reseller_request_reservations.expires_at<=NOW()`, requestUUID, resellerID,
 		productID, apiKey.ID, groupID, catalogVersion, costRateMultiplier, requestSource)
 	if err != nil {
 		return err
@@ -752,6 +800,13 @@ func (s *Service) FinishGatewayRequest(c *gin.Context) {
 		 status='failed',error_type=EXCLUDED.error_type,completed_at=NOW(),updated_at=NOW()
 		WHERE reseller_request_settlements.status<>'completed'`, requestID, resellerID,
 		productID, groupID, costRateMultiplier, catalogVersion, "http_"+strconv.Itoa(c.Writer.Status()))
+	// Keep the short-lived admission record in sync with the terminal failure.
+	// This is deliberately best-effort like the settlement mirror: a database
+	// hiccup must not turn an already failed user request into a second failure.
+	_, _ = s.db.ExecContext(ctx, `
+		UPDATE reseller_request_reservations
+		   SET status='failed'
+		 WHERE reseller_id=$1 AND request_id=$2::uuid AND status='pending'`, resellerID, requestID)
 }
 
 func int64ContextValue(c *gin.Context, key string) (int64, bool) {
@@ -765,14 +820,15 @@ func (s *Service) rotateCredentialTx(ctx context.Context, tx *sql.Tx, tenant Ten
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (
 		SELECT 1 FROM users u JOIN groups g ON g.id=$2::bigint
 		WHERE u.id=$1::bigint AND u.deleted_at IS NULL AND u.role='user' AND u.status='active'
-		AND g.deleted_at IS NULL AND g.subscription_type='standard'
+		AND g.deleted_at IS NULL AND g.status='active' AND g.subscription_type='standard'
 	)`, tenant.UserID, product.MoshuGroupID).Scan(&eligible); err != nil {
 		return IssuedCredential{}, err
 	}
 	if !eligible {
 		return IssuedCredential{}, fmt.Errorf("%w: product credentials require an active ordinary billing account and a balance-billed group", ErrInvalidInput)
 	}
-	// api_keys.key is VARCHAR(64); keep the dedicated prefix while staying below it.
+	// api_keys.name is VARCHAR(100); keep a useful tenant/product label without
+	// allowing a long reseller name to abort credential rotation.
 	key, err := s.randomToken(apiKeyPrefix, 28)
 	if err != nil {
 		return IssuedCredential{}, err
@@ -783,7 +839,7 @@ func (s *Service) rotateCredentialTx(ctx context.Context, tx *sql.Tx, tenant Ten
 		return IssuedCredential{}, err
 	}
 	var apiKeyID int64
-	name := "reseller:" + tenant.Name + ":" + product.ProductCode
+	name := truncateResellerKeyName("reseller:"+tenant.Name+":"+product.ProductCode, 100)
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO api_keys (user_id,key,name,group_id,status,created_at,updated_at)
 		VALUES ($1,$2,$3,$4,'active',NOW(),NOW()) RETURNING id`, tenant.UserID, key, name, product.MoshuGroupID).Scan(&apiKeyID)
@@ -834,6 +890,20 @@ func (s *Service) randomToken(prefix string, bytes int) (string, error) {
 		return "", err
 	}
 	return prefix + hex.EncodeToString(buffer), nil
+}
+
+// truncateResellerKeyName keeps the display label within api_keys.name's
+// character limit while preserving valid UTF-8. PostgreSQL VARCHAR limits
+// characters (not bytes), so rune truncation is the correct boundary.
+func truncateResellerKeyName(name string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(name)
+	if len(runes) <= maxRunes {
+		return name
+	}
+	return string(runes[:maxRunes])
 }
 
 func (s *Service) getTenant(ctx context.Context, id int64) (*Tenant, error) {
@@ -904,7 +974,9 @@ func listProductsTx(ctx context.Context, tx *sql.Tx, resellerID int64, ids []int
 		       EXISTS(SELECT 1 FROM reseller_credentials rc WHERE rc.product_id=rp.id AND rc.status='active'),
 		       rp.created_at,rp.updated_at
 		FROM reseller_products rp
+		JOIN groups g ON g.id=rp.moshu_group_id
 		WHERE rp.reseller_id=$1 AND rp.id=ANY($2::bigint[]) AND rp.enabled=TRUE
+		  AND g.status='active' AND g.deleted_at IS NULL AND g.subscription_type='standard'
 		ORDER BY rp.product_code FOR UPDATE`, resellerID, pgInt64Array(normalizeIDs(ids)))
 	if err != nil {
 		return nil, err

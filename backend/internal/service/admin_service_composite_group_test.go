@@ -218,6 +218,7 @@ func TestAdminService_CNProviderModelsListCandidatesUseNativeDefaults(t *testing
 			require.NotContains(t, model, "claude")
 		}
 	}
+	require.Contains(t, defaultModelsListCandidateIDs(PlatformDeepseek), "deepseek-v4.1-flash")
 }
 
 func TestAdminService_GroupModelsListCandidatesStableMappingOrder(t *testing.T) {

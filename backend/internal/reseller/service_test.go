@@ -82,6 +82,16 @@ func TestDedicatedKeyFitsExistingDatabaseColumn(t *testing.T) {
 	}
 }
 
+func TestTruncateResellerKeyNameIsRuneSafe(t *testing.T) {
+	got := truncateResellerKeyName("代理商渠道名称", 5)
+	if got != "代理商渠道" {
+		t.Fatalf("truncated name = %q, want five runes", got)
+	}
+	if truncateResellerKeyName("short", 100) != "short" {
+		t.Fatal("short names should remain unchanged")
+	}
+}
+
 func TestFailedGatewayRequestUsesReservedPricingSnapshot(t *testing.T) {
 	t.Setenv("MOSHU_RESELLER_SERVER_ENABLED", "true")
 	db, mock, err := sqlmock.New()
@@ -100,6 +110,9 @@ func TestFailedGatewayRequestUsesReservedPricingSnapshot(t *testing.T) {
 	mock.ExpectExec("INSERT INTO reseller_request_settlements").
 		WithArgs(anyUUID{}, int64(2), int64(3), int64(4), float64(0.35), int64(5), "http_502").
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE reseller_request_reservations").
+		WithArgs(int64(2), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

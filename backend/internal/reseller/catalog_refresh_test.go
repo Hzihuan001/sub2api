@@ -57,6 +57,19 @@ func TestResolveProductModelsSnapshotUsesGroupCandidatesWhenAllowlistIsDisabled(
 	require.Equal(t, []string{"kimi-k2.6", "kimi-k2.5"}, models)
 }
 
+func TestResolveProductModelsSnapshotKeepsDeepSeekAccountModel(t *testing.T) {
+	svc := NewService(nil, nil, nil)
+	svc.pricingAdmin = &productSnapshotAdmin{models: []string{"deepseek-v4.1-flash"}}
+
+	models, err := svc.resolveProductModelsSnapshot(
+		context.Background(), 7, service.PlatformDeepseek,
+		[]byte(`{"enabled":false,"models":[]}`),
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"deepseek-v4.1-flash"}, models)
+}
+
 func TestResolveProductModelsSnapshotKeepsExplicitMainGroupAllowlist(t *testing.T) {
 	svc := NewService(nil, nil, nil)
 	svc.pricingAdmin = &productSnapshotAdmin{models: []string{"kimi-k2.6", "kimi-k2.5"}}

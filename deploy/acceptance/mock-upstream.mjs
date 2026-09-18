@@ -1,6 +1,6 @@
 import http from 'node:http'
 
-const models = ['gpt-5.6-sol', 'deepseek-flash', 'deepseek-v4-pro']
+const models = ['gpt-5.6-sol', 'deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4.1-flash']
 
 function sendJSON(response, status, body) {
   response.writeHead(status, { 'content-type': 'application/json' })

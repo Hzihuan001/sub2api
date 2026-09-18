@@ -276,6 +276,13 @@ func TestAccountIsModelSupported(t *testing.T) {
 			expected:       true,
 		},
 		{
+			name:           "deepseek empty mapping allows v4.1 flash",
+			platform:       PlatformDeepseek,
+			credentials:    map[string]any{},
+			requestedModel: "deepseek-v4.1-flash",
+			expected:       true,
+		},
+		{
 			name:           "deepseek empty mapping rejects retired chat model",
 			platform:       PlatformDeepseek,
 			credentials:    map[string]any{},
