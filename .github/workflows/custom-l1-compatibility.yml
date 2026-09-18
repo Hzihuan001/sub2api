@@ -1,0 +1,66 @@
+name: L1 custom compatibility checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "docs/UPSTREAM_BASELINE"
+      - "docs/MIGRATION_BASELINE"
+      - "tools/**"
+      - ".github/workflows/custom-l1-*.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-l1-compatibility-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    name: Upgrade compatibility checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify release metadata
+        run: python3 tools/check_release_consistency.py
+
+      - name: Verify migration integrity
+        run: python3 tools/check_migration_integrity.py
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify generated Ent and Wire code
+        run: python3 tools/check_generated.py
+
+      - name: Run reseller protocol contract tests
+        working-directory: backend
+        run: go test ./internal/moshureseller -count=1
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: pnpm run typecheck
