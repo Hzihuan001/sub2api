@@ -82,7 +82,24 @@ func (c *protocolClient) refresh(ctx context.Context, baseURL, refreshToken, ins
 	err := c.doJSON(ctx, http.MethodPost, baseURL+"/api/v1/reseller/v1/tokens/refresh", "", "", map[string]any{
 		"refresh_token": refreshToken, "instance_id": instanceID,
 	}, &result, nil)
+	if err == nil {
+		err = validateTokenPair(result.AccessToken, result.RefreshToken, result.ExpiresIn)
+	}
 	return result.AccessToken, result.RefreshToken, result.ExpiresIn, err
+}
+
+// validateTokenPair rejects incomplete or unusable protocol responses before
+// credentials are persisted.  Refresh tokens are rotated on every use, so
+// accepting an empty refresh_token would permanently strand the station on
+// its next refresh attempt.
+func validateTokenPair(accessToken, refreshToken string, expiresIn int64) error {
+	if strings.TrimSpace(accessToken) == "" || strings.TrimSpace(refreshToken) == "" || expiresIn <= 0 {
+		return fmt.Errorf("%w: main site returned an incomplete reseller token", ErrInvalidInput)
+	}
+	if accessToken != strings.TrimSpace(accessToken) || refreshToken != strings.TrimSpace(refreshToken) {
+		return fmt.Errorf("%w: main site returned a reseller token with whitespace", ErrInvalidInput)
+	}
+	return nil
 }
 
 func (c *protocolClient) catalog(ctx context.Context, baseURL, token, etag string) (*RemoteCatalog, string, bool, error) {

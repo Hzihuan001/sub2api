@@ -46,6 +46,52 @@ func TestProtocolClientExchangeUsesEnrollmentEndpoint(t *testing.T) {
 	require.Equal(t, int64(3), result.Catalog.CatalogVersion)
 }
 
+func TestProtocolClientRefreshValidatesRotatedTokenPair(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+	}{
+		{name: "missing access token", data: `{"access_token":"","refresh_token":"refresh","expires_in":900}`},
+		{name: "missing refresh token", data: `{"access_token":"access","refresh_token":"","expires_in":900}`},
+		{name: "missing expiry", data: `{"access_token":"access","refresh_token":"refresh","expires_in":0}`},
+		{name: "whitespace token", data: `{"access_token":" access ","refresh_token":"refresh","expires_in":900}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, http.MethodPost, r.Method)
+				require.Equal(t, "/api/v1/reseller/v1/tokens/refresh", r.URL.Path)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":` + tt.data + `}`))
+			}))
+			defer server.Close()
+
+			client := newProtocolClient()
+			client.http = server.Client()
+			_, _, _, err := client.refresh(context.Background(), server.URL, "refresh-old", "instance")
+			require.ErrorIs(t, err, ErrInvalidInput)
+		})
+	}
+}
+
+func TestProtocolClientRefreshReturnsValidatedTokenPair(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/api/v1/reseller/v1/tokens/refresh", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"access_token":"access-new","refresh_token":"refresh-new","expires_in":900}}`))
+	}))
+	defer server.Close()
+
+	client := newProtocolClient()
+	client.http = server.Client()
+	access, refresh, expiresIn, err := client.refresh(context.Background(), server.URL, "refresh-old", "instance")
+	require.NoError(t, err)
+	require.Equal(t, "access-new", access)
+	require.Equal(t, "refresh-new", refresh)
+	require.Equal(t, int64(900), expiresIn)
+}
+
 func TestProtocolClientCatalogHonorsETagAndNotModified(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer token", r.Header.Get("Authorization"))

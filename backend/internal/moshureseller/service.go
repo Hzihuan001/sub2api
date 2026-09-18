@@ -185,6 +185,9 @@ func (s *Service) Enroll(ctx context.Context, rawBaseURL, enrollmentCode string)
 	if changingReseller && (exchange.ReauthorizationMode != "preserve_station" || exchange.Catalog.ResellerID != exchange.Tenant.ID) {
 		return nil, fmt.Errorf("%w: 主站未确认保留本站数据的重新授权，请先升级主站", ErrInvalidInput)
 	}
+	if err := validateTokenPair(exchange.AccessToken, exchange.RefreshToken, exchange.ExpiresIn); err != nil {
+		return nil, err
+	}
 	accessCiphertext, err := s.encryptor.Encrypt(exchange.AccessToken)
 	if err != nil {
 		return nil, err
