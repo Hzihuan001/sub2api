@@ -70,6 +70,23 @@ func TestDifferentTenantResponseNeverCommitsLocally(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestEnrollmentRejectsIncompleteTokenPairBeforePersistence(t *testing.T) {
+	t.Setenv("MOSHU_RESELLER_CLIENT_ENABLED", "true")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"code":0,"data":{"tenant":{"id":1,"name":"L1","protocol_version":"v1"},"access_token":"","refresh_token":"refresh","expires_in":0,"catalog":{"protocol_version":"v1","reseller_id":1,"catalog_version":2,"products":[]}}}`))
+	}))
+	defer server.Close()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	mock.ExpectQuery("SELECT base_url").WillReturnRows(connectionRows(server.URL))
+
+	_, err = NewService(db, testEncryptor{}, nil).Enroll(context.Background(), server.URL, "code")
+	require.ErrorIs(t, err, ErrInvalidInput)
+	require.ErrorContains(t, err, "incomplete reseller token")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUpstreamEnrollmentErrorsDoNotLogLocalAdminOut(t *testing.T) {
 	for _, tc := range []struct {
 		status int
