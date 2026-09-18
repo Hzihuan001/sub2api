@@ -564,6 +564,29 @@ func TestGetAvailableModels_UsesShortCacheAndSupportsInvalidation(t *testing.T) 
 	require.Equal(t, int64(2), store)
 }
 
+func TestGetAvailableModels_ResellerSnapshotOverridesLegacyClaudeFallback(t *testing.T) {
+	groupID := int64(42)
+	repo := &modelsListAccountRepoStub{byGroup: map[int64][]Account{
+		groupID: {{
+			ID:       7,
+			Platform: PlatformDeepseek,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				"moshu_reseller_managed":           true,
+				MoshuResellerModelSnapshotExtraKey: []string{"deepseek-v4.1-flash", "deepseek-v4-pro"},
+			},
+		}},
+	}}
+	svc := &GatewayService{
+		accountRepo:        repo,
+		modelsListCache:    gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL: time.Minute,
+	}
+
+	require.Equal(t, []string{"deepseek-v4-pro", "deepseek-v4.1-flash"},
+		svc.GetAvailableModels(context.Background(), &groupID, PlatformDeepseek))
+}
+
 // Scenario: 账号模型变更会失效所属平台缓存
 func TestResolveCompositeModelOwnershipUsesModelsCacheInvalidation(t *testing.T) {
 	groupID := int64(9)

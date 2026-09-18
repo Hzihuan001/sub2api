@@ -1411,22 +1411,39 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		accounts = filtered
 	}
 
+	// Reseller-managed accounts carry the authoritative model snapshot from
+	// the main station. Their credentials intentionally use passthrough mode,
+	// so model_mapping is empty; without this branch /v1/models falls back to
+	// the legacy Claude catalog even for DeepSeek/Kimi products.
+	resellerModels := make([]string, 0)
+	hasOpenAIPassthrough := false
+	for _, acc := range accounts {
+		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() {
+			hasOpenAIPassthrough = true
+		}
+		if !acc.IsMoshuResellerManaged() || !acc.HasMoshuResellerModelSnapshot() {
+			continue
+		}
+		resellerModels = append(resellerModels, acc.GetMoshuResellerModelSnapshot()...)
+	}
 	// Collect unique models from all accounts
 	modelSet := make(map[string]struct{})
-	hasAnyMapping := false
+	hasAnyMapping := len(resellerModels) > 0
+	for _, model := range normalizeModelCandidateIDs(resellerModels) {
+		modelSet[model] = struct{}{}
+	}
+	if hasOpenAIPassthrough && len(modelSet) == 0 {
+		if s.modelsListCache != nil {
+			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
+			modelsListCacheStoreTotal.Add(1)
+		}
+		return nil
+	}
 
 	for _, acc := range accounts {
 		// Passthrough routing accepts models independently of model_mapping. A stale
 		// mapping on any eligible passthrough account therefore cannot define the
 		// public whitelist; return nil so the handler uses its default model set.
-		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() {
-			if s.modelsListCache != nil {
-				s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
-				modelsListCacheStoreTotal.Add(1)
-			}
-			return nil
-		}
-
 		mapping := acc.GetModelMapping()
 		if len(mapping) > 0 {
 			hasAnyMapping = true
