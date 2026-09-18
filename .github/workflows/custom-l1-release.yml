@@ -31,6 +31,9 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python3 tools/check_release_consistency.py --tag "$RELEASE_TAG"
 
+      - name: Verify migration integrity
+        run: python3 tools/check_migration_integrity.py
+
   quality:
     name: Focused quality gate
     needs: compatibility
@@ -60,6 +63,9 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
+
+      - name: Verify generated Ent and Wire code
+        run: python3 tools/check_generated.py
 
       - name: Backend reseller tests
         working-directory: backend
@@ -103,7 +109,7 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/hzihuan001/sub2api:${{ env.CUSTOM_VERSION }}
+          tags: ghcr.io/${{ github.repository_owner }}/sub2api:${{ env.CUSTOM_VERSION }}
           build-args: |
             NODE_IMAGE=node:24-alpine
             VERSION=${{ env.CUSTOM_VERSION }}
