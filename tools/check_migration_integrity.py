@@ -149,6 +149,11 @@ def main() -> int:
 
     baseline_commit = run_git(root, "rev-parse", "--verify", f"{commit}^{{commit}}")
     baseline_paths = baseline_files(root, baseline_commit, directory)
+    if not baseline_paths:
+        fail(
+            f"baseline {baseline_commit} contains no SQL migrations under {directory!r}; "
+            "check the baseline commit and migration_directory"
+        )
     current = current_files(root, directory)
     current_paths = sorted(current)
 
