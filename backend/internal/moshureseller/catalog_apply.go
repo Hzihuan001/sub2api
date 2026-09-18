@@ -67,7 +67,7 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 			extra, passthroughExtraChanged := withPassthroughExtra(extra, account.Platform, account.Type)
 			if account.RateMultiplier == nil || *account.RateMultiplier != product.EffectiveCostRate() || passthroughChanged || passthroughExtraChanged || modelSnapshotChanged {
 				rate := product.EffectiveCostRate()
-				if _, err = s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
+				if _, err = s.admin.UpdateAccount(service.WithMoshuResellerSync(ctx), account.ID, &service.UpdateAccountInput{
 					Name: account.Name, Type: account.Type, Status: account.Status,
 					Credentials: credentials, Extra: extra,
 					GroupIDs: &account.GroupIDs, RateMultiplier: &rate, SkipMixedChannelCheck: true,
@@ -125,19 +125,25 @@ func withPassthroughCredentials(credentials map[string]any) (map[string]any, boo
 }
 
 func withPassthroughExtra(extra map[string]any, platform, accountType string) (map[string]any, bool) {
+	updated := cloneMap(extra)
+	changed := false
+	if enabled, ok := updated[service.MoshuResellerPassthroughExtraKey].(bool); !ok || !enabled {
+		updated[service.MoshuResellerPassthroughExtraKey] = true
+		changed = true
+	}
 	key := ""
 	switch {
 	case platform == service.PlatformOpenAI:
 		key = "openai_passthrough"
 	case platform == service.PlatformAnthropic && accountType == service.AccountTypeAPIKey:
 		key = "anthropic_passthrough"
-	default:
-		return extra, false
 	}
-	if enabled, ok := extra[key].(bool); ok && enabled {
-		return extra, false
+	if key == "" {
+		return updated, changed
 	}
-	updated := cloneMap(extra)
-	updated[key] = true
-	return updated, true
+	if enabled, ok := updated[key].(bool); !ok || !enabled {
+		updated[key] = true
+		changed = true
+	}
+	return updated, changed
 }

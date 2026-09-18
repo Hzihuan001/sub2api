@@ -41,7 +41,7 @@ func (s *Service) SetProductCost(ctx context.Context, id int64, rate *float64) (
 		account, err := s.admin.GetAccount(ctx, *updated.LocalAccountID)
 		if err == nil {
 			effectiveRate := updated.EffectiveCostRate()
-			_, err = s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
+			_, err = s.admin.UpdateAccount(service.WithMoshuResellerSync(ctx), account.ID, &service.UpdateAccountInput{
 				RateMultiplier: &effectiveRate, SkipMixedChannelCheck: true,
 			})
 		}

@@ -690,7 +690,7 @@ func (s *Service) syncExistingProductAccount(ctx context.Context, product Produc
 		}
 	}
 	rate := product.EffectiveCostRate()
-	if _, err := s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
+	if _, err := s.admin.UpdateAccount(service.WithMoshuResellerSync(ctx), account.ID, &service.UpdateAccountInput{
 		Name: account.Name, Type: account.Type, Credentials: credentials, Extra: extra,
 		Concurrency: &account.Concurrency, RateMultiplier: &rate, Status: service.StatusActive,
 		GroupIDs: &groupIDs, SkipMixedChannelCheck: true,
@@ -1187,7 +1187,7 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 		return replacementID, nil
 	}
 	extra = mergeMap(account.Extra, extra)
-	updated, err := s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
+	updated, err := s.admin.UpdateAccount(service.WithMoshuResellerSync(ctx), account.ID, &service.UpdateAccountInput{
 		Name: account.Name, Type: account.Type, Credentials: credentials, Extra: extra,
 		Concurrency: &capacity, RateMultiplier: &rate, Status: service.StatusActive, GroupIDs: &groupIDs, SkipMixedChannelCheck: true,
 	})

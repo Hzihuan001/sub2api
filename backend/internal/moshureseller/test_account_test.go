@@ -78,18 +78,19 @@ func TestProductAccountCredentialsUsePassthroughMode(t *testing.T) {
 	require.False(t, hasMapping)
 }
 
-func TestWithPassthroughExtraUsesPlatformSpecificSwitch(t *testing.T) {
+func TestWithPassthroughExtraUsesCommonResellerSwitch(t *testing.T) {
 	tests := []struct {
 		name        string
 		platform    string
 		accountType string
 		key         string
 		changed     bool
+		common      bool
 	}{
-		{name: "openai", platform: service.PlatformOpenAI, accountType: service.AccountTypeAPIKey, key: "openai_passthrough", changed: true},
-		{name: "anthropic api key", platform: service.PlatformAnthropic, accountType: service.AccountTypeAPIKey, key: "anthropic_passthrough", changed: true},
-		{name: "anthropic oauth unsupported", platform: service.PlatformAnthropic, accountType: service.AccountTypeOAuth},
-		{name: "other platform", platform: service.PlatformGemini, accountType: service.AccountTypeAPIKey},
+		{name: "openai", platform: service.PlatformOpenAI, accountType: service.AccountTypeAPIKey, key: "openai_passthrough", changed: true, common: true},
+		{name: "anthropic api key", platform: service.PlatformAnthropic, accountType: service.AccountTypeAPIKey, key: "anthropic_passthrough", changed: true, common: true},
+		{name: "anthropic oauth", platform: service.PlatformAnthropic, accountType: service.AccountTypeOAuth, changed: true, common: true},
+		{name: "other platform", platform: service.PlatformGemini, accountType: service.AccountTypeAPIKey, changed: true, common: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -99,6 +100,7 @@ func TestWithPassthroughExtraUsesPlatformSpecificSwitch(t *testing.T) {
 			if tt.key != "" {
 				require.Equal(t, true, extra[tt.key])
 			}
+			require.Equal(t, tt.common, extra[service.MoshuResellerPassthroughExtraKey])
 		})
 	}
 }

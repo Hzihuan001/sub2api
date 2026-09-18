@@ -429,8 +429,11 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
-	Name                  string
-	Notes                 *string
+	Name  string
+	Notes *string
+	// Platform is currently internal-only.  Managed reseller accounts may not
+	// change it; catalog reconciliation uses WithMoshuResellerSync instead.
+	Platform              string
 	Type                  string // Account type: oauth, setup-token, apikey
 	Credentials           map[string]any
 	Extra                 map[string]any

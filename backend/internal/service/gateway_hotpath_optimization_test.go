@@ -571,6 +571,11 @@ func TestGetAvailableModels_ResellerSnapshotOverridesLegacyClaudeFallback(t *tes
 			ID:       7,
 			Platform: PlatformDeepseek,
 			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				// A stale local mapping must not leak a Claude model into a
+				// reseller-managed product catalog.
+				"model_mapping": map[string]any{"claude-sonnet-4-6": "claude-sonnet-4-6"},
+			},
 			Extra: map[string]any{
 				"moshu_reseller_managed":           true,
 				MoshuResellerModelSnapshotExtraKey: []string{"deepseek-v4.1-flash", "deepseek-v4-pro"},
@@ -585,6 +590,30 @@ func TestGetAvailableModels_ResellerSnapshotOverridesLegacyClaudeFallback(t *tes
 
 	require.Equal(t, []string{"deepseek-v4-pro", "deepseek-v4.1-flash"},
 		svc.GetAvailableModels(context.Background(), &groupID, PlatformDeepseek))
+}
+
+func TestGetAvailableModels_EmptyResellerSnapshotDoesNotFallbackToProviderDefaults(t *testing.T) {
+	groupID := int64(43)
+	repo := &modelsListAccountRepoStub{byGroup: map[int64][]Account{
+		groupID: {{
+			ID:       8,
+			Platform: PlatformKimi,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				"moshu_reseller_managed":           true,
+				MoshuResellerModelSnapshotExtraKey: []string{},
+			},
+		}},
+	}}
+	svc := &GatewayService{
+		accountRepo:        repo,
+		modelsListCache:    gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL: time.Minute,
+	}
+
+	models := svc.GetAvailableModels(context.Background(), &groupID, PlatformKimi)
+	require.NotNil(t, models)
+	require.Empty(t, models)
 }
 
 // Scenario: 账号模型变更会失效所属平台缓存

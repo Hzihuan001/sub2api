@@ -1166,7 +1166,9 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
-	if len(availableModels) > 0 {
+	// A non-nil empty list is an authoritative synchronized reseller catalog;
+	// do not replace it with the legacy Claude/provider defaults.
+	if availableModels != nil {
 		writeModelsList(c, platform, availableModels)
 		return
 	}
@@ -1256,7 +1258,7 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 	if group.ModelAllowlistEnabled() {
 		return group.ModelAllowlist.FilterForListing(modelListingSource(platform, availableModels, fallbackModels))
 	}
-	if len(availableModels) > 0 {
+	if availableModels != nil {
 		return availableModels
 	}
 	return fallbackModels
@@ -1410,8 +1412,11 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 // 与平台默认列表（fallbackModels）。账号映射为空时回落默认列表；Anthropic
 // 平台两者取并集，其余平台以账号映射键为准。
 func modelListingSource(platform string, availableModels, fallbackModels []string) []string {
-	if len(availableModels) == 0 {
+	if availableModels == nil {
 		return fallbackModels
+	}
+	if len(availableModels) == 0 {
+		return []string{}
 	}
 	if platform == service.PlatformAnthropic {
 		return mergeModelIDs(availableModels, fallbackModels)

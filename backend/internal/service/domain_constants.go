@@ -60,6 +60,12 @@ const (
 // from the main station for a reseller-managed account.
 const MoshuResellerModelSnapshotExtraKey = "moshu_reseller_model_snapshot"
 
+// MoshuResellerPassthroughExtraKey marks an account whose provider protocol
+// and credentials are owned by the main station. Provider-specific passthrough
+// flags remain for legacy gateway paths, but reseller routing uses this common
+// marker across all platforms.
+const MoshuResellerPassthroughExtraKey = "moshu_reseller_passthrough"
+
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
 const (
 	AccountModePayG   = domain.AccountModePayG

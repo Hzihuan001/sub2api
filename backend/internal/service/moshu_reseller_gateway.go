@@ -13,6 +13,24 @@ func (a *Account) IsMoshuResellerManaged() bool {
 	return managed
 }
 
+// IsMoshuResellerPassthrough reports the common provider-neutral passthrough
+// policy used by accounts provisioned from the main station. Treat managed
+// API-key accounts as passthrough for compatibility with rows written before
+// the marker was introduced; the marker is still persisted for auditing and
+// future provider-specific paths.
+func (a *Account) IsMoshuResellerPassthrough() bool {
+	if !a.IsMoshuResellerManaged() {
+		return false
+	}
+	if a.Extra == nil {
+		return true
+	}
+	if enabled, ok := a.Extra[MoshuResellerPassthroughExtraKey].(bool); ok {
+		return enabled
+	}
+	return true
+}
+
 // HasMoshuResellerModelSnapshot distinguishes a synchronized empty catalog
 // from an older account that has not received model metadata yet.
 func (a *Account) HasMoshuResellerModelSnapshot() bool {
@@ -60,4 +78,42 @@ func (a *Account) GetMoshuResellerModelSnapshot() []string {
 		models = append(models, model)
 	}
 	return models
+}
+
+// IsMoshuResellerModelSupported reports whether a reseller-managed account's
+// synchronized product catalog contains the requested public model.  The
+// snapshot is authoritative for these accounts: an empty snapshot means that
+// the main station authorized no models (or has not published a usable
+// catalog), so callers must not fall back to a built-in provider catalog.
+//
+// The second return value tells callers that the account has an authoritative
+// snapshot, including an explicitly empty one.  Older rows without a snapshot
+// return (false, false) so they keep the legacy compatibility behavior until
+// the next catalog sync populates the snapshot.
+func (a *Account) IsMoshuResellerModelSupported(requestedModel string) (supported, authoritative bool) {
+	if a == nil || !a.IsMoshuResellerManaged() || !a.HasMoshuResellerModelSnapshot() {
+		return false, false
+	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return false, true
+	}
+	// Keep the same provider-specific normalization used by account mappings,
+	// while also accepting the conventional models/ prefix returned by a few
+	// OpenAI-compatible catalogs.
+	candidates := []string{requestedModel}
+	if normalized := normalizeRequestedModelForLookup(a.Platform, requestedModel); normalized != requestedModel {
+		candidates = append(candidates, normalized)
+	}
+	if strings.HasPrefix(requestedModel, "models/") {
+		candidates = append(candidates, strings.TrimPrefix(requestedModel, "models/"))
+	}
+	for _, candidate := range candidates {
+		for _, model := range a.GetMoshuResellerModelSnapshot() {
+			if strings.EqualFold(candidate, model) {
+				return true, true
+			}
+		}
+	}
+	return false, true
 }

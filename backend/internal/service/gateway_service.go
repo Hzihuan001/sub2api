@@ -216,7 +216,7 @@ func anthropicStreamEventIsTerminal(eventName, data string) bool {
 }
 
 func cloneStringSlice(src []string) []string {
-	if len(src) == 0 {
+	if src == nil {
 		return nil
 	}
 	dst := make([]string, len(src))
@@ -1416,6 +1416,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	// so model_mapping is empty; without this branch /v1/models falls back to
 	// the legacy Claude catalog even for DeepSeek/Kimi products.
 	resellerModels := make([]string, 0)
+	hasResellerSnapshot := false
 	hasOpenAIPassthrough := false
 	for _, acc := range accounts {
 		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() {
@@ -1424,6 +1425,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		if !acc.IsMoshuResellerManaged() || !acc.HasMoshuResellerModelSnapshot() {
 			continue
 		}
+		hasResellerSnapshot = true
 		resellerModels = append(resellerModels, acc.GetMoshuResellerModelSnapshot()...)
 	}
 	// Collect unique models from all accounts
@@ -1432,7 +1434,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	for _, model := range normalizeModelCandidateIDs(resellerModels) {
 		modelSet[model] = struct{}{}
 	}
-	if hasOpenAIPassthrough && len(modelSet) == 0 {
+	if hasOpenAIPassthrough && len(modelSet) == 0 && !hasResellerSnapshot {
 		if s.modelsListCache != nil {
 			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
 			modelsListCacheStoreTotal.Add(1)
@@ -1441,6 +1443,11 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	}
 
 	for _, acc := range accounts {
+		// A synchronized reseller snapshot is authoritative for this account;
+		// never merge a stale local model_mapping back into the public catalog.
+		if acc.IsMoshuResellerManaged() && acc.HasMoshuResellerModelSnapshot() {
+			continue
+		}
 		// Passthrough routing accepts models independently of model_mapping. A stale
 		// mapping on any eligible passthrough account therefore cannot define the
 		// public whitelist; return nil so the handler uses its default model set.
@@ -1451,6 +1458,17 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 				modelSet[model] = struct{}{}
 			}
 		}
+	}
+	if hasResellerSnapshot && len(resellerModels) == 0 && !hasAnyMapping {
+		// Preserve an explicitly empty synchronized catalog as an empty result.
+		// Routing is already denied by Account.IsModelSupported; this prevents
+		// callers that inspect the service result from treating it as a mapped
+		// provider catalog.
+		if s.modelsListCache != nil {
+			s.modelsListCache.Set(cacheKey, []string{}, s.modelsListCacheTTL)
+			modelsListCacheStoreTotal.Add(1)
+		}
+		return []string{}
 	}
 
 	// If no account has model_mapping, return nil (use default)

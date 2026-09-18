@@ -574,6 +574,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	if err := validateMoshuResellerManagedUpdate(ctx, account, input); err != nil {
+		return nil, err
+	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
@@ -629,6 +632,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 
 	if input.Name != "" {
 		account.Name = input.Name
+	}
+	if input.Platform != "" {
+		account.Platform = input.Platform
 	}
 	if input.Type != "" {
 		account.Type = input.Type
@@ -902,6 +908,15 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if !isMoshuResellerSync(ctx) && hasMoshuResellerOwnedExtraMutation(updates) {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if account.IsMoshuResellerManaged() && hasMoshuResellerOwnedExtraMutation(updates) {
+			return moshuResellerMutationError("extra")
+		}
+	}
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -972,7 +987,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.Extra != nil || input.GroupIDs != nil || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -984,6 +999,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		if account != nil {
 			targetsByID[account.ID] = account
 		}
+	}
+	if err := validateMoshuResellerManagedBulkUpdate(ctx, cachedTargets, input); err != nil {
+		return nil, err
 	}
 	if openAISettings.any() {
 		inheritedCount, err := validateBulkOpenAISettingsTargets(input, openAISettings, targetsByID)
@@ -1255,6 +1273,15 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 }
 
 func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
+	if !isMoshuResellerSync(ctx) {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if account.IsMoshuResellerManaged() {
+			return moshuResellerMutationError("delete")
+		}
+	}
 	// 级联删除 spark 影子账号（先删影子，再删母账号）
 	shadows, err := s.accountRepo.ListShadowsByParent(ctx, id)
 	if err != nil {
