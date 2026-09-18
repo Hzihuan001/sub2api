@@ -1,0 +1,8 @@
+# Frozen migration tree for the current deployed L1 custom baseline.
+#
+# Applied migrations are immutable.  If a migration needs a correction, add a
+# new migration instead of editing this tree.  Move this baseline only as part
+# of a reviewed release after the old tree has been deployed and its checksums
+# are known.
+custom_baseline_commit=de11106a82f147336610d323b969544ae52f7ca5
+migration_directory=backend/migrations
