@@ -101,7 +101,10 @@ describe('channel monitor Grok provider', () => {
 
     expect(PROVIDERS).toContain(PROVIDER_GROK)
     const providerButtons = wrapper.findAll('[data-testid^="monitor-provider-"]')
-    expect(providerButtons).toHaveLength(8)
+    // Keep the contract tied to the shared provider registry.  New providers
+    // (Kimi, DeepSeek, MiniMax, OpenCode Go, etc.) must appear in the same
+    // responsive grid without making this Grok regression stale.
+    expect(providerButtons).toHaveLength(PROVIDERS.length)
     expect(providerButtons[0].element.parentElement?.className).toContain('grid-cols-2')
     expect(providerButtons[0].element.parentElement?.className).toContain('sm:grid-cols-4')
 

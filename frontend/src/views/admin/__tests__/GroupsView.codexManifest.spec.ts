@@ -25,6 +25,7 @@ vi.mock("@/api/admin", () => ({
       list: listGroups,
       getAll: vi.fn(),
       getModelsListCandidates,
+      getModelAllowlistCandidates: vi.fn().mockResolvedValue([]),
       getUsageSummary,
       getCapacitySummary,
       getLiveCapability,
@@ -45,6 +46,15 @@ vi.mock("@/stores/app", () => ({
   useAppStore: () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
+  }),
+}));
+
+// GroupsView reads the simplified-mode flag during setup.  This test focuses
+// on the Codex manifest field, so provide the smallest stable auth fixture
+// instead of requiring a global active Pinia instance.
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: () => ({
+    isSimpleMode: false,
   }),
 }));
 
