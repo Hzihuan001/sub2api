@@ -2,6 +2,7 @@ package moshureseller
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,24 @@ func TestPersistSettlementUpdatesOnlySameOrNewerRevision(t *testing.T) {
 	err = NewService(db, testEncryptor{}, nil).persistSettlement(context.Background(), RemoteSettlement{
 		ID: 4, Revision: 3, RequestID: "00000000-0000-0000-0000-000000000001", ProductID: 7,
 		ProductCode: "deepseek", ActualCost: 1.2, Status: "completed", RequestSource: "monitor",
+	})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPersistSettlementKeepsLateEventWhenProductWasRemoved(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	requestID := "00000000-0000-0000-0000-000000000002"
+	mock.ExpectQuery("SELECT mp.local_group_id").WithArgs(int64(99), requestID).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec("INSERT INTO moshu_request_profit_records").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err = NewService(db, testEncryptor{}, nil).persistSettlement(context.Background(), RemoteSettlement{
+		ID: 9, Revision: 2, RequestID: requestID, ProductID: 99,
+		ProductCode: "retired-product", ActualCost: 0.42, Status: "completed",
 	})
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())

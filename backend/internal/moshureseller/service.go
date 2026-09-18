@@ -1330,8 +1330,15 @@ func (s *Service) persistSettlementWithDB(ctx context.Context, db settlementDB, 
 		)
 		WHERE mp.remote_product_id=$1 ORDER BY ul.id DESC NULLS LAST LIMIT 1`, settlement.ProductID, settlement.RequestID).
 		Scan(&localGroupID, &salesMultiplier, &usageLogID, &customerCharge, &estimatedCost)
-	if err != nil {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		// A revoked or deleted product can still have a late settlement event.
+		// Preserve the immutable remote record even when the local product link
+		// no longer exists; blocking the cursor here would make every later
+		// settlement retry forever and hide the usable part of the ledger.
+		slog.Warn("settlement references an unknown local product; preserving remote record", "remote_settlement_id", settlement.ID, "remote_product_id", settlement.ProductID, "product_code", settlement.ProductCode)
 	}
 	charge := customerCharge.Float64
 	grossProfit := charge - settlement.ActualCost
