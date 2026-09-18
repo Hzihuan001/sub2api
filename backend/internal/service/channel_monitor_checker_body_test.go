@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 // swapMonitorHTTPClient 临时替换 monitorHTTPClient 为不带 SSRF 校验的普通 client，
@@ -192,6 +195,45 @@ func TestRunCheckForModel_OpenAI_DefaultChatRequest(t *testing.T) {
 	}
 	if h.lastHeaders.Get("Authorization") != "Bearer sk-openai" {
 		t.Errorf("expected bearer auth header, got %q", h.lastHeaders.Get("Authorization"))
+	}
+}
+
+func TestRunCheckForModel_ResellerMonitorHeadersAreUniqueAndProtected(t *testing.T) {
+	h := &openAICaptureHandler{}
+	endpoint := setupFakeOpenAI(t, h)
+	customHeaders := map[string]string{
+		monitorResellerRequestIDHeader: "not-a-uuid",
+		monitorRequestSourceHeader:     "user",
+	}
+
+	for _, provider := range []string{
+		MonitorProviderOpenAI,
+		MonitorProviderGrok,
+		MonitorProviderKimi,
+		MonitorProviderZhipu,
+		MonitorProviderDeepseek,
+		MonitorProviderMiniMax,
+	} {
+		t.Run(provider, func(t *testing.T) {
+			first := runCheckForModel(context.Background(), provider, endpoint, "test-key", "test-model", &CheckOptions{
+				ExtraHeaders: customHeaders,
+			})
+			require.Equal(t, MonitorStatusOperational, first.Status, first.Message)
+			firstID := h.lastHeaders.Get(monitorResellerRequestIDHeader)
+			require.NotEmpty(t, firstID)
+			require.NoError(t, uuid.Validate(firstID))
+			require.Equal(t, monitorRequestSource, h.lastHeaders.Get(monitorRequestSourceHeader))
+
+			second := runCheckForModel(context.Background(), provider, endpoint, "test-key", "test-model", &CheckOptions{
+				ExtraHeaders: customHeaders,
+			})
+			require.Equal(t, MonitorStatusOperational, second.Status, second.Message)
+			secondID := h.lastHeaders.Get(monitorResellerRequestIDHeader)
+			require.NotEmpty(t, secondID)
+			require.NoError(t, uuid.Validate(secondID))
+			require.NotEqual(t, firstID, secondID)
+			require.Equal(t, monitorRequestSource, h.lastHeaders.Get(monitorRequestSourceHeader))
+		})
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 	"testing"
+	"time"
 )
 
 type catalogAdmin struct {
@@ -15,12 +16,25 @@ type catalogAdmin struct {
 	group                        service.Group
 	account                      service.Account
 	groupUpdates, accountUpdates int
+	lastGroupUpdate              *service.UpdateGroupInput
 	failAccount                  bool
 }
 
 func (a *catalogAdmin) GetGroup(context.Context, int64) (*service.Group, error) { return &a.group, nil }
 func (a *catalogAdmin) GetAccount(context.Context, int64) (*service.Account, error) {
 	return &a.account, nil
+}
+func (a *catalogAdmin) UpdateGroup(_ context.Context, _ int64, input *service.UpdateGroupInput) (*service.Group, error) {
+	a.lastGroupUpdate = input
+	if input.Platform != "" {
+		a.group.Platform = input.Platform
+	}
+	if input.ModelAllowlist != nil {
+		a.group.ModelAllowlist = *input.ModelAllowlist
+	}
+	a.group.Status = input.Status
+	a.groupUpdates++
+	return &a.group, nil
 }
 func (a *catalogAdmin) UpdateAccount(_ context.Context, _ int64, input *service.UpdateAccountInput) (*service.Account, error) {
 	if a.failAccount {
@@ -84,4 +98,28 @@ func TestWithProductModelSnapshot(t *testing.T) {
 	unchanged, changed := withProductModelSnapshot(extra, []string{"kimi-k3", "kimi-k2.6"})
 	require.False(t, changed)
 	require.Equal(t, extra, unchanged)
+}
+
+func TestApplyCatalogResetsWhitelistWhenPlatformChanges(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	admin := &catalogAdmin{t: t, group: service.Group{
+		ID: 10, Platform: service.PlatformAnthropic, Status: service.StatusActive,
+		ModelAllowlist: service.GroupModelAllowlist{Enabled: true, Models: []string{"claude-sonnet-4"}},
+	}}
+	mock.ExpectQuery("SELECT id,remote_product_id").WillReturnRows(sqlmock.NewRows([]string{
+		"id", "remote", "code", "name", "platform", "group", "authorized", "selected", "cost", "sales", "version", "models", "capabilities", "credential", "local_group", "local_account", "effective", "cost_override",
+	}).AddRow(3, 7, "deepseek", "DeepSeek", service.PlatformDeepseek, 9, true, true, 0.3, 1.0, 1,
+		[]byte(`["deepseek-v4.1-flash"]`), []byte(`{}`), "test-key", 10, nil, time.Now(), nil))
+
+	err = NewService(db, nil, admin).applyCatalogConfiguration(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, admin.groupUpdates)
+	require.NotNil(t, admin.lastGroupUpdate)
+	require.Equal(t, service.PlatformDeepseek, admin.lastGroupUpdate.Platform)
+	require.NotNil(t, admin.lastGroupUpdate.ModelAllowlist)
+	require.False(t, admin.lastGroupUpdate.ModelAllowlist.Enabled)
+	require.Empty(t, admin.lastGroupUpdate.ModelAllowlist.Models)
+	require.NoError(t, mock.ExpectationsWereMet())
 }

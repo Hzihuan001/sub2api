@@ -530,12 +530,36 @@ func (s *Service) ensureProductAccount(ctx context.Context, id int64) (int64, er
 	}
 	if product.LocalAccountID != nil {
 		if account, err := s.admin.GetAccount(ctx, *product.LocalAccountID); err == nil {
-			if (!product.Selected || product.LocalGroupID == nil) && account.Schedulable {
-				if _, err := s.admin.SetAccountSchedulable(ctx, account.ID, false); err != nil {
-					return 0, err
+			// Platform is immutable on an account update.  A product can change
+			// platform when the main site changes its upstream group, so never
+			// leave a stale Claude/Anthropic account attached to a DeepSeek or
+			// Kimi product.  Create the replacement first, then disable the old
+			// account and atomically relink the product.
+			if account.Platform != product.Platform {
+				replacementID, replacementErr := s.createReplacementProductAccount(ctx, *product, account)
+				if replacementErr != nil {
+					return 0, replacementErr
 				}
+				if _, replacementErr = s.admin.SetAccountSchedulable(ctx, account.ID, false); replacementErr != nil {
+					_, _ = s.admin.SetAccountSchedulable(ctx, replacementID, false)
+					return 0, replacementErr
+				}
+				if _, replacementErr = s.db.ExecContext(ctx, `
+					UPDATE moshu_products SET local_account_id=$2,updated_at=NOW()
+					WHERE id=$1 AND local_account_id=$3`, id, replacementID, account.ID); replacementErr != nil {
+					_, _ = s.admin.SetAccountSchedulable(ctx, replacementID, false)
+					return 0, replacementErr
+				}
+				return replacementID, nil
 			}
-			return *product.LocalAccountID, nil
+
+			// Keep an existing account in sync with the current product snapshot.
+			// This updates the real upstream key, model snapshot and passthrough
+			// mode instead of returning early and preserving stale platform data.
+			if err := s.syncExistingProductAccount(ctx, *product, account); err != nil {
+				return 0, err
+			}
+			return account.ID, nil
 		} else if !errors.Is(err, service.ErrAccountNotFound) {
 			return 0, err
 		}
@@ -576,12 +600,107 @@ func (s *Service) ensureProductAccount(ctx context.Context, id int64) (int64, er
 	if err != nil {
 		return 0, err
 	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE moshu_products SET local_account_id=$2,updated_at=NOW()
+		WHERE id=$1 AND local_account_id IS NULL`, id, accountID); err != nil {
+		_, _ = s.admin.SetAccountSchedulable(ctx, accountID, false)
+		return 0, err
+	}
 	if !product.Selected || product.LocalGroupID == nil {
 		if _, err := s.admin.SetAccountSchedulable(ctx, accountID, false); err != nil {
 			return 0, err
 		}
 	}
 	return accountID, nil
+}
+
+func (s *Service) createReplacementProductAccount(ctx context.Context, product Product, previous *service.Account) (int64, error) {
+	connection, err := s.loadConnection(ctx)
+	if err != nil {
+		return 0, err
+	}
+	credentialCiphertext := ""
+	_, credentialCiphertext, err = s.loadProduct(ctx, product.ID)
+	if err != nil {
+		return 0, err
+	}
+	plainKey, err := s.encryptor.Decrypt(credentialCiphertext)
+	if err != nil {
+		return 0, fmt.Errorf("decrypt product credential: %w", err)
+	}
+	credentials := productAccountCredentials(plainKey, connection.BaseURL, product.Models)
+	extra := map[string]any{
+		"moshu_reseller_managed": true, "moshu_product_code": product.ProductCode,
+		"moshu_remote_product_id": product.RemoteProductID, "moshu_cost_read_only": true,
+		service.MoshuResellerModelSnapshotExtraKey: append([]string(nil), product.Models...),
+	}
+	extra, _ = withPassthroughExtra(extra, product.Platform, service.AccountTypeAPIKey)
+	groupIDs := []int64{}
+	if product.LocalGroupID != nil {
+		groupIDs = append(groupIDs, *product.LocalGroupID)
+	}
+	capacity := previous.Concurrency
+	if capacity <= 0 {
+		capacity = 100
+	}
+	accountID, err := s.createProductAccount(ctx, product, credentials, extra, groupIDs, product.EffectiveCostRate(), capacity)
+	if err != nil {
+		return 0, err
+	}
+	if !product.Selected || product.LocalGroupID == nil {
+		if _, err := s.admin.SetAccountSchedulable(ctx, accountID, false); err != nil {
+			return 0, err
+		}
+	}
+	return accountID, nil
+}
+
+func (s *Service) syncExistingProductAccount(ctx context.Context, product Product, account *service.Account) error {
+	connection, err := s.loadConnection(ctx)
+	if err != nil {
+		return err
+	}
+	_, credentialCiphertext, err := s.loadProduct(ctx, product.ID)
+	if err != nil {
+		return err
+	}
+	plainKey, err := s.encryptor.Decrypt(credentialCiphertext)
+	if err != nil {
+		return fmt.Errorf("decrypt product credential: %w", err)
+	}
+	credentials := productAccountCredentials(plainKey, connection.BaseURL, product.Models)
+	extra := map[string]any{
+		"moshu_reseller_managed": true, "moshu_product_code": product.ProductCode,
+		"moshu_remote_product_id": product.RemoteProductID, "moshu_cost_read_only": true,
+		service.MoshuResellerModelSnapshotExtraKey: append([]string(nil), product.Models...),
+	}
+	extra, _ = withPassthroughExtra(extra, product.Platform, account.Type)
+	extra = mergeMap(account.Extra, extra)
+	groupIDs := append([]int64(nil), account.GroupIDs...)
+	if product.LocalGroupID != nil {
+		seen := false
+		for _, groupID := range groupIDs {
+			if groupID == *product.LocalGroupID {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			groupIDs = append(groupIDs, *product.LocalGroupID)
+		}
+	}
+	rate := product.EffectiveCostRate()
+	if _, err := s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
+		Name: account.Name, Type: account.Type, Credentials: credentials, Extra: extra,
+		Concurrency: &account.Concurrency, RateMultiplier: &rate, Status: service.StatusActive,
+		GroupIDs: &groupIDs, SkipMixedChannelCheck: true,
+	}); err != nil {
+		return err
+	}
+	if _, err := s.admin.SetAccountSchedulable(ctx, account.ID, product.Selected && product.LocalGroupID != nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) rotateCredential(ctx context.Context, id int64) (*Product, error) {
@@ -980,10 +1099,30 @@ func (s *Service) ensureGroup(ctx context.Context, product Product, name string,
 		return createGroup()
 	}
 	status := service.StatusActive
-	group, err := s.admin.UpdateGroup(ctx, *product.LocalGroupID, &service.UpdateGroupInput{
+	existingGroup, getGroupErr := s.admin.GetGroup(ctx, *product.LocalGroupID)
+	if getGroupErr != nil {
+		if errors.Is(getGroupErr, service.ErrGroupNotFound) {
+			if _, clearErr := s.db.ExecContext(ctx, `UPDATE moshu_products SET local_group_id=NULL,selected=FALSE,updated_at=NOW() WHERE id=$1 AND local_group_id=$2`, product.ID, *product.LocalGroupID); clearErr != nil {
+				return 0, clearErr
+			}
+			return createGroup()
+		}
+		return 0, getGroupErr
+	}
+	updateInput := &service.UpdateGroupInput{
 		Name: name, Platform: product.Platform, RateMultiplier: &salesMultiplier, AllowZeroRateMultiplier: true,
 		Status: status,
-	})
+	}
+	// A reused group may still carry the previous platform's model whitelist
+	// (for example Claude IDs after a product is re-synced as DeepSeek/Kimi).
+	// Clear that stale restriction only when the platform actually changes;
+	// same-platform groups remain operator-managed and are never overwritten by
+	// catalog refreshes.
+	if existingGroup.Platform != product.Platform {
+		resetAllowlist := models
+		updateInput.ModelAllowlist = &resetAllowlist
+	}
+	group, err := s.admin.UpdateGroup(ctx, *product.LocalGroupID, updateInput)
 	if err != nil {
 		if errors.Is(err, service.ErrGroupNotFound) {
 			if _, clearErr := s.db.ExecContext(ctx, `UPDATE moshu_products SET local_group_id=NULL,selected=FALSE,updated_at=NOW() WHERE id=$1 AND local_group_id=$2`, product.ID, *product.LocalGroupID); clearErr != nil {
@@ -1022,6 +1161,30 @@ func (s *Service) ensureAccount(ctx context.Context, product Product, groupID in
 			return s.createProductAccount(ctx, product, credentials, extra, groupIDs, rate, capacity)
 		}
 		return 0, err
+	}
+	if account.Platform != product.Platform {
+		// Platform is immutable on an account.  Reusing a stale Claude account
+		// for a newly synchronized DeepSeek/Kimi product makes both model tests
+		// and gateway routing use the wrong protocol.  Create the replacement
+		// first, then retire the old account and relink the product.
+		replacementID, createErr := s.createProductAccount(ctx, product, credentials, extra, groupIDs, rate, capacity)
+		if createErr != nil {
+			return 0, createErr
+		}
+		if _, disableErr := s.admin.SetAccountSchedulable(ctx, account.ID, false); disableErr != nil {
+			_, _ = s.admin.SetAccountSchedulable(ctx, replacementID, false)
+			return 0, disableErr
+		}
+		if _, linkErr := s.db.ExecContext(ctx, `
+			UPDATE moshu_products SET local_account_id=$2,updated_at=NOW()
+			WHERE id=$1 AND local_account_id=$3`, product.ID, replacementID, account.ID); linkErr != nil {
+			_, _ = s.admin.SetAccountSchedulable(ctx, replacementID, false)
+			return 0, linkErr
+		}
+		if _, schedErr := s.admin.SetAccountSchedulable(ctx, replacementID, true); schedErr != nil {
+			return 0, schedErr
+		}
+		return replacementID, nil
 	}
 	extra = mergeMap(account.Extra, extra)
 	updated, err := s.admin.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{

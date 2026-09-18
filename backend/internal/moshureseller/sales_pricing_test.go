@@ -19,6 +19,10 @@ type pricingAdmin struct {
 	cost     *float64
 }
 
+func (a *pricingAdmin) GetGroup(_ context.Context, id int64) (*service.Group, error) {
+	return &service.Group{ID: id, Platform: service.PlatformOpenAI}, nil
+}
+
 type deletedGroupAdmin struct {
 	service.AdminService
 	t                   *testing.T

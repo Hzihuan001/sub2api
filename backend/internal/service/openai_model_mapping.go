@@ -91,6 +91,7 @@ var deepseekServableModels = []string{
 	"deepseek-flash",
 	"deepseek-v4-pro",
 	"deepseek-v4-flash",
+	"deepseek-v4.1-flash",
 	"deepseek-v4-flash-vision-exp",
 	"deepseek-v4-pro-0813",
 }

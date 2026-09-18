@@ -32,7 +32,18 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 				return fmt.Errorf("load product %d group: %w", product.ID, err)
 			}
 			if group.Platform != product.Platform {
-				return fmt.Errorf("product %d platform changed; migrate its local group explicitly", product.ID)
+				// A synchronized product owns the protocol identity of its local
+				// channel. Reset a stale whitelist when the upstream platform changes
+				// (for example Claude -> DeepSeek) so old model IDs cannot block the
+				// newly authorized product. The reseller can then opt into a new
+				// whitelist from Group Management.
+				allowlist := service.GroupModelAllowlist{Enabled: false, Models: []string{}}
+				if _, updateErr := s.admin.UpdateGroup(ctx, group.ID, &service.UpdateGroupInput{
+					Platform: product.Platform, ModelAllowlist: &allowlist,
+					Status: group.Status,
+				}); updateErr != nil {
+					return fmt.Errorf("sync product %d local group platform: %w", product.ID, updateErr)
+				}
 			}
 			// The local group owns model authorization. Catalog refreshes must not
 			// overwrite a whitelist configured by the reseller administrator.

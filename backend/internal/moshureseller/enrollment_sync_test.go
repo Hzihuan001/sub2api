@@ -44,6 +44,8 @@ func TestEnrollmentSynchronizesOperationalKeyBeforeCommit(t *testing.T) {
 				mock.ExpectQuery("SELECT id,remote_product_id").WillReturnRows(pricingRows(false, 1, nil, nil))
 				mock.ExpectQuery("SELECT id,remote_product_id").WithArgs(int64(3)).WillReturnRows(pricingRows(false, 1, nil, nil))
 				mock.ExpectQuery("SELECT base_url").WillReturnRows(sqlmock.NewRows([]string{"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh", "expiry", "etag", "version", "catalog_at", "settlement_at", "error"}).AddRow(server.URL, "instance", 1, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "etag", 1, nil, nil, nil))
+				mock.ExpectExec("UPDATE moshu_products SET local_account_id").WithArgs(int64(3), int64(42)).
+					WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectQuery("SELECT id,remote_product_id").WillReturnRows(pricingRows(false, 1, nil, nil))
 				mock.ExpectQuery("SELECT base_url").WillReturnRows(sqlmock.NewRows([]string{"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh", "expiry", "etag", "version", "catalog_at", "settlement_at", "error"}).AddRow(server.URL, "instance", 1, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "etag", 1, nil, nil, nil))
 				mock.ExpectQuery("SELECT id,remote_product_id").WillReturnRows(pricingRows(false, 1, nil, nil))

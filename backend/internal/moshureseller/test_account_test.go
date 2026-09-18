@@ -55,6 +55,8 @@ func TestEnsureProductTestAccountCreatesUnscheduledAccountWithoutSalesGroup(t *t
 		"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh",
 		"expiry", "etag", "version", "catalog_at", "settlement_at", "error",
 	}).AddRow("https://main.example", "instance", 1, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "etag", 1, nil, nil, nil))
+	mock.ExpectExec("UPDATE moshu_products SET local_account_id").WithArgs(int64(3), int64(42)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	admin := &testAccountAdmin{t: t}
 	accountID, err := NewService(db, testEncryptor{}, admin).EnsureProductTestAccount(context.Background(), 3)

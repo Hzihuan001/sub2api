@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -530,6 +531,12 @@ func hasNonEmptyBodyValue(v any) bool {
 	}
 }
 
+const (
+	monitorResellerRequestIDHeader = "X-Reseller-Request-ID"
+	monitorRequestSourceHeader     = "X-Reseller-Request-Source"
+	monitorRequestSource           = "monitor"
+)
+
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
 func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
@@ -543,6 +550,11 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+	// 代理协议要求每一次监控探测都有一个合法且独立的 UUID。必须在
+	// 应用自定义 headers 之后写入，避免模板配置覆盖协议头并触发
+	// `X-Reseller-Request-ID must be a UUID`。
+	req.Header.Set(monitorResellerRequestIDHeader, uuid.NewString())
+	req.Header.Set(monitorRequestSourceHeader, monitorRequestSource)
 
 	resp, err := monitorHTTPClient.Do(req)
 	if err != nil {
