@@ -141,6 +141,7 @@ def main() -> int:
         )
 
     required_workflow_fragments = (
+        "if: startsWith(github.ref, 'refs/tags/custom-l1-')",
         "tags: ghcr.io/${{ github.repository_owner }}/sub2api:${{ env.CUSTOM_VERSION }}",
         "VERSION=${{ env.CUSTOM_VERSION }}",
         "org.opencontainers.image.version=${{ env.CUSTOM_VERSION }}",
