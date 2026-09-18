@@ -18,8 +18,22 @@ env:
   CUSTOM_VERSION: 0.2.5-l1.7
 
 jobs:
+  compatibility:
+    name: Release compatibility gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify upstream baseline and release metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 tools/check_release_consistency.py --tag "$RELEASE_TAG"
+
   quality:
     name: Focused quality gate
+    needs: compatibility
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -68,7 +82,7 @@ jobs:
 
   publish:
     name: Build and publish L1 image
-    needs: quality
+    needs: [compatibility, quality]
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.build.outputs.digest }}
