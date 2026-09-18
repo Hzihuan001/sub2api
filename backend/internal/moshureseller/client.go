@@ -165,7 +165,7 @@ func (c *protocolClient) doJSONWithRawData(ctx context.Context, method, endpoint
 		}
 		reader = bytes.NewReader(payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader) //nolint:gosec // endpoint is derived from the validated reseller base URL.
 	if err != nil {
 		return err
 	}
@@ -179,11 +179,11 @@ func (c *protocolClient) doJSONWithRawData(ctx context.Context, method, endpoint
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Do(req) //nolint:gosec // redirects are disabled and the base URL was validated before use.
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if inspect != nil {
 		inspect(resp)
 	}

@@ -112,10 +112,6 @@ func pendingPricing(products []Product) *compiledPricing {
 	return &compiledPricing{groups: result, accounts: map[int64]*service.ResellerPricingCalculator{}}
 }
 
-func (s *Service) compilePricingCatalog(ctx context.Context, catalog *remotePricingCatalog, connection *storedConnection, products []Product) (*compiledPricing, error) {
-	return s.compilePricingCatalogVersion(ctx, catalog, connection, products, false)
-}
-
 func (s *Service) compilePricingCatalogVersion(ctx context.Context, catalog *remotePricingCatalog, connection *storedConnection, products []Product, trusted bool) (*compiledPricing, error) {
 	if trusted {
 		if catalog == nil || catalog.Schema != 1 || connection == nil || connection.ResellerID == nil || catalog.ResellerID != *connection.ResellerID {

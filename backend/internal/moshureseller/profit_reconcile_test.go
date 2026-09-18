@@ -16,7 +16,7 @@ import (
 func TestPersistSettlementUpdatesOnlySameOrNewerRevision(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectQuery("SELECT mp.local_group_id").WithArgs(int64(7), "00000000-0000-0000-0000-000000000001").
 		WillReturnRows(sqlmock.NewRows([]string{"group", "sales", "usage", "charge", "estimated"}).AddRow(3, 1.4, 9, 2.5, 1.1))
 	mock.ExpectExec(regexp.QuoteMeta("WHERE moshu_request_profit_records.remote_revision <= EXCLUDED.remote_revision")).
@@ -33,7 +33,7 @@ func TestPersistSettlementUpdatesOnlySameOrNewerRevision(t *testing.T) {
 func TestPersistSettlementKeepsLateEventWhenProductWasRemoved(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	requestID := "00000000-0000-0000-0000-000000000002"
 	mock.ExpectQuery("SELECT mp.local_group_id").WithArgs(int64(99), requestID).
 		WillReturnError(sql.ErrNoRows)
@@ -57,7 +57,7 @@ func TestSyncSettlementsSurfacesReconciliationFailure(t *testing.T) {
 	defer server.Close()
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectQuery("SELECT base_url").WillReturnRows(sqlmock.NewRows([]string{"base", "instance", "reseller", "name", "protocol", "status", "access", "refresh", "expiry", "etag", "version", "catalog_at", "settlement_at", "error"}).AddRow(server.URL, "instance", 1, "L1", "v1", "active", "access", "refresh", time.Now().Add(time.Hour), "etag", 1, nil, nil, nil))
 	mock.ExpectQuery("SELECT last_remote_id").WillReturnRows(sqlmock.NewRows([]string{"cursor"}).AddRow(10))
 	mock.ExpectExec("UPDATE moshu_settlement_cursors").WithArgs(int64(10)).WillReturnResult(sqlmock.NewResult(0, 1))

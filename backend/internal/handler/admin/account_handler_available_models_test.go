@@ -72,7 +72,9 @@ func TestAccountHandlerGetAvailableModels_ResellerUsesMainCatalog(t *testing.T) 
 			}
 			want := make([]string, 0, len(tt.models))
 			for _, model := range tt.models {
-				want = append(want, model.(string))
+				modelID, ok := model.(string)
+				require.True(t, ok, "model snapshot entries must be strings")
+				want = append(want, modelID)
 			}
 			require.Equal(t, want, ids)
 			for _, id := range ids {

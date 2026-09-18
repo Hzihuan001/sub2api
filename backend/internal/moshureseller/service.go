@@ -19,9 +19,9 @@ import (
 )
 
 var (
-	ErrDisabled     = errors.New("Moshu reseller client is disabled")
-	ErrNotConnected = errors.New("Moshu reseller is not connected")
-	ErrNotFound     = errors.New("Moshu product not found")
+	ErrDisabled     = errors.New("Moshu reseller client is disabled") //nolint:staticcheck // Preserve the public sentinel error text.
+	ErrNotConnected = errors.New("Moshu reseller is not connected")   //nolint:staticcheck // Preserve the public sentinel error text.
+	ErrNotFound     = errors.New("Moshu product not found")           //nolint:staticcheck // Preserve the public sentinel error text.
 	ErrInvalidInput = errors.New("invalid Moshu reseller request")
 )
 
@@ -921,7 +921,7 @@ func (s *Service) ListProfits(ctx context.Context, page, pageSize int) ([]Profit
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]ProfitRecord, 0, pageSize)
 	for rows.Next() {
 		var item ProfitRecord
@@ -1037,7 +1037,7 @@ func (s *Service) listProducts(ctx context.Context) ([]Product, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]Product, 0)
 	for rows.Next() {
 		item, _, scanErr := scanProduct(rows)
@@ -1282,7 +1282,7 @@ func (s *Service) disableRevokedProducts(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	type target struct {
 		groupID, accountID sql.NullInt64
 		platform           string
