@@ -781,6 +781,7 @@ func (s *Service) SyncSettlements(ctx context.Context) (synced int, syncErr erro
 	}
 	total := 0
 	for {
+		pageStartCursor := cursor
 		page, fetchErr := s.client.settlements(ctx, connection.BaseURL, token, cursor)
 		if fetchErr != nil {
 			return total, fetchErr
@@ -803,8 +804,8 @@ func (s *Service) SyncSettlements(ctx context.Context) (synced int, syncErr erro
 		// A malformed or stale upstream cursor must not make the worker spin on
 		// the same page forever.  Fail this sync so the next scheduled run can
 		// retry after the main site has corrected its cursor.
-		if page.NextCursor <= cursor {
-			return total, fmt.Errorf("settlement cursor did not advance: %d", page.NextCursor)
+		if err := validateSettlementCursorProgress(pageStartCursor, page.NextCursor); err != nil {
+			return total, err
 		}
 		cursor = page.NextCursor
 	}
@@ -866,6 +867,13 @@ func (s *Service) syncSettlementEvents(ctx context.Context, connection *storedCo
 }
 
 const settlementEventPageLimit = 500
+
+func validateSettlementCursorProgress(previous, next int64) error {
+	if next <= previous {
+		return fmt.Errorf("settlement cursor did not advance: %d", next)
+	}
+	return nil
+}
 
 // validateSettlementEventPage rejects malformed protocol pages before any
 // local write or acknowledgement.  Settlement events are an at-least-once

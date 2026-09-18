@@ -46,3 +46,12 @@ func TestValidateSettlementEventPageRejectsOversizedPage(t *testing.T) {
 	}
 	require.ErrorContains(t, validateSettlementEventPage(page), "exceeds limit")
 }
+
+func TestSettlementCursorProgressUsesPageStartCursor(t *testing.T) {
+	// The main site returns the last ID in the current page as next_cursor.
+	// Comparing it with the cursor after processing the page would reject every
+	// page that has a following page, even though the protocol is progressing.
+	require.NoError(t, validateSettlementCursorProgress(100, 150))
+	require.Error(t, validateSettlementCursorProgress(150, 150))
+	require.Error(t, validateSettlementCursorProgress(150, 149))
+}
