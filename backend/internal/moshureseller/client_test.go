@@ -99,6 +99,28 @@ func TestProtocolClientBalanceUsesScopedResellerEndpoint(t *testing.T) {
 	require.True(t, result.Warning)
 }
 
+func TestProtocolClientDoesNotFollowRedirects(t *testing.T) {
+	var followed bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/final" {
+			followed = true
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Redirect(w, r, "/final", http.StatusTemporaryRedirect)
+	}))
+	defer server.Close()
+
+	result, err := newProtocolClient().balance(context.Background(), server.URL, "reseller-token")
+	require.Error(t, err)
+	require.NotNil(t, result)
+	require.Zero(t, *result)
+	require.False(t, followed, "authenticated protocol requests must not follow redirects")
+	var upstreamErr *upstreamRequestError
+	require.ErrorAs(t, err, &upstreamErr)
+	require.Equal(t, http.StatusTemporaryRedirect, upstreamErr.Status)
+}
+
 func TestDisabledRuntimeStopsImmediately(t *testing.T) {
 	t.Setenv("MOSHU_RESELLER_CLIENT_ENABLED", "false")
 	runtime := NewRuntime(nil)

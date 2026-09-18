@@ -31,7 +31,15 @@ type apiEnvelope[T any] struct {
 }
 
 func newProtocolClient() *protocolClient {
-	return &protocolClient{http: &http.Client{Timeout: 30 * time.Second}}
+	return &protocolClient{http: &http.Client{
+		Timeout: 30 * time.Second,
+		// The reseller protocol is an authenticated API.  Treat redirects as a
+		// protocol error instead of following them to an unexpected host or
+		// path.  This also keeps bearer tokens scoped to the configured base URL.
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}}
 }
 
 func validateBaseURL(raw string) (string, error) {

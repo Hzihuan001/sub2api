@@ -130,6 +130,15 @@ describe('reseller configuration', () => {
     expect(wrapper.get('[data-test="upstream-account-test"]').text()).toBe('真实上游账号')
     wrapper.unmount()
   })
+  it('uses the catalog model snapshot for channels without a local test account', async () => {
+    mocks.localAccountID = undefined
+    mocks.models = ['deepseek-chat', 'deepseek-chat', 'deepseek-reasoner']
+    const wrapper = mount(MoshuUpstreamView)
+    await flushPromises()
+    expect(wrapper.text()).toContain('admin.moshuUpstream.modelCount:2')
+    expect(mocks.probeUpstreamModels).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('allows manager channel controls but hides reconnection and key rotation', async () => {
     mocks.auth.isSuperAdmin = false
     const wrapper = mount(MoshuUpstreamView)

@@ -58,7 +58,14 @@ func (s *Service) recordSyncDomainSuccess(ctx context.Context, domain string) {
 	default:
 		return
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE moshu_reseller_connections SET `+column+`_last_success_at=NOW(),`+column+`_last_error_at=NULL,`+column+`_last_error=NULL,updated_at=NOW() WHERE id=1`)
+	// Sync callers use bounded contexts for the remote request.  If the remote
+	// call completes just as that deadline is reached, using the same context
+	// here silently drops the success marker and leaves the UI showing a stale
+	// error.  Status bookkeeping is local and best-effort, so detach it from the
+	// request cancellation while retaining a short database timeout.
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	_, _ = s.db.ExecContext(writeCtx, `UPDATE moshu_reseller_connections SET `+column+`_last_success_at=NOW(),`+column+`_last_error_at=NULL,`+column+`_last_error=NULL,updated_at=NOW() WHERE id=1`)
 }
 
 func (s *Service) recordSyncDomainFailure(ctx context.Context, domain string, cause error) {

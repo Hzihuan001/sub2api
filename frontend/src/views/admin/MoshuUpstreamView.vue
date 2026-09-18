@@ -87,6 +87,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -112,6 +113,11 @@ const enrollment = reactive({ base_url: '', enrollment_code: '' })
 const batchIDs = ref<number[]>([]), batchResults = ref<BatchResult[]>([])
 const drafts = reactive<Record<number, { name: string; multiplier: number; capacity: number }>>({})
 const authorizedProducts = computed(() => status.value?.products.filter(product => product.authorized) ?? [])
+// Keep the 10-minute stale indicator current while the page remains open.
+// Date.now() alone is not reactive, so without a clock tick a healthy card
+// would stay green forever until another API refresh happened.
+const syncClock = ref(Date.now())
+useIntervalFn(() => { syncClock.value = Date.now() }, 60_000)
 const syncDomains = computed(() => {
   const connection = status.value?.connection
   const entries = [
@@ -122,7 +128,7 @@ const syncDomains = computed(() => {
   ]
   return entries.map(({ key, label, domain }) => {
     const success = domain?.last_success_at
-    const stale = !success || Date.now() - new Date(success).getTime() > 10 * 60 * 1000
+    const stale = !success || syncClock.value - new Date(success).getTime() > 10 * 60 * 1000
     const newerError = !!domain?.last_error && (!success || new Date(domain.last_error_at || 0).getTime() >= new Date(success).getTime())
     return { key, label, success, error: newerError ? domain?.last_error : '', problem: stale || newerError }
   })
@@ -166,6 +172,16 @@ async function probeProductModels(products: MoshuProduct[]) {
   await Promise.allSettled(products.map(product => probeProductModel(product, generation)))
 }
 async function probeProductModel(product: MoshuProduct, generation = modelProbeGeneration) {
+  // The catalog carries the authoritative model snapshot for every authorized
+  // product. Prefer it when available so products without a local test account
+  // still show their real model count and a page refresh does not fan out one
+  // `/admin/accounts/:id/models` request per channel. The account probe remains
+  // the fallback for older/partially-synced catalogs that have no snapshot.
+  const catalogModels = new Set((product.models ?? []).map(model => model.trim()).filter(Boolean))
+  if (catalogModels.size > 0) {
+    if (generation === modelProbeGeneration) detectedModelCounts[product.id] = catalogModels.size
+    return
+  }
   if (!product.local_account_id) {
     delete detectedModelCounts[product.id]
     return

@@ -797,6 +797,12 @@ func (s *Service) SyncSettlements(ctx context.Context) (synced int, syncErr erro
 		if page.NextCursor == 0 || len(page.Items) == 0 {
 			break
 		}
+		// A malformed or stale upstream cursor must not make the worker spin on
+		// the same page forever.  Fail this sync so the next scheduled run can
+		// retry after the main site has corrected its cursor.
+		if page.NextCursor <= cursor {
+			return total, fmt.Errorf("settlement cursor did not advance: %d", page.NextCursor)
+		}
 		cursor = page.NextCursor
 	}
 	if err := s.reconcilePendingProfits(ctx); err != nil {
