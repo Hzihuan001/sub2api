@@ -859,7 +859,7 @@ func (s *Service) syncSettlementEvents(ctx context.Context, connection *storedCo
 			return total, err
 		}
 		total += len(eventIDs)
-		if len(eventIDs) < 500 {
+		if len(eventIDs) < settlementEventPageLimit {
 			return total, nil
 		}
 	}
