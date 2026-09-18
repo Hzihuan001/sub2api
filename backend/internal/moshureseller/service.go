@@ -822,6 +822,13 @@ func (s *Service) syncSettlementEvents(ctx context.Context, connection *storedCo
 		if err != nil {
 			return total, err
 		}
+		if err := validateSettlementEventPage(page); err != nil {
+			// Do not persist or acknowledge a malformed page.  Acknowledging an
+			// invalid event would make the upstream ledger impossible to replay;
+			// leaving it pending lets the next run retry after the main site is
+			// corrected and keeps the failure visible in sync status.
+			return total, err
+		}
 		if len(page.Items) == 0 {
 			return total, nil
 		}
@@ -842,6 +849,7 @@ func (s *Service) syncSettlementEvents(ctx context.Context, connection *storedCo
 			eventIDs = append(eventIDs, event.EventID)
 		}
 		if err := tx.Commit(); err != nil {
+			_ = tx.Rollback()
 			return total, err
 		}
 		if err := s.client.acknowledgeSettlementEvents(ctx, connection.BaseURL, token, eventIDs); err != nil {
@@ -852,6 +860,36 @@ func (s *Service) syncSettlementEvents(ctx context.Context, connection *storedCo
 			return total, nil
 		}
 	}
+}
+
+const settlementEventPageLimit = 500
+
+// validateSettlementEventPage rejects malformed protocol pages before any
+// local write or acknowledgement.  Settlement events are an at-least-once
+// stream, so a bad event must remain pending for replay instead of being
+// acknowledged and lost.  The limit also protects the transaction and ack
+// request from an upstream implementation that ignores the advertised limit.
+func validateSettlementEventPage(page *RemoteSettlementEventPage) error {
+	if page == nil {
+		return fmt.Errorf("settlement event page is empty")
+	}
+	if len(page.Items) > settlementEventPageLimit {
+		return fmt.Errorf("settlement event page exceeds limit: %d", len(page.Items))
+	}
+	seen := make(map[int64]struct{}, len(page.Items))
+	for _, event := range page.Items {
+		if event.EventID <= 0 {
+			return fmt.Errorf("settlement event has invalid id: %d", event.EventID)
+		}
+		if event.Settlement.ID <= 0 {
+			return fmt.Errorf("settlement event %d has invalid settlement id: %d", event.EventID, event.Settlement.ID)
+		}
+		if _, exists := seen[event.EventID]; exists {
+			return fmt.Errorf("settlement event page contains duplicate id: %d", event.EventID)
+		}
+		seen[event.EventID] = struct{}{}
+	}
+	return nil
 }
 
 func (s *Service) ListProfits(ctx context.Context, page, pageSize int) ([]ProfitRecord, int64, error) {
