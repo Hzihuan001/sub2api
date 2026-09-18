@@ -61,7 +61,11 @@ func (c *protocolClient) exchange(ctx context.Context, baseURL, code, instanceID
 	if len(expectedResellerIDs) > 0 {
 		expectedID = expectedResellerIDs[0]
 	}
-	return c.exchangePreservingStation(ctx, baseURL, code, instanceID, expectedID, "")
+	result, err := c.exchangePreservingStation(ctx, baseURL, code, instanceID, expectedID, "")
+	if err == nil {
+		err = validateTokenPair(result.AccessToken, result.RefreshToken, result.ExpiresIn)
+	}
+	return result, err
 }
 
 func (c *protocolClient) exchangePreservingStation(ctx context.Context, baseURL, code, instanceID string, expectedID int64, previousRefresh string) (*EnrollmentExchange, error) {

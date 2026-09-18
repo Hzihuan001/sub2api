@@ -92,6 +92,19 @@ func TestProtocolClientRefreshReturnsValidatedTokenPair(t *testing.T) {
 	require.Equal(t, int64(900), expiresIn)
 }
 
+func TestProtocolClientExchangeRejectsIncompleteTokenPair(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"tenant":{"id":7,"name":"L1","protocol_version":"v1"},"access_token":"access","refresh_token":"","expires_in":900,"catalog":{"protocol_version":"v1","reseller_id":7,"catalog_version":3,"products":[]}}}`))
+	}))
+	defer server.Close()
+
+	client := newProtocolClient()
+	client.http = server.Client()
+	_, err := client.exchange(context.Background(), server.URL, "code", "instance")
+	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
 func TestProtocolClientCatalogHonorsETagAndNotModified(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer token", r.Header.Get("Authorization"))
