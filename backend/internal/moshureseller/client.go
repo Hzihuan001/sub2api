@@ -199,7 +199,7 @@ func (c *protocolClient) doJSONWithRawData(ctx context.Context, method, endpoint
 		return err
 	}
 	if int64(len(payload)) > limit {
-		return fmt.Errorf("Moshu response exceeds size limit")
+		return fmt.Errorf("moshu response exceeds size limit")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		message := fmt.Sprintf("主站请求失败（HTTP %d），请稍后重试", resp.StatusCode)

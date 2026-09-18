@@ -11,7 +11,7 @@ import (
 func TestRecordSyncDomainSuccessSurvivesCallerCancellation(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec("UPDATE moshu_reseller_connections SET catalog_last_success_at=").
 		WillReturnResult(sqlmock.NewResult(0, 1))

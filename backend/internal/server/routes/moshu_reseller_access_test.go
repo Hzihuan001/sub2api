@@ -20,7 +20,7 @@ func TestMoshuResellerManagementAccess(t *testing.T) {
 		t.Run(role, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			r := gin.New()
 			admin := r.Group("/admin")
 			admin.Use(func(c *gin.Context) { c.Set(string(middleware.ContextKeyUserRole), role) })
