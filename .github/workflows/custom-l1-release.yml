@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.5-l1.8
+  CUSTOM_VERSION: 0.2.5-l1.9
 
 jobs:
   compatibility:
@@ -24,6 +24,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Fetch official baseline tag for consistency check
+        run: git fetch --no-tags https://github.com/Wei-Shaw/sub2api.git refs/tags/v0.2.5:refs/tags/v0.2.5
 
       - name: Verify upstream baseline and release metadata
         env:
