@@ -679,19 +679,7 @@ func (s *Service) syncExistingProductAccount(ctx context.Context, product Produc
 	}
 	extra, _ = withPassthroughExtra(extra, product.Platform, account.Type)
 	extra = mergeMap(account.Extra, extra)
-	groupIDs := append([]int64(nil), account.GroupIDs...)
-	if product.LocalGroupID != nil {
-		seen := false
-		for _, groupID := range groupIDs {
-			if groupID == *product.LocalGroupID {
-				seen = true
-				break
-			}
-		}
-		if !seen {
-			groupIDs = append(groupIDs, *product.LocalGroupID)
-		}
-	}
+	groupIDs := productAccountGroupIDs(account.GroupIDs, product.LocalGroupID)
 	rate := product.EffectiveCostRate()
 	if _, err := s.admin.UpdateAccount(service.WithMoshuResellerSync(ctx), account.ID, &service.UpdateAccountInput{
 		Name: account.Name, Type: account.Type, Credentials: credentials, Extra: extra,
