@@ -2,7 +2,7 @@ package reseller
 
 import (
 	"context"
-	"database/sql"
+	"encoding/json"
 	"errors"
 	"strconv"
 
@@ -18,17 +18,8 @@ func (s *Service) ListSettlementEvents(ctx context.Context, resellerID int64, li
 	// opportunistic and never removes pending deliveries.
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM reseller_settlement_events WHERE acknowledged_at IS NOT NULL AND acknowledged_at < NOW()-INTERVAL '7 days'`)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT e.id,e.revision,
-		       rs.id,rs.revision,rs.request_source,rs.request_id::text,rs.upstream_request_id,rs.product_id,
-		       rp.product_code,rp.display_name,rs.moshu_group_id,rs.requested_model,
-		       rs.upstream_model,rs.service_tier,rs.input_tokens,rs.output_tokens,
-		       rs.cache_creation_tokens,rs.cache_read_tokens,rs.image_count,
-		       rs.video_count,rs.standard_cost,rs.cost_rate_multiplier,rs.actual_cost,
-		       rs.price_catalog_version,rs.status,rs.error_type,rs.started_at,
-		       rs.completed_at,rs.created_at
+		SELECT e.id,e.revision,e.settlement_snapshot
 		FROM reseller_settlement_events e
-		JOIN reseller_request_settlements rs ON rs.id=e.settlement_id
-		JOIN reseller_products rp ON rp.id=rs.product_id
 		WHERE e.reseller_id=$1 AND e.acknowledged_at IS NULL
 		ORDER BY e.id ASC LIMIT $2`, resellerID, limit)
 	if err != nil {
@@ -38,26 +29,12 @@ func (s *Service) ListSettlementEvents(ctx context.Context, resellerID int64, li
 	result := &SettlementEventPage{Items: make([]SettlementEvent, 0, limit)}
 	for rows.Next() {
 		var event SettlementEvent
-		var upstreamID, requestedModel, upstreamModel, tier, errorType sql.NullString
-		var completedAt sql.NullTime
-		item := &event.Settlement
-		if err := rows.Scan(&event.EventID, &event.Revision,
-			&item.ID, &item.Revision, &item.RequestSource, &item.RequestID, &upstreamID, &item.ProductID,
-			&item.ProductCode, &item.DisplayName, &item.MoshuGroupID, &requestedModel,
-			&upstreamModel, &tier, &item.InputTokens, &item.OutputTokens,
-			&item.CacheCreationTokens, &item.CacheReadTokens, &item.ImageCount,
-			&item.VideoCount, &item.StandardCost, &item.CostRateMultiplier,
-			&item.ActualCost, &item.PriceCatalogVersion, &item.Status, &errorType,
-			&item.StartedAt, &completedAt, &item.CreatedAt); err != nil {
+		var snapshot []byte
+		if err := rows.Scan(&event.EventID, &event.Revision, &snapshot); err != nil {
 			return nil, err
 		}
-		item.UpstreamRequestID = nullStringPtr(upstreamID)
-		item.RequestedModel = nullStringPtr(requestedModel)
-		item.UpstreamModel = nullStringPtr(upstreamModel)
-		item.ServiceTier = nullStringPtr(tier)
-		item.ErrorType = nullStringPtr(errorType)
-		if completedAt.Valid {
-			item.CompletedAt = &completedAt.Time
+		if err := json.Unmarshal(snapshot, &event.Settlement); err != nil {
+			return nil, err
 		}
 		result.Items = append(result.Items, event)
 	}
