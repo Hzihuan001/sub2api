@@ -1,4 +1,4 @@
 # Official Sub2API baseline used by the L1 custom branch.
 # Update these values in the same commit as an upstream merge.
-official_tag=v0.2.5
-official_commit=4af0e80db1b0bc7626dfb8fb76ccaffc6bb0dc17
+official_tag=v0.2.7
+official_commit=aea725f2ea644d5592d0bbb1d63b607efa7e200a
