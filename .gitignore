@@ -131,6 +131,7 @@ AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
+.gomodcache/
 vite.config.js
 docs/*
 !docs/MIGRATION_BASELINE
