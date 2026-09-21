@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -119,10 +120,12 @@ func TestApplyMoshuResellerRequestIDRemovesNonCanonicalCallerHeaders(t *testing.
 	req.Header["x-reseller-request-id"] = []string{"not-a-uuid"}
 	req.Header["x-reseller-request-source"] = []string{"user"}
 	applyMoshuResellerRequestID(req)
-	if values := req.Header["x-reseller-request-id"]; len(values) != 0 {
+	nonCanonicalID := strings.ToLower(moshuResellerRequestIDHeader)
+	nonCanonicalSource := strings.ToLower(moshuResellerRequestSourceHeader)
+	if values := req.Header[nonCanonicalID]; len(values) != 0 {
 		t.Fatalf("non-canonical request ID survived: %#v", values)
 	}
-	if values := req.Header["x-reseller-request-source"]; len(values) != 0 {
+	if values := req.Header[nonCanonicalSource]; len(values) != 0 {
 		t.Fatalf("non-canonical request source survived: %#v", values)
 	}
 	if _, err := uuid.Parse(req.Header.Get(moshuResellerRequestIDHeader)); err != nil {
