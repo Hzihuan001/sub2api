@@ -29,6 +29,22 @@ type openAICompactSSEKeepalive struct {
 	writer  gin.ResponseWriter
 	started bool
 	stopped bool
+	// headersOnly is true when a persistent stream has committed the HTTP
+	// status/header block but has not written any semantic response bytes yet.
+	// Gin's ResponseWriter reports Size()==0 after WriteHeader, which otherwise
+	// looks like a real response and prevents a safe pre-output failover.
+	headersOnly bool
+	// headersReady means the caller prepared the SSE headers before starting a
+	// persistent heartbeat. In that mode beat must not mutate the header map
+	// concurrently with request-side error handling.
+	headersReady bool
+	// suspendOnWrite preserves the compact behavior where the first request-side
+	// write takes ownership of the response. Long-lived passthrough streams use
+	// the persistent mode and keep sending SSE comments after output starts.
+	suspendOnWrite bool
+	// canBeat may suppress a beat while the caller is writing a partial SSE
+	// event. Callers must make this callback concurrency-safe.
+	canBeat func() bool
 	// bytes 是心跳已写出的注释字节数。心跳不构成语义响应，handler 的
 	// "Forward 期间是否已写响应"判定（failover 放弃换号的依据）必须扣除
 	// 这部分字节，见 OpenAICompactKeepaliveAdjustedWrittenSize。
@@ -56,13 +72,58 @@ func StartOpenAICompactSSEKeepalive(c *gin.Context, interval time.Duration) func
 // 心跳字节由 OpenAICompactKeepaliveAdjustedWrittenSize 统一排除，因此不会污染
 // "是否已向客户端写出语义响应"的 failover 判定（见 #3887）。
 func startOpenAISSEKeepalive(c *gin.Context, interval time.Duration) func() {
+	return startOpenAISSEKeepaliveMode(c, interval, true, nil)
+}
+
+// startOpenAISSEKeepalivePersistent starts a heartbeat for the complete SSE
+// response, including the period after semantic output has started. It is
+// intended for streaming passthrough paths. Request-side writes are serialized
+// with heartbeat writes, and canBeat prevents a comment from splitting an
+// in-flight SSE event.
+func startOpenAISSEKeepalivePersistent(c *gin.Context, interval time.Duration, canBeat func() bool) func() {
+	return startOpenAISSEKeepaliveMode(c, interval, false, canBeat)
+}
+
+func startOpenAISSEKeepaliveMode(c *gin.Context, interval time.Duration, suspendOnWrite bool, canBeat func() bool) func() {
 	if c == nil || c.Writer == nil || interval <= 0 {
 		return func() {}
 	}
 	originalWriter := c.Writer
+	// A failed attempt may have already emitted only SSE comments.  The next
+	// account attempt reuses the same downstream writer, so carry the previous
+	// helper's heartbeat byte count forward; otherwise the old comments would be
+	// mistaken for semantic output as soon as the context key is replaced.
+	inheritedKeepaliveBytes := 0
+	if value, ok := c.Get(openAICompactSSEKeepaliveKey); ok {
+		if previous, valid := value.(*openAICompactSSEKeepalive); valid && previous != nil {
+			previous.mu.Lock()
+			if previous.writer == originalWriter {
+				inheritedKeepaliveBytes = previous.bytes
+			}
+			previous.mu.Unlock()
+		}
+	}
+	// Persistent raw Chat streams may call WriteHeader before installing this
+	// wrapper.  Treat a zero-sized response that consists only of inherited
+	// keepalive bytes as pre-output; ordinary passthrough streams leave Size at
+	// -1 until the first heartbeat and therefore do not enter this state.
+	headersOnly := false
+	if !suspendOnWrite {
+		streamKeepaliveBytes := 0
+		if value, ok := c.Get(openAIStreamKeepaliveBytesKey); ok {
+			streamKeepaliveBytes, _ = value.(int)
+		}
+		currentSize := originalWriter.Size()
+		headersOnly = currentSize >= 0 && currentSize-inheritedKeepaliveBytes-streamKeepaliveBytes <= 0
+	}
 	k := &openAICompactSSEKeepalive{
-		writer: originalWriter,
-		stop:   make(chan struct{}),
+		writer:         originalWriter,
+		bytes:          inheritedKeepaliveBytes,
+		headersOnly:    headersOnly,
+		headersReady:   !suspendOnWrite,
+		suspendOnWrite: suspendOnWrite,
+		canBeat:        canBeat,
+		stop:           make(chan struct{}),
 	}
 	c.Set(openAICompactSSEKeepaliveKey, k)
 	wrappedWriter := &openAICompactKeepaliveWriter{ResponseWriter: originalWriter, k: k}
@@ -107,17 +168,23 @@ func (k *openAICompactSSEKeepalive) beat() bool {
 	if k.stopped {
 		return false
 	}
-	if !k.started {
+	if k.canBeat != nil && !k.canBeat() {
+		// Keep the heartbeat loop alive; the next tick can write after the
+		// caller closes the current SSE event.
+		return true
+	}
+	if !k.headersReady {
 		header := k.writer.Header()
 		header.Set("Content-Type", "text/event-stream")
 		header.Set("Cache-Control", "no-cache")
 		header.Set("Connection", "keep-alive")
 		header.Set("X-Accel-Buffering", "no")
 		k.writer.WriteHeader(http.StatusOK)
-		k.started = true
+		k.headersReady = true
 	}
 	n, err := k.writer.Write([]byte(": keepalive\n\n"))
 	k.bytes += n
+	k.started = true
 	if err != nil {
 		k.stopped = true
 		return false
@@ -142,9 +209,11 @@ func (k *openAICompactSSEKeepalive) markStoppedLocked() {
 }
 
 // StopOpenAICompactSSEKeepaliveCommitted 停止当前请求的 compact 心跳（若有）
-// 并报告响应头是否已被心跳提交为 200。写回方以此决定继续走原 JSON/状态码
-// 链路，还是降级为流内终止事件。调用后不会再有心跳字节写出，且经由互斥锁
-// 与心跳 goroutine 建立 happens-before，调用方可安全接管 ResponseWriter。
+// 并报告响应是否已经提交为 SSE 200。除了实际心跳外，persistent raw Chat
+// 路径可能先提交状态/响应头再等待首个心跳；headersOnly 也必须走流内终止
+// 事件，不能在已提交的 200 响应后追加 JSON。调用后不会再有心跳字节写出，
+// 且经由互斥锁与心跳 goroutine 建立 happens-before，调用方可安全接管
+// ResponseWriter。
 func StopOpenAICompactSSEKeepaliveCommitted(c *gin.Context) bool {
 	if c == nil {
 		return false
@@ -159,7 +228,7 @@ func StopOpenAICompactSSEKeepaliveCommitted(c *gin.Context) bool {
 	}
 	k.mu.Lock()
 	k.markStoppedLocked()
-	committed := k.started
+	committed := k.started || k.headersOnly
 	k.mu.Unlock()
 	return committed
 }
@@ -185,6 +254,10 @@ func OpenAICompactKeepaliveAdjustedWrittenSize(c *gin.Context) int {
 			k.mu.Lock()
 			size = k.writer.Size()
 			compactKeepaliveBytes = k.bytes
+			if k.headersOnly {
+				k.mu.Unlock()
+				return -1
+			}
 			k.mu.Unlock()
 		}
 	}
@@ -213,10 +286,21 @@ type openAICompactKeepaliveWriter struct {
 // suspend 停拍心跳；幂等。任何响应构造（含 Header 访问——写响应必先操作
 // 响应头）都视为请求侧接管 ResponseWriter。
 func (w *openAICompactKeepaliveWriter) suspend() {
-	if w.k == nil {
+	if w.k == nil || !w.k.suspendOnWrite {
 		return
 	}
 	w.k.Stop()
+}
+
+// lockPersistentWrite serializes request-side writes with beat(). The compact
+// mode stops the heartbeat before writing and therefore does not need this
+// lock; persistent passthrough mode must hold it for the entire delegate call.
+func (w *openAICompactKeepaliveWriter) lockPersistentWrite() func() {
+	if w.k == nil || w.k.suspendOnWrite {
+		return func() {}
+	}
+	w.k.mu.Lock()
+	return w.k.mu.Unlock
 }
 
 func (w *openAICompactKeepaliveWriter) Header() http.Header {
@@ -229,22 +313,36 @@ func (w *openAICompactKeepaliveWriter) Header() http.Header {
 
 func (w *openAICompactKeepaliveWriter) Write(data []byte) (int, error) {
 	w.suspend()
+	unlock := w.lockPersistentWrite()
+	defer unlock()
 	if w.ResponseWriter == nil {
 		return 0, nil
 	}
-	return w.ResponseWriter.Write(data)
+	n, err := w.ResponseWriter.Write(data)
+	if n > 0 && w.k != nil && !w.k.suspendOnWrite {
+		w.k.headersOnly = false
+	}
+	return n, err
 }
 
 func (w *openAICompactKeepaliveWriter) WriteString(s string) (int, error) {
 	w.suspend()
+	unlock := w.lockPersistentWrite()
+	defer unlock()
 	if w.ResponseWriter == nil {
 		return 0, nil
 	}
-	return w.ResponseWriter.WriteString(s)
+	n, err := w.ResponseWriter.WriteString(s)
+	if n > 0 && w.k != nil && !w.k.suspendOnWrite {
+		w.k.headersOnly = false
+	}
+	return n, err
 }
 
 func (w *openAICompactKeepaliveWriter) WriteHeader(code int) {
 	w.suspend()
+	unlock := w.lockPersistentWrite()
+	defer unlock()
 	if w.ResponseWriter == nil {
 		return
 	}
@@ -253,6 +351,8 @@ func (w *openAICompactKeepaliveWriter) WriteHeader(code int) {
 
 func (w *openAICompactKeepaliveWriter) WriteHeaderNow() {
 	w.suspend()
+	unlock := w.lockPersistentWrite()
+	defer unlock()
 	if w.ResponseWriter == nil {
 		return
 	}
@@ -261,6 +361,8 @@ func (w *openAICompactKeepaliveWriter) WriteHeaderNow() {
 
 func (w *openAICompactKeepaliveWriter) Flush() {
 	w.suspend()
+	unlock := w.lockPersistentWrite()
+	defer unlock()
 	if w.ResponseWriter == nil {
 		return
 	}

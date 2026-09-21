@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -1848,8 +1849,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		c.Header("x-request-id", v)
 	}
 
-	w := c.Writer
-	flusher, ok := w.(http.Flusher)
+	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
 	}
@@ -1880,7 +1880,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	// pendingLines 在首个可见输出前保留前导事件，确保无输出失败仍可安全 failover。
 	pendingLines := make([]string, 0, 8)
 
-	// ── 首个可见输出之前的下游 keepalive ──────────────────────────────────
+	// ── 整段流的下游 keepalive ─────────────────────────────────────────────
 	//
 	// 与 Forward 路径同源的问题。openai_gateway_response_handling.go 里那句注释
 	// 说得最清楚：
@@ -1906,13 +1906,30 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	//      且心跳字节已由 OpenAICompactKeepaliveAdjustedWrittenSize 排除，
 	//      所以 pre-output failover 的能力完全不受影响（#3887 的记账在此复用）。
 	//
-	// 用 startOpenAISSEKeepalive 而不是 StartOpenAICompactSSEKeepalive：后者会检查
+	// 用 startOpenAISSEKeepalivePersistent 而不是 StartOpenAICompactSSEKeepalive：后者会检查
 	// compact 标记，而这里是普通 /v1/responses 透传。走到这一行时上游已回
 	// text/event-stream、SSE 响应头也已设好，处于流式上下文是确定的。
+	// Keep the downstream SSE connection alive for the entire passthrough
+	// response. A Responses stream can emit reasoning events and then pause for
+	// many minutes after visible output has already started; stopping the
+	// heartbeat at the first output lets an L1/reseller hop (or Cloudflare)
+	// classify that pause as an idle connection. The atomic flag prevents a
+	// heartbeat from being inserted between the lines of one SSE event.
+	var sseEventOpen atomic.Bool
 	stopKeepalive := func() {}
 	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
-		stopKeepalive = startOpenAISSEKeepalive(c,
-			time.Duration(s.cfg.Gateway.StreamKeepaliveInterval)*time.Second)
+		stopKeepalive = startOpenAISSEKeepalivePersistent(c,
+			time.Duration(s.cfg.Gateway.StreamKeepaliveInterval)*time.Second,
+			func() bool { return !sseEventOpen.Load() })
+	}
+	// The persistent helper wraps c.Writer to serialize heartbeat and request
+	// writes. Resolve the local writer only after wrapping; retaining the
+	// pre-wrap writer would reintroduce concurrent ResponseWriter writes.
+	w := c.Writer
+	flusher, ok = w.(http.Flusher)
+	if !ok {
+		stopKeepalive()
+		return nil, errors.New("streaming not supported")
 	}
 	// 任何返回路径都要停拍。Stop 与心跳 goroutine 之间有互斥锁，
 	// 返回后不会再有字节写出。
@@ -1983,6 +2000,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 
 	for documentScanner.Scan() {
 		line := documentScanner.Text()
+		// Keep the heartbeat out of the current SSE frame. The persistent
+		// keepalive writer serializes bytes, while this flag tells it to wait
+		// until the frame's terminating blank line has been written.
+		if line != "" {
+			sseEventOpen.Store(true)
+		}
 		if eventType, ok := extractOpenAISSEEventLine(line); ok {
 			pendingSSEEventType = eventType
 			eventType = strings.TrimSpace(eventType)
@@ -2103,6 +2126,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 							// 命中透传规则也要记录 ops 上游错误事件（对齐 CC/Messages 与
 							// antigravity 先例），否则透传命中的 failed 在监控中不可见。
 							s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "http_error", dataBytes, failedMessage)
+							// The persistent heartbeat owns the writer until this early
+							// JSON response takes over; stop it before mutating headers.
+							stopKeepalive()
 							MarkResponseCommitted(c)
 							c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 							c.JSON(status, gin.H{
@@ -2165,6 +2191,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if suppressCurrentEvent {
 				suppressCurrentEvent = false
 				responseFailedPending = false
+				sseEventOpen.Store(false)
 				continue
 			}
 		}
@@ -2172,15 +2199,16 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if !clientDisconnected && !failureDelivered && !suppressCurrentEvent {
 			if !clientOutputStarted && !lineStartsClientOutput {
 				pendingLines = append(pendingLines, line)
+				if line == "" {
+					sseEventOpen.Store(false)
+				}
 				continue
-			}
-			// 真实输出开始，心跳的使命结束。停拍是幂等的，且会与心跳 goroutine
-			// 建立 happens-before —— 之后 ResponseWriter 由本循环独占。
-			if !clientOutputStarted {
-				stopKeepalive()
 			}
 			if !clientOutputStarted && len(pendingLines) > 0 {
 				if !writePendingLines() {
+					if line == "" {
+						sseEventOpen.Store(false)
+					}
 					continue
 				}
 			}
@@ -2198,6 +2226,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if line == "" && responseFailedPending {
 			responseFailedPending = false
 			failureDelivered = true
+		}
+		if line == "" {
+			sseEventOpen.Store(false)
 		}
 	}
 	ensureResponseFailedTerminal()

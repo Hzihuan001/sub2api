@@ -71,6 +71,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	if v := clientBeta; v != "" {
 		req.Header.Set("anthropic-beta", v)
 	}
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceUser)
 
 	// 代理 URL
 	proxyURL := ""

@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -121,6 +122,42 @@ func setupFakeOpenAI(t *testing.T, handler *openAICaptureHandler) string {
 	return srv.URL
 }
 
+// streamOpenAIHandler emits the minimum Chat Completions SSE sequence that a
+// real OpenAI-compatible endpoint returns. It deliberately sends the answer in
+// multiple delta frames so the monitor's aggregation is exercised.
+type streamOpenAIHandler struct {
+	lastBody map[string]any
+}
+
+func (h *streamOpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer func() { _ = r.Body.Close() }()
+	if err := json.NewDecoder(r.Body).Decode(&h.lastBody); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	answer := answerFromOpenAIRequest(h.lastBody)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	frames := []map[string]any{
+		{"choices": []map[string]any{{"delta": map[string]any{"role": "assistant"}}}},
+		{"choices": []map[string]any{{"delta": map[string]any{"content": answer[:1]}}}},
+		{"choices": []map[string]any{{"delta": map[string]any{"content": answer[1:]}}}},
+	}
+	for _, frame := range frames {
+		payload, _ := json.Marshal(frame)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
+	}
+	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+func setupFakeOpenAIStream(t *testing.T, handler *streamOpenAIHandler) string {
+	t.Helper()
+	swapMonitorHTTPClient(t)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
 func answerFromOpenAIRequest(body map[string]any) string {
 	prompt, _ := body["input"].(string)
 	if prompt == "" {
@@ -187,11 +224,95 @@ func TestRunCheckForModel_OpenAI_DefaultChatRequest(t *testing.T) {
 	if _, ok := h.lastBody["instructions"]; ok {
 		t.Error("chat body must not contain top-level instructions")
 	}
-	if h.lastBody["stream"] != false {
-		t.Errorf("chat body should set stream=false, got %v", h.lastBody["stream"])
+	if h.lastBody["stream"] != true {
+		t.Errorf("chat body should set stream=true, got %v", h.lastBody["stream"])
 	}
 	if h.lastHeaders.Get("Authorization") != "Bearer sk-openai" {
 		t.Errorf("expected bearer auth header, got %q", h.lastHeaders.Get("Authorization"))
+	}
+	if h.lastHeaders.Get("Accept") != "text/event-stream" {
+		t.Errorf("streaming chat probe should request SSE, got %q", h.lastHeaders.Get("Accept"))
+	}
+}
+
+func TestRunCheckForModel_OpenAI_DefaultChatRequest_ParsesSSE(t *testing.T) {
+	h := &streamOpenAIHandler{}
+	endpoint := setupFakeOpenAIStream(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-test", nil)
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("streaming chat request should pass challenge, got status=%s message=%q", res.Status, res.Message)
+	}
+	if h.lastBody["stream"] != true {
+		t.Fatalf("streaming probe must set stream=true, got %v", h.lastBody["stream"])
+	}
+}
+
+type hangingStreamOpenAIHandler struct {
+	started chan struct{}
+	done    chan struct{}
+}
+
+func (h *hangingStreamOpenAIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer func() { _ = r.Body.Close() }()
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	answer := answerFromOpenAIRequest(body)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":%q}}]}\n\n", answer)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	close(h.started)
+	<-r.Context().Done()
+	close(h.done)
+}
+
+func TestRunCheckForModel_OpenAI_StreamReturnsBeforeUpstreamEnds(t *testing.T) {
+	h := &hangingStreamOpenAIHandler{started: make(chan struct{}), done: make(chan struct{})}
+	swapMonitorHTTPClient(t)
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+	startedAt := time.Now()
+	res := runCheckForModel(ctx, MonitorProviderOpenAI, srv.URL, "sk-openai", "gpt-test", nil)
+	elapsed := time.Since(startedAt)
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("streaming probe should pass before upstream closes, got status=%s message=%q", res.Status, res.Message)
+	}
+	if elapsed >= 500*time.Millisecond {
+		t.Fatalf("streaming probe waited for upstream completion: elapsed=%s", elapsed)
+	}
+	select {
+	case <-h.started:
+	case <-time.After(time.Second):
+		t.Fatal("test upstream did not receive the probe")
+	}
+	select {
+	case <-h.done:
+	case <-time.After(time.Second):
+		t.Fatal("test upstream did not observe the client closing the stream")
+	}
+}
+
+func TestExtractOpenAIChatMonitorText(t *testing.T) {
+	body := "data: {\"choices\":[{\"delta\":{\"content\":\"1\"}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"7\"}}]}\n\n" +
+		"data: [DONE]\n\n"
+	if got := extractOpenAIChatMonitorText([]byte(body)); got != "17" {
+		t.Fatalf("extractOpenAIChatMonitorText() = %q, want %q", got, "17")
+	}
+
+	// Gateways that ignore stream=true must continue to work through the JSON fallback.
+	jsonBody := []byte(`{"choices":[{"message":{"content":"42"}}]}`)
+	if got := extractOpenAIChatMonitorText(jsonBody); got != "42" {
+		t.Fatalf("JSON fallback returned %q, want %q", got, "42")
 	}
 }
 
@@ -234,8 +355,8 @@ func TestRunCheckForModel_Grok_DefaultChatRequest(t *testing.T) {
 	if _, ok := h.lastBody["messages"]; !ok {
 		t.Error("Grok body should contain messages")
 	}
-	if h.lastBody["stream"] != false {
-		t.Errorf("Grok body should set stream=false, got %v", h.lastBody["stream"])
+	if h.lastBody["stream"] != true {
+		t.Errorf("Grok body should set stream=true, got %v", h.lastBody["stream"])
 	}
 	if h.lastHeaders.Get("Authorization") != "Bearer xai-key" {
 		t.Errorf("expected Grok bearer auth header, got %q", h.lastHeaders.Get("Authorization"))

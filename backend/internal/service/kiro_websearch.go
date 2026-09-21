@@ -406,6 +406,7 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 		if err != nil {
 			return nil, currentToken, err
 		}
+		applyResellerAccountHeaders(req.Header, account, resellerRequestSourceUser)
 
 		resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 		if err != nil {

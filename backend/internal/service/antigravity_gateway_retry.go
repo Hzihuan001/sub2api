@@ -46,6 +46,16 @@ type antigravityRetryLoopResult struct {
 	resp *http.Response
 }
 
+// antigravityResellerRequestSource keeps the account-test path out of normal
+// user settlement statistics. TestConnection intentionally invokes the same
+// retry loop with c=nil, while gateway requests always carry a Gin context.
+func antigravityResellerRequestSource(p antigravityRetryLoopParams) string {
+	if p.c == nil {
+		return resellerRequestSourceAccountTest
+	}
+	return resellerRequestSourceUser
+}
+
 // resolveAntigravityForwardBaseURL 解析转发用 base URL。
 //
 // 显式环境变量优先。未配置时，LoadCodeAssist 返回 paidTier 的付费账号使用
@@ -227,6 +237,7 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 					},
 				}
 			}
+			applyResellerAccountHeaders(retryReq.Header, p.account, antigravityResellerRequestSource(p))
 
 			retryResp, retryErr := p.httpUpstream.Do(retryReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			if retryErr == nil && retryResp != nil && retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable {
@@ -402,6 +413,7 @@ func (s *AntigravityGatewayService) handleSingleAccountRetryInPlace(
 			logger.LegacyPrintf("service.antigravity_gateway", "%s single_account_503_retry: request_build_failed error=%v", p.prefix, err)
 			break
 		}
+		applyResellerAccountHeaders(retryReq.Header, p.account, antigravityResellerRequestSource(p))
 
 		retryResp, retryErr := p.httpUpstream.Do(retryReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 		if retryErr == nil && retryResp != nil && retryResp.StatusCode != http.StatusTooManyRequests && retryResp.StatusCode != http.StatusServiceUnavailable {
@@ -540,6 +552,7 @@ urlFallbackLoop:
 			if err != nil {
 				return nil, err
 			}
+			applyResellerAccountHeaders(upstreamReq.Header, p.account, antigravityResellerRequestSource(p))
 
 			resp, err = p.httpUpstream.Do(upstreamReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			if err == nil && resp == nil {

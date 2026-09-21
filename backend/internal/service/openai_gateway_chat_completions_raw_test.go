@@ -123,6 +123,168 @@ func TestForwardAsRawChatCompletions_ForcesStreamUsageUpstreamAndPassesUsageDown
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
 
+func TestStreamRawChatCompletionsKeepsAliveAfterOutputPause(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	pipeReader, pipeWriter := io.Pipe()
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+			"x-request-id": []string{"rid-raw-keepalive"},
+		},
+		Body: pipeReader,
+	}
+	cfg := rawChatCompletionsTestConfig()
+	cfg.Gateway.StreamKeepaliveInterval = 1
+	svc := &OpenAIGatewayService{cfg: cfg}
+	account := rawChatCompletionsTestAccount()
+
+	resultCh := make(chan struct {
+		result *OpenAIForwardResult
+		err    error
+	}, 1)
+	go func() {
+		result, err := svc.streamRawChatCompletions(
+			c,
+			resp,
+			account,
+			"gpt-5.4",
+			"gpt-5.4",
+			"gpt-5.4",
+			nil,
+			nil,
+			time.Now(),
+			0,
+		)
+		resultCh <- struct {
+			result *OpenAIForwardResult
+			err    error
+		}{result: result, err: err}
+	}()
+
+	_, err := pipeWriter.Write([]byte("data: {\"id\":\"chatcmpl_keepalive\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-5.4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"}}]}\n\n"))
+	require.NoError(t, err)
+	// The first semantic chunk has already been delivered. A long pause after
+	// it is the failure mode seen through reseller/Cloudflare hops.
+	time.Sleep(1200 * time.Millisecond)
+	_, err = pipeWriter.Write([]byte("data: {\"id\":\"chatcmpl_keepalive\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-5.4\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\ndata: [DONE]\n\n"))
+	require.NoError(t, err)
+	require.NoError(t, pipeWriter.Close())
+
+	select {
+	case outcome := <-resultCh:
+		require.NoError(t, outcome.err)
+		require.NotNil(t, outcome.result)
+	case <-time.After(5 * time.Second):
+		t.Fatal("raw Chat Completions stream did not finish")
+	}
+	body := recorder.Body.String()
+	require.Contains(t, body, ": keepalive\n\n")
+	require.Contains(t, body, "first")
+	require.Contains(t, body, "data: [DONE]")
+}
+
+func TestStreamRawChatCompletionsHeartbeatDoesNotDisableSilentFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	pipeReader, pipeWriter := io.Pipe()
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+			"x-request-id": []string{"rid-raw-keepalive-failover"},
+		},
+		Body: pipeReader,
+	}
+	cfg := rawChatCompletionsTestConfig()
+	cfg.Gateway.StreamKeepaliveInterval = 1
+	svc := &OpenAIGatewayService{cfg: cfg}
+	resultCh := make(chan struct {
+		result *OpenAIForwardResult
+		err    error
+	}, 1)
+	go func() {
+		result, err := svc.streamRawChatCompletions(
+			c,
+			resp,
+			rawChatCompletionsTestAccount(),
+			"gpt-5.4",
+			"gpt-5.4",
+			"gpt-5.4",
+			nil,
+			nil,
+			time.Now(),
+			0,
+		)
+		resultCh <- struct {
+			result *OpenAIForwardResult
+			err    error
+		}{result: result, err: err}
+	}()
+
+	time.Sleep(1200 * time.Millisecond)
+	require.NoError(t, pipeWriter.Close())
+	select {
+	case outcome := <-resultCh:
+		var failoverErr *UpstreamFailoverError
+		require.ErrorAs(t, outcome.err, &failoverErr)
+		require.Nil(t, outcome.result)
+	case <-time.After(5 * time.Second):
+		t.Fatal("raw Chat Completions stream did not finish")
+	}
+	require.Contains(t, recorder.Body.String(), ": keepalive\n\n")
+	// Only the heartbeat was written. The handler can therefore retry this
+	// account safely instead of treating the response as a partial stream.
+	require.Less(t, OpenAICompactKeepaliveAdjustedWrittenSize(c), 0)
+}
+
+func TestStreamRawChatCompletionsHeaderCommitBeforeHeartbeatStillFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+			"x-request-id": []string{"rid-header-only-failover"},
+		},
+		// EOF arrives before the first configured heartbeat. The raw path has
+		// already committed the SSE status/header block, but no body byte is
+		// semantic and the handler must still be allowed to switch accounts.
+		Body: io.NopCloser(strings.NewReader("")),
+	}
+	cfg := rawChatCompletionsTestConfig()
+	cfg.Gateway.StreamKeepaliveInterval = 1
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	result, err := svc.streamRawChatCompletions(
+		c,
+		resp,
+		rawChatCompletionsTestAccount(),
+		"deepseek-v4-pro",
+		"deepseek-v4-pro",
+		"deepseek-v4-pro",
+		nil,
+		nil,
+		time.Now(),
+		len(body),
+	)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Less(t, OpenAICompactKeepaliveAdjustedWrittenSize(c), 0)
+}
+
 func TestForwardAsChatCompletions_OpenAICompatibleGrokRawMissingUsageFailsBeforeWrite(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

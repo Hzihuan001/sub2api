@@ -122,6 +122,11 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", err.Error())
 		}
 		requestIDHeader = idHeader
+		// Reseller-backed Gemini products use the same main-gateway reservation
+		// protocol as every other provider.  Keep this at the final request
+		// boundary because each retry rebuilds the request and must receive a
+		// fresh UUID; ordinary Gemini accounts are a no-op.
+		applyResellerAccountHeaders(upstreamReq.Header, account, resellerRequestSourceUser)
 
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {

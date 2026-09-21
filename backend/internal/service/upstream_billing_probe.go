@@ -672,6 +672,9 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	account.ApplyHeaderOverrides(req.Header)
+	// This is a background billing capability probe, not a user request. Keep
+	// reseller settlement/source accounting separate from normal traffic.
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 	var tlsProfile *tlsfingerprint.Profile
 	if s.accountTestService.tlsFPProfileService != nil {
 		tlsProfile = s.accountTestService.tlsFPProfileService.ResolveTLSProfile(account)

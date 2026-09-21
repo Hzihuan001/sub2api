@@ -22,8 +22,13 @@ const (
 	openAIModelTransientStreakTTL     = 30 * time.Minute
 	openAIModelTransientShortCooldown = 10 * time.Second
 	openAIModelTransientLongCooldown  = 45 * time.Second
-	openAIModelTransientDefaultMax    = 4096
-	openAIModelTransientMaxModelBytes = 512
+	// A 520-524 gateway response commonly represents a CDN/origin path outage.
+	// Keep that account+model out of selection for at least one monitor interval
+	// even on the first failure, so a single bad endpoint is not immediately
+	// retried by every channel probe.
+	openAIModelTransientGatewayCooldown = 90 * time.Second
+	openAIModelTransientDefaultMax      = 4096
+	openAIModelTransientMaxModelBytes   = 512
 )
 
 type openAIAccountModelKey struct {
@@ -121,6 +126,46 @@ func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model 
 		entry.blockUntil = time.Time{}
 	}
 	s.entries[key] = entry
+	return openAIAccountModelTransientDecision{
+		FailureStreak: entry.failureStreak,
+		Cooldown:      cooldown,
+		BlockUntil:    entry.blockUntil,
+	}
+}
+
+// ensureMinimumCooldown extends an existing account+model transient entry to
+// at least minimum from now. It never shortens a longer cooldown and does not
+// create an entry by itself; callers should record the failure first.
+func (s *openAIAccountModelTransientState) ensureMinimumCooldown(
+	accountID int64,
+	model string,
+	now time.Time,
+	minimum time.Duration,
+) openAIAccountModelTransientDecision {
+	key, ok := openAIAccountModelTransientKey(accountID, model)
+	if s == nil || !ok || minimum <= 0 {
+		return openAIAccountModelTransientDecision{}
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, exists := s.entries[key]
+	if !exists {
+		return openAIAccountModelTransientDecision{}
+	}
+	minimumUntil := now.Add(minimum)
+	if entry.blockUntil.Before(minimumUntil) {
+		entry.blockUntil = minimumUntil
+	}
+	entry.lastTouched = now
+	s.entries[key] = entry
+	cooldown := entry.blockUntil.Sub(now)
+	if cooldown < 0 {
+		cooldown = 0
+	}
 	return openAIAccountModelTransientDecision{
 		FailureStreak: entry.failureStreak,
 		Cooldown:      cooldown,
