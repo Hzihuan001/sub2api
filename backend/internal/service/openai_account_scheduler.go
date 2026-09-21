@@ -2177,11 +2177,14 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	if !errors.Is(err, ErrNoAvailableAccounts) && !errors.Is(err, ErrNoAvailableCompactAccounts) {
 		return selection, decision, err
 	}
-	// The circuit only ever quarantines PlatformOpenAI accounts.
-	if NormalizeOpenAICompatiblePlatform(platform) != PlatformOpenAI {
+	// The circuit applies to every OpenAI-protocol provider, including direct
+	// DeepSeek/Kimi/OpenCode API-key accounts. Reseller traffic uses these same
+	// scheduler paths, so limiting fail-open to the literal "openai" platform
+	// would re-admit no account after a provider-specific stream outage.
+	if !isOpenAIStreamCircuitPlatform(platform) {
 		return selection, decision, err
 	}
-	blocked := s.getOpenAIProxyStreamCircuit().activeBlockCount(time.Now())
+	blocked := s.activeOpenAIStreamCircuitBlockCount(time.Now(), platform)
 	if blocked == 0 {
 		return selection, decision, err
 	}

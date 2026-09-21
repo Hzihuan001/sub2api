@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -290,6 +291,31 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
+
+	// Keep the downstream SSE connection alive for the complete raw Chat
+	// Completions response.  Unlike the Responses passthrough path, this raw
+	// path used to block in scanner.Scan() without writing anything while an
+	// upstream was thinking.  An L1/reseller hop (or Cloudflare) then treated
+	// the connection as idle and returned a 524/stream_read_error even though
+	// the upstream request was still healthy.
+	//
+	// Committing only the SSE headers before the first heartbeat is intentional:
+	// the keepalive writer records its comment bytes separately, so the handler
+	// can still distinguish "heartbeat only" from semantic output and retry a
+	// silent upstream on another account.  See
+	// OpenAICompactKeepaliveAdjustedWrittenSize and the Chat handler's failover
+	// guard.  The atomic event flag prevents a comment from splitting a partial
+	// SSE frame.
+	var sseEventOpen atomic.Bool
+	stopKeepalive := func() {}
+	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		writeStreamHeaders()
+		stopKeepalive = startOpenAISSEKeepalivePersistent(c,
+			time.Duration(s.cfg.Gateway.StreamKeepaliveInterval)*time.Second,
+			func() bool { return !sseEventOpen.Load() })
+	}
+	defer stopKeepalive()
+
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
 	var usage OpenAIUsage
@@ -334,6 +360,9 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if line != "" {
+			sseEventOpen.Store(true)
+		}
 		refusalDetector.ObserveSSELine(line)
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
@@ -355,6 +384,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 		writeLine(line)
 		if line == "" {
+			sseEventOpen.Store(false)
 			if !clientDisconnected && clientOutputStarted {
 				c.Writer.Flush()
 			}

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -67,7 +68,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	mode := bodyOverrideMode(opts)
 
 	start := time.Now()
-	respText, rawBody, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
+	respText, rawBody, statusCode, err := callProviderWithChallenge(ctx, provider, endpoint, apiKey, model, challenge.Prompt, challenge.Expected, opts)
 	latency := time.Since(start)
 	latencyMs := int(latency / time.Millisecond)
 	res.LatencyMs = &latencyMs
@@ -238,13 +239,17 @@ func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 				"model":      model,
 				"messages":   []map[string]string{{"role": "user", "content": prompt}},
 				"max_tokens": monitorChallengeMaxTokens,
-				"stream":     false,
+				// 探活只需要尽快收到 challenge 的第一个文本片段。
+				// 使用流式响应避免上游在生成完整响应前长时间保持无响应，
+				// 同时由 extractOpenAIChatMonitorText 兼容 SSE 与部分兼容端返回的 JSON。
+				"stream": true,
 			})
 		},
 		buildHeaders: func(apiKey string) map[string]string {
 			return map[string]string{"Authorization": "Bearer " + apiKey}
 		},
-		textPath: "choices.0.message.content",
+		textPath:    "choices.0.message.content",
+		extractText: extractOpenAIChatMonitorText,
 	}
 }
 
@@ -284,6 +289,15 @@ func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool
 //   - status: HTTP 状态码
 //   - err: 网络 / 序列化错误
 func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
+	return callProviderWithChallenge(ctx, provider, endpoint, apiKey, model, prompt, "", opts)
+}
+
+// callProviderWithChallenge is the probe-specific variant of callProvider.
+// expected is intentionally optional so existing callers and tests retain the
+// original API. It enables the streaming probe to stop as soon as the known
+// arithmetic challenge is present, instead of waiting for a slow upstream to
+// finish a response that is already sufficient for health checking.
+func callProviderWithChallenge(ctx context.Context, provider, endpoint, apiKey, model, prompt, expected string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
 	requestedAPIMode := checkAPIMode(opts)
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
 		return "", "", 0, err
@@ -298,7 +312,12 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
-	respBytes, status, err := postRawJSON(ctx, full, body, headers)
+	var respBytes []byte
+	if shouldUseStreamingProbe(provider, apiMode, opts, body) {
+		respBytes, status, err = postStreamingJSON(ctx, full, body, headers, expected, apiKey)
+	} else {
+		respBytes, status, err = postRawJSON(ctx, full, body, headers, apiKey)
+	}
 	if err != nil {
 		return "", "", status, err
 	}
@@ -308,11 +327,64 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil
 }
 
+// shouldUseStreamingProbe is deliberately narrower than "body contains
+// stream=true": custom replace-mode monitors are user-specified requests and
+// must retain their existing semantics. The built-in OpenAI-compatible chat
+// probe (including DeepSeek/Kimi/Grok) is the only path upgraded here.
+func shouldUseStreamingProbe(provider, apiMode string, opts *CheckOptions, body []byte) bool {
+	if !isOpenAICompatibleChatProvider(provider) || defaultAPIMode(apiMode) != MonitorAPIModeChatCompletions {
+		return false
+	}
+	if bodyOverrideMode(opts) == MonitorBodyOverrideModeReplace {
+		return false
+	}
+	return gjson.GetBytes(body, "stream").Bool()
+}
+
 func extractMonitorResponseText(adapter providerAdapter, respBytes []byte) string {
 	if adapter.extractText != nil {
 		return adapter.extractText(respBytes)
 	}
 	return gjson.GetBytes(respBytes, adapter.textPath).String()
+}
+
+// extractOpenAIChatMonitorText extracts assistant text from an OpenAI-compatible
+// Chat Completions response. Probe requests use stream=true, so the normal
+// response is an SSE body containing delta.content fragments. A few compatible
+// gateways still return a regular JSON response despite stream=true; retain a
+// JSON fallback so those gateways remain monitorable.
+func extractOpenAIChatMonitorText(respBytes []byte) string {
+	var parts []string
+	forEachOpenAISSEDataPayload(string(respBytes), func(payload []byte) {
+		if text, _ := extractOpenAIChatMonitorPayload(payload); text != "" {
+			parts = append(parts, text)
+		}
+	})
+	if len(parts) > 0 {
+		return strings.Join(parts, "")
+	}
+
+	// JSON fallback for providers that ignore stream=true (or test doubles).
+	return gjson.GetBytes(respBytes, "choices.0.message.content").String()
+}
+
+// extractOpenAIChatMonitorPayload extracts text from one decoded SSE data
+// payload and reports whether that payload is terminal. The terminal signal is
+// useful for providers that send an empty final delta before [DONE].
+func extractOpenAIChatMonitorPayload(payload []byte) (text string, terminal bool) {
+	if strings.TrimSpace(string(payload)) == "[DONE]" {
+		return "", true
+	}
+	if content := gjson.GetBytes(payload, "choices.0.delta.content"); content.Type == gjson.String {
+		text = content.String()
+	} else if legacy := gjson.GetBytes(payload, "choices.0.text"); legacy.Type == gjson.String {
+		text = legacy.String()
+	} else if content := gjson.GetBytes(payload, "choices.0.message.content"); content.Type == gjson.String {
+		text = content.String()
+	}
+	finishReason := gjson.GetBytes(payload, "choices.0.finish_reason")
+	terminal = finishReason.Exists() && finishReason.Type != gjson.Null && strings.TrimSpace(finishReason.String()) != ""
+	return text, terminal
 }
 
 func extractAnthropicMonitorText(respBytes []byte) string {
@@ -532,15 +604,10 @@ func hasNonEmptyBodyValue(v any) bool {
 
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
-func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string, resellerKey ...string) ([]byte, int, error) {
+	req, err := newMonitorRequest(ctx, fullURL, payload, headers, resellerKey...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	for k, v := range headers {
-		req.Header.Set(k, v)
+		return nil, 0, err
 	}
 
 	resp, err := monitorHTTPClient.Do(req)
@@ -554,6 +621,113 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
 	}
 	return respBody, resp.StatusCode, nil
+}
+
+// postStreamingJSON sends a probe request with stream=true and incrementally
+// parses OpenAI-compatible SSE frames. It returns as soon as the expected
+// challenge appears in a text delta or the provider sends finish_reason/[DONE].
+// This prevents a monitor from holding a worker for the remainder of a slow or
+// stalled generation after the channel has already proved it can answer.
+// Non-2xx responses are read as ordinary bounded bodies so upstream diagnostics
+// remain unchanged.
+func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string, expected string, resellerKey ...string) ([]byte, int, error) {
+	req, err := newMonitorRequest(ctx, fullURL, payload, headers, resellerKey...)
+	if err != nil {
+		return nil, 0, err
+	}
+	resp, err := monitorHTTPClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("do request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
+		if readErr != nil {
+			return nil, resp.StatusCode, fmt.Errorf("read body: %w", readErr)
+		}
+		return body, resp.StatusCode, nil
+	}
+
+	var raw bytes.Buffer
+	var parser openAICompatSSEFrameParser
+	var text strings.Builder
+	scanner := bufio.NewScanner(io.LimitReader(resp.Body, monitorResponseMaxBytes))
+	// A single SSE line normally remains tiny, but allow a provider to include a
+	// larger JSON chunk without turning the monitor into an unbounded reader.
+	scanner.Buffer(make([]byte, 4*1024), monitorResponseMaxBytes)
+	consumeFrame := func(frame openAICompatSSEFrame, ok bool) bool {
+		if !ok {
+			return false
+		}
+		data := strings.TrimSpace(frame.Data)
+		if data == "" {
+			return false
+		}
+		values := []string{data}
+		if !gjson.Valid(data) {
+			values = strings.Split(data, "\n")
+		}
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			part, terminal := extractOpenAIChatMonitorPayload([]byte(value))
+			if part != "" {
+				text.WriteString(part)
+				if expected != "" && validateChallenge(text.String(), expected) {
+					return true
+				}
+			}
+			if terminal || value == "[DONE]" {
+				return true
+			}
+		}
+		return false
+	}
+
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		raw.WriteString(line)
+		raw.WriteByte('\n')
+		if consumeFrame(parser.AddLine(line)) {
+			return raw.Bytes(), resp.StatusCode, nil
+		}
+	}
+	if frame, ok := parser.Finish(); ok {
+		_ = consumeFrame(frame, ok)
+	}
+	if err := scanner.Err(); err != nil {
+		return raw.Bytes(), resp.StatusCode, fmt.Errorf("read streaming body: %w", err)
+	}
+	return raw.Bytes(), resp.StatusCode, nil
+}
+
+func newMonitorRequest(ctx context.Context, fullURL string, payload []byte, headers map[string]string, resellerKey ...string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	accept := "application/json"
+	if gjson.GetBytes(payload, "stream").Bool() {
+		accept = "text/event-stream"
+	}
+	req.Header.Set("Accept", accept)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	// Channel probes can target the main gateway through a reseller-issued API
+	// key.  Attach the private probe protocol only for that credential: strict
+	// third-party providers should not receive private headers.  Do this after
+	// ExtraHeaders so a monitor template cannot override the UUID or source.
+	key := resellerKeyFromHeaders(req.Header)
+	if len(resellerKey) > 0 {
+		key = resellerKey[0]
+	}
+	applyResellerCredentialHeaders(req.Header, key, resellerRequestSourceMonitor)
+	return req, nil
 }
 
 // joinURL 保留 base 的上游路径前缀，并避免重复追加已有的 API 路径前缀。

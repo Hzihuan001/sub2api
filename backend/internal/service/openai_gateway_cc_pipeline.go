@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -49,6 +50,16 @@ func (s *OpenAIGatewayService) newStreamHeaderWriter(c *gin.Context, upstream ht
 	headersWritten := false
 	return func() {
 		if headersWritten {
+			return
+		}
+		// A persistent downstream keepalive may have committed the SSE status
+		// before the first translated event.  Do not issue a second
+		// WriteHeader (which produces a superfluous-header warning on net/http)
+		// when the normal event path takes over.  The keepalive writer already
+		// set the standard SSE headers; filtered upstream headers were copied by
+		// the caller before starting it where needed.
+		if c != nil && c.Writer != nil && c.Writer.Written() {
+			headersWritten = true
 			return
 		}
 		headersWritten = true
@@ -321,6 +332,60 @@ func (s *OpenAIGatewayService) scanCCStream(
 		st.Err = err
 	}
 	return st
+}
+
+// scanCCStreamWithKeepalive is the streaming variant used by the two protocol
+// fallback bridges (Responses/Messages -> Chat Completions).  The shared
+// scanner deliberately owns only upstream reads; keeping that loop synchronous
+// would otherwise leave the downstream completely idle while a Chat provider
+// is thinking.  A persistent SSE comment heartbeat prevents an L1/reseller hop
+// or reverse proxy from treating that valid long-running request as dead.
+//
+// The callback is wrapped with an event-open flag so a heartbeat cannot be
+// inserted between the writes that make up one translated SSE event.  The
+// keepalive writer serializes the remaining request-side writes with its own
+// mutex, and is restored when the scan completes.
+func (s *OpenAIGatewayService) scanCCStreamWithKeepalive(
+	c *gin.Context,
+	resp *http.Response,
+	logPrefix string,
+	requestID string,
+	startTime time.Time,
+	emit func(*apicompat.ChatCompletionsChunk),
+) ccStreamScanState {
+	var eventOpen atomic.Bool
+	stopKeepalive := func() {}
+	if s != nil && s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		// Prepare filtered upstream headers without committing the response. The
+		// heartbeat may be the first write, and the normal event header closure
+		// will intentionally become a no-op after that commit.
+		if s.responseHeaderFilter != nil && c != nil && c.Writer != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		if c != nil && c.Writer != nil {
+			// The persistent keepalive writer may be the first downstream
+			// writer.  Prepare the SSE headers before starting it, while still
+			// delaying WriteHeader until the first translated event so an early
+			// upstream failure can retain the fallback error semantics.
+			c.Writer.Header().Set("Content-Type", "text/event-stream")
+			c.Writer.Header().Set("Cache-Control", "no-cache")
+			c.Writer.Header().Set("Connection", "keep-alive")
+			c.Writer.Header().Set("X-Accel-Buffering", "no")
+		}
+		stopKeepalive = startOpenAISSEKeepalivePersistent(c,
+			time.Duration(s.cfg.Gateway.StreamKeepaliveInterval)*time.Second,
+			func() bool { return !eventOpen.Load() },
+		)
+	}
+	defer stopKeepalive()
+
+	return s.scanCCStream(c, resp, logPrefix, requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
+		eventOpen.Store(true)
+		defer eventOpen.Store(false)
+		if emit != nil {
+			emit(chunk)
+		}
+	})
 }
 
 // logCCStreamMissingDoneSentinel 记录"上游未发 [DONE] 哨兵即结束"的 debug 日志。

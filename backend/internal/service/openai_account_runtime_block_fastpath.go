@@ -181,13 +181,28 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// same-account retry budget. Recording the generic account+model transient
 	// cooldown here would block the next approved retry before that budget is used.
 	poolModeRetryable := account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
-	if !shouldDisable && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+	// OpenAI-compatible API-key providers (DeepSeek/Kimi/Zhipu/MiniMax/OpenCodeGo)
+	// use the same gateway and scheduler as OpenAI.  A transient 5xx/52x from
+	// one provider endpoint must therefore enter the existing account+model
+	// runtime breaker as well; otherwise a single bad upstream is selected again
+	// for every request until its upstream/CDN timeout expires.  Keep this scoped
+	// to API-key accounts and the existing transient-status predicate: no
+	// permanent account disable or credential penalty is introduced here.
+	if !shouldDisable && account.IsOpenAICompatible() && account.Type == AccountTypeAPIKey &&
 		shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) && !poolModeRetryable {
 		model := ""
 		if len(canonicalModel) > 0 {
 			model = canonicalModel[0]
 		}
 		decision := s.recordOpenAIAccountModelTransientFailure(account, model, time.Now())
+		if isOpenAI52xUpstreamStatus(statusCode) {
+			// CDN/origin gateway failures need a first-failure quarantine long
+			// enough to cover the 60s channel-monitor interval. Keep this scoped
+			// to the same account+model entry and never shorten an existing one.
+			if state := s.getOpenAIAccountModelTransientState(); state != nil {
+				decision = state.ensureMinimumCooldown(account.ID, model, time.Now(), openAIModelTransientGatewayCooldown)
+			}
+		}
 		if decision.FailureStreak > 0 {
 			slog.Warn("openai_model_transient_state",
 				"account_id", account.ID,
@@ -199,6 +214,10 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		}
 	}
 	return shouldDisable
+}
+
+func isOpenAI52xUpstreamStatus(statusCode int) bool {
+	return statusCode >= 520 && statusCode <= 524
 }
 
 func shouldCooldownOpenAITransientUpstreamError(statusCode int, responseBody []byte) bool {

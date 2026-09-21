@@ -178,20 +178,26 @@ func (a *Account) ApplyHeaderOverrides(h http.Header) {
 		return
 	}
 	overrides := a.GetHeaderOverrides()
-	if len(overrides) == 0 {
-		return
-	}
-	// 覆写名两两不同（大小写不敏感）且各自只操作同名键，应用顺序不影响结果。
-	// 全量 EqualFold 扫描兜底删除任意 casing 的既有键：透传链路可能保留客户端
-	// 原始 casing，非 canonical/wire casing 的键 deleteHeaderAllForms 覆盖不到。
-	for name, value := range overrides {
-		for existing := range h {
-			if strings.EqualFold(existing, name) {
-				delete(h, existing)
+	if len(overrides) > 0 {
+		// 覆写名两两不同（大小写不敏感）且各自只操作同名键，应用顺序不影响结果。
+		// 全量 EqualFold 扫描兜底删除任意 casing 的既有键：透传链路可能保留客户端
+		// 原始 casing，非 canonical/wire casing 的键 deleteHeaderAllForms 覆盖不到。
+		for name, value := range overrides {
+			for existing := range h {
+				if strings.EqualFold(existing, name) {
+					delete(h, existing)
+				}
 			}
+			h[resolveWireCasing(name)] = []string{value}
 		}
-		h[resolveWireCasing(name)] = []string{value}
 	}
+
+	// A reseller-managed account is a pointer to the main gateway rather than
+	// a public provider credential.  Add the private reservation headers at the
+	// common end of every account request builder.  Ordinary provider accounts
+	// are a no-op, and explicit account-test callers replace the source with
+	// account_test after this default user source is installed.
+	applyResellerAccountHeaders(h, a, resellerRequestSourceUser)
 }
 
 // NormalizeHeaderOverrideCredentials 校验并原地规范化 credentials 中的请求头覆写字段。

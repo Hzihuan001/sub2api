@@ -89,6 +89,41 @@ func TestHandleChatStreamingResponse_ClassifiesHTTP2ReadError(t *testing.T) {
 	require.NotContains(t, message, "INTERNAL_ERROR")
 }
 
+func TestHandleChatStreamingResponseKeepsAliveBeforeRefusalDetectorReleasesOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid-chat-keepalive"}},
+		Body:       pr,
+	}
+	// Keep the test independent from package-wide scheduler load.  A short
+	// interval still exercises the same refusal-buffer heartbeat path while
+	// avoiding a race with the 1s ticker when the full service suite is busy.
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{StreamKeepaliveInterval: 1}}}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = io.WriteString(pw, `data: {"type":"response.created","response":{"id":"resp-chat-keepalive","model":"gpt-test"}}`+"\n\n")
+		time.Sleep(2500 * time.Millisecond)
+		_, _ = io.WriteString(pw, `data: {"type":"response.output_text.delta","delta":"ready"}`+"\n\n")
+		_, _ = io.WriteString(pw, `data: {"type":"response.completed","response":{"id":"resp-chat-keepalive","status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}`+"\n\n")
+	}()
+
+	result, err := svc.handleChatStreamingResponse(
+		resp, c, &Account{ID: 1, Platform: PlatformOpenAI},
+		"gpt-test", "gpt-test", "gpt-test", time.Now(), openAISilentRefusalMinRequestBodyBytes,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), ":\n\n", "heartbeat must be sent while refusal detection buffers pre-output events")
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+	require.Contains(t, rec.Body.String(), "ready")
+}
+
 func TestNormalizeResponsesRequestServiceTier(t *testing.T) {
 	t.Parallel()
 

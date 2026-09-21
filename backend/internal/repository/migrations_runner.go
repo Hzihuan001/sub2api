@@ -116,6 +116,22 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	//（db=4de3bf30）。当前文件必须保留 kiro，才能在 224 尚未应用且已有 kiro 数据的环境
 	// 成功升级；两个历史 checksum 双向互认，227 会将已应用旧版的约束统一为全部 9 平台。
 	"224_user_platform_quotas_add_cn_providers.sql": newMigrationChecksumCompatibilityRule("5227db3c1a6a1e2e422a9f9ba9d1f490c708b6c6dd91ce89f3c48115421a3e55", "4de3bf301cd838bbaf85613ce37dd47643165c0e3f36a1075341ff71aa37fae1"),
+	// 237 is kept as the Kiro/Cursor-compatible superset so a database that has
+	// those rows before reaching this migration cannot fail its CHECK rebuild.
+	// Some released reseller databases recorded the earlier MiniMax-only file;
+	// accept that one historical database checksum without weakening unknown
+	// migration validation. Migration 245 later converges all four constraints.
+	"237_add_minimax_platform.sql": newMigrationChecksumCompatibilityRule(
+		"2436aa33344279da9da78dc51ec544fda7dd4e4d8a3b437f2488a5747a282fd8",
+		"f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b",
+	),
+	// 238 likewise remains the OpenCode + Kiro/Cursor superset.  The original
+	// OpenCode-only checksum is accepted for databases upgraded from that
+	// release, while unknown edits remain rejected.
+	"238_opencode_go_platform.sql": newMigrationChecksumCompatibilityRule(
+		"facd00346c881c965080788f81718c22eaa7e89eee57a9c8e5a5de99ace73908",
+		"6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2",
+	),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。

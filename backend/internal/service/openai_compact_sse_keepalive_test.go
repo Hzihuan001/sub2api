@@ -3,6 +3,7 @@ package service
 import (
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -322,4 +323,84 @@ func TestWriteOpenAIFastPolicyBlockedResponse_BeforeKeepaliveCommit(t *testing.T
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
 	require.Equal(t, "permission_error", gjson.Get(rec.Body.String(), "error.type").String())
+}
+
+func TestPersistentSSEKeepaliveContinuesAfterSemanticOutput(t *testing.T) {
+	c, rec := newPassthroughKeepaliveTestContext(t)
+	var eventOpen atomic.Bool
+	stop := startOpenAISSEKeepalivePersistent(c, keepaliveTestInterval, func() bool {
+		return !eventOpen.Load()
+	})
+
+	waitForKeepaliveBeats()
+	_, err := c.Writer.Write([]byte("data: {\"type\":\"response.output_text.delta\"}\n\n"))
+	require.NoError(t, err)
+	// The old helper stopped as soon as the semantic event was written. The
+	// persistent mode must continue to refresh the downstream idle timeout.
+	waitForKeepaliveBeats()
+	stop()
+
+	body := rec.Body.String()
+	require.GreaterOrEqual(t, strings.Count(body, ": keepalive\n\n"), 2)
+	require.Equal(t,
+		"data: {\"type\":\"response.output_text.delta\"}",
+		stripKeepaliveComments(body),
+	)
+}
+
+func TestPersistentSSEKeepaliveDoesNotSplitSSEEvent(t *testing.T) {
+	c, rec := newPassthroughKeepaliveTestContext(t)
+	var eventOpen atomic.Bool
+	stop := startOpenAISSEKeepalivePersistent(c, keepaliveTestInterval, func() bool {
+		return !eventOpen.Load()
+	})
+
+	eventOpen.Store(true)
+	_, err := c.Writer.Write([]byte("data: partial\n"))
+	require.NoError(t, err)
+	waitForKeepaliveBeats()
+	// No comment may appear between the data line and its terminating blank
+	// line, otherwise a strict SSE consumer can observe a split frame.
+	require.NotContains(t, rec.Body.String(), "data: partial\n: keepalive")
+
+	_, err = c.Writer.Write([]byte("\n"))
+	require.NoError(t, err)
+	eventOpen.Store(false)
+	waitForKeepaliveBeats()
+	stop()
+
+	body := rec.Body.String()
+	require.Equal(t, "data: partial", stripKeepaliveComments(body))
+}
+
+func TestPersistentSSEKeepalive_HeaderOnlyDoesNotBlockFailover(t *testing.T) {
+	c, _ := newPassthroughKeepaliveTestContext(t)
+	// The raw Chat path prepares the SSE status before installing the persistent
+	// wrapper. Gin reports Size()==0 after WriteHeader even though no body byte
+	// has reached the client; that must still be treated as pre-output.
+	c.Writer.WriteHeaderNow()
+	stop := startOpenAISSEKeepalivePersistent(c, time.Hour, nil)
+	defer stop()
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c))
+	require.True(t, StopOpenAICompactSSEKeepaliveCommitted(c), "header-only SSE response is already committed")
+
+	_, err := c.Writer.Write([]byte("data: semantic\n\n"))
+	require.NoError(t, err)
+	require.Greater(t, OpenAICompactKeepaliveAdjustedWrittenSize(c), 0)
+}
+
+func TestPersistentSSEKeepalive_InheritsHeartbeatBytesAcrossAttempts(t *testing.T) {
+	c, _ := newPassthroughKeepaliveTestContext(t)
+	firstStop := startOpenAISSEKeepalivePersistent(c, keepaliveTestInterval, nil)
+	waitForKeepaliveBeats()
+	firstStop()
+
+	// A failover retry reuses the same downstream writer. Replacing the helper
+	// must not make comments from the first attempt look like semantic output.
+	secondStop := startOpenAISSEKeepalivePersistent(c, time.Hour, nil)
+	defer secondStop()
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c))
+	_, err := c.Writer.Write([]byte("data: semantic\n\n"))
+	require.NoError(t, err)
+	require.Greater(t, OpenAICompactKeepaliveAdjustedWrittenSize(c), 0)
 }

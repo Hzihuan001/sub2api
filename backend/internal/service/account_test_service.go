@@ -558,6 +558,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -631,6 +632,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -756,6 +758,7 @@ func (s *AccountTestService) executeKiroTestUpstream(ctx context.Context, accoun
 			if err != nil {
 				return nil, err
 			}
+			applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 
 			resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 			if err != nil {
@@ -874,6 +877,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to sign request: %s", err.Error()))
 		}
 	}
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -1063,6 +1067,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	credentialAccount.ApplyHeaderOverrides(req.Header)
+	applyResellerAccountHeaders(req.Header, credentialAccount, resellerRequestSourceAccountTest)
 
 	// Get proxy URL
 	proxyURL := ""
@@ -1270,6 +1275,7 @@ func (s *AccountTestService) applyGrokTestRequestHeaders(req *http.Request, acco
 		applyGrokCLIHeaders(req.Header)
 	}
 	account.ApplyHeaderOverrides(req.Header)
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 }
 
 func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, account *Account, resp *http.Response) {
@@ -1907,6 +1913,7 @@ func (s *AccountTestService) testGrokSTT(c *gin.Context, ctx context.Context, ac
 		applyGrokCLIHeaders(req.Header)
 	}
 	account.ApplyHeaderOverrides(req.Header)
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 
 	resp, err := s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
 	if err != nil {
@@ -1980,6 +1987,7 @@ func (s *AccountTestService) testGrokRealtime(c *gin.Context, ctx context.Contex
 		applyGrokCLIHeaders(headers)
 	}
 	account.ApplyHeaderOverrides(headers)
+	applyResellerAccountHeaders(headers, account, resellerRequestSourceAccountTest)
 
 	dialer := s.grokWSDialer
 	if dialer == nil {
@@ -2268,6 +2276,9 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	// A reseller-backed account is tested through the main gateway and must use
+	// the same reservation protocol as a real user request.
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	proxyURL := ""
@@ -2402,6 +2413,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -2546,6 +2558,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build request: %s", err.Error()))
 	}
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -3178,6 +3191,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

@@ -127,6 +127,45 @@ func TestOpenAIStreamingPassthroughFlushesAtCompleteEventBoundaries(t *testing.T
 	require.Equal(t, 2, result.usage.OutputTokens)
 }
 
+func TestOpenAIStreamingPassthroughKeepsAliveAfterOutputPause(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize:             defaultMaxLineSize,
+			StreamKeepaliveInterval: 1,
+		},
+	}}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = io.WriteString(pw, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"first\"}\n\n")
+		// Simulate a long reasoning/output pause after visible output. The
+		// downstream heartbeat must continue during this gap.
+		time.Sleep(1200 * time.Millisecond)
+		_, _ = io.WriteString(pw, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_keepalive\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n")
+	}()
+
+	result, err := svc.handleStreamingResponsePassthrough(
+		c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "keepalive-test"}, time.Now(), "", "",
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := recorder.Body.String()
+	require.Contains(t, body, "data: {\"type\":\"response.output_text.delta\"")
+	require.Contains(t, body, ": keepalive\n\n")
+	require.Contains(t, body, "response.completed")
+	require.Equal(t, 1, strings.Count(body, "response.completed"))
+}
+
 func TestOpenAIStreamingPassthroughKeepsPreamblePendingUntilFirstOutputBoundary(t *testing.T) {
 	preamble := "event: response.created\n" +
 		`data: {"type":"response.created","response":{"id":"resp_pending"}}` + "\n\n" +
