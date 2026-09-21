@@ -280,23 +280,11 @@ func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool
 	return adapter, MonitorAPIModeChatCompletions, ok
 }
 
-// callProvider 通过 providerAdapters 分发到具体实现。
-// opts 承载用户的自定义 headers / body 覆盖（可为 nil）。
-//
-// 返回值：
-//   - extractedText: 按 textPath 抽出的成功文本，仅在 status 2xx 时有意义；非 2xx 时通常为空串
-//   - rawBody: 完整响应体的字符串形式（已被 monitorResponseMaxBytes 截断），用于错误路径保留上游真实回包
-//   - status: HTTP 状态码
-//   - err: 网络 / 序列化错误
-func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
-	return callProviderWithChallenge(ctx, provider, endpoint, apiKey, model, prompt, "", opts)
-}
-
 // callProviderWithChallenge is the probe-specific variant of callProvider.
-// expected is intentionally optional so existing callers and tests retain the
-// original API. It enables the streaming probe to stop as soon as the known
-// arithmetic challenge is present, instead of waiting for a slow upstream to
-// finish a response that is already sufficient for health checking.
+// expected enables the streaming probe to stop as soon as the known arithmetic
+// challenge is present, instead of waiting for a slow upstream to finish a
+// response that is already sufficient for health checking. An empty expected
+// value preserves the original full-response behavior used by endpoint tests.
 func callProviderWithChallenge(ctx context.Context, provider, endpoint, apiKey, model, prompt, expected string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
 	requestedAPIMode := checkAPIMode(opts)
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
@@ -675,7 +663,7 @@ func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, head
 			}
 			part, terminal := extractOpenAIChatMonitorPayload([]byte(value))
 			if part != "" {
-				text.WriteString(part)
+				_, _ = text.WriteString(part)
 				if expected != "" && validateChallenge(text.String(), expected) {
 					return true
 				}
@@ -689,8 +677,8 @@ func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, head
 
 	for scanner.Scan() {
 		line := strings.TrimSuffix(scanner.Text(), "\r")
-		raw.WriteString(line)
-		raw.WriteByte('\n')
+		_, _ = raw.WriteString(line)
+		_ = raw.WriteByte('\n')
 		if consumeFrame(parser.AddLine(line)) {
 			return raw.Bytes(), resp.StatusCode, nil
 		}
