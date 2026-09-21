@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.7-l1.1
+  CUSTOM_VERSION: 0.2.7-l1.2
 
 jobs:
   compatibility:

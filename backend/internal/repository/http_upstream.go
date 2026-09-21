@@ -260,6 +260,20 @@ func applyMoshuResellerRequestID(req *http.Request) {
 	if !isMoshuResellerRequest(req) {
 		return
 	}
+	if req.Header == nil {
+		req.Header = make(http.Header)
+	}
+	// Remove every spelling of the private headers before setting the value we
+	// own.  http.Header is a map and callers can insert non-canonical keys
+	// directly (for example, "x-reseller-request-id"). Header.Set only replaces
+	// the canonical key, so leaving such entries in place would send duplicate
+	// values and allow an account-provided header to override the UUID at the
+	// upstream protocol boundary.
+	for key := range req.Header {
+		if strings.EqualFold(key, moshuResellerRequestIDHeader) || strings.EqualFold(key, moshuResellerRequestSourceHeader) {
+			delete(req.Header, key)
+		}
+	}
 	requestID := ""
 	source := strings.ToLower(strings.TrimSpace(contextString(req.Context(), ctxkey.ResellerRequestSource)))
 	if source != "monitor" && source != "account_test" {

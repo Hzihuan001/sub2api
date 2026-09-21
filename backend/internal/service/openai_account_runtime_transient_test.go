@@ -59,6 +59,99 @@ func TestHandleOpenAITransientError_TransientStatusesUseModelScope(t *testing.T)
 	}
 }
 
+func TestHandleOpenAICompatibleTransientError_DeepSeekAndKimiUseModelScope(t *testing.T) {
+	for _, platform := range []string{PlatformDeepseek, PlatformKimi} {
+		t.Run(platform, func(t *testing.T) {
+			svc := &OpenAIGatewayService{}
+			svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+			account := &Account{ID: 5200, Platform: platform, Type: AccountTypeAPIKey}
+
+			for range 2 {
+				shouldDisable := svc.handleOpenAIAccountUpstreamError(
+					context.Background(), account, 524, http.Header{},
+					[]byte(`{"error":{"message":"temporary upstream failure"}}`), "provider-model",
+				)
+				require.False(t, shouldDisable)
+			}
+
+			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "provider-model"))
+			require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "other-model"))
+		})
+	}
+}
+
+func TestHandleOpenAICompatible52xFirstFailureGetsMinimumCooldown(t *testing.T) {
+	for _, platform := range []string{PlatformDeepseek, PlatformKimi} {
+		t.Run(platform, func(t *testing.T) {
+			svc := &OpenAIGatewayService{}
+			svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+			account := &Account{ID: 5300, Platform: platform, Type: AccountTypeAPIKey}
+			before := time.Now()
+
+			shouldDisable := svc.handleOpenAIAccountUpstreamError(
+				context.Background(), account, 524, http.Header{},
+				[]byte(`{"error":{"message":"origin timeout"}}`), "provider-model",
+			)
+
+			require.False(t, shouldDisable)
+			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "provider-model"))
+			state := svc.getOpenAIAccountModelTransientState()
+			key, ok := openAIAccountModelTransientKey(account.ID, "provider-model")
+			require.True(t, ok)
+			state.mu.Lock()
+			entry, exists := state.entries[key]
+			state.mu.Unlock()
+			require.True(t, exists)
+			require.GreaterOrEqual(t, entry.blockUntil.Sub(before), openAIModelTransientGatewayCooldown-time.Second)
+		})
+	}
+}
+
+func TestHandleOpenAICompatible502FirstFailureKeepsExistingThreshold(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+	account := &Account{ID: 5301, Platform: PlatformDeepseek, Type: AccountTypeAPIKey}
+
+	shouldDisable := svc.handleOpenAIAccountUpstreamError(
+		context.Background(), account, http.StatusBadGateway, http.Header{},
+		[]byte(`{"error":{"message":"bad gateway"}}`), "provider-model",
+	)
+
+	require.False(t, shouldDisable)
+	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "provider-model"), "502 retains the existing two-failure threshold")
+}
+
+func TestHandleOpenAICompatible52xRepeatedFailureDoesNotShortenCooldown(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+	account := &Account{ID: 5302, Platform: PlatformKimi, Type: AccountTypeAPIKey}
+
+	call := func() {
+		require.False(t, svc.handleOpenAIAccountUpstreamError(
+			context.Background(), account, 524, http.Header{},
+			[]byte(`{"error":{"message":"origin timeout"}}`), "provider-model",
+		))
+	}
+	call()
+	state := svc.getOpenAIAccountModelTransientState()
+	key, ok := openAIAccountModelTransientKey(account.ID, "provider-model")
+	require.True(t, ok)
+	state.mu.Lock()
+	firstUntil := state.entries[key].blockUntil
+	state.mu.Unlock()
+	require.True(t, firstUntil.After(time.Now().Add(openAIModelTransientGatewayCooldown-time.Second)))
+
+	// A subsequent failure must not replace the gateway quarantine with a
+	// shorter streak-based cooldown.
+	call()
+	state.mu.Lock()
+	secondUntil := state.entries[key].blockUntil
+	state.mu.Unlock()
+	require.GreaterOrEqual(t, secondUntil, firstUntil)
+}
+
 func TestHandleOpenAITransientError_529RemainsOverloadOnly(t *testing.T) {
 	require.False(t, shouldCooldownOpenAITransientUpstreamError(529, []byte(`{"error":{"message":"overloaded"}}`)))
 }

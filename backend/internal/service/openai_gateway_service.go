@@ -474,6 +474,7 @@ type OpenAIGatewayService struct {
 	openaiWSStateStoreOnce         sync.Once
 	openaiSchedulerOnce            sync.Once
 	openaiProxyStreamCircuitOnce   sync.Once
+	openaiAccountStreamCircuitOnce sync.Once
 	openaiWSPassthroughDialerOnce  sync.Once
 	openaiModelTransientOnce       sync.Once
 	agentIdentityTaskMu            sync.Mutex
@@ -485,6 +486,11 @@ type OpenAIGatewayService struct {
 	openaiAccountStats             *openAIAccountRuntimeStats
 	openaiModelTransient           *openAIAccountModelTransientState
 	openaiProxyStreamCircuit       *openAIProxyStreamCircuit
+	// openaiAccountStreamCircuit quarantines direct API-key endpoints after a
+	// mid-stream disconnect. Proxy-backed accounts continue to share the
+	// proxy-keyed circuit above; direct accounts need an account key because
+	// they have no ProxyID to isolate.
+	openaiAccountStreamCircuit     *openAIProxyStreamCircuit
 	openaiProxyStreamFailOpenLogAt atomic.Int64
 
 	openaiWSFallbackUntil               sync.Map // key: int64(accountID), value: time.Time

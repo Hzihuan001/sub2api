@@ -3,6 +3,7 @@ package service
 import (
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -322,4 +323,52 @@ func TestWriteOpenAIFastPolicyBlockedResponse_BeforeKeepaliveCommit(t *testing.T
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
 	require.Equal(t, "permission_error", gjson.Get(rec.Body.String(), "error.type").String())
+}
+
+func TestPersistentSSEKeepaliveContinuesAfterSemanticOutput(t *testing.T) {
+	c, rec := newPassthroughKeepaliveTestContext(t)
+	var eventOpen atomic.Bool
+	stop := startOpenAISSEKeepalivePersistent(c, keepaliveTestInterval, func() bool {
+		return !eventOpen.Load()
+	})
+	waitForKeepaliveBeats()
+	_, err := c.Writer.Write([]byte("data: {\"type\":\"response.output_text.delta\"}\n\n"))
+	require.NoError(t, err)
+	waitForKeepaliveBeats()
+	stop()
+
+	body := rec.Body.String()
+	require.GreaterOrEqual(t, strings.Count(body, ": keepalive\n\n"), 2)
+	require.Equal(t, "data: {\"type\":\"response.output_text.delta\"}", stripKeepaliveComments(body))
+}
+
+func TestPersistentSSEKeepaliveDoesNotSplitSSEEvent(t *testing.T) {
+	c, rec := newPassthroughKeepaliveTestContext(t)
+	var eventOpen atomic.Bool
+	stop := startOpenAISSEKeepalivePersistent(c, keepaliveTestInterval, func() bool {
+		return !eventOpen.Load()
+	})
+	eventOpen.Store(true)
+	_, err := c.Writer.Write([]byte("data: partial\n"))
+	require.NoError(t, err)
+	waitForKeepaliveBeats()
+	require.NotContains(t, rec.Body.String(), "data: partial\n: keepalive")
+	_, err = c.Writer.Write([]byte("\n"))
+	require.NoError(t, err)
+	eventOpen.Store(false)
+	waitForKeepaliveBeats()
+	stop()
+	require.Equal(t, "data: partial", stripKeepaliveComments(rec.Body.String()))
+}
+
+func TestPersistentSSEKeepaliveHeaderOnlyRemainsPreOutput(t *testing.T) {
+	c, _ := newPassthroughKeepaliveTestContext(t)
+	c.Writer.WriteHeaderNow()
+	stop := startOpenAISSEKeepalivePersistent(c, time.Hour, nil)
+	defer stop()
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c))
+	require.True(t, StopOpenAICompactSSEKeepaliveCommitted(c))
+	_, err := c.Writer.Write([]byte("data: semantic\n\n"))
+	require.NoError(t, err)
+	require.Greater(t, OpenAICompactKeepaliveAdjustedWrittenSize(c), 0)
 }
