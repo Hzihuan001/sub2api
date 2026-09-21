@@ -60,7 +60,15 @@ func (s *Service) applyCatalogConfiguration(ctx context.Context) error {
 				return fmt.Errorf("load product %d account: %w", product.ID, err)
 			}
 			if account.Platform != product.Platform {
-				return fmt.Errorf("product %d platform changed; migrate its local account explicitly", product.ID)
+				// A catalog refresh can race with account reconciliation (or recover
+				// an older image that skipped that step).  Keep the existing local
+				// account usable by applying the same authenticated product sync used
+				// by ensureProductAccount instead of leaving a stale Claude/Kimi/etc.
+				// platform attached to the product.
+				if syncErr := s.syncExistingProductAccount(ctx, product, account); syncErr != nil {
+					return fmt.Errorf("sync product %d account platform: %w", product.ID, syncErr)
+				}
+				continue
 			}
 			credentials, passthroughChanged := withPassthroughCredentials(account.Credentials)
 			extra, modelSnapshotChanged := withProductModelSnapshot(account.Extra, product.Models)

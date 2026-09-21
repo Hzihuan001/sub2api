@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -290,6 +291,22 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
+
+	// Keep the downstream SSE connection alive for the complete raw Chat
+	// Completions response. Without this, scanner.Scan() can leave an L1/reseller
+	// hop or Cloudflare idle while the provider is thinking, producing a 524 or
+	// stream_read_error even though the upstream request is still healthy.
+	var sseEventOpen atomic.Bool
+	stopKeepalive := func() {}
+	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		writeStreamHeaders()
+		stopKeepalive = startOpenAISSEKeepalivePersistent(c,
+			time.Duration(s.cfg.Gateway.StreamKeepaliveInterval)*time.Second,
+			func() bool { return !sseEventOpen.Load() },
+		)
+	}
+	defer stopKeepalive()
+
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
 	var usage OpenAIUsage
@@ -334,6 +351,9 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if line != "" {
+			sseEventOpen.Store(true)
+		}
 		refusalDetector.ObserveSSELine(line)
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
@@ -355,6 +375,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 		writeLine(line)
 		if line == "" {
+			sseEventOpen.Store(false)
 			if !clientDisconnected && clientOutputStarted {
 				c.Writer.Flush()
 			}

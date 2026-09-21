@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
-	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -299,7 +298,7 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
-	respBytes, status, err := postRawJSON(ctx, full, body, headers)
+	respBytes, status, err := postRawJSON(ctx, full, body, headers, apiKey)
 	if err != nil {
 		return "", "", status, err
 	}
@@ -539,22 +538,11 @@ const (
 
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
-func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string, resellerKey ...string) ([]byte, int, error) {
+	req, err := newMonitorRequest(ctx, fullURL, payload, headers, resellerKey...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("build request: %w", err)
+		return nil, 0, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Reseller-Request-Source", "monitor")
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	// 代理协议要求每一次监控探测都有一个合法且独立的 UUID。必须在
-	// 应用自定义 headers 之后写入，避免模板配置覆盖协议头并触发
-	// `X-Reseller-Request-ID must be a UUID`。
-	req.Header.Set(monitorResellerRequestIDHeader, uuid.NewString())
-	req.Header.Set(monitorRequestSourceHeader, monitorRequestSource)
 
 	resp, err := monitorHTTPClient.Do(req)
 	if err != nil {
@@ -567,6 +555,32 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
 	}
 	return respBody, resp.StatusCode, nil
+}
+
+// newMonitorRequest constructs the final monitor request.  Reseller protocol
+// headers are private to the station-to-main hop; ordinary provider keys must
+// never receive them, and custom monitor headers cannot override the generated
+// UUID for a reseller key.
+func newMonitorRequest(ctx context.Context, fullURL string, payload []byte, headers map[string]string, resellerKey ...string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	accept := "application/json"
+	if gjson.GetBytes(payload, "stream").Bool() {
+		accept = "text/event-stream"
+	}
+	req.Header.Set("Accept", accept)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	key := resellerKeyFromMonitorHeaders(req.Header)
+	if len(resellerKey) > 0 {
+		key = resellerKey[0]
+	}
+	applyMonitorResellerHeaders(req.Header, key)
+	return req, nil
 }
 
 // joinURL 保留 base 的上游路径前缀，并避免重复追加已有的 API 路径前缀。

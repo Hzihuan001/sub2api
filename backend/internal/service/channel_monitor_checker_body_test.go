@@ -215,7 +215,7 @@ func TestRunCheckForModel_ResellerMonitorHeadersAreUniqueAndProtected(t *testing
 		MonitorProviderMiniMax,
 	} {
 		t.Run(provider, func(t *testing.T) {
-			first := runCheckForModel(context.Background(), provider, endpoint, "test-key", "test-model", &CheckOptions{
+			first := runCheckForModel(context.Background(), provider, endpoint, "sk-rs_test-key", "test-model", &CheckOptions{
 				ExtraHeaders: customHeaders,
 			})
 			require.Equal(t, MonitorStatusOperational, first.Status, first.Message)
@@ -224,7 +224,7 @@ func TestRunCheckForModel_ResellerMonitorHeadersAreUniqueAndProtected(t *testing
 			require.NoError(t, uuid.Validate(firstID))
 			require.Equal(t, monitorRequestSource, h.lastHeaders.Get(monitorRequestSourceHeader))
 
-			second := runCheckForModel(context.Background(), provider, endpoint, "test-key", "test-model", &CheckOptions{
+			second := runCheckForModel(context.Background(), provider, endpoint, "sk-rs_test-key", "test-model", &CheckOptions{
 				ExtraHeaders: customHeaders,
 			})
 			require.Equal(t, MonitorStatusOperational, second.Status, second.Message)
@@ -235,6 +235,20 @@ func TestRunCheckForModel_ResellerMonitorHeadersAreUniqueAndProtected(t *testing
 			require.Equal(t, monitorRequestSource, h.lastHeaders.Get(monitorRequestSourceHeader))
 		})
 	}
+}
+
+func TestRunCheckForModel_OrdinaryProviderDoesNotReceiveResellerHeaders(t *testing.T) {
+	h := &openAICaptureHandler{}
+	endpoint := setupFakeOpenAI(t, h)
+	result := runCheckForModel(context.Background(), MonitorProviderDeepseek, endpoint, "provider-key", "test-model", &CheckOptions{
+		ExtraHeaders: map[string]string{
+			monitorResellerRequestIDHeader: "not-a-uuid",
+			monitorRequestSourceHeader:     "monitor",
+		},
+	})
+	require.Equal(t, MonitorStatusOperational, result.Status, result.Message)
+	require.Empty(t, h.lastHeaders.Get(monitorResellerRequestIDHeader))
+	require.Empty(t, h.lastHeaders.Get(monitorRequestSourceHeader))
 }
 
 func TestGrokMonitorConfiguration(t *testing.T) {

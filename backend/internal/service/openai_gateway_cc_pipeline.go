@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -49,6 +50,13 @@ func (s *OpenAIGatewayService) newStreamHeaderWriter(c *gin.Context, upstream ht
 	headersWritten := false
 	return func() {
 		if headersWritten {
+			return
+		}
+		// A persistent downstream keepalive may have committed the SSE status
+		// before the first translated event. Do not issue a second WriteHeader
+		// when the normal event path takes over.
+		if c != nil && c.Writer != nil && c.Writer.Written() {
+			headersWritten = true
 			return
 		}
 		headersWritten = true
@@ -321,6 +329,49 @@ func (s *OpenAIGatewayService) scanCCStream(
 		st.Err = err
 	}
 	return st
+}
+
+// scanCCStreamWithKeepalive is the streaming variant used by the two protocol
+// fallback bridges (Responses/Messages -> Chat Completions). A persistent SSE
+// comment heartbeat prevents an L1/reseller hop or reverse proxy from treating
+// a valid long-running request as idle while the provider is thinking.
+//
+// The callback is wrapped with an event-open flag so a heartbeat cannot be
+// inserted between the writes that make up one translated SSE event.
+func (s *OpenAIGatewayService) scanCCStreamWithKeepalive(
+	c *gin.Context,
+	resp *http.Response,
+	logPrefix string,
+	requestID string,
+	startTime time.Time,
+	emit func(*apicompat.ChatCompletionsChunk),
+) ccStreamScanState {
+	var eventOpen atomic.Bool
+	stopKeepalive := func() {}
+	if s != nil && s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		if s.responseHeaderFilter != nil && c != nil && c.Writer != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		if c != nil && c.Writer != nil {
+			c.Writer.Header().Set("Content-Type", "text/event-stream")
+			c.Writer.Header().Set("Cache-Control", "no-cache")
+			c.Writer.Header().Set("Connection", "keep-alive")
+			c.Writer.Header().Set("X-Accel-Buffering", "no")
+		}
+		stopKeepalive = startOpenAISSEKeepalivePersistent(c,
+			time.Duration(s.cfg.Gateway.StreamKeepaliveInterval)*time.Second,
+			func() bool { return !eventOpen.Load() },
+		)
+	}
+	defer stopKeepalive()
+
+	return s.scanCCStream(c, resp, logPrefix, requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
+		eventOpen.Store(true)
+		defer eventOpen.Store(false)
+		if emit != nil {
+			emit(chunk)
+		}
+	})
 }
 
 // logCCStreamMissingDoneSentinel 记录"上游未发 [DONE] 哨兵即结束"的 debug 日志。

@@ -682,7 +682,7 @@ func (s *Service) syncExistingProductAccount(ctx context.Context, product Produc
 	groupIDs := productAccountGroupIDs(account.GroupIDs, product.LocalGroupID)
 	rate := product.EffectiveCostRate()
 	if _, err := s.admin.UpdateAccount(service.WithMoshuResellerSync(ctx), account.ID, &service.UpdateAccountInput{
-		Name: account.Name, Type: account.Type, Credentials: credentials, Extra: extra,
+		Name: account.Name, Platform: product.Platform, Type: account.Type, Credentials: credentials, Extra: extra,
 		Concurrency: &account.Concurrency, RateMultiplier: &rate, Status: service.StatusActive,
 		GroupIDs: &groupIDs, SkipMixedChannelCheck: true,
 	}); err != nil {

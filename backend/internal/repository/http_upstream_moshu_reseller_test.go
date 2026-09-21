@@ -108,3 +108,27 @@ func TestApplyMoshuResellerRequestIDDisabled(t *testing.T) {
 		t.Fatalf("disabled client added header %q", got)
 	}
 }
+
+func TestApplyMoshuResellerRequestIDRemovesNonCanonicalCallerHeaders(t *testing.T) {
+	t.Setenv("MOSHU_RESELLER_CLIENT_ENABLED", "true")
+	t.Setenv("MOSHU_RESELLER_URL", "https://moshu.example")
+	ctx := context.WithValue(context.Background(), ctxkey.ClientRequestID, uuid.NewString())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://moshu.example/v1/chat/completions", nil)
+	// Deliberately bypass Header.Set: this is how a custom account header can
+	// arrive with a non-canonical map key and evade a canonical-only replace.
+	req.Header["x-reseller-request-id"] = []string{"not-a-uuid"}
+	req.Header["x-reseller-request-source"] = []string{"user"}
+	applyMoshuResellerRequestID(req)
+	if values := req.Header["x-reseller-request-id"]; len(values) != 0 {
+		t.Fatalf("non-canonical request ID survived: %#v", values)
+	}
+	if values := req.Header["x-reseller-request-source"]; len(values) != 0 {
+		t.Fatalf("non-canonical request source survived: %#v", values)
+	}
+	if _, err := uuid.Parse(req.Header.Get(moshuResellerRequestIDHeader)); err != nil {
+		t.Fatalf("request ID is not a UUID: %v", err)
+	}
+	if got := req.Header.Get(moshuResellerRequestSourceHeader); got != "user" {
+		t.Fatalf("source = %q, want user", got)
+	}
+}
