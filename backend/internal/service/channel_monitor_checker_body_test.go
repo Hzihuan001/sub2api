@@ -239,24 +239,34 @@ func TestRunCheckForModel_ResellerMonitorHeadersAreUniqueAndProtected(t *testing
 	}
 }
 
-func TestRunCheckForModel_ResellerDefaultUsesStreamingProbe(t *testing.T) {
-	h := &openAICaptureHandler{}
-	endpoint := setupFakeOpenAI(t, h)
-	result := runCheckForModel(context.Background(), MonitorProviderDeepseek, endpoint, "sk-rs_test-key", "test-model", &CheckOptions{})
+func TestRunCheckForModel_ResellerDefaultUsesModelsProbe(t *testing.T) {
+	var gotMethod string
+	var gotPath string
+	var gotHeaders http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotHeaders = r.Method, r.URL.Path, r.Header.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"id":"test-model"}]}`)
+	}))
+	t.Cleanup(srv.Close)
+	swapMonitorHTTPClient(t)
+	// An explicit header opts into the legacy/custom inference probe. The
+	// default reseller monitor is intentionally a lightweight /v1/models probe.
+	result := runCheckForModel(context.Background(), MonitorProviderDeepseek, srv.URL, "sk-rs_test-key", "test-model", &CheckOptions{})
 
 	if result.Status != MonitorStatusOperational {
-		t.Fatalf("default reseller stream probe should pass challenge, got status=%s message=%q", result.Status, result.Message)
+		t.Fatalf("default reseller models probe should pass, got status=%s message=%q", result.Status, result.Message)
 	}
-	if h.lastBody["stream"] != true {
-		t.Fatalf("reseller monitor should use stream=true, got %v", h.lastBody["stream"])
+	if gotMethod != http.MethodGet || gotPath != "/v1/models" {
+		t.Fatalf("reseller monitor should use GET /v1/models, got %s %s", gotMethod, gotPath)
 	}
-	if h.lastHeaders.Get("Authorization") != "Bearer sk-rs_test-key" {
-		t.Fatalf("reseller monitor must keep the selected credential, got %q", h.lastHeaders.Get("Authorization"))
+	if gotHeaders.Get("Authorization") != "Bearer sk-rs_test-key" {
+		t.Fatalf("reseller monitor must keep the selected credential, got %q", gotHeaders.Get("Authorization"))
 	}
-	if err := uuid.Validate(h.lastHeaders.Get(monitorResellerRequestIDHeader)); err != nil {
+	if err := uuid.Validate(gotHeaders.Get(monitorResellerRequestIDHeader)); err != nil {
 		t.Fatalf("reseller monitor request id must be a UUID: %v", err)
 	}
-	if got := h.lastHeaders.Get(monitorRequestSourceHeader); got != monitorRequestSource {
+	if got := gotHeaders.Get(monitorRequestSourceHeader); got != monitorRequestSource {
 		t.Fatalf("reseller monitor source = %q, want %q", got, monitorRequestSource)
 	}
 }
@@ -287,7 +297,9 @@ func TestRunCheckForModel_ResellerStreamingProbeStopsAfterChallenge(t *testing.T
 	t.Cleanup(srv.Close)
 
 	started := time.Now()
-	result := runCheckForModel(context.Background(), MonitorProviderDeepseek, srv.URL, "sk-rs_test-key", "test-model", &CheckOptions{})
+	result := runCheckForModel(context.Background(), MonitorProviderDeepseek, srv.URL, "sk-rs_test-key", "test-model", &CheckOptions{
+		ExtraHeaders: map[string]string{"X-Test-Probe": "stream"},
+	})
 	if result.Status != MonitorStatusOperational {
 		t.Fatalf("streaming reseller probe should pass, got status=%s message=%q", result.Status, result.Message)
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -698,9 +699,16 @@ func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *Chan
 func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *ChannelMonitor) []*CheckResult {
 	models := append([]string{m.PrimaryModel}, m.ExtraModels...)
 	results := make([]*CheckResult, len(models))
+	// Reseller credentials are issued by the main station. In a Docker/1Panel
+	// deployment the station URL is an internal network address; using the
+	// public Cloudflare endpoint here reintroduces the 120s proxy timeout that
+	// normal gateway traffic does not see. Keep manually configured endpoints
+	// for ordinary provider keys, but always prefer the authenticated internal
+	// reseller URL when it is present.
+	endpoint := monitorEndpointForKey(m.Endpoint, m.APIKey)
 
 	// ping 共享一次，所有模型记录同一个 ping 延迟。
-	pingMs := pingEndpointOrigin(ctx, m.Endpoint)
+	pingMs := pingEndpointOrigin(ctx, endpoint)
 
 	// 所有模型共用同一份 CheckOptions（来自监控的快照字段）。
 	opts := &CheckOptions{
@@ -715,7 +723,7 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 	for i, model := range models {
 		i, model := i, model
 		eg.Go(func() error {
-			r := runCheckForModel(ctx, m.Provider, m.Endpoint, m.APIKey, model, opts)
+			r := runCheckForModel(ctx, m.Provider, endpoint, m.APIKey, model, opts)
 			r.PingLatencyMs = pingMs
 			mu.Lock()
 			results[i] = r
@@ -725,6 +733,16 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 	}
 	_ = eg.Wait()
 	return results
+}
+
+func monitorEndpointForKey(configured, apiKey string) string {
+	if !isMonitorResellerAPIKey(apiKey) {
+		return configured
+	}
+	if internal := strings.TrimRight(strings.TrimSpace(os.Getenv("MOSHU_RESELLER_URL")), "/"); internal != "" {
+		return internal
+	}
+	return configured
 }
 
 // ---------- 调度器协作 ----------

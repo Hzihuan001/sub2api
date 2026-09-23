@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -21,6 +23,13 @@ import (
 // monitorHTTPClient 共享一个 http.Client，避免每次检测重建 transport。
 // 自定义 Transport 在 dial 时强制再次校验 IP，防止 DNS rebinding 绕过 validateEndpoint。
 var monitorHTTPClient = newSSRFSafeHTTPClient(monitorRequestTimeout)
+
+// resellerMonitorHTTPClient is deliberately separate from the public
+// endpoint client. MOSHU_RESELLER_URL is deployment-owned configuration and
+// may resolve to the Docker private network; applying the public SSRF dialer
+// to it would reject the same internal route used by real gateway requests.
+// No user-controlled endpoint is ever routed through this client.
+var resellerMonitorHTTPClient = newTrustedResellerHTTPClient(monitorRequestTimeout)
 
 // monitorPingHTTPClient 用于 endpoint origin 的 HEAD ping，超时更短。
 var monitorPingHTTPClient = newSSRFSafeHTTPClient(monitorPingTimeout)
@@ -37,6 +46,39 @@ func newSSRFSafeHTTPClient(timeout time.Duration) *http.Client {
 		ResponseHeaderTimeout: monitorResponseHeaderTimeout,
 	}
 	return &http.Client{Timeout: timeout, Transport: servertiming.WrapRoundTripper(tr)}
+}
+
+func newTrustedResellerHTTPClient(timeout time.Duration) *http.Client {
+	tr := &http.Transport{
+		DialContext:           (&net.Dialer{Timeout: monitorDialTimeout, KeepAlive: monitorDialKeepAlive}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          16,
+		IdleConnTimeout:       monitorIdleConnTimeout,
+		TLSHandshakeTimeout:   monitorTLSHandshakeTimeout,
+		ResponseHeaderTimeout: monitorResponseHeaderTimeout,
+	}
+	return &http.Client{
+		Timeout:       timeout,
+		Transport:     servertiming.WrapRoundTripper(tr),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
+func monitorHTTPClientForURL(rawURL string, resellerKey ...string) *http.Client {
+	if len(resellerKey) == 0 || !isMonitorResellerAPIKey(resellerKey[0]) {
+		return monitorHTTPClient
+	}
+	configured := strings.TrimRight(strings.TrimSpace(os.Getenv("MOSHU_RESELLER_URL")), "/")
+	if configured == "" {
+		return monitorHTTPClient
+	}
+	base, baseErr := url.Parse(configured)
+	target, targetErr := url.Parse(rawURL)
+	if baseErr == nil && targetErr == nil && base.Scheme != "" && base.Host != "" &&
+		strings.EqualFold(base.Scheme, target.Scheme) && strings.EqualFold(base.Host, target.Host) {
+		return resellerMonitorHTTPClient
+	}
+	return monitorHTTPClient
 }
 
 // CheckOptions 承载一次检测的自定义入参。
@@ -66,6 +108,27 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 
 	challenge := generateChallenge()
 	mode := bodyOverrideMode(opts)
+	if shouldUseResellerModelsProbe(provider, apiKey, opts) {
+		start := time.Now()
+		rawBody, statusCode, found, err := callResellerModelsProbe(ctx, endpoint, apiKey, model)
+		latency := time.Since(start)
+		latencyMs := int(latency / time.Millisecond)
+		res.LatencyMs = &latencyMs
+		if err != nil {
+			res.Message = truncateMessage(sanitizeErrorMessage(err.Error()))
+			return res
+		}
+		if statusCode < 200 || statusCode >= 300 {
+			res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("upstream HTTP %d: %s", statusCode, truncateForErrorBody(rawBody))))
+			return res
+		}
+		if !found {
+			res.Status = MonitorStatusFailed
+			res.Message = truncateMessage(fmt.Sprintf("model %q is not advertised by the reseller gateway", model))
+			return res
+		}
+		return finalizeOperationalOrDegraded(res, latency, latencyMs)
+	}
 
 	start := time.Now()
 	respText, rawBody, statusCode, err := callProviderWithChallenge(ctx, provider, endpoint, apiKey, model, challenge.Prompt, challenge.Expected, opts)
@@ -300,7 +363,7 @@ func callProviderWithChallenge(ctx context.Context, provider, endpoint, apiKey, 
 	if !ok {
 		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
 	}
-	if shouldUseResellerStreamingProbe(provider, apiKey, opts) {
+	if isMonitorResellerAPIKey(apiKey) && isOpenAICompatibleChatProvider(provider) && opts != nil && !shouldUseResellerModelsProbe(provider, apiKey, opts) {
 		return callResellerStreamingProvider(ctx, provider, endpoint, apiKey, model, prompt, expected, opts)
 	}
 	body, err := buildRequestBody(adapter, provider, apiMode, model, prompt, opts)
@@ -319,7 +382,7 @@ func callProviderWithChallenge(ctx context.Context, provider, endpoint, apiKey, 
 	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil
 }
 
-func shouldUseResellerStreamingProbe(provider, apiKey string, opts *CheckOptions) bool {
+func shouldUseResellerModelsProbe(provider, apiKey string, opts *CheckOptions) bool {
 	if !isMonitorResellerAPIKey(apiKey) || !isOpenAICompatibleChatProvider(provider) {
 		return false
 	}
@@ -327,10 +390,50 @@ func shouldUseResellerStreamingProbe(provider, apiKey string, opts *CheckOptions
 		return true
 	}
 	// Keep explicitly customised monitors unchanged. The default station
-	// monitor is the path that needs SSE keepalive and early completion.
+	// monitor must not start a paid/long-running model inference just to prove
+	// that the station can reach the main gateway.
 	return defaultAPIMode(opts.APIMode) == MonitorAPIModeChatCompletions &&
 		bodyOverrideMode(opts) == MonitorBodyOverrideModeOff &&
 		len(opts.ExtraHeaders) == 0 && len(opts.BodyOverride) == 0
+}
+
+// callResellerModelsProbe validates the station credential and the model
+// snapshot without invoking an upstream provider model. The main gateway
+// owns model/account selection, so this is both cheaper and more reliable than
+// sending a synthetic chat completion on every scheduled monitor tick.
+func callResellerModelsProbe(ctx context.Context, endpoint, apiKey, model string) (rawBody string, status int, found bool, err error) {
+	full := joinURL(endpoint, "/v1/models")
+	headers := map[string]string{"Authorization": "Bearer " + apiKey}
+	req, err := newMonitorGETRequest(ctx, full, headers, apiKey)
+	if err != nil {
+		return "", 0, false, err
+	}
+	resp, err := monitorHTTPClientForURL(full, apiKey).Do(req)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("do models probe: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
+	if err != nil {
+		return string(body), resp.StatusCode, false, fmt.Errorf("read models probe: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return string(body), resp.StatusCode, false, nil
+	}
+	var envelope struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return string(body), resp.StatusCode, false, fmt.Errorf("decode models probe: %w", err)
+	}
+	for _, item := range envelope.Data {
+		if item.ID == model {
+			return string(body), resp.StatusCode, true, nil
+		}
+	}
+	return string(body), resp.StatusCode, false, nil
 }
 
 func callResellerStreamingProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt, expected string, opts *CheckOptions) (string, string, int, error) {
@@ -365,7 +468,7 @@ func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, head
 	if err != nil {
 		return "", "", 0, err
 	}
-	resp, err := monitorHTTPClient.Do(req)
+	resp, err := monitorHTTPClientForURL(fullURL, resellerKey).Do(req)
 	if err != nil {
 		return "", "", 0, fmt.Errorf("do streaming request: %w", err)
 	}
@@ -663,7 +766,7 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 		return nil, 0, err
 	}
 
-	resp, err := monitorHTTPClient.Do(req)
+	resp, err := monitorHTTPClientForURL(fullURL, resellerKey...).Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("do request: %w", err)
 	}
@@ -681,16 +784,33 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 // never receive them, and custom monitor headers cannot override the generated
 // UUID for a reseller key.
 func newMonitorRequest(ctx context.Context, fullURL string, payload []byte, headers map[string]string, resellerKey ...string) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+	return newMonitorRequestWithMethod(ctx, http.MethodPost, fullURL, bytes.NewReader(payload), headers, resellerKey...)
+}
+
+func newMonitorGETRequest(ctx context.Context, fullURL string, headers map[string]string, resellerKey ...string) (*http.Request, error) {
+	return newMonitorRequestWithMethod(ctx, http.MethodGet, fullURL, nil, headers, resellerKey...)
+}
+
+func newMonitorRequestWithMethod(ctx context.Context, method, fullURL string, body io.Reader, headers map[string]string, resellerKey ...string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	accept := "application/json"
-	if gjson.GetBytes(payload, "stream").Bool() {
-		accept = "text/event-stream"
+	if method != http.MethodGet {
+		req.Header.Set("Content-Type", "application/json")
+		accept := "application/json"
+		if payload, ok := body.(*bytes.Reader); ok {
+			current, _ := payload.Seek(0, io.SeekStart)
+			data, _ := io.ReadAll(payload)
+			_, _ = payload.Seek(current, io.SeekStart)
+			if gjson.GetBytes(data, "stream").Bool() {
+				accept = "text/event-stream"
+			}
+		}
+		req.Header.Set("Accept", accept)
+	} else {
+		req.Header.Set("Accept", "application/json")
 	}
-	req.Header.Set("Accept", accept)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
