@@ -10,7 +10,9 @@ import (
 // 这些是 MVP 阶段的硬编码值，按需可以提到 config 中。
 const (
 	// monitorRequestTimeout 单次模型请求总超时（含 Body 读取）。
-	monitorRequestTimeout = 45 * time.Second
+	// 代理站监控默认使用 SSE 探测，主站会持续发送心跳；45 秒会在
+	// 首 token 较慢但连接仍健康时制造假失败，因此给监控留出 3 分钟。
+	monitorRequestTimeout = 180 * time.Second
 	// monitorPingTimeout HEAD 请求 endpoint origin 的超时。
 	monitorPingTimeout = 8 * time.Second
 	// monitorDegradedThreshold 主请求成功但耗时超过该阈值视为 degraded。
@@ -135,8 +137,9 @@ const (
 	monitorIdleConnTimeout = 30 * time.Second
 	// monitorTLSHandshakeTimeout HTTP transport TLS 握手超时。
 	monitorTLSHandshakeTimeout = 10 * time.Second
-	// monitorResponseHeaderTimeout HTTP transport 等待响应头超时。
-	monitorResponseHeaderTimeout = 30 * time.Second
+	// monitorResponseHeaderTimeout HTTP transport 等待响应头超时。流式主站
+	// 正常会很快返回响应头，90 秒只覆盖瞬时排队，不改变用户网关超时。
+	monitorResponseHeaderTimeout = 90 * time.Second
 	// monitorPingDiscardMaxBytes ping 时丢弃响应体的最大字节数。
 	monitorPingDiscardMaxBytes = 1024
 

@@ -1,7 +1,7 @@
 export default {
   imageStudio: {
     title: '生图工作台',
-    description: '使用你自己的 Sub2API 密钥进行文生图和参考图编辑。',
+    description: '使用你自己的 API 密钥进行文生图和参考图编辑。',
     openBatchImage: '批量生图',
     apiKey: '生图密钥',
     selectKey: '请选择密钥',

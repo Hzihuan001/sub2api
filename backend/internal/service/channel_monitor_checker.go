@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -67,7 +68,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	mode := bodyOverrideMode(opts)
 
 	start := time.Now()
-	respText, rawBody, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
+	respText, rawBody, statusCode, err := callProviderWithChallenge(ctx, provider, endpoint, apiKey, model, challenge.Prompt, challenge.Expected, opts)
 	latency := time.Since(start)
 	latencyMs := int(latency / time.Millisecond)
 	res.LatencyMs = &latencyMs
@@ -284,6 +285,13 @@ func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool
 //   - status: HTTP 状态码
 //   - err: 网络 / 序列化错误
 func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
+	return callProviderWithChallenge(ctx, provider, endpoint, apiKey, model, prompt, "", opts)
+}
+
+// callProviderWithChallenge is the probe-aware implementation.  The expected
+// value is optional for legacy callers; reseller monitors pass it so a stream
+// can be closed as soon as the challenge answer is received.
+func callProviderWithChallenge(ctx context.Context, provider, endpoint, apiKey, model, prompt, expected string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
 	requestedAPIMode := checkAPIMode(opts)
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
 		return "", "", 0, err
@@ -291,6 +299,9 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode)
 	if !ok {
 		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
+	}
+	if shouldUseResellerStreamingProbe(provider, apiKey, opts) {
+		return callResellerStreamingProvider(ctx, provider, endpoint, apiKey, model, prompt, expected, opts)
 	}
 	body, err := buildRequestBody(adapter, provider, apiMode, model, prompt, opts)
 	if err != nil {
@@ -306,6 +317,111 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
 	}
 	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil
+}
+
+func shouldUseResellerStreamingProbe(provider, apiKey string, opts *CheckOptions) bool {
+	if !isMonitorResellerAPIKey(apiKey) || !isOpenAICompatibleChatProvider(provider) {
+		return false
+	}
+	if opts == nil {
+		return true
+	}
+	// Keep explicitly customised monitors unchanged. The default station
+	// monitor is the path that needs SSE keepalive and early completion.
+	return defaultAPIMode(opts.APIMode) == MonitorAPIModeChatCompletions &&
+		bodyOverrideMode(opts) == MonitorBodyOverrideModeOff &&
+		len(opts.ExtraHeaders) == 0 && len(opts.BodyOverride) == 0
+}
+
+func callResellerStreamingProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt, expected string, opts *CheckOptions) (string, string, int, error) {
+	adapter, _, ok := providerAdapterFor(provider, MonitorAPIModeChatCompletions)
+	if !ok {
+		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
+	}
+	body, err := buildRequestBody(adapter, provider, MonitorAPIModeChatCompletions, model, prompt, opts)
+	if err != nil {
+		return "", "", 0, err
+	}
+	var bodyMap map[string]any
+	if err := json.Unmarshal(body, &bodyMap); err != nil {
+		return "", "", 0, fmt.Errorf("unmarshal monitor body: %w", err)
+	}
+	bodyMap["stream"] = true
+	body, err = json.Marshal(bodyMap)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("marshal streaming monitor body: %w", err)
+	}
+	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
+	full := joinURL(endpoint, adapter.buildPath(model))
+	return postStreamingJSON(ctx, full, body, headers, apiKey, provider, expected)
+}
+
+// postStreamingJSON reads an OpenAI-compatible SSE response with a bounded
+// scanner. Heartbeat/comment lines are ignored; once the challenge answer is
+// present the body is closed immediately so a long completion cannot hold a
+// monitor worker or trip a proxy read timeout.
+func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string, resellerKey, provider, expected string) (string, string, int, error) {
+	req, err := newMonitorRequest(ctx, fullURL, payload, headers, resellerKey)
+	if err != nil {
+		return "", "", 0, err
+	}
+	resp, err := monitorHTTPClient.Do(req)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("do streaming request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if !strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
+		if readErr != nil {
+			return "", string(respBody), resp.StatusCode, fmt.Errorf("read body: %w", readErr)
+		}
+		return extractStreamingJSONText(provider, respBody), string(respBody), resp.StatusCode, nil
+	}
+
+	var raw bytes.Buffer
+	var text strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 4096), monitorResponseMaxBytes)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if raw.Len() < monitorResponseMaxBytes {
+			_, _ = raw.WriteString(line)
+			_, _ = raw.WriteString("\n")
+		}
+		data := strings.TrimSpace(line)
+		if !strings.HasPrefix(data, "data:") {
+			continue
+		}
+		data = strings.TrimSpace(strings.TrimPrefix(data, "data:"))
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		piece := extractStreamingJSONText(provider, []byte(data))
+		if piece == "" {
+			continue
+		}
+		_, _ = text.WriteString(piece)
+		if expected != "" && validateChallenge(text.String(), expected) {
+			return text.String(), raw.String(), resp.StatusCode, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return text.String(), raw.String(), resp.StatusCode, fmt.Errorf("read stream: %w", err)
+	}
+	return text.String(), raw.String(), resp.StatusCode, nil
+}
+
+func extractStreamingJSONText(provider string, body []byte) string {
+	if provider == MonitorProviderOpenAI || provider == MonitorProviderGrok ||
+		provider == MonitorProviderKimi || provider == MonitorProviderZhipu ||
+		provider == MonitorProviderDeepseek || provider == MonitorProviderMiniMax {
+		if text := gjson.GetBytes(body, "choices.0.delta.content").String(); text != "" {
+			return text
+		}
+		return gjson.GetBytes(body, "choices.0.message.content").String()
+	}
+	return ""
 }
 
 func extractMonitorResponseText(adapter providerAdapter, respBytes []byte) string {
@@ -388,7 +504,10 @@ func mergeHeaders(base map[string]string, opts *CheckOptions) map[string]string 
 		out[k] = v
 	}
 	for k, v := range opts.ExtraHeaders {
-		if IsForbiddenHeaderName(k) {
+		// The credential selected for this monitor is authoritative. Allowing a
+		// template to replace Authorization/X-Api-Key can turn a station key
+		// into an ordinary provider key and, in turn, remove the reseller UUID.
+		if IsForbiddenHeaderName(k) || strings.EqualFold(k, "Authorization") || strings.EqualFold(k, "X-Api-Key") {
 			continue
 		}
 		out[k] = v

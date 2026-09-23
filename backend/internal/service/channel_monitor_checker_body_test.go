@@ -5,6 +5,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -234,6 +236,78 @@ func TestRunCheckForModel_ResellerMonitorHeadersAreUniqueAndProtected(t *testing
 			require.NotEqual(t, firstID, secondID)
 			require.Equal(t, monitorRequestSource, h.lastHeaders.Get(monitorRequestSourceHeader))
 		})
+	}
+}
+
+func TestRunCheckForModel_ResellerDefaultUsesStreamingProbe(t *testing.T) {
+	h := &openAICaptureHandler{}
+	endpoint := setupFakeOpenAI(t, h)
+	result := runCheckForModel(context.Background(), MonitorProviderDeepseek, endpoint, "sk-rs_test-key", "test-model", &CheckOptions{})
+
+	if result.Status != MonitorStatusOperational {
+		t.Fatalf("default reseller stream probe should pass challenge, got status=%s message=%q", result.Status, result.Message)
+	}
+	if h.lastBody["stream"] != true {
+		t.Fatalf("reseller monitor should use stream=true, got %v", h.lastBody["stream"])
+	}
+	if h.lastHeaders.Get("Authorization") != "Bearer sk-rs_test-key" {
+		t.Fatalf("reseller monitor must keep the selected credential, got %q", h.lastHeaders.Get("Authorization"))
+	}
+	if err := uuid.Validate(h.lastHeaders.Get(monitorResellerRequestIDHeader)); err != nil {
+		t.Fatalf("reseller monitor request id must be a UUID: %v", err)
+	}
+	if got := h.lastHeaders.Get(monitorRequestSourceHeader); got != monitorRequestSource {
+		t.Fatalf("reseller monitor source = %q, want %q", got, monitorRequestSource)
+	}
+}
+
+func TestRunCheckForModel_ResellerStreamingProbeStopsAfterChallenge(t *testing.T) {
+	swapMonitorHTTPClient(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() { _ = r.Body.Close() }()
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		answer := answerFromOpenAIRequest(payload)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		_, _ = fmt.Fprint(w, ": keepalive\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
+		_, _ = fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":%q}}]}\n\n", answer)
+		if flusher != nil {
+			flusher.Flush()
+		}
+		// A real model may continue producing a long answer. The monitor must
+		// return before that tail is written.
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+
+	started := time.Now()
+	result := runCheckForModel(context.Background(), MonitorProviderDeepseek, srv.URL, "sk-rs_test-key", "test-model", &CheckOptions{})
+	if result.Status != MonitorStatusOperational {
+		t.Fatalf("streaming reseller probe should pass, got status=%s message=%q", result.Status, result.Message)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("probe did not stop after the challenge: elapsed=%s", elapsed)
+	}
+}
+
+func TestRunCheckForModel_ResellerCustomAuthorizationCannotReplaceCredential(t *testing.T) {
+	h := &openAICaptureHandler{}
+	endpoint := setupFakeOpenAI(t, h)
+	result := runCheckForModel(context.Background(), MonitorProviderDeepseek, endpoint, "sk-rs_test-key", "test-model", &CheckOptions{
+		ExtraHeaders: map[string]string{"Authorization": "Bearer attacker-key"},
+	})
+
+	if result.Status != MonitorStatusOperational {
+		t.Fatalf("custom-header reseller probe should pass challenge, got status=%s message=%q", result.Status, result.Message)
+	}
+	if got := h.lastHeaders.Get("Authorization"); got != "Bearer sk-rs_test-key" {
+		t.Fatalf("custom authorization must not replace selected credential, got %q", got)
 	}
 }
 

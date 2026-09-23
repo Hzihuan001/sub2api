@@ -3,7 +3,7 @@ export const IMAGE_STUDIO_LIBRARY_MAX_BYTES = 512 * 1024 * 1024
 
 export function studioLibraryName(userID: number): string {
   if (!Number.isSafeInteger(userID) || userID <= 0) throw new Error('An authenticated user is required for the image library')
-  return `sub2api-image-studio-user-${userID}`
+  return `image-studio-user-${userID}`
 }
 const databaseVersion = 1
 const storeName = 'images'
