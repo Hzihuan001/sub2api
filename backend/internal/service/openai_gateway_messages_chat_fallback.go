@@ -67,7 +67,10 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	}
 
 	convertedEffort := chatReq.ReasoningEffort
-	reasoningEffort := &convertedEffort
+	var reasoningEffort *string
+	if strings.TrimSpace(convertedEffort) != "" {
+		reasoningEffort = &convertedEffort
+	}
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 
@@ -90,6 +93,13 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 		if changed {
 			chatBody = policyBody
 		}
+	}
+	// The GLM compatibility normalizer and the group policy both operate on
+	// the final forwarded JSON. Re-read the effective value so usage billing
+	// records the level actually sent upstream (medium→high, xhigh→max, or a
+	// policy downgrade), rather than the client spelling.
+	if extracted := extractCCReasoningEffortFromBody(chatBody, upstreamModel); extracted != nil {
+		reasoningEffort = extracted
 	}
 	// Unlike forwardResponsesViaRawChatCompletions, applyOpenAIFastPolicyToBody
 	// is intentionally skipped: Anthropic Messages bodies carry no service_tier,

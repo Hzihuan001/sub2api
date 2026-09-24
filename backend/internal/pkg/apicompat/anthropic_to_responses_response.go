@@ -635,6 +635,7 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	args := state.CurrentArgs.String()
 	content := state.CurrentContent
 	summary := state.CurrentSummary
+	thinking := state.CurrentThinking
 
 	// Reset
 	state.CurrentItemType = ""
@@ -672,6 +673,12 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	case "reasoning":
 		if summary != "" {
 			item.Summary = []ResponsesSummary{{Type: "summary_text", Text: summary}}
+		}
+		// Opus 5.5 signs thinking blocks. Keep the opaque signature in the
+		// bridge envelope so a Responses client can replay the block without
+		// exposing or mutating signed content.
+		if state.PreserveThinkingSignatures && (thinking.Signature != "" || thinking.Data != "") {
+			item.EncryptedContent = encodeAnthropicThinking(thinking)
 		}
 	}
 	state.Outputs = append(state.Outputs, item)

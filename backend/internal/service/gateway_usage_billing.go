@@ -1139,16 +1139,17 @@ func (s *GatewayService) calculateImageCost(
 		}
 		gid := apiKey.Group.ID
 		cost, err := s.billingService.CalculateCostUnified(CostInput{
-			Ctx:            ctx,
-			Model:          billingModel,
-			GroupID:        &gid,
-			Group:          apiKey.Group,
-			Tokens:         tokens,
-			RequestCount:   result.ImageCount,
-			SizeTier:       sizeTier,
-			RateMultiplier: multiplier,
-			Resolver:       s.resolver,
-			Resolved:       resolved,
+			Ctx:             ctx,
+			Model:           billingModel,
+			GroupID:         &gid,
+			Group:           apiKey.Group,
+			Tokens:          tokens,
+			RequestCount:    result.ImageCount,
+			SizeTier:        sizeTier,
+			RateMultiplier:  multiplier,
+			Resolver:        s.resolver,
+			Resolved:        resolved,
+			ReasoningEffort: optionalStringValue(result.ReasoningEffort),
 		})
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "Calculate image token cost failed: %v", err)

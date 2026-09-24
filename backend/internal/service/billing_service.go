@@ -452,6 +452,17 @@ func (s *BillingService) initFallbackPricing() {
 	// 缺少这两条时 getFallbackPricing 会掉到 claude-3-opus（$15/$75），造成 3 倍超收。
 	s.fallbackPrices["claude-opus-4.8"] = pricingWithPriorityMultiplier(s.fallbackPrices["claude-opus-4.7"], 2)
 	s.fallbackPrices["claude-opus-5"] = pricingWithPriorityMultiplier(s.fallbackPrices["claude-opus-4.8"], 2)
+	// Claude Opus 5.5 has its own standard card; do not let the generic
+	// opus-5 matcher price it as Opus 5.
+	s.fallbackPrices["claude-opus-5-5"] = &ModelPricing{
+		InputPricePerToken:         4e-6,
+		OutputPricePerToken:        20e-6,
+		CacheCreationPricePerToken: 5e-6,
+		CacheCreation5mPrice:       5e-6,
+		CacheCreation1hPrice:       8e-6,
+		CacheReadPricePerToken:     0.2e-6,
+		SupportsCacheBreakdown:     true,
+	}
 
 	// Claude Sonnet 4.5/4.6 当前与 Sonnet 4 同价
 	s.fallbackPrices["claude-sonnet-4.5"] = s.fallbackPrices["claude-sonnet-4"]
@@ -1008,6 +1019,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["claude-fable-5"]
 	}
 	if strings.Contains(modelLower, "opus") {
+		if strings.Contains(modelLower, "opus-5-5") || strings.Contains(modelLower, "opus5.5") || strings.Contains(modelLower, "opus55") {
+			return s.fallbackPrices["claude-opus-5-5"]
+		}
 		// "opus-5" 必须先判：不能用裸 "5" 匹配，否则 claude-opus-4-5 会被误判。
 		if strings.Contains(modelLower, "opus-5") || strings.Contains(modelLower, "opus5") {
 			return s.fallbackPrices["claude-opus-5"]
@@ -1198,6 +1212,10 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		switch normalized {
 		case "gpt-6-astra":
 			return s.fallbackPrices["gpt-6-astra"]
+		case "gpt-6-sol":
+			return s.fallbackPrices["gpt-6-sol"]
+		case "gpt-6-luna":
+			return s.fallbackPrices["gpt-6-luna"]
 		case "gpt-5.6-sol":
 			return s.fallbackPrices["gpt-5.6-sol"]
 		case "gpt-5.6-terra":
@@ -1502,9 +1520,6 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 			nil,
 			applyLongContextBilling,
 		)
-		if err == nil {
-			applyCostBreakdownMultiplier(breakdown, maxReasoningEffortBillingMultiplier(input.Model, input.ReasoningEffort, nil))
-		}
 		return breakdown, err
 	}
 

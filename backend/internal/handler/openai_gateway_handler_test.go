@@ -3021,6 +3021,11 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		GroupID: &groupID,
 		User:    &service.User{ID: 1701, Status: service.StatusActive},
 	}
+	if tc.simpleModeRejectAtRead > 0 {
+		// Opt the synthetic key into the three-window simple-mode check; the
+		// loader stub then deterministically trips it at the requested read.
+		apiKey.RateLimit5h = 1
+	}
 	if tc.group != nil {
 		apiKey.Group = tc.group
 	}

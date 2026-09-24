@@ -697,6 +697,27 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		// Image API-key accounts need a dedicated balance classification.  The
+		// provider may wrap the explicit `insufficient_balance` code several
+		// levels deep (for example error.cause.errorKey), so classify it before
+		// the generic upstream failover policy.  This both cools only the image
+		// capacity and preserves the upstream request headers for diagnostics.
+		if isOpenAIImagesInsufficientBalance(respBody) {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				ProxyID:            opsUpstreamProxyID(account),
+				ProxyName:          opsUpstreamProxyName(account),
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+				Kind:               "failover",
+				Message:            OpenAIImagesInsufficientBalanceMessage,
+			})
+			s.coolOpenAIImagesInsufficientBalance(upstreamCtx, account)
+			return nil, newOpenAIImagesInsufficientBalanceFailoverError(resp.StatusCode, resp.Header, respBody)
+		}
 		if s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				ProxyID:            opsUpstreamProxyID(account),
@@ -718,7 +739,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			if isOpenAIHTTPUpstreamAccessStateError(resp.StatusCode, upstreamMsg, respBody) {
 				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, retryableOnSameAccount)
 			}
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, RetryableOnSameAccount: retryableOnSameAccount}
+			return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, retryableOnSameAccount)
 		}
 		return s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, upstreamModel)
 	}

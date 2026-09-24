@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"strings"
 )
 
@@ -247,6 +248,11 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	}
 	resolved.BasePricing.FastMultiplier = chPricing.FastMultiplier
 	resolved.BasePricing.FlexMultiplier = chPricing.FlexMultiplier
+	// Reasoning-effort multipliers are part of the channel pricing override.
+	// Keep a private copy on the resolved snapshot so billing uses the same
+	// effective rule as the request and cannot observe later mutations to the
+	// channel configuration.
+	resolved.BasePricing.ReasoningEffortMultipliers = maps.Clone(chPricing.ReasoningEffortMultipliers)
 	if chPricing.MaxReasoningEffortMultiplier != nil {
 		resolved.BasePricing.MaxReasoningEffortMultiplier = chPricing.MaxReasoningEffortMultiplier
 	}

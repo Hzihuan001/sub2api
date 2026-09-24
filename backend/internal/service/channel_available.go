@@ -183,6 +183,7 @@ func synthesizePricingFromLiteLLM(lp *LiteLLMModelPricing, existing *ChannelMode
 			InputPrice:                   nonZeroPtr(lp.InputCostPerToken),
 			OutputPrice:                  nonZeroPtr(lp.OutputCostPerToken),
 			MaxReasoningEffortMultiplier: maxReasoningEffortMultiplierFromPricing(existing),
+			ReasoningEffortMultipliers:   reasoningEffortMultipliersFromPricing(existing),
 		}
 	}
 	return &ChannelModelPricing{
@@ -194,6 +195,7 @@ func synthesizePricingFromLiteLLM(lp *LiteLLMModelPricing, existing *ChannelMode
 		CacheReadPrice:               nonZeroPtr(lp.CacheReadInputTokenCost),
 		ImageOutputPrice:             nonZeroPtr(lp.OutputCostPerImageToken),
 		MaxReasoningEffortMultiplier: maxReasoningEffortMultiplierFromPricing(existing),
+		ReasoningEffortMultipliers:   reasoningEffortMultipliersFromPricing(existing),
 	}
 }
 

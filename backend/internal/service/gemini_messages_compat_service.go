@@ -824,24 +824,10 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
-			safeErr := sanitizeUpstreamErrorMessage(err.Error())
-			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-				ProxyID:            opsUpstreamProxyID(account),
-				ProxyName:          opsUpstreamProxyName(account),
-				Platform:           account.Platform,
-				AccountID:          account.ID,
-				AccountName:        account.Name,
-				UpstreamStatusCode: 0,
-				Kind:               "request_error",
-				Message:            safeErr,
-			})
-			if attempt < geminiMaxRetries {
-				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
-				sleepGeminiBackoff(attempt)
-				continue
-			}
-			setOpsUpstreamError(c, 0, safeErr, "")
-			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries: "+safeErr)
+			// A transport failure has no upstream status code to retry against.  Hand
+			// it to the failover classifier immediately so the gateway can try the
+			// next account instead of repeatedly hitting the same broken endpoint.
+			return nil, s.handleUpstreamTransportError(ctx, c, account, err)
 		}
 
 		// Special-case: signature/thought_signature validation errors are not transient, but may be fixed by
@@ -1378,23 +1364,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			transportErr := s.handleUpstreamTransportError(ctx, c, account, err)
-			safeErr := sanitizeUpstreamErrorMessage(err.Error())
-			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-				ProxyID:            opsUpstreamProxyID(account),
-				ProxyName:          opsUpstreamProxyName(account),
-				Platform:           account.Platform,
-				AccountID:          account.ID,
-				AccountName:        account.Name,
-				UpstreamStatusCode: 0,
-				Kind:               "request_error",
-				Message:            safeErr,
-			})
-			if attempt < geminiMaxRetries {
-				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
-				sleepGeminiBackoff(attempt)
-				continue
-			}
-			if action == "countTokens" {
+			if action == "countTokens" && !errors.Is(transportErr, context.Canceled) && !errors.Is(transportErr, context.DeadlineExceeded) {
 				estimated := estimateGeminiCountTokens(body)
 				c.JSON(http.StatusOK, map[string]any{"totalTokens": estimated})
 				return &ForwardResult{

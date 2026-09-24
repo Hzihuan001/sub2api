@@ -560,6 +560,11 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 	}
 	respBody = applyOllamaCloudRawChatCompletionsResponse(account, respBody)
+	// Keep the public model name in a mapped response just like the streaming
+	// path does. Without this, buffered Chat Completions exposed the upstream
+	// alias (for example zhipu/glm-5.3) to clients even though the request used
+	// the public group model.
+	respBody = s.replaceModelInResponseBody(respBody, upstreamModel, originalModel)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)

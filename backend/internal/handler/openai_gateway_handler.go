@@ -350,9 +350,25 @@ func NewOpenAIGatewayHandler(
 	errorPassthroughService *service.ErrorPassthroughService,
 	promptRuleService *service.PromptRuleService,
 	contentModerationService *service.ContentModerationService,
-	opsService *service.OpsService,
-	cfg *config.Config,
+	opsOrConfig any,
+	configs ...*config.Config,
 ) *OpenAIGatewayHandler {
+	// Keep source compatibility with integrations that constructed this handler
+	// before OpsService was added. The current form passes (opsService, cfg);
+	// the legacy form passed cfg in the final position. Both forms are
+	// normalized here without weakening the handler's runtime behavior.
+	var opsService *service.OpsService
+	var cfg *config.Config
+	if value, ok := opsOrConfig.(*service.OpsService); ok {
+		opsService = value
+		if len(configs) > 0 {
+			cfg = configs[0]
+		}
+	} else if value, ok := opsOrConfig.(*config.Config); ok {
+		cfg = value
+	} else if opsOrConfig == nil && len(configs) > 0 {
+		cfg = configs[0]
+	}
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 3
 	if cfg != nil {
@@ -3391,6 +3407,18 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 			message = "previous_response_id requires an OpenAI API-key account for HTTP requests"
 		}
 		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", message, streamStarted)
+		return
+	}
+	if failoverErr.Reason == service.OpenAIImagesInsufficientBalanceReason {
+		status := failoverErr.ClientStatusCode
+		if status <= 0 {
+			status = http.StatusPaymentRequired
+		}
+		message := strings.TrimSpace(failoverErr.ClientMessage)
+		if message == "" {
+			message = service.OpenAIImagesInsufficientBalanceMessage
+		}
+		h.handleStreamingAwareErrorWithCode(c, status, "upstream_error", service.OpenAIImagesInsufficientBalanceCode, message, streamStarted, false)
 		return
 	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)

@@ -59,17 +59,9 @@ func (s *GatewayService) ForwardAsResponses(
 	originalModel := responsesReq.Model
 	clientStream := responsesReq.Stream
 
-	// 3. Convert Responses → Anthropic
-	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
-	if err != nil {
-		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
-	}
-
-	// 3. Force upstream streaming (Anthropic works best with streaming)
-	anthropicReq.Stream = true
-	reqStream := true
-
-	// 4. Model mapping
+	// 3. Resolve the upstream model before protocol conversion. The Responses
+	// adapter uses the model name to choose Opus 5.5 adaptive thinking; mapping
+	// only after conversion would turn an alias into the generic enabled mode.
 	mappedModel := originalModel
 	if account.Platform == PlatformKiro {
 		if next := account.GetMappedModel(originalModel); next != "" {
@@ -89,9 +81,21 @@ func (s *GatewayService) ForwardAsResponses(
 			mappedModel = normalized
 		}
 	}
-	reasoningEffort := ExtractResponsesReasoningEffortFromBody(body, mappedModel, originalModel)
-	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 mapping 完成之后。
-	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, mappedModel)
+	responsesReq.Model = mappedModel
+	if err := validateClaudeOpus55Request(adaptedBody, mappedModel); err != nil {
+		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
+
+	// 4. Convert Responses → Anthropic
+	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
+	if err != nil {
+		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
+	}
+	// Force upstream streaming (Anthropic works best with streaming).
+	anthropicReq.Stream = true
+	reqStream := true
+	var reasoningEffort *string
 
 	// 4b. Codex remote compaction v2：input 里带 compaction_trigger 的请求不是普通
 	// 轮次，而是"把前文压缩成摘要"。Anthropic 协议族没有原生 compact 端点，转换器
@@ -150,6 +154,8 @@ func (s *GatewayService) ForwardAsResponses(
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
 
 	var resp *http.Response
+	var upstreamReq *http.Request
+	forwardedBody := anthropicBody
 	if isKiroDirectModeAccount(account) {
 		var group *Group
 		if parsed != nil {
@@ -186,7 +192,7 @@ func (s *GatewayService) ForwardAsResponses(
 
 		// 10. Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
-		upstreamReq, _, err := s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
+		upstreamReq, forwardedBody, err = s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, fmt.Errorf("build upstream request: %w", err)
@@ -204,6 +210,9 @@ func (s *GatewayService) ForwardAsResponses(
 		}
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// Use the final Anthropic body for billing. The bridge maps Responses
+	// xhigh to Anthropic max; a bare thinking flag is not an explicit effort.
+	reasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
 
 	// 12. Handle error response with failover
 	if resp.StatusCode >= 400 {
@@ -632,6 +641,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
+	state.PreserveThinkingSignatures = claude.IsOpus55(mappedModel)
 	state.CustomTools = clientToolMapping.CustomTools
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
 	var usage ClaudeUsage
