@@ -100,6 +100,9 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	// republished with the current canonical content. Keep this exact pair
 	// compatible without weakening checksum validation for any other content.
 	"237_add_minimax_platform.sql": newMigrationChecksumCompatibilityRule("f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b", "2436aa33344279da9da78dc51ec544fda7dd4e4d8a3b437f2488a5747a282fd8"),
+	// 238 was likewise applied to the station database before its published
+	// migration file was republished with the current canonical content.
+	"238_opencode_go_platform.sql": newMigrationChecksumCompatibilityRule("6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2", "facd00346c881c965080788f81718c22eaa7e89eee57a9c8e5a5de99ace73908"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。

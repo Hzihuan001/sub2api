@@ -170,4 +170,13 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		)
 		require.True(t, ok)
 	})
+
+	t.Run("238站点历史checksum可兼容当前文件", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"238_opencode_go_platform.sql",
+			"facd00346c881c965080788f81718c22eaa7e89eee57a9c8e5a5de99ace73908",
+			"6f987e251519bd3759e60da44620a5d777494cceb333b6ce394aa0ea536ef5a2",
+		)
+		require.True(t, ok)
+	})
 }
