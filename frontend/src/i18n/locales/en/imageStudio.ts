@@ -1,7 +1,7 @@
 export default {
   imageStudio: {
     title: 'Image Studio',
-    description: 'Create and edit images with your own Sub2API key.',
+    description: 'Create and edit images with your own Moshu key.',
     openBatchImage: 'Batch images',
     apiKey: 'Image API key',
     selectKey: 'Select a key',
@@ -39,7 +39,7 @@ export default {
     generate: 'Generate',
     editImage: 'Edit image',
     generating: 'Generating…',
-    billingHint: 'Requests use the existing Sub2API gateway, including group permissions, model mapping, rate limits, billing, and usage records.',
+    billingHint: 'Requests use the current gateway with the selected key and its configured limits.',
     libraryTitle: 'Local library',
     libraryHint: 'Showing {count} images. Works are stored only in this browser, up to 200 images or 512 MB.',
     clearLibrary: 'Clear local library',

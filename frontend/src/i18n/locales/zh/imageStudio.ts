@@ -1,7 +1,7 @@
 export default {
   imageStudio: {
     title: '生图工作台',
-    description: '使用你自己的 Sub2API 密钥进行文生图和参考图编辑。',
+    description: '使用你自己的 Moshu 密钥进行文生图和参考图编辑。',
     openBatchImage: '批量生图',
     apiKey: '生图密钥',
     selectKey: '请选择密钥',
@@ -39,7 +39,7 @@ export default {
     generate: '开始生成',
     editImage: '开始编辑',
     generating: '生成中…',
-    billingHint: '请求直接进入 Sub2API 现有网关，继续使用原有分组权限、模型映射、限流、计费及使用记录。',
+    billingHint: '请求使用当前网关、所选密钥及其已配置的限制。',
     libraryTitle: '本地作品库',
     libraryHint: '当前显示 {count} 张；作品只保存在此浏览器，最多 200 张或 512 MB。',
     clearLibrary: '清空本地作品',

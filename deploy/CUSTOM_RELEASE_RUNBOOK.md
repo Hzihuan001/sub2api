@@ -89,7 +89,7 @@ docker compose exec -T redis redis-cli ping
 Also record the Compose/1Panel ownership model, app version, current digest,
 environment variable names (not values), bind mounts, named volumes, networks,
 OpenResty upstream, and migration state. Stop immediately if the installed
-Sub2API version is newer than `v0.1.178`; this release must never downgrade it.
+Sub2API version is newer than `v0.2.8`; this release must never downgrade it.
 
 ## Backup gate
 
@@ -134,8 +134,8 @@ minutes and perform a 24-hour error-rate/audit follow-up.
 ## Rollback
 
 Set the application image back to the recorded previous digest and recreate
-only Sub2API. This release adds no migration beyond the already deployed
-`231_prompt_capture.sql`. An older binary will treat residual `operator` rows
+only Sub2API. This station build adds no database migration beyond the
+upstream `v0.2.8` schema. An older binary will treat residual `operator` rows
 as non-admin; those users temporarily lose management access while admin
 remains available.
 

@@ -29,7 +29,7 @@
         <label class="input-label">{{ t('admin.users.username') }}</label>
         <input v-model="form.username" type="text" class="input" />
       </div>
-      <div v-if="authStore.isAdmin">
+      <div v-if="authStore.isAdmin || authStore.isOperator">
         <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
         <Select
           v-model="form.role"
@@ -91,7 +91,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
 import type { AdminUser, UserAttributeValuesMap } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import Select from '@/components/common/Select.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason } from '@/composables/useStepUp'
@@ -102,10 +102,6 @@ const emit = defineEmits(['close', 'success'])
 const { t } = useI18n(); const appStore = useAppStore(); const authStore = useAuthStore(); const { copyToClipboard } = useClipboard()
 
 const submitting = ref(false); const passwordCopied = ref(false)
-const roleOptions = computed(() => [
-  { value: 'user', label: t('admin.users.roles.user') },
-  { value: 'admin', label: t('admin.users.roles.admin') }
-])
 const form = reactive({
   email: '',
   password: '',
@@ -115,6 +111,22 @@ const form = reactive({
   concurrency: 1,
   rpm_limit: 0,
   customAttributes: {} as UserAttributeValuesMap
+})
+
+const roleOptions = computed<SelectOption[]>(() => {
+  if (authStore.isAdmin) {
+    return [
+      { value: 'user', label: t('admin.users.roles.user') },
+      { value: 'operator', label: t('admin.users.roles.operator') },
+      { value: 'admin', label: t('admin.users.roles.admin') },
+    ]
+  }
+  return props.user?.role === 'operator'
+    ? [{ value: 'operator', label: t('admin.users.roles.operator') }]
+    : [
+        { value: 'user', label: t('admin.users.roles.user') },
+        { value: 'operator', label: t('admin.users.roles.operator') },
+      ]
 })
 
 watch(() => props.user, (u) => {
@@ -151,7 +163,7 @@ const handleUpdateUser = async () => {
   submitting.value = true
   try {
     const data: any = { email: form.email, username: form.username, notes: form.notes, concurrency: form.concurrency, rpm_limit: form.rpm_limit }
-    if (authStore.isAdmin) data.role = form.role
+    if (authStore.isAdmin || authStore.isOperator) data.role = form.role
     if (form.password.trim()) data.password = form.password.trim()
     // 提升为管理员属敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 验证并重试
     await stepUp.run(() => adminAPI.users.update(userId, data))

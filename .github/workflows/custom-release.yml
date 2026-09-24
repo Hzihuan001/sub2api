@@ -28,7 +28,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: 1.26.6
+          go-version-file: backend/go.mod
           check-latest: false
           cache: true
           cache-dependency-path: backend/go.sum
@@ -45,7 +45,7 @@ jobs:
 
       - name: Verify locked toolchain
         run: |
-          go version | grep -q 'go1.26.6'
+          go version | grep -q 'go1.27.0'
           node --version | grep -q '^v20\.'
           test "$(pnpm --version)" = '9.15.9'
           if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-station-0.2.8.1 ]; then

@@ -62,7 +62,9 @@ func (s *SettingService) GetOperatorRolePolicyCached(ctx context.Context) authz.
 		return policy, nil
 	})
 	if err == nil {
-		return value.(authz.OperatorPolicy)
+		if policy, ok := value.(authz.OperatorPolicy); ok {
+			return policy
+		}
 	}
 	if cached, ok := s.operatorRolePolicyCache.Load().(*cachedOperatorRolePolicy); ok {
 		return cached.policy

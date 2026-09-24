@@ -183,6 +183,8 @@ describe('HomeView compact mode', () => {
     })
 
     expect(modelPlazaDestination(wrapper)).toBeUndefined()
+  })
+
   it('links operators to the management dashboard', () => {
     authStore.isAuthenticated = true
     authStore.isManagement = true
