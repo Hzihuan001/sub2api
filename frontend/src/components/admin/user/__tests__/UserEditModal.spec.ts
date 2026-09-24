@@ -21,6 +21,10 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ showSuccess, showError })
 }))
 
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({ isAdmin: true, isOperator: false, canOperator: () => true })
+}))
+
 vi.mock('@/composables/useClipboard', () => ({
   useClipboard: () => ({ copyToClipboard: vi.fn() })
 }))

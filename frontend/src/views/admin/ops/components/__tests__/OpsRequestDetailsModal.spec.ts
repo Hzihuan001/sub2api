@@ -16,6 +16,7 @@ vi.mock('@/api', () => ({ adminAPI: { groups: { getAll: vi.fn().mockResolvedValu
 vi.mock('@/stores', () => ({
   useAppStore: () => ({ showError: vi.fn() }),
   useAdminSettingsStore: () => ({ opsRealtimeMonitoringEnabled: false }),
+  useAuthStore: () => ({ isAdmin: true, isOperator: false, canOperator: () => true }),
 }))
 vi.mock('@/composables/useClipboard', () => ({ useClipboard: () => ({ copyToClipboard: vi.fn() }) }))
 vi.mock('vue-i18n', async (importOriginal) => ({

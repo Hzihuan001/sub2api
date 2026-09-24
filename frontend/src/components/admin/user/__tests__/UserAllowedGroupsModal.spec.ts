@@ -4,7 +4,7 @@ import type { AdminUser } from '@/types'
 import UserAllowedGroupsModal from '../UserAllowedGroupsModal.vue'
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), update: vi.fn() }))
-vi.mock('@/api/admin', () => ({ adminAPI: { groups: { list: mocks.list }, users: { update: mocks.update } } }))
+vi.mock('@/api/admin', () => ({ adminAPI: { groups: { getAll: mocks.list }, users: { update: mocks.update } } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn() }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 enableAutoUnmount(afterEach)
@@ -13,7 +13,7 @@ const response = { items: [{ id: 7, name: 'Exclusive', platform: 'openai', is_ex
 beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  mocks.list.mockResolvedValue(response)
+  mocks.list.mockResolvedValue(response.items)
   mocks.update.mockResolvedValue(undefined)
 })
 async function openDialog() {
@@ -27,14 +27,14 @@ async function openDialog() {
 
 describe('UserAllowedGroupsModal load readiness', () => {
   it('cannot save an empty configuration while groups are loading', async () => {
-    let resolve!: (value: typeof response) => void
+    let resolve!: (value: typeof response.items) => void
     mocks.list.mockReturnValueOnce(new Promise(res => { resolve = res }))
     const wrapper = await openDialog()
     const save = wrapper.get('button.btn-primary')
     expect(save.attributes('disabled')).toBeDefined()
     await save.trigger('click')
     expect(mocks.update).not.toHaveBeenCalled()
-    resolve(response)
+    resolve(response.items)
     await flushPromises()
     expect(save.attributes('disabled')).toBeUndefined()
   })

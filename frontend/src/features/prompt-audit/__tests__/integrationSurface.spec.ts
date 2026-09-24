@@ -14,7 +14,7 @@ describe('Prompt Audit integration surface', () => {
     expect(router).toContain("path: '/admin/prompt-audit'")
     const route = router.slice(router.indexOf("path: '/admin/prompt-audit'"), router.indexOf("path: '/admin/usage'"))
     expect(route).toContain('requiresAuth: true')
-    expect(route).toContain('requiresAdmin: true')
+    expect(route).toContain("requiredPermission: 'promptAudit'")
     expect(route).toContain('requiresRiskControl: true')
   })
 
