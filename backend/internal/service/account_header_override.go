@@ -192,12 +192,6 @@ func (a *Account) ApplyHeaderOverrides(h http.Header) {
 		}
 	}
 
-	// A reseller-managed account is a pointer to the main gateway rather than
-	// a public provider credential.  Add the private reservation headers at the
-	// common end of every account request builder.  Ordinary provider accounts
-	// are a no-op, and explicit account-test callers replace the source with
-	// account_test after this default user source is installed.
-	applyResellerAccountHeaders(h, a, resellerRequestSourceUser)
 }
 
 // NormalizeHeaderOverrideCredentials 校验并原地规范化 credentials 中的请求头覆写字段。

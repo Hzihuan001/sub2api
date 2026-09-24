@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -210,27 +209,6 @@ func TestApplyHeaderOverridesNoOpPaths(t *testing.T) {
 
 	// nil header 不 panic
 	blocked.ApplyHeaderOverrides(nil)
-}
-
-func TestApplyHeaderOverridesAddsResellerProtocolHeadersAfterCustomHeaders(t *testing.T) {
-	acc := headerOverrideTestAccount(PlatformDeepseek, AccountTypeAPIKey, map[string]any{
-		credKeyHeaderOverrideEnabled: true,
-		credKeyHeaderOverrides: map[string]any{
-			"x-reseller-request-id":     "not-a-uuid",
-			"x-reseller-request-source": "monitor",
-		},
-	})
-	acc.Credentials["api_key"] = "sk-rs_station-account"
-	acc.Extra = map[string]any{"moshu_reseller_managed": true}
-
-	h := make(http.Header)
-	acc.ApplyHeaderOverrides(h)
-	if _, err := uuid.Parse(h.Get(resellerRequestIDHeader)); err != nil {
-		t.Fatalf("reseller request id must be generated after overrides: %q: %v", h.Get(resellerRequestIDHeader), err)
-	}
-	if got := h.Get(resellerRequestSourceHeader); got != resellerRequestSourceUser {
-		t.Fatalf("normal account request source = %q, want %q", got, resellerRequestSourceUser)
-	}
 }
 
 func TestNormalizeHeaderOverrideCredentials(t *testing.T) {

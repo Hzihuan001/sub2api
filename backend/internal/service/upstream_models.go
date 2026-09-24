@@ -1192,9 +1192,6 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 
 func (s *AccountTestService) doUpstreamModelsRequest(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
 	// Model discovery is another outbound request made with the account
-	// credential.  Reseller-backed accounts must reserve it through the main
-	// gateway as well; ordinary provider accounts are unchanged.
-	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
 	if s.tlsFPProfileService == nil {
 		return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, nil)
 	}

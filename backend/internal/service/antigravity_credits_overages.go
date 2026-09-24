@@ -191,8 +191,6 @@ func (s *AntigravityGatewayService) attemptCreditsOveragesRetry(
 			p.prefix, modelKey, p.account.ID, err)
 		return &creditsOveragesRetryResult{handled: true}
 	}
-	applyResellerAccountHeaders(creditsReq.Header, p.account, antigravityResellerRequestSource(p))
-
 	creditsResp, err := p.httpUpstream.Do(creditsReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 	if err == nil && creditsResp != nil && creditsResp.StatusCode < 400 {
 		s.clearCreditsExhausted(p.ctx, p.account)

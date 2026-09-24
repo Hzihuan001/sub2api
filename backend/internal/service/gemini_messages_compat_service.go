@@ -817,11 +817,6 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", err.Error())
 		}
 		requestIDHeader = idHeader
-		// The Gemini compatibility builders are independent of the OpenAI
-		// transport, so inject reseller protocol headers at their final boundary.
-		// A retry rebuilds the request and therefore gets a fresh request UUID.
-		applyResellerAccountHeaders(upstreamReq.Header, account, resellerRequestSourceUser)
-
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			// A transport failure has no upstream status code to retry against.  Hand
@@ -1359,8 +1354,6 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, err.Error())
 		}
 		requestIDHeader = idHeader
-		applyResellerAccountHeaders(upstreamReq.Header, account, resellerRequestSourceUser)
-
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			transportErr := s.handleUpstreamTransportError(ctx, c, account, err)
@@ -2913,7 +2906,6 @@ func (s *GeminiMessagesCompatService) ForwardAIStudioGET(ctx context.Context, ac
 		return nil, fmt.Errorf("unsupported account type: %s", account.Type)
 	}
 
-	applyResellerAccountHeaders(req.Header, account, resellerRequestSourceUser)
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return nil, err

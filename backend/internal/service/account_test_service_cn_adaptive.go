@@ -205,9 +205,6 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 }
 
 func (s *AccountTestService) doCNProviderAdaptiveRequest(req *http.Request, account *Account) (*http.Response, error) {
-	if req != nil {
-		applyResellerAccountHeaders(req.Header, account, resellerRequestSourceAccountTest)
-	}
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()

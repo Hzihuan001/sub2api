@@ -342,7 +342,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 // fallback bridges (Responses/Messages -> Chat Completions).  The shared
 // scanner deliberately owns only upstream reads; keeping that loop synchronous
 // would otherwise leave the downstream completely idle while a Chat provider
-// is thinking.  A persistent SSE comment heartbeat prevents an L1/reseller hop
+// is thinking.  A persistent SSE comment heartbeat prevents an intermediate hop
 // or reverse proxy from treating that valid long-running request as dead.
 //
 // The callback is wrapped with an event-open flag so a heartbeat cannot be

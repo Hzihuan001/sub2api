@@ -404,8 +404,6 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 			if err != nil {
 				return nil, requestCtx, err
 			}
-			applyResellerAccountHeaders(req.Header, account, resellerRequestSourceUser)
-
 			resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 			if err != nil {
 				if attempt < maxRetries {

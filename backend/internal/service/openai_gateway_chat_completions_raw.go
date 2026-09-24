@@ -301,7 +301,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	// Keep the downstream SSE connection alive for the complete raw Chat
 	// Completions response.  Unlike the Responses passthrough path, this raw
 	// path used to block in scanner.Scan() without writing anything while an
-	// upstream was thinking.  An L1/reseller hop (or Cloudflare) then treated
+	// upstream was thinking.  An intermediate hop (or Cloudflare) then treated
 	// the connection as idle and returned a 524/stream_read_error even though
 	// the upstream request was still healthy.
 	//

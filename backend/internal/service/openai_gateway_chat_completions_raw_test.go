@@ -170,7 +170,7 @@ func TestStreamRawChatCompletionsKeepsAliveAfterOutputPause(t *testing.T) {
 	_, err := pipeWriter.Write([]byte("data: {\"id\":\"chatcmpl_keepalive\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-5.4\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"}}]}\n\n"))
 	require.NoError(t, err)
 	// The first semantic chunk has already been delivered. A long pause after
-	// it is the failure mode seen through reseller/Cloudflare hops.
+	// it is the failure mode seen through proxy/Cloudflare hops.
 	time.Sleep(1200 * time.Millisecond)
 	_, err = pipeWriter.Write([]byte("data: {\"id\":\"chatcmpl_keepalive\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-5.4\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\ndata: [DONE]\n\n"))
 	require.NoError(t, err)

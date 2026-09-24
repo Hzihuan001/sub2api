@@ -38,7 +38,6 @@ import adminComplianceAPI from './compliance'
 import auditAPI from './audit'
 import pluginsAPI from './plugins'
 import rolesAPI from './roles'
-import resellersAPI from './resellers'
 
 /**
  * Unified admin API object for convenient access
@@ -78,8 +77,7 @@ export const adminAPI = {
   compliance: adminComplianceAPI,
   audit: auditAPI,
   plugins: pluginsAPI,
-  roles: rolesAPI,
-  resellers: resellersAPI
+  roles: rolesAPI
 }
 
 export {
@@ -117,8 +115,7 @@ export {
   adminComplianceAPI,
   auditAPI,
   pluginsAPI,
-  rolesAPI,
-  resellersAPI
+  rolesAPI
 }
 
 export default adminAPI

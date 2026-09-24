@@ -179,7 +179,6 @@ export default {
     profile: 'Profile',
     users: 'Users',
     rolePermissions: 'Role Permissions',
-    resellers: 'Resellers',
     groups: 'Groups',
     channels: 'Channels',
     availableChannels: 'Available Channels',

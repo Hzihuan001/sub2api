@@ -2,7 +2,6 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
-	"github.com/Wei-Shaw/sub2api/internal/reseller"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 )
 
@@ -71,7 +70,6 @@ type Handlers struct {
 	ModelPlaza       *ModelPlazaHandler
 	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
-	Reseller         *reseller.Handler
 }
 
 // BuildInfo contains build-time information

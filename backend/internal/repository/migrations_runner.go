@@ -118,8 +118,8 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	"224_user_platform_quotas_add_cn_providers.sql": newMigrationChecksumCompatibilityRule("5227db3c1a6a1e2e422a9f9ba9d1f490c708b6c6dd91ce89f3c48115421a3e55", "4de3bf301cd838bbaf85613ce37dd47643165c0e3f36a1075341ff71aa37fae1"),
 	// 237 is kept as the Kiro/Cursor-compatible superset so a database that has
 	// those rows before reaching this migration cannot fail its CHECK rebuild.
-	// Some released reseller databases recorded the earlier MiniMax-only file;
-	// accept that one historical database checksum without weakening unknown
+	// Some released databases recorded the earlier MiniMax-only file; accept
+	// that one historical database checksum without weakening unknown
 	// migration validation. Migration 245 later converges all four constraints.
 	"237_add_minimax_platform.sql": newMigrationChecksumCompatibilityRule(
 		"2436aa33344279da9da78dc51ec544fda7dd4e4d8a3b437f2488a5747a282fd8",

@@ -1252,8 +1252,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
 	}
-	NotifyResellerPricingChanged()
-
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 	}
@@ -1457,7 +1455,6 @@ func (s *adminServiceImpl) ClearGroupRateMultipliers(ctx context.Context, groupI
 	if err := s.userGroupRateRepo.DeleteByGroupID(ctx, groupID); err != nil {
 		return err
 	}
-	NotifyResellerPricingChanged()
 	return nil
 }
 
@@ -1476,7 +1473,6 @@ func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, gro
 	if err := s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries); err != nil {
 		return err
 	}
-	NotifyResellerPricingChanged()
 	return nil
 }
 

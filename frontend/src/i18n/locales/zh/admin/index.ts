@@ -9,7 +9,6 @@ import promptAudit from './promptAudit'
 import promptRules from './promptRules'
 import plugins from './plugins'
 import rolePermissions from './rolePermissions'
-import resellers from './resellers'
 
 export default {
   ...overview,
@@ -23,5 +22,4 @@ export default {
   ...promptRules,
   ...plugins,
   ...rolePermissions,
-  ...resellers,
 }

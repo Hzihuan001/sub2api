@@ -302,9 +302,9 @@ func callProviderWithChallenge(ctx context.Context, provider, endpoint, apiKey, 
 	full := joinURL(endpoint, adapter.buildPath(model))
 	var respBytes []byte
 	if shouldUseStreamingProbe(provider, apiMode, opts, body) {
-		respBytes, status, err = postStreamingJSON(ctx, full, body, headers, expected, apiKey)
+		respBytes, status, err = postStreamingJSON(ctx, full, body, headers, expected)
 	} else {
-		respBytes, status, err = postRawJSON(ctx, full, body, headers, apiKey)
+		respBytes, status, err = postRawJSON(ctx, full, body, headers)
 	}
 	if err != nil {
 		return "", "", status, err
@@ -592,8 +592,8 @@ func hasNonEmptyBodyValue(v any) bool {
 
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
-func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string, resellerKey ...string) ([]byte, int, error) {
-	req, err := newMonitorRequest(ctx, fullURL, payload, headers, resellerKey...)
+func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
+	req, err := newMonitorRequest(ctx, fullURL, payload, headers)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -618,8 +618,8 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 // stalled generation after the channel has already proved it can answer.
 // Non-2xx responses are read as ordinary bounded bodies so upstream diagnostics
 // remain unchanged.
-func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string, expected string, resellerKey ...string) ([]byte, int, error) {
-	req, err := newMonitorRequest(ctx, fullURL, payload, headers, resellerKey...)
+func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string, expected string) ([]byte, int, error) {
+	req, err := newMonitorRequest(ctx, fullURL, payload, headers)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -692,7 +692,7 @@ func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, head
 	return raw.Bytes(), resp.StatusCode, nil
 }
 
-func newMonitorRequest(ctx context.Context, fullURL string, payload []byte, headers map[string]string, resellerKey ...string) (*http.Request, error) {
+func newMonitorRequest(ctx context.Context, fullURL string, payload []byte, headers map[string]string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
@@ -706,15 +706,6 @@ func newMonitorRequest(ctx context.Context, fullURL string, payload []byte, head
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	// Channel probes can target the main gateway through a reseller-issued API
-	// key.  Attach the private probe protocol only for that credential: strict
-	// third-party providers should not receive private headers.  Do this after
-	// ExtraHeaders so a monitor template cannot override the UUID or source.
-	key := resellerKeyFromHeaders(req.Header)
-	if len(resellerKey) > 0 {
-		key = resellerKey[0]
-	}
-	applyResellerCredentialHeaders(req.Header, key, resellerRequestSourceMonitor)
 	return req, nil
 }
 

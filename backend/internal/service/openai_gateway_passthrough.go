@@ -1931,7 +1931,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	// Keep the downstream SSE connection alive for the entire passthrough
 	// response. A Responses stream can emit reasoning events and then pause for
 	// many minutes after visible output has already started; stopping the
-	// heartbeat at the first output lets an L1/reseller hop (or Cloudflare)
+	// heartbeat at the first output lets an intermediate hop (or Cloudflare)
 	// classify that pause as an idle connection. The atomic flag prevents a
 	// heartbeat from being inserted between the lines of one SSE event.
 	var sseEventOpen atomic.Bool

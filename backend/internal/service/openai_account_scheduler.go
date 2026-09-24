@@ -2178,8 +2178,8 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		return selection, decision, err
 	}
 	// The circuit applies to every OpenAI-protocol provider, including direct
-	// DeepSeek/Kimi/OpenCode API-key accounts. Reseller traffic uses these same
-	// scheduler paths, so limiting fail-open to the literal "openai" platform
+	// DeepSeek/Kimi/OpenCode API-key accounts use these same scheduler paths, so
+	// limiting fail-open to the literal "openai" platform
 	// would re-admit no account after a provider-specific stream outage.
 	if !isOpenAIStreamCircuitPlatform(platform) {
 		return selection, decision, err

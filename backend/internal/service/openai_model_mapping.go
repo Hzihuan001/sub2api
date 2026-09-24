@@ -92,8 +92,8 @@ var deepseekServableModels = []string{
 	"deepseek-flash",
 	"deepseek-v4-pro",
 	"deepseek-v4-flash",
-	// DeepSeek's v4.1 flash alias is exposed by the reseller catalogue and is
-	// accepted by the compatible upstream. Keep it in the empty-mapping
+	// DeepSeek's v4.1 flash alias is accepted by the compatible upstream. Keep
+	// it in the empty-mapping
 	// allowlist so a passthrough account is not filtered before routing.
 	"deepseek-v4.1-flash",
 	"deepseek-v4-flash-vision-exp",
