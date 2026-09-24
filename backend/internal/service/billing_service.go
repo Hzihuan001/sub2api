@@ -259,27 +259,6 @@ func reasoningEffortBillingMultiplier(effort string, multipliers map[string]floa
 	return multiplier
 }
 
-// maxReasoningEffortBillingMultiplier keeps the legacy model-level fallback
-// for pricing paths that have not yet resolved a channel snapshot. Resolved
-// channel pricing uses ReasoningEffortMultipliers directly.
-func maxReasoningEffortBillingMultiplier(model, effort string, pricing *ModelPricing) float64 {
-	if NormalizeMaxReasoningEffort(effort) != "max" {
-		return 1
-	}
-	if pricing != nil {
-		if multiplier := reasoningEffortBillingMultiplier(effort, pricing.ReasoningEffortMultipliers); multiplier != 1 {
-			return multiplier
-		}
-		if pricing.MaxReasoningEffortMultiplier != nil && *pricing.MaxReasoningEffortMultiplier > 0 {
-			return *pricing.MaxReasoningEffortMultiplier
-		}
-	}
-	if multiplier := defaultMaxReasoningEffortMultiplier(model); multiplier != nil {
-		return *multiplier
-	}
-	return 1
-}
-
 func resolvedChannelTimeMultiplier(resolved *ResolvedPricing, at time.Time) float64 {
 	if resolved == nil || resolved.Source != PricingSourceChannel || resolved.channelPricing == nil {
 		return 1

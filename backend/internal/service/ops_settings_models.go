@@ -79,11 +79,11 @@ type OpsRuntimeLogConfig struct {
 	// RetentionDays is the authoritative retention for ops_system_logs.
 	RetentionDays int `json:"retention_days"`
 	// RequestRetentionDays controls usage_logs; nil preserves the existing setting.
-	RequestRetentionDays *int `json:"request_retention_days"`
-	Source          string         `json:"source,omitempty"`
-	UpdatedAt       string         `json:"updated_at,omitempty"`
-	UpdatedByUserID int64          `json:"updated_by_user_id,omitempty"`
-	Extra           map[string]any `json:"extra,omitempty"`
+	RequestRetentionDays *int           `json:"request_retention_days"`
+	Source               string         `json:"source,omitempty"`
+	UpdatedAt            string         `json:"updated_at,omitempty"`
+	UpdatedByUserID      int64          `json:"updated_by_user_id,omitempty"`
+	Extra                map[string]any `json:"extra,omitempty"`
 }
 
 type OpsAlertRuntimeSettings struct {

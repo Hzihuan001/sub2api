@@ -22,14 +22,14 @@ func defaultOpsRuntimeLogConfig(cfg *config.Config) *OpsRuntimeLogConfig {
 		}
 	}
 	out := &OpsRuntimeLogConfig{
-		Level:             "info",
-		PersistAccessLogs: false,
-		EnableSampling:    false,
-		SamplingInitial:   100,
-		SamplingNext:      100,
-		Caller:            true,
-		StacktraceLevel:   "error",
-		RetentionDays:     30,
+		Level:                "info",
+		PersistAccessLogs:    false,
+		EnableSampling:       false,
+		SamplingInitial:      100,
+		SamplingNext:         100,
+		Caller:               true,
+		StacktraceLevel:      "error",
+		RetentionDays:        30,
 		RequestRetentionDays: &requestRetentionDays,
 	}
 	if cfg == nil {
