@@ -107,7 +107,7 @@ FROM ${POSTGRES_IMAGE} AS pg-client
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
 
-ARG VERSION=0.2.8-station.4
+ARG VERSION=0.2.8-station.5
 ARG COMMIT=unknown
 ARG DATE=unknown
 ARG SOURCE_REPOSITORY=https://github.com/Wei-Shaw/sub2api

@@ -161,4 +161,13 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		)
 		require.False(t, ok)
 	})
+
+	t.Run("237站点历史checksum可兼容当前文件", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"237_add_minimax_platform.sql",
+			"2436aa33344279da9da78dc51ec544fda7dd4e4d8a3b437f2488a5747a282fd8",
+			"f4c73d2dbce114ca7ade1aac51998c3465490f4f3c9b3e868e53590f3fa8601b",
+		)
+		require.True(t, ok)
+	})
 }
