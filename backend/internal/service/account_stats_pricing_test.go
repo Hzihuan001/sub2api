@@ -487,7 +487,7 @@ func TestTryModelFilePricing_Fable51MaxEffortUsesTripleQuota(t *testing.T) {
 	max := tryModelFilePricing(bs, "claude-fable-5-1", tokens, "", time.Time{}, "max")
 	require.NotNil(t, standard)
 	require.NotNil(t, max)
-	require.InDelta(t, *standard*3, *max, 1e-12)
+	require.Equal(t, *standard, *max)
 }
 
 func TestTryModelFilePricing_AppliesLongContextPricing(t *testing.T) {

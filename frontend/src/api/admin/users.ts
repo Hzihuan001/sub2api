@@ -330,7 +330,14 @@ export async function bindUserAuthIdentity(
 /**
  * Platform quota types
  */
-export type PlatformQuotaPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro' | 'grok'
+// Keep this list aligned with backend AllowedQuotaPlatforms.  Quotas are
+// account/user limits, so every supported provider needs a row even when no
+// limit has been configured yet.
+export const PLATFORM_QUOTA_PLATFORMS = [
+  'anthropic', 'openai', 'gemini', 'antigravity', 'grok',
+  'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go',
+] as const
+export type PlatformQuotaPlatform = typeof PLATFORM_QUOTA_PLATFORMS[number]
 export type PlatformQuotaWindow = 'daily' | 'weekly' | 'monthly'
 
 export interface PlatformQuotaItem {

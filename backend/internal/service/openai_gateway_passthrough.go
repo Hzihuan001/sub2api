@@ -720,6 +720,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		req.Header.Set("content-type", "application/json")
 	}
 
+	// 官方 OpenCode / Command Code 上游收敛为规范客户端 UA：客户端透传的编程库
+	// UA 会命中其前置 Cloudflare bot 拦截（CF 1010/403），并被计入账号 403 strike。
+	applyOpenCodeUpstreamUserAgent(account, targetURL, req.Header)
+
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
 	applyOpenCodeSessionHeader(c, account, targetURL, req.Header, body)
@@ -729,6 +733,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http_passthrough", req.Header, body, "not_applicable")
 
+	if err := applyMappedGPT55LiteCompatibility(req, account, body); err != nil {
+		return nil, err
+	}
 	return req, nil
 }
 
@@ -1074,9 +1081,10 @@ func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
 	return OpenAICompactKeepaliveAdjustedWrittenSize(c) >= 0
 }
 
-func openAIStreamEventIsPreamble(eventType string) bool {
+// Lifecycle metadata and transport heartbeats are not model output.
+func openAIStreamEventIsMetadata(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
-	case "response.created", "response.in_progress":
+	case "response.created", "response.in_progress", "keepalive":
 		return true
 	default:
 		return false
@@ -1181,7 +1189,7 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	case "response.output_item.added", "response.content_part.added", "response.reasoning_summary_part.added":
 		return openAIStreamAddedEventStartsClientOutput([]byte(trimmed), eventType)
 	}
-	return !openAIStreamEventIsPreamble(eventType)
+	return !openAIStreamEventIsMetadata(eventType)
 }
 
 func openAIStreamItemHasVisibleOutput(item gjson.Result) bool {
@@ -1259,7 +1267,7 @@ func openAIStreamDataStartsSemanticTTFT(data, eventType string) bool {
 		payload := []byte(trimmed)
 		return !openAIStreamFailedEventShouldFailover(payload, extractOpenAISSEErrorMessage(payload))
 	default:
-		return !openAIStreamEventIsPreamble(eventType)
+		return !openAIStreamEventIsMetadata(eventType)
 	}
 }
 
@@ -1367,6 +1375,13 @@ func sanitizeOpenAICapacityShedErrorCodeForClient(payload []byte) ([]byte, bool)
 	return updated, changed
 }
 
+// openAIStreamErrorStatusPaths covers both status_code and status spellings
+// used by OpenAI-compatible streaming error payloads.
+var openAIStreamErrorStatusPaths = []string{
+	"response.error.status_code", "response.error.status",
+	"error.status_code", "error.status", "status_code", "status",
+}
+
 func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	if isOpenAIContextWindowError(message, payload) {
 		return http.StatusBadRequest
@@ -1378,7 +1393,11 @@ func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 		errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
 	}
 	combined := strings.TrimSpace(errType + " " + code + " " + strings.ToLower(strings.TrimSpace(message)))
-	for _, path := range []string{"response.error.status_code", "error.status_code", "status_code"} {
+	// OpenAI-compatible providers are inconsistent about the spelling of the
+	// semantic status field.  Accept both status_code and status (including
+	// nested response/error forms) so an in-stream auth/rate-limit event keeps
+	// the same failover semantics as a regular HTTP response.
+	for _, path := range openAIStreamErrorStatusPaths {
 		if status := int(gjson.GetBytes(payload, path).Int()); status == http.StatusUnauthorized ||
 			status == http.StatusForbidden || status == http.StatusTooManyRequests || status == 529 {
 			return status
@@ -1426,7 +1445,7 @@ func openAIStreamCredentialAuthFailure(payload []byte) bool {
 	if len(bytes.TrimSpace(payload)) == 0 || !gjson.ValidBytes(payload) {
 		return false
 	}
-	for _, path := range []string{"response.error.status_code", "error.status_code", "status_code"} {
+	for _, path := range openAIStreamErrorStatusPaths {
 		if int(gjson.GetBytes(payload, path).Int()) == http.StatusUnauthorized {
 			return true
 		}
@@ -2018,7 +2037,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			trimmedData := strings.TrimSpace(data)
 			rawEventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
 			observer.ObserveOpenAI(dataBytes, rawEventType)
-			if needModelReplace && strings.Contains(data, mappedModel) {
+			// Do not use a substring guard here.  Model aliases are often
+			// case-normalized or otherwise differ textually from the upstream
+			// value; replaceModelInSSELine only touches protocol model fields and
+			// is safe to call for every valid SSE JSON document.
+			if needModelReplace {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
 					dataBytes = []byte(replacedData)

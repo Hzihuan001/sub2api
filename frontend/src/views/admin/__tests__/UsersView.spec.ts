@@ -93,6 +93,7 @@ const DataTableStub = {
     <div>
       <div data-test="columns">{{ columns.map(col => col.key).join(',') }}</div>
       <div data-test="row-order">{{ data.map(row => row.email).join(',') }}</div>
+      <div data-test="row-state">{{ data.map(row => [row.id, row.status, row.current_concurrency].join(':')).join(',') }}</div>
       <div data-test="selected-keys">{{ (selectedKeys || []).join(',') }}</div>
       <button data-test="sort-last-used" @click="$emit('sort', 'last_used_at', 'desc')">sort</button>
       <button
@@ -108,6 +109,7 @@ const DataTableStub = {
       </template>
       <div v-for="row in data" :key="row.id">
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
+        <div :data-test="'actions-' + row.id"><slot name="cell-actions" :row="row" /></div>
       </div>
     </div>
   `

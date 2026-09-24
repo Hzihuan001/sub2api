@@ -165,6 +165,23 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	reqStream := parsed.Stream
 	originalModel := reqModel
 
+	// Validate Opus 5.5 request constraints before any OAuth mimicry or body
+	// normalization can silently remove unsupported fields.  Resolve the
+	// account mapping up front for API-key accounts; the full mapping below is
+	// still authoritative for forwarding and response billing.
+	validationModel := reqModel
+	if account != nil {
+		if account.Type == AccountTypeAPIKey {
+			validationModel = account.GetMappedModel(validationModel)
+		} else if account.Platform == PlatformAnthropic {
+			validationModel = claude.NormalizeModelID(validationModel)
+		}
+	}
+	if err := validateClaudeOpus55Request(body, validationModel); err != nil {
+		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
+
 	// === DEBUG: 打印客户端原始请求（headers + body 摘要）===
 	if c != nil {
 		s.debugLogGatewaySnapshot("CLIENT_ORIGINAL", c.Request.Header, body, map[string]string{

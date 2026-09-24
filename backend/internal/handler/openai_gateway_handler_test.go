@@ -1933,6 +1933,8 @@ type openAIResponsesWSUsageLogCase struct {
 	firstFrameCloseExpected bool
 	// secondTurnCloseExpected：第二个 turn 被拒（连接被 1008 关闭）。
 	secondTurnCloseExpected bool
+	simpleModeRejectAtRead  int64
+	closeReason             string
 }
 
 type openAIResponsesWSUsageLogResult struct {
@@ -2966,7 +2968,13 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		}, nil, nil, nil, nil)
 	}
 
-	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	var keyRepo service.APIKeyRepository
+	if tc.simpleModeRejectAtRead > 0 {
+		cfg.SimpleModeKeyRateLimitEnabled = true
+		keyRepo = &simpleModeWSRateLimitRepo{rejectAt: int64(tc.simpleModeRejectAtRead)}
+	}
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, keyRepo, nil, nil, cfg, nil)
+	t.Cleanup(billingCacheSvc.Stop)
 	gatewaySvc := service.NewOpenAIGatewayService(
 		accountRepo,
 		usageRepo,
@@ -3001,6 +3009,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		},
 	}
 	h := &OpenAIGatewayHandler{
+		cfg:                 cfg,
 		gatewayService:      gatewaySvc,
 		billingCacheService: billingCacheSvc,
 		apiKeyService:       &service.APIKeyService{},
@@ -3054,7 +3063,11 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		var closeErr coderws.CloseError
 		require.ErrorAs(t, readErr, &closeErr)
 		require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
-		require.Contains(t, closeErr.Reason, "not available for this group")
+		reason := tc.closeReason
+		if reason == "" {
+			reason = "not available for this group"
+		}
+		require.Contains(t, closeErr.Reason, reason)
 		_ = clientConn.CloseNow()
 		return openAIResponsesWSUsageLogResult{}
 	}
@@ -3089,7 +3102,11 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 			var closeErr coderws.CloseError
 			require.ErrorAs(t, readErr, &closeErr)
 			require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
-			require.Contains(t, closeErr.Reason, "not available for this group")
+			reason := tc.closeReason
+			if reason == "" {
+				reason = "not available for this group"
+			}
+			require.Contains(t, closeErr.Reason, reason)
 			_ = clientConn.CloseNow()
 			return openAIResponsesWSUsageLogResult{}
 		}
@@ -3201,4 +3218,38 @@ data: {"type":"response.failed","error":{"message":"This content was flagged"}}
 
 		require.False(t, openAIForwardErrorAlreadyCommunicated(c, c.Writer.Size(), errors.New("openai cyber_policy: blocked")))
 	})
+}
+
+// The loader simulates window usage reaching its limit while a connection is
+// waiting for its first account or between completed WebSocket turns.
+type simpleModeWSRateLimitRepo struct {
+	service.APIKeyRepository
+	reads    atomic.Int64
+	rejectAt int64
+}
+
+func (r *simpleModeWSRateLimitRepo) GetRateLimitData(context.Context, int64) (*service.APIKeyRateLimitData, error) {
+	now := time.Now()
+	usage := 0.0
+	if r.reads.Add(1) >= r.rejectAt {
+		usage = 1
+	}
+	return &service.APIKeyRateLimitData{Usage5h: usage, Window5hStart: &now}, nil
+}
+func TestOpenAIResponsesWebSocketSimpleModeRechecksKeyWindows(t *testing.T) {
+	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeCtxPool} {
+		t.Run(mode+"/after-account-selection", func(t *testing.T) {
+			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+				firstPayload: `{"type":"response.create","model":"gpt-5.1"}`,
+				ingressMode:  mode, simpleModeRejectAtRead: 2, firstFrameCloseExpected: true, closeReason: "billing check failed",
+			})
+		})
+		t.Run(mode+"/followup-turn", func(t *testing.T) {
+			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+				firstPayload:  `{"type":"response.create","model":"gpt-5.1"}`,
+				secondPayload: `{"type":"response.create","model":"gpt-5.1"}`,
+				ingressMode:   mode, simpleModeRejectAtRead: 3, secondTurnCloseExpected: true, closeReason: "billing check failed",
+			})
+		})
+	}
 }

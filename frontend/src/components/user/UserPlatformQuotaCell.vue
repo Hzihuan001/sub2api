@@ -29,12 +29,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { PlatformQuotaItem, PlatformQuotaPlatform } from '@/api/admin/users'
+import { PLATFORM_QUOTA_PLATFORMS, type PlatformQuotaItem, type PlatformQuotaPlatform } from '@/api/admin/users'
 
 const props = defineProps<{ quotas?: PlatformQuotaItem[] }>()
 const { t } = useI18n()
 
-const PLATFORM_ORDER: PlatformQuotaPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok']
+const PLATFORM_ORDER: readonly PlatformQuotaPlatform[] = PLATFORM_QUOTA_PLATFORMS
 
 // 仅展示「至少一档限额非空」的平台（配额列，非用量列）
 const configured = computed(() => {

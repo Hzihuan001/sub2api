@@ -150,6 +150,7 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
+!docs/codex-credits.md
 !docs/legal/
 !docs/legal/*.md
 !docs/screenshots/
@@ -165,6 +166,7 @@ output/
 .tmp/
 CODEX_HANDOFF.md
 .codegraph/
+issues/
 
 # Vitest / Vite cache at repo root
 .vite/

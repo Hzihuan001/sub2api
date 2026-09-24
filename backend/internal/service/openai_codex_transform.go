@@ -60,6 +60,8 @@ var codexVersionModelPrefixes = []struct {
 	prefix string
 	target string
 }{
+	{prefix: "gpt-6-sol", target: "gpt-6-sol"},
+	{prefix: "gpt-6-luna", target: "gpt-6-luna"},
 	{prefix: "gpt-5.6-sol", target: "gpt-5.6-sol"},
 	{prefix: "gpt-5.6-terra", target: "gpt-5.6-terra"},
 	{prefix: "gpt-5.6-luna", target: "gpt-5.6-luna"},

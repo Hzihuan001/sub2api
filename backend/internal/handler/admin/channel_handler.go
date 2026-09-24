@@ -68,6 +68,7 @@ type channelModelPricingRequest struct {
 	FastMultiplier               *float64                   `json:"fast_multiplier" binding:"omitempty,gt=0"`
 	FlexMultiplier               *float64                   `json:"flex_multiplier" binding:"omitempty,gt=0"`
 	MaxReasoningEffortMultiplier *float64                   `json:"max_reasoning_effort_multiplier" binding:"omitempty,gt=0"`
+	ReasoningEffortMultipliers   map[string]float64         `json:"reasoning_effort_multipliers"`
 	ImageInputPrice              *float64                   `json:"image_input_price" binding:"omitempty,min=0"`
 	ImageOutputPrice             *float64                   `json:"image_output_price" binding:"omitempty,min=0"`
 	PerRequestPrice              *float64                   `json:"per_request_price" binding:"omitempty,min=0"`
@@ -142,6 +143,7 @@ type channelModelPricingResponse struct {
 	FastMultiplier               *float64                    `json:"fast_multiplier"`
 	FlexMultiplier               *float64                    `json:"flex_multiplier"`
 	MaxReasoningEffortMultiplier *float64                    `json:"max_reasoning_effort_multiplier"`
+	ReasoningEffortMultipliers   map[string]float64          `json:"reasoning_effort_multipliers,omitempty"`
 	ImageInputPrice              *float64                    `json:"image_input_price"`
 	ImageOutputPrice             *float64                    `json:"image_output_price"`
 	PerRequestPrice              *float64                    `json:"per_request_price"`
@@ -272,6 +274,7 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 		FastMultiplier:               p.FastMultiplier,
 		FlexMultiplier:               p.FlexMultiplier,
 		MaxReasoningEffortMultiplier: p.MaxReasoningEffortMultiplier,
+		ReasoningEffortMultipliers:   p.ReasoningEffortMultipliers,
 		ImageInputPrice:              p.ImageInputPrice,
 		ImageOutputPrice:             p.ImageOutputPrice,
 		PerRequestPrice:              p.PerRequestPrice,
@@ -353,11 +356,14 @@ func pricingRequestToService(reqs []channelModelPricingRequest, allowChannelMult
 				SortOrder:            iv.SortOrder,
 			})
 		}
-		var fastMultiplier, flexMultiplier, maxReasoningEffortMultiplier *float64
+		var fastMultiplier, flexMultiplier *float64
 		if allowChannelMultipliers {
 			fastMultiplier = r.FastMultiplier
 			flexMultiplier = r.FlexMultiplier
-			maxReasoningEffortMultiplier = r.MaxReasoningEffortMultiplier
+		}
+		maxReasoningEffortMultiplier := r.MaxReasoningEffortMultiplier
+		if !allowChannelMultipliers {
+			maxReasoningEffortMultiplier = nil
 		}
 		result = append(result, service.ChannelModelPricing{
 			Platform:                     platform,
@@ -371,6 +377,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest, allowChannelMult
 			FastMultiplier:               fastMultiplier,
 			FlexMultiplier:               flexMultiplier,
 			MaxReasoningEffortMultiplier: maxReasoningEffortMultiplier,
+			ReasoningEffortMultipliers:   r.ReasoningEffortMultipliers,
 			ImageInputPrice:              r.ImageInputPrice,
 			ImageOutputPrice:             r.ImageOutputPrice,
 			PerRequestPrice:              r.PerRequestPrice,

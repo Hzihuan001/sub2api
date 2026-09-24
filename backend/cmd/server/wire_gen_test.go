@@ -69,6 +69,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		accountExpirySvc,
 		nil, // cnProviderBalanceCheck
 		codexVersionSyncSvc,
+		nil, // claudeCodeVersionSync
 		proxyExpirySvc,
 		subscriptionExpirySvc,
 		&service.UsageCleanupService{},
@@ -95,6 +96,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // quotaFlusher
 		nil, // upstreamBillingProbe
 		nil, // ollamaCloudUsage
+		nil, // opencodeGoUsage
 		nil, // auditLog
 		nil, // openAIAutoReset
 		nil, // promptAudit

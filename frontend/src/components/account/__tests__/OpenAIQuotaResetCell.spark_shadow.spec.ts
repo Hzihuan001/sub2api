@@ -3,11 +3,13 @@ import { flushPromises, mount } from '@vue/test-utils'
 import OpenAIQuotaResetCell from '../OpenAIQuotaResetCell.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import type { Account } from '@/types'
-import { refreshOpenAIQuota, resetOpenAIQuota } from '@/api/admin/accounts'
+import { refreshOpenAIQuota, resetOpenAIQuota, type OpenAIQuotaRefreshResult } from '@/api/admin/accounts'
 
 vi.mock('@/api/admin/accounts', () => ({
   refreshOpenAIQuota: vi.fn(),
   resetOpenAIQuota: vi.fn(),
+  refreshOpenAIReferrals: vi.fn(),
+  sendOpenAIReferralInvite: vi.fn(),
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -242,6 +244,7 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
       cache_refreshed: true,
       account_state_recovered: true,
       quota: {
+        credits: { has_credits: true, unlimited: false, balance: '999.25' },
         rate_limit_reset_credits: {
           available_count: 0,
           credits: [],
@@ -267,6 +270,7 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
 
     expect(resetOpenAIQuota).toHaveBeenCalledWith(1)
     expect(refreshOpenAIQuota).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="codex-credits"]').text()).toContain('999.25')
     expect(wrapper.text()).not.toContain('admin.accounts.openaiQuotaReset.expiresAt:')
     expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.resetSuccess')
     expect(wrapper.emitted('account-updated')).toEqual([[recoveredAccount]])

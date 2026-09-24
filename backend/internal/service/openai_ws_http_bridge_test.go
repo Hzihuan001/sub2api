@@ -1186,20 +1186,41 @@ func TestProxyOpenAIWSHTTPBridgeTurnBareErrorFollowedByCompletedUsesCompleted(t 
 	require.Equal(t, "response.completed", gjson.GetBytes(writes[1], "type").String())
 }
 
-func TestProxyOpenAIWSHTTPBridgeTurnStagesMetadataBeforeCapacityFailover(t *testing.T) {
+func TestProxyOpenAIWSHTTPBridgeTurnStagesMetadataAndRelaysKeepaliveBeforeCapacityFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := strings.Join([]string{
+	preamble := strings.Join([]string{
 		`data: {"type":"response.created","response":{"id":"resp_shed"}}`,
 		"",
 		`data: {"type":"response.in_progress","response":{"id":"resp_shed"}}`,
 		"",
-		`data: {"type":"response.failed","response":{"id":"resp_shed","status":"failed","error":{"message":"Our servers are currently overloaded. Please try again later."}}}`,
+		`data: {"type":"keepalive"}`,
+		"",
 		"",
 	}, "\n")
+	reader, writer := io.Pipe()
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
+	keepaliveReceived := make(chan struct{}, 1)
+	writerDone := make(chan error, 1)
+	go func() {
+		_, writeErr := io.WriteString(writer, preamble)
+		if writeErr == nil {
+			// The upstream stays idle until the heartbeat reaches the client.
+			// Flushing it only with later output or EOF must not pass this test.
+			select {
+			case <-keepaliveReceived:
+				_, writeErr = io.WriteString(writer, "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_shed\",\"status\":\"failed\",\"error\":{\"message\":\"Our servers are currently overloaded. Please try again later.\"}}}\n\n")
+			case <-time.After(2 * time.Second):
+				writeErr = errors.New("keepalive was not forwarded while upstream was idle")
+			}
+		}
+		_ = writer.CloseWithError(writeErr)
+		writerDone <- writeErr
+	}()
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"X-Request-Id": []string{"rid-ws-bridge-capacity"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
+		Body:       reader,
 	}}
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
 	account := &Account{ID: 12, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
@@ -1214,16 +1235,21 @@ func TestProxyOpenAIWSHTTPBridgeTurnStagesMetadataBeforeCapacityFailover(t *test
 		"gpt-5", "", "", "", "", 1,
 		func(message []byte) error {
 			writes = append(writes, append([]byte(nil), message...))
+			if gjson.GetBytes(message, "type").String() == "keepalive" {
+				keepaliveReceived <- struct{}{}
+			}
 			return nil
 		},
 	)
 
+	require.NoError(t, <-writerDone)
 	require.Nil(t, result)
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.True(t, failoverErr.RetryableOnSameAccount)
 	require.True(t, failoverErr.RequestScopedTransient)
-	require.Empty(t, writes)
+	require.Len(t, writes, 1)
+	require.JSONEq(t, `{"type":"keepalive"}`, string(writes[0]))
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnDoesNotReplayCapacityAfterSemanticOutput(t *testing.T) {
@@ -1233,7 +1259,11 @@ func TestProxyOpenAIWSHTTPBridgeTurnDoesNotReplayCapacityAfterSemanticOutput(t *
 	body := strings.Join([]string{
 		`data: {"type":"response.created","response":{"id":"resp_partial"}}`,
 		"",
+		`data: {"type":"keepalive"}`,
+		"",
 		`data: {"type":"response.output_text.delta","delta":"partial"}`,
+		"",
+		`data: {"type":"keepalive"}`,
 		"",
 		`data: {"type":"response.failed","response":{"id":"resp_partial","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
 		"",
@@ -1262,11 +1292,15 @@ func TestProxyOpenAIWSHTTPBridgeTurnDoesNotReplayCapacityAfterSemanticOutput(t *
 
 	require.NotNil(t, result)
 	require.NoError(t, err)
-	require.Len(t, writes, 3)
+	require.Len(t, writes, 5)
+	require.Equal(t, "keepalive", gjson.GetBytes(writes[0], "type").String())
+	require.Equal(t, "response.created", gjson.GetBytes(writes[1], "type").String())
+	require.Equal(t, "response.output_text.delta", gjson.GetBytes(writes[2], "type").String())
+	require.Equal(t, "keepalive", gjson.GetBytes(writes[3], "type").String())
 	var failoverErr *UpstreamFailoverError
 	require.False(t, errors.As(err, &failoverErr))
-	require.Contains(t, string(writes[2]), `"code":"server_error"`)
-	require.NotContains(t, string(writes[2]), "server_is_overloaded")
+	require.Contains(t, string(writes[4]), `"code":"server_error"`)
+	require.NotContains(t, string(writes[4]), "server_is_overloaded")
 	require.True(t, logSink.ContainsMessage("gateway.failover_suppressed_after_semantic_output"))
 	require.True(t, logSink.ContainsFieldValue("path", "ws_http_bridge"))
 }

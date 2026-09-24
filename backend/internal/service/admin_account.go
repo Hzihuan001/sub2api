@@ -418,6 +418,12 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
+	// OpenCode Go usage state is populated by the background usage worker and
+	// is never client-controlled at account creation time.  In particular, do
+	// not allow a crafted create payload to seed a trusted snapshot or enable
+	// automatic refresh before the account has been verified by that worker.
+	delete(accountExtra, OpenCodeGoUsageAutoRefreshExtraKey)
+	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
 		Name:        input.Name,
@@ -603,6 +609,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
+	previousOpenCodeUsageIdentity := openCodeGoUsageIdentity(account)
 	// 安全/身份不变量(影子账号):通用更新路径被 edit/re-auth/refresh/batch 共用,
 	// 必须在此守住,否则仅在创建时的保证可被这些路径绕过。
 	if account.IsCredentialShadow() {
@@ -679,6 +686,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
+		delete(normalizedExtra, OpenCodeGoUsageAutoRefreshExtraKey)
+		delete(normalizedExtra, OpenCodeGoUsageSnapshotExtraKey)
 		// 保留配额用量和专用服务受管字段，防止普通账号编辑意外覆盖。
 		for _, key := range []string{
 			"quota_used",
@@ -697,6 +706,19 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
+			}
+		}
+		// Usage state for an eligible OpenCode Go account is managed by the
+		// background refresher.  Preserve the database snapshot for an
+		// unrelated edit, while identity changes are intentionally handled by
+		// the invalidation block below.  This also keeps the service-layer
+		// contract safe for repositories that do not implement the optional
+		// lock-and-merge extension.
+		if IsOpenCodeGoUsageAccount(account) && reflect.DeepEqual(previousOpenCodeUsageIdentity, openCodeGoUsageIdentity(account)) {
+			for _, key := range []string{OpenCodeGoUsageAutoRefreshExtraKey, OpenCodeGoUsageSnapshotExtraKey} {
+				if value, ok := account.Extra[key]; ok {
+					normalizedExtra[key] = value
+				}
 			}
 		}
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
@@ -783,6 +805,17 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			delete(account.Extra, OllamaCloudUsageSessionExtraKey)
 			delete(account.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 			delete(account.Extra, OllamaCloudUsageSnapshotExtraKey)
+		}
+	}
+	// OpenCode Go 受管键：身份改变或不再 eligible 时随本次写入清除，防止跨组污染。
+	// （代理变化只失效快照而保留开关，由 repository 合并层在锁定的 DB 行上裁决。）
+	if account.Extra != nil {
+		if !IsOpenCodeGoUsageAccount(account) {
+			delete(account.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
+			delete(account.Extra, OpenCodeGoUsageSnapshotExtraKey)
+		} else if !reflect.DeepEqual(previousOpenCodeUsageIdentity, openCodeGoUsageIdentity(account)) {
+			delete(account.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
+			delete(account.Extra, OpenCodeGoUsageSnapshotExtraKey)
 		}
 	}
 	// 只在指针非 nil 时更新 Concurrency（支持设置为 0）
@@ -920,6 +953,8 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
+	delete(updates, OpenCodeGoUsageAutoRefreshExtraKey)
+	delete(updates, OpenCodeGoUsageSnapshotExtraKey)
 	if _, exists := updates[openAILongContextBillingEnabledKey]; exists {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
@@ -947,6 +982,8 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
+	delete(input.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
+	delete(input.Extra, OpenCodeGoUsageSnapshotExtraKey)
 
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 )
@@ -201,6 +202,13 @@ func maxReasoningEffortMultiplierFromPricing(pricing *ChannelModelPricing) *floa
 		return nil
 	}
 	return pricing.MaxReasoningEffortMultiplier
+}
+
+func reasoningEffortMultipliersFromPricing(pricing *ChannelModelPricing) map[string]float64 {
+	if pricing == nil {
+		return nil
+	}
+	return maps.Clone(pricing.ReasoningEffortMultipliers)
 }
 
 func nonZeroPtr(v float64) *float64 {

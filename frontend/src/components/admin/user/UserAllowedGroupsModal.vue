@@ -188,7 +188,7 @@
     <template #footer>
       <div class="flex justify-end gap-3">
         <button @click="$emit('close')" class="btn btn-secondary px-5">{{ t('common.cancel') }}</button>
-        <button @click="handleSave" :disabled="submitting" class="btn btn-primary px-6">
+        <button @click="handleSave" :disabled="submitting || !loaded" class="btn btn-primary px-6">
           <svg v-if="submitting" class="-ml-1 mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -228,6 +228,7 @@ const groups = ref<Group[]>([])
 const groupConfigs = ref<GroupRateConfig[]>([])
 const originalGroupRates = ref<Record<number, number>>({}) // 记录原始专属倍率，用于检测删除
 const loading = ref(false)
+const loaded = ref(false)
 const submitting = ref(false)
 const restrictPublicGroups = ref(false)
 
@@ -248,9 +249,13 @@ watch(
 )
 
 const load = async () => {
+  loaded.value = false
   loading.value = true
   try {
-    const allGroups = await adminAPI.groups.getAll()
+    // Use the paginated endpoint so the modal is not limited by the default
+    // active-group list (and so loading failures remain observable to the UI).
+    const res = await adminAPI.groups.list(1, 1000)
+    const allGroups = res.items
     // 只显示标准类型且活跃的分组
     groups.value = allGroups.filter((g) => g.subscription_type === 'standard' && g.status === 'active')
 
@@ -274,6 +279,7 @@ const load = async () => {
       isSelected:
         g.is_exclusive || restrictPublicGroups.value ? userAllowedGroups.includes(g.id) : true,
     }))
+    loaded.value = true
   } catch (error) {
     console.error('Failed to load groups:', error)
   } finally {
@@ -318,7 +324,7 @@ const updateCustomRate = (groupId: number, value: string) => {
 }
 
 const handleSave = async () => {
-  if (!props.user) return
+  if (!props.user || !loaded.value) return
   submitting.value = true
 
   try {
