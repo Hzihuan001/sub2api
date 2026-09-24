@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.8-station.2
+  CUSTOM_VERSION: 0.2.8-station.3
 
 jobs:
   quality:
@@ -48,7 +48,7 @@ jobs:
           go version | grep -q 'go1.27.0'
           node --version | grep -q '^v20\.'
           test "$(pnpm --version)" = '9.15.9'
-          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-station-0.2.8.2 ]; then
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-station-0.2.8.3 ]; then
             echo "unexpected custom source tag: $GITHUB_REF_NAME" >&2
             exit 1
           fi
@@ -68,7 +68,7 @@ jobs:
       - name: Backend lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.9
+          version: v2.13
           args: --timeout=30m
           working-directory: backend
 
@@ -96,7 +96,7 @@ jobs:
   publish:
     name: Build and publish immutable image
     needs: quality
-    if: github.ref == 'refs/tags/custom-station-0.2.8.2'
+    if: github.ref == 'refs/tags/custom-station-0.2.8.3'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.name }}

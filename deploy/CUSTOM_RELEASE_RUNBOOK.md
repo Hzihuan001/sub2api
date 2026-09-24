@@ -4,9 +4,9 @@
 
 - Upstream baseline: `v0.2.8` / `fd80b08c9`
 - Development branch: `codex/v0.2.8-station-minimal`
-- Application version: `0.2.8-station.2`
-- Source tag: `custom-station-0.2.8.2`
-- Container tag: `ghcr.io/<fork-owner>/sub2api:0.2.8-station.2`
+- Application version: `0.2.8-station.3`
+- Source tag: `custom-station-0.2.8.3`
+- Container tag: `ghcr.io/<fork-owner>/sub2api:0.2.8-station.3`
 - Initial target platform: `linux/amd64`
 
 Never create a `v*` tag for this custom build. Never put passwords, tokens, SSH
@@ -58,7 +58,7 @@ locally rebuilt image.
 ## Fork and GHCR gate
 
 1. Set the personal Fork as `origin`; keep the official repository as `upstream`.
-2. Push only `codex/v0.2.8-station-minimal` and tag `custom-station-0.2.8.2`.
+2. Push only `codex/v0.2.8-station-minimal` and tag `custom-station-0.2.8.3`.
 3. The `Custom CI and GHCR release` workflow runs all tests before publishing.
 4. Record both the mutable tag and immutable `sha256` digest from the workflow summary.
 5. Pull and run that exact digest through the local container test above.
