@@ -831,7 +831,7 @@ type PreviewCacheRecord = {
 type PreviewImageSource = ImageBitmap | HTMLImageElement
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'output_deleted'])
-const PREVIEW_CACHE_DB_NAME = 'sub2api-batch-image-preview-cache'
+const PREVIEW_CACHE_DB_NAME = 'moshu-batch-image-preview-cache'
 const PREVIEW_CACHE_STORE_NAME = 'thumbnails'
 const PREVIEW_THUMBNAIL_MAX_EDGE = 360
 const PREVIEW_THUMBNAIL_QUALITY = 0.72

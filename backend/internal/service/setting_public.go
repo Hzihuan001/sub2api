@@ -652,6 +652,12 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 	if err != nil {
 		return nil, err
 	}
+	// Keep the legacy database default from leaking into the customer-facing
+	// bootstrap HTML. The administrator can still edit the stored setting;
+	// public pages consistently use the Moshu brand.
+	if strings.EqualFold(strings.TrimSpace(settings.SiteName), "sub2api") {
+		settings.SiteName = "Moshu"
+	}
 
 	return &PublicSettingsInjectionPayload{
 		RegistrationEnabled:                 settings.RegistrationEnabled,
