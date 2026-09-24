@@ -465,9 +465,9 @@ func vertexBatchDisplayName(input BatchImageInput) string {
 		return v
 	}
 	if v := strings.TrimSpace(input.BatchID); v != "" {
-		return "image-" + v
+		return "moshu-image-" + v
 	}
-	return "image-batch"
+	return "moshu-image-batch"
 }
 
 func BuildVertexBatchJSONL(input BatchImageInput) ([]byte, error) {

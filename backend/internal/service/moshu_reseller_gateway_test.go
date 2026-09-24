@@ -16,6 +16,31 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func TestMoshuResellerManagedAccountUsesInternalMainURL(t *testing.T) {
+	t.Setenv("MOSHU_RESELLER_URL", "http://main:8080/")
+	account := &Account{
+		Type:        AccountTypeAPIKey,
+		Platform:    PlatformDeepseek,
+		Credentials: map[string]any{"api_key": "reseller", "base_url": "https://public-main.example"},
+		Extra:       map[string]any{"moshu_reseller_managed": true},
+	}
+	require.Equal(t, "http://main:8080", account.GetOpenAIBaseURL())
+	require.Equal(t, "http://main:8080", account.GetOpenAIFormatBaseURL())
+	account.Credentials["api_protocol"] = APIProtocolAnthropic
+	require.Equal(t, "http://main:8080", account.GetAnthropicProtocolBaseURL())
+	require.Equal(t, "http://main:8080", account.GetOpenAIFormatBaseURL())
+}
+
+func TestOrdinaryAccountKeepsConfiguredPublicURL(t *testing.T) {
+	t.Setenv("MOSHU_RESELLER_URL", "http://main:8080/")
+	account := &Account{
+		Type:        AccountTypeAPIKey,
+		Platform:    PlatformDeepseek,
+		Credentials: map[string]any{"api_key": "ordinary", "base_url": "https://provider.example"},
+	}
+	require.Equal(t, "https://provider.example", account.GetOpenAIBaseURL())
+}
+
 func TestMoshuResellerChatPreservesProtocolAndUsage(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "stream"}[stream], func(t *testing.T) {

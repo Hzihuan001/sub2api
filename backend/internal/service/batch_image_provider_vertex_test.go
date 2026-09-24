@@ -46,6 +46,11 @@ func TestVertexProvider_MissingManagedGCSBucketRejected(t *testing.T) {
 	require.Equal(t, "VERTEX_MANAGED_GCS_BUCKET_MISSING", infraerrors.Reason(err))
 }
 
+func TestVertexBatchDisplayNameUsesMoshuBranding(t *testing.T) {
+	require.Equal(t, "moshu-image-imgbatch_abc123", vertexBatchDisplayName(BatchImageInput{BatchID: "imgbatch_abc123"}))
+	require.Equal(t, "moshu-image-batch", vertexBatchDisplayName(BatchImageInput{}))
+}
+
 func TestBuildVertexBatchJSONL_WritesValidLinesAndPreservesCustomID(t *testing.T) {
 	input := validVertexBatchInput()
 	input.Items = append(input.Items, BatchImageInputItem{CustomID: "cover_002", Prompt: "Second prompt"})

@@ -985,9 +985,9 @@ func (a *Account) GetBaseURL() string {
 	if a.Type != AccountTypeAPIKey {
 		return ""
 	}
-	baseURL := a.GetCredential("base_url")
+	baseURL := a.resolveMoshuResellerBaseURL(a.GetCredential("base_url"))
 	if baseURL == "" {
-		return "https://api.anthropic.com"
+		return a.resolveMoshuResellerBaseURL("https://api.anthropic.com")
 	}
 	if a.Platform == PlatformAntigravity {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
@@ -1000,8 +1000,9 @@ func (a *Account) GetBaseURL() string {
 func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {
 	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if baseURL == "" {
-		return defaultBaseURL
+		return a.resolveMoshuResellerBaseURL(defaultBaseURL)
 	}
+	baseURL = a.resolveMoshuResellerBaseURL(baseURL)
 	if a.Platform == PlatformAntigravity && a.Type == AccountTypeAPIKey {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
 	}
@@ -1366,35 +1367,35 @@ func (a *Account) GetOpenAIBaseURL() string {
 	if a.IsMultiProtocolAPIKey() && a.IsAdaptiveAPIProtocol() {
 		if baseURLs, ok := a.Credentials["api_base_urls"].(map[string]any); ok {
 			if baseURL, ok := baseURLs[APIProtocolChatCompletions].(string); ok && strings.TrimSpace(baseURL) != "" {
-				return strings.TrimSpace(baseURL)
+				return a.resolveMoshuResellerBaseURL(strings.TrimSpace(baseURL))
 			}
 		}
 	}
 	if a.Type == AccountTypeAPIKey || a.Type == AccountTypeUpstream {
 		if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
-			return baseURL
+			return a.resolveMoshuResellerBaseURL(baseURL)
 		}
 	}
 	// 平台默认 base_url：CN 供应商按 account_mode 选择 payg / coding 默认值。
 	switch a.Platform {
 	case PlatformKimi:
 		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultKimiCodingBaseURL
+			return a.resolveMoshuResellerBaseURL(DefaultKimiCodingBaseURL)
 		}
-		return DefaultKimiPayGBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultKimiPayGBaseURL)
 	case PlatformZhipu:
 		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultZhipuCodingBaseURL
+			return a.resolveMoshuResellerBaseURL(DefaultZhipuCodingBaseURL)
 		}
-		return DefaultZhipuPayGBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultZhipuPayGBaseURL)
 	case PlatformDeepseek:
-		return DefaultDeepseekBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultDeepseekBaseURL)
 	case PlatformMiniMax:
-		return DefaultMiniMaxBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultMiniMaxBaseURL)
 	case PlatformOpenCodeGo:
-		return a.openCodeDefaultChatBaseURL()
+		return a.resolveMoshuResellerBaseURL(a.openCodeDefaultChatBaseURL())
 	default:
-		return "https://api.openai.com"
+		return a.resolveMoshuResellerBaseURL("https://api.openai.com")
 	}
 }
 
@@ -1486,16 +1487,16 @@ func (a *Account) GetCNProtocolBaseURL(protocol string) string {
 	if a.IsAdaptiveAPIProtocol() {
 		if baseURLs, ok := a.Credentials["api_base_urls"].(map[string]any); ok {
 			if baseURL, ok := baseURLs[protocol].(string); ok && strings.TrimSpace(baseURL) != "" {
-				return strings.TrimSpace(baseURL)
+				return a.resolveMoshuResellerBaseURL(strings.TrimSpace(baseURL))
 			}
 		}
 		if protocol == APIProtocolChatCompletions {
 			if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
-				return baseURL
+				return a.resolveMoshuResellerBaseURL(baseURL)
 			}
 		}
 	}
-	return a.defaultCNProtocolBaseURL(protocol)
+	return a.resolveMoshuResellerBaseURL(a.defaultCNProtocolBaseURL(protocol))
 }
 
 func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
@@ -1557,23 +1558,23 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 	}
 	if a.Type == AccountTypeAPIKey || a.Type == AccountTypeUpstream {
 		if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
-			return baseURL
+			return a.resolveMoshuResellerBaseURL(baseURL)
 		}
 	}
 	switch a.Platform {
 	case PlatformKimi:
 		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultKimiCodingAnthropicBaseURL
+			return a.resolveMoshuResellerBaseURL(DefaultKimiCodingAnthropicBaseURL)
 		}
-		return DefaultKimiPayGAnthropicBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultKimiPayGAnthropicBaseURL)
 	case PlatformZhipu:
-		return DefaultZhipuAnthropicBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultZhipuAnthropicBaseURL)
 	case PlatformDeepseek:
-		return DefaultDeepseekAnthropicBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultDeepseekAnthropicBaseURL)
 	case PlatformMiniMax:
-		return DefaultMiniMaxAnthropicBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultMiniMaxAnthropicBaseURL)
 	case PlatformOpenCodeGo:
-		return a.openCodeDefaultAnthropicBaseURL()
+		return a.resolveMoshuResellerBaseURL(a.openCodeDefaultAnthropicBaseURL())
 	default:
 		return ""
 	}
@@ -1591,20 +1592,20 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 	switch a.Platform {
 	case PlatformKimi:
 		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultKimiCodingBaseURL
+			return a.resolveMoshuResellerBaseURL(DefaultKimiCodingBaseURL)
 		}
-		return DefaultKimiPayGBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultKimiPayGBaseURL)
 	case PlatformZhipu:
 		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultZhipuCodingBaseURL
+			return a.resolveMoshuResellerBaseURL(DefaultZhipuCodingBaseURL)
 		}
-		return DefaultZhipuPayGBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultZhipuPayGBaseURL)
 	case PlatformDeepseek:
-		return DefaultDeepseekBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultDeepseekBaseURL)
 	case PlatformMiniMax:
-		return DefaultMiniMaxBaseURL
+		return a.resolveMoshuResellerBaseURL(DefaultMiniMaxBaseURL)
 	case PlatformOpenCodeGo:
-		return a.openCodeDefaultChatBaseURL()
+		return a.resolveMoshuResellerBaseURL(a.openCodeDefaultChatBaseURL())
 	default:
 		return a.GetOpenAIBaseURL()
 	}
@@ -1695,8 +1696,9 @@ func (a *Account) GetGrokBaseURLOr(defaultBaseURL string) string {
 	}
 	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if baseURL == "" {
-		return defaultBaseURL
+		return a.resolveMoshuResellerBaseURL(defaultBaseURL)
 	}
+	baseURL = a.resolveMoshuResellerBaseURL(baseURL)
 	if !a.IsGrokOAuth() {
 		return baseURL
 	}
@@ -2027,6 +2029,8 @@ func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapabilit
 		return false
 	}
 	switch capability {
+	case OpenAIImagesCapabilityAPIKey:
+		return a.Type == AccountTypeAPIKey
 	case OpenAIImagesCapabilityBasic, OpenAIImagesCapabilityNative:
 		return a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken || a.Type == AccountTypeAPIKey
 	default:

@@ -1,6 +1,37 @@
 package service
 
-import "strings"
+import (
+	"net/url"
+	"os"
+	"strings"
+)
+
+const moshuResellerInternalURLEnv = "MOSHU_RESELLER_URL"
+
+// resolveMoshuResellerBaseURL keeps reseller-managed accounts on the private
+// station-to-main path when one is configured.  The catalog deliberately
+// stores the public main-station URL so that it remains portable, but using
+// that URL for every gateway request sends traffic back through Cloudflare or
+// another public reverse proxy.  That is the source of the intermittent 524 /
+// stream disconnects seen on a reseller station even while the main station
+// itself is healthy.  The internal URL is only applied to accounts created by
+// the reseller sync and is validated before use; ordinary accounts keep their
+// configured endpoint unchanged.
+func (a *Account) resolveMoshuResellerBaseURL(configured string) string {
+	if !a.IsMoshuResellerManaged() {
+		return configured
+	}
+	internal := strings.TrimRight(strings.TrimSpace(os.Getenv(moshuResellerInternalURLEnv)), "/")
+	if internal == "" {
+		return configured
+	}
+	parsed, err := url.Parse(internal)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return configured
+	}
+	return internal
+}
 
 // IsMoshuResellerManaged identifies the product accounts provisioned by the
 // reseller enrollment flow. Protocol conversion and upstream account retries
