@@ -2,7 +2,7 @@
 param(
   [string]$Project = "sub2api-operator-test-$PID",
   [int]$Port = 18080,
-  [string]$Image = 'sub2api:0.2.8-station.1',
+  [string]$Image = 'sub2api:0.2.8-station.2',
   [switch]$UsePublishedImage,
   [switch]$Keep
 )

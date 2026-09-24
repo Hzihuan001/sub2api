@@ -44,8 +44,10 @@
           </nav>
         </div>
 
+        <fieldset :disabled="settingsReadOnly" class="contents">
+
         <!-- Tab: Security — Admin API Key -->
-        <div v-show="activeTab === 'security'" class="space-y-6">
+        <div v-if="settingsTabVisible('security')" v-show="activeTab === 'security'" class="space-y-6">
           <!-- Admin API Key Settings -->
           <div class="card">
             <div
@@ -202,7 +204,7 @@
         <!-- /Tab: Security — Admin API Key -->
 
         <!-- Tab: Gateway -->
-        <div v-show="activeTab === 'gateway'" class="space-y-6">
+        <div v-if="settingsTabVisible('gateway')" v-show="activeTab === 'gateway'" class="space-y-6">
           <!-- Overload Cooldown (529) Settings -->
           <div class="card">
             <div
@@ -1422,7 +1424,7 @@
         <!-- /Tab: Gateway -->
 
         <!-- Tab: Security — Registration, Turnstile, LinuxDo -->
-        <div v-show="activeTab === 'security'" class="space-y-6">
+        <div v-if="settingsTabVisible('security')" v-show="activeTab === 'security'" class="space-y-6">
           <!-- Registration Settings -->
           <div class="card">
             <div
@@ -3823,7 +3825,7 @@
         <!-- /Tab: Security — Registration, Turnstile, LinuxDo, OIDC -->
 
         <!-- Tab: Users -->
-        <div v-show="activeTab === 'users'" class="space-y-6">
+        <div v-if="settingsTabVisible('users')" v-show="activeTab === 'users'" class="space-y-6">
           <!-- Default Settings -->
           <div class="card">
             <div
@@ -4439,7 +4441,7 @@
         <!-- /Tab: Users -->
 
         <!-- Tab: Gateway — Claude Code, Scheduling -->
-        <div v-show="activeTab === 'gateway'" class="space-y-6">
+        <div v-if="settingsTabVisible('gateway')" v-show="activeTab === 'gateway'" class="space-y-6">
           <!-- Claude Code Settings -->
           <div class="card">
             <div
@@ -6385,7 +6387,7 @@
         <!-- /Tab: Gateway — Claude Code, Scheduling -->
 
         <!-- Tab: General -->
-        <div v-show="activeTab === 'general'" class="space-y-6">
+        <div v-if="settingsTabVisible('general')" v-show="activeTab === 'general'" class="space-y-6">
           <!-- Site Settings -->
           <div class="card">
             <div
@@ -6958,7 +6960,7 @@
 	        <!-- /Tab: General -->
 
 	        <!-- Tab: Login Agreement -->
-	        <div v-show="activeTab === 'agreement'" class="space-y-6">
+	        <div v-if="settingsTabVisible('agreement')" v-show="activeTab === 'agreement'" class="space-y-6">
 	          <div class="card">
 	            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
 	              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -7160,7 +7162,7 @@
         <!-- /Tab: Login Agreement -->
 
 	        <!-- Tab: Features (功能开关) -->
-        <div v-show="activeTab === 'features'" class="space-y-6">
+        <div v-if="settingsTabVisible('features')" v-show="activeTab === 'features'" class="space-y-6">
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -7904,7 +7906,7 @@
 
         <!-- Tab: Email -->
         <!-- Tab: Payment -->
-        <div v-show="activeTab === 'payment'" class="space-y-6">
+        <div v-if="settingsTabVisible('payment')" v-show="activeTab === 'payment'" class="space-y-6">
           <!-- Payment System Settings -->
           <div class="card">
             <div
@@ -7962,7 +7964,7 @@
                       v-model="form.payment_product_name_prefix"
                       type="text"
                       class="input"
-                      placeholder="Sub2API"
+                      placeholder="Moshu"
                     />
                   </div>
                   <div>
@@ -7984,7 +7986,7 @@
                       class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300"
                     >
                       {{
-                        (form.payment_product_name_prefix || "Sub2API") +
+                        (form.payment_product_name_prefix || "Moshu") +
                         " 100 " +
                         (form.payment_product_name_suffix || "CNY")
                       }}
@@ -8455,7 +8457,7 @@
           />
         </div>
 
-        <div v-show="activeTab === 'email'" class="space-y-6">
+        <div v-if="settingsTabVisible('email')" v-show="activeTab === 'email'" class="space-y-6">
           <!-- Email disabled hint - show when email_verify_enabled is off -->
           <div v-if="!form.email_verify_enabled" class="card">
             <div class="p-6">
@@ -8877,12 +8879,12 @@
         <!-- /Tab: Email -->
 
         <!-- Tab: Backup -->
-        <div v-show="activeTab === 'backup'">
+        <div v-if="settingsTabVisible('backup')" v-show="activeTab === 'backup'">
           <BackupSettings />
         </div>
 
         <!-- Save Button -->
-        <div v-show="activeTab !== 'backup'" class="flex justify-end">
+        <div v-if="settingsTabVisible(activeTab)" v-show="activeTab !== 'backup'" class="flex justify-end">
           <button
             type="submit"
             :disabled="saving || loadFailed"
@@ -8915,7 +8917,8 @@
             }}
           </button>
         </div>
-      </form>
+        </fieldset>
+        </form>
 
       <!-- Provider dialogs placed outside the settings form to prevent form submission bubbling -->
       <PaymentProviderDialog
@@ -9022,7 +9025,7 @@ import {
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
-import { useAppStore } from "@/stores";
+import { useAppStore, useAuthStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
 import {
@@ -9072,7 +9075,19 @@ type SettingsTab =
   | "email"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
-const settingsTabs = [
+const authStore = useAuthStore();
+const settingsTabPermission: Record<SettingsTab, Parameters<typeof authStore.canOperator>[0]> = {
+  general: "settings.general.read",
+  agreement: "settings.agreement.read",
+  features: "settings.features.read",
+  security: "settings.security.read",
+  users: "settings.users.read",
+  gateway: "settings.gateway.read",
+  payment: "settings.payment.read",
+  email: "settings.email.read",
+  backup: "settings.backup.read",
+};
+const allSettingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
@@ -9083,6 +9098,25 @@ const settingsTabs = [
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
+const settingsTabs = computed(() => authStore.isAdmin
+  ? allSettingsTabs
+  : allSettingsTabs.filter((tab) => authStore.canOperator(settingsTabPermission[tab.key])));
+const settingsReadOnly = computed(() => {
+  if (!authStore.isOperator) return false;
+  const writePermission = settingsTabPermission[activeTab.value].replace(/\.read$/, ".write") as Parameters<typeof authStore.canOperator>[0];
+  // The aggregate setting permission is required by the single settings API;
+  // the tab permission keeps each visible subsection independently read-only.
+  return !authStore.canOperator("settings.write") || !authStore.canOperator(writePermission);
+});
+function settingsTabVisible(tab: SettingsTab): boolean {
+  return authStore.isAdmin || authStore.canOperator(settingsTabPermission[tab]);
+}
+watch(settingsTabs, (tabs) => {
+  if (!settingsTabVisible(activeTab.value)) {
+    const first = tabs[0]?.key;
+    if (first) activeTab.value = first;
+  }
+}, { immediate: true });
 
 const settingsTabKeyboardActions = {
   ArrowLeft: -1,
@@ -9094,6 +9128,7 @@ const settingsTabKeyboardActions = {
 } as const;
 
 function selectSettingsTab(tab: SettingsTab): void {
+  if (!settingsTabVisible(tab)) return;
   activeTab.value = tab;
 }
 
@@ -9113,19 +9148,19 @@ function handleSettingsTabKeydown(event: KeyboardEvent, tab: SettingsTab): void 
   }
 
   event.preventDefault();
-  const currentIndex = settingsTabs.findIndex((item) => item.key === tab);
+  const currentIndex = settingsTabs.value.findIndex((item) => item.key === tab);
   let nextIndex = currentIndex < 0 ? 0 : currentIndex;
 
   if (action === "first") {
     nextIndex = 0;
   } else if (action === "last") {
-    nextIndex = settingsTabs.length - 1;
+    nextIndex = settingsTabs.value.length - 1;
   } else {
     nextIndex =
-      (nextIndex + action + settingsTabs.length) % settingsTabs.length;
+      (nextIndex + action + settingsTabs.value.length) % settingsTabs.value.length;
   }
 
-  const nextTab = settingsTabs[nextIndex]?.key;
+  const nextTab = settingsTabs.value[nextIndex]?.key;
   if (!nextTab) {
     return;
   }
@@ -9767,7 +9802,7 @@ const form = reactive<SettingsForm>({
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
-  site_name: "Sub2API",
+  site_name: "Moshu",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
   api_base_url: "",

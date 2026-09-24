@@ -35,6 +35,15 @@ export const i18n = createI18n({
   locale: getDefaultLocale(),
   fallbackLocale: DEFAULT_LOCALE,
   messages: {},
+  // Keep the public product name independent from the upstream project name.
+  // Technical identifiers remain unchanged in code; only rendered public copy is branded.
+  postTranslation: (translated: any) =>
+    typeof translated === 'string'
+      ? translated
+          .replace(/Sub2API/g, 'Moshu')
+          .replace(/(?<![\\/._-])sub2api\b/g, 'moshu')
+          .replace(/SUB2API_API_KEY/g, 'MOSHU_API_KEY')
+      : translated,
   // 禁用 HTML 消息警告 - 引导步骤使用富文本内容（driver.js 支持 HTML）
   // 这些内容是内部定义的，不存在 XSS 风险
   warnHtmlMessage: false

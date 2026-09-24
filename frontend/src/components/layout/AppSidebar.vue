@@ -221,6 +221,8 @@ interface NavItem {
    */
   featureFlag?: () => boolean | undefined
   permission?: ManagementPermission
+  /** Entries such as role policy management are restricted to admins. */
+  adminOnly?: boolean
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -780,6 +782,18 @@ function finalizeNav(items: NavItem[]): NavItem[] {
   return authStore.isSimpleMode ? visible.filter(item => !item.hideInSimpleMode) : visible
 }
 
+function applyOperatorPermissions(items: NavItem[]): NavItem[] {
+  if (authStore.isAdmin) return items
+  return items.reduce<NavItem[]>((out, item) => {
+    if (item.adminOnly) return out
+    if (item.permission && !authStore.can(item.permission)) return out
+    const children = item.children ? applyOperatorPermissions(item.children) : undefined
+    if (item.children && (!children || children.length === 0)) return out
+    out.push(children ? { ...item, children } : item)
+    return out
+  }, [])
+}
+
 // User navigation items (for regular users)
 const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(true)))
 
@@ -809,34 +823,34 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, permission: 'dashboard' },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring, permission: 'ops' },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true, permission: 'users' },
-    { path: '/admin/roles', label: t('nav.rolePermissions'), icon: ShieldIcon, hideInSimpleMode: true },
-    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
+    { path: '/admin/roles', label: t('nav.rolePermissions'), icon: ShieldIcon, hideInSimpleMode: true, adminOnly: true },
+    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true, permission: 'groups' },
     {
       path: '/admin/channels',
       label: t('nav.channelManagement'),
       icon: ChannelIcon,
       hideInSimpleMode: true,
       expandOnly: true,
+      permission: 'channels',
       children: [
-        { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon },
-        { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+        { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon, permission: 'channels' },
+        { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor, permission: 'channels' },
       ],
     },
     // 「仅充值」站点连管理端的「订阅管理」入口也一并收起（路由本身不拦截）。
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
-    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
-    { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
+    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription, permission: 'subscriptions' },
+    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon, permission: 'accounts' },
+    { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement, permission: 'plugins' },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, permission: 'announcements' },
-    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
+    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon, permission: 'proxies' },
     {
       path: '/admin/security-audit',
       label: t('nav.securityAudit'),
       icon: ShieldIcon,
       expandOnly: true,
-      featureFlag: flagRiskControl,
       children: [
-        { path: '/admin/risk-control', label: t('nav.contentModeration'), icon: ShieldIcon },
-        { path: '/admin/prompt-audit', label: t('nav.promptAudit'), icon: ShieldIcon },
+        { path: '/admin/risk-control', label: t('nav.contentModeration'), icon: ShieldIcon, featureFlag: flagRiskControl, permission: 'riskControl' },
+        { path: '/admin/prompt-audit', label: t('nav.promptAudit'), icon: ShieldIcon, permission: 'promptAudit' },
       ],
     },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, permission: 'redeemCodes' },
@@ -848,10 +862,11 @@ const adminNavItems = computed((): NavItem[] => {
       hideInSimpleMode: true,
       expandOnly: true,
       featureFlag: flagAffiliate,
+      permission: 'affiliates',
       children: [
-        { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UsersIcon },
-        { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: OrderIcon },
-        { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon },
+        { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UsersIcon, permission: 'affiliates' },
+        { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: OrderIcon, permission: 'affiliates' },
+        { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon, permission: 'affiliates' },
       ],
     },
     {
@@ -861,20 +876,21 @@ const adminNavItems = computed((): NavItem[] => {
       hideInSimpleMode: true,
       expandOnly: true,
       featureFlag: flagAdminPayment,
+      permission: 'orders',
       children: [
-        { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
-        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
-        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
+        { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon, permission: 'orders' },
+        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon, permission: 'orders' },
+        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon, permission: 'orders' },
       ],
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon, permission: 'usage' },
-    { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
+    { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true, permission: 'auditLogs' }
   ]
 
   const featureVisible = applyFeatureFlags(baseItems)
   const visible = authStore.isAdmin
     ? featureVisible
-    : featureVisible.filter((item) => item.permission && authStore.can(item.permission))
+    : applyOperatorPermissions(featureVisible)
 
   // 简单模式下，在系统设置前插入 API密钥
   if (authStore.isSimpleMode && authStore.isAdmin) {
@@ -894,6 +910,11 @@ const adminNavItems = computed((): NavItem[] => {
     for (const cm of customMenuItemsForAdmin.value) {
       visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
     }
+  }
+  const canViewSettingsTab = ['general', 'agreement', 'features', 'security', 'users', 'gateway', 'payment', 'email', 'backup']
+    .some((tab) => authStore.canOperator(`settings.${tab}.read` as Parameters<typeof authStore.canOperator>[0]))
+  if (authStore.isOperator && authStore.can('settings') && canViewSettingsTab) {
+    visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon, permission: 'settings' })
   }
   return visible
 })

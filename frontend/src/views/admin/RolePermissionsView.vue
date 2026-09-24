@@ -10,6 +10,7 @@
       <template v-else>
         <PermissionSection :title="t('admin.rolePermissions.menuSection')" :description="t('admin.rolePermissions.menuDescription')" :items="menuPermissions" v-model="draft" />
         <PermissionSection :title="t('admin.rolePermissions.actionSection')" :description="t('admin.rolePermissions.actionDescription')" :items="actionPermissions" v-model="draft" />
+        <PermissionSection :title="t('admin.rolePermissions.settingsSection')" :description="t('admin.rolePermissions.settingsDescription')" :items="settingsPermissions" v-model="draft" />
         <PermissionSection :title="t('admin.rolePermissions.financeSection')" :description="t('admin.rolePermissions.financeDescription')" :items="financePermissions" v-model="draft" sensitive />
 
         <div class="flex flex-wrap justify-end gap-3">
@@ -48,13 +49,45 @@ const item = (key: OperatorPermission, name: string): PermissionItem => ({
 const menuPermissions = computed(() => [
   item('dashboard.read', 'dashboardRead'), item('ops.read', 'opsRead'), item('users.read', 'usersRead'),
   item('announcements.read', 'announcementsRead'), item('redeem_codes.read', 'redeemCodesRead'),
-  item('promo_codes.read', 'promoCodesRead'), item('usage.read', 'usageRead')
+  item('promo_codes.read', 'promoCodesRead'), item('usage.read', 'usageRead'),
+  item('groups.read', 'groupsRead'), item('channels.read', 'channelsRead'),
+  item('accounts.read', 'accountsRead'), item('subscriptions.read', 'subscriptionsRead'),
+  item('prompt_rules.read', 'promptRulesRead'), item('risk_control.read', 'riskControlRead'),
+  item('prompt_audit.read', 'promptAuditRead'), item('plugins.read', 'pluginsRead'),
+  item('proxies.read', 'proxiesRead'), item('affiliates.read', 'affiliatesRead'),
+  item('orders.read', 'ordersRead'), item('audit_logs.read', 'auditLogsRead'),
+  item('data.read', 'dataRead'), item('backups.read', 'backupsRead'),
+  item('system.read', 'systemRead'), item('user_attributes.read', 'userAttributesRead'),
+  item('error_rules.read', 'errorRulesRead'), item('tls_profiles.read', 'tlsProfilesRead'),
+  item('settings.read', 'settingsRead')
 ])
 const actionPermissions = computed(() => [
   item('ops.disposition', 'opsDisposition'), item('users.write', 'usersWrite'),
   item('users.balance.write', 'usersBalanceWrite'), item('users.support', 'usersSupport'),
   item('announcements.write', 'announcementsWrite'), item('redeem_codes.write', 'redeemCodesWrite'),
-  item('promo_codes.write', 'promoCodesWrite')
+  item('promo_codes.write', 'promoCodesWrite'),
+  item('groups.write', 'groupsWrite'), item('channels.write', 'channelsWrite'),
+  item('accounts.write', 'accountsWrite'), item('subscriptions.write', 'subscriptionsWrite'),
+  item('prompt_rules.write', 'promptRulesWrite'), item('risk_control.write', 'riskControlWrite'),
+  item('prompt_audit.write', 'promptAuditWrite'), item('plugins.write', 'pluginsWrite'),
+  item('proxies.write', 'proxiesWrite'), item('affiliates.write', 'affiliatesWrite'),
+  item('orders.write', 'ordersWrite'), item('audit_logs.write', 'auditLogsWrite'),
+  item('data.write', 'dataWrite'), item('backups.write', 'backupsWrite'),
+  item('system.write', 'systemWrite'), item('user_attributes.write', 'userAttributesWrite'),
+  item('error_rules.write', 'errorRulesWrite'), item('tls_profiles.write', 'tlsProfilesWrite'),
+  item('settings.write', 'settingsWrite')
+])
+const settingsPermissions = computed(() => [
+  item('settings.general.read', 'settingsGeneralRead'), item('settings.agreement.read', 'settingsAgreementRead'),
+  item('settings.features.read', 'settingsFeaturesRead'), item('settings.security.read', 'settingsSecurityRead'),
+  item('settings.users.read', 'settingsUsersRead'), item('settings.gateway.read', 'settingsGatewayRead'),
+  item('settings.payment.read', 'settingsPaymentRead'), item('settings.email.read', 'settingsEmailRead'),
+  item('settings.backup.read', 'settingsBackupRead'),
+  item('settings.general.write', 'settingsGeneralWrite'), item('settings.agreement.write', 'settingsAgreementWrite'),
+  item('settings.features.write', 'settingsFeaturesWrite'), item('settings.security.write', 'settingsSecurityWrite'),
+  item('settings.users.write', 'settingsUsersWrite'), item('settings.gateway.write', 'settingsGatewayWrite'),
+  item('settings.payment.write', 'settingsPaymentWrite'), item('settings.email.write', 'settingsEmailWrite'),
+  item('settings.backup.write', 'settingsBackupWrite')
 ])
 const financePermissions = computed(() => [
   item('finance.user_balance.read', 'userBalanceRead'), item('finance.user_charge.read', 'userChargeRead'),

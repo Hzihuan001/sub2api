@@ -7,7 +7,7 @@ function read(relativePath: string): string {
 }
 
 describe('operator UI contract', () => {
-  it('keeps the management sidebar on the seven explicit modules', () => {
+  it('filters every management module through the operator permission policy', () => {
     const sidebar = read('../../components/layout/AppSidebar.vue')
     const expected = [
       ['/admin/dashboard', 'dashboard'],
@@ -17,14 +17,28 @@ describe('operator UI contract', () => {
       ['/admin/redeem', 'redeemCodes'],
       ['/admin/promo-codes', 'promoCodes'],
       ['/admin/usage', 'usage'],
+      ['/admin/groups', 'groups'],
+      ['/admin/channels', 'channels'],
+      ['/admin/accounts', 'accounts'],
+      ['/admin/subscriptions', 'subscriptions'],
+      ['/admin/plugins', 'plugins'],
+      ['/admin/proxies', 'proxies'],
+      ['/admin/risk-control', 'riskControl'],
+      ['/admin/prompt-audit', 'promptAudit'],
+      ['/admin/affiliates', 'affiliates'],
+      ['/admin/orders', 'orders'],
+      ['/admin/audit-logs', 'auditLogs'],
     ]
 
     for (const [path, permission] of expected) {
       expect(sidebar).toContain(`path: '${path}'`)
       expect(sidebar).toContain(`permission: '${permission}'`)
     }
-    expect(sidebar).toContain('item.permission && authStore.can(item.permission)')
-    expect(sidebar).toContain('if (!authStore.isAdmin) return []')
+    expect(sidebar).toContain('function applyOperatorPermissions(items: NavItem[]): NavItem[]')
+    expect(sidebar).toContain('if (item.permission && !authStore.can(item.permission)) return out')
+    expect(sidebar).toContain("path: '/admin/roles'")
+    expect(sidebar).toContain('adminOnly: true')
+    expect(sidebar).toContain('if (item.adminOnly) return out')
   })
 
   it('guards privileged user actions and role controls', () => {

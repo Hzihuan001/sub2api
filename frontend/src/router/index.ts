@@ -444,7 +444,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/AuditLogView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'auditLogs',
       title: 'Audit Logs',
       titleKey: 'admin.audit.title',
       descriptionKey: 'admin.audit.description'
@@ -480,7 +480,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/GroupsView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'groups',
       title: 'Group Management',
       titleKey: 'admin.groups.title',
       descriptionKey: 'admin.groups.description'
@@ -496,7 +496,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/ChannelsView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'channels',
       title: 'Channel Management',
       titleKey: 'admin.channels.title',
       descriptionKey: 'admin.channels.description'
@@ -508,7 +508,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/ChannelMonitorView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'channels',
       title: 'Channel Monitor',
       titleKey: 'admin.channelMonitor.title',
       descriptionKey: 'admin.channelMonitor.description'
@@ -531,7 +531,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/SubscriptionsView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'subscriptions',
       title: 'Subscription Management',
       titleKey: 'admin.subscriptions.title',
       descriptionKey: 'admin.subscriptions.description'
@@ -543,7 +543,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/AccountsView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'accounts',
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
       descriptionKey: 'admin.accounts.description'
@@ -555,7 +555,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/PluginsView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'plugins',
       title: 'Plugin Management',
       titleKey: 'admin.plugins.title',
       descriptionKey: 'admin.plugins.description'
@@ -579,7 +579,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/ProxiesView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'proxies',
       title: 'Proxy Management',
       titleKey: 'admin.proxies.title',
       descriptionKey: 'admin.proxies.description'
@@ -615,7 +615,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/SettingsView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'settings',
       title: 'System Settings',
       titleKey: 'admin.settings.title',
       descriptionKey: 'admin.settings.description'
@@ -627,7 +627,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/RiskControlView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'riskControl',
       title: 'Risk Control',
       titleKey: 'admin.riskControl.title',
       descriptionKey: 'admin.riskControl.description',
@@ -640,7 +640,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/features/prompt-audit/PromptAuditView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'promptAudit',
       title: 'Prompt Audit',
       titleKey: 'admin.promptAudit.title',
       descriptionKey: 'admin.promptAudit.description',
@@ -669,7 +669,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/affiliates/AdminAffiliateInvitesView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'affiliates',
       title: 'Affiliate Invite Records',
       titleKey: 'nav.affiliateInviteRecords',
       descriptionKey: 'admin.affiliates.invitesDescription'
@@ -681,7 +681,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/affiliates/AdminAffiliateRebatesView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'affiliates',
       title: 'Affiliate Rebate Records',
       titleKey: 'nav.affiliateRebateRecords',
       descriptionKey: 'admin.affiliates.rebatesDescription'
@@ -693,7 +693,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/affiliates/AdminAffiliateTransfersView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'affiliates',
       title: 'Affiliate Transfer Records',
       titleKey: 'nav.affiliateTransferRecords',
       descriptionKey: 'admin.affiliates.transfersDescription'
@@ -708,7 +708,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/orders/AdminPaymentDashboardView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'orders',
       title: 'Payment Dashboard',
       titleKey: 'nav.paymentDashboard',
       requiresPayment: true
@@ -720,7 +720,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/orders/AdminOrdersView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'orders',
       title: 'Order Management',
       titleKey: 'nav.orderManagement',
       requiresPayment: true
@@ -732,7 +732,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/orders/AdminPaymentPlansView.vue'),
     meta: {
       requiresAuth: true,
-      requiresAdmin: true,
+      requiredPermission: 'orders',
       title: 'Subscription Plans',
       titleKey: 'nav.paymentPlans',
       requiresPayment: true
@@ -781,6 +781,18 @@ function managementHomePath(authStore: ReturnType<typeof useAuthStore>): string 
   if (authStore.can('redeemCodes')) return '/admin/redeem'
   if (authStore.can('promoCodes')) return '/admin/promo-codes'
   if (authStore.can('usage')) return '/admin/usage'
+  if (authStore.can('groups')) return '/admin/groups'
+  if (authStore.can('channels')) return '/admin/channels/pricing'
+  if (authStore.can('subscriptions')) return '/admin/subscriptions'
+  if (authStore.can('accounts')) return '/admin/accounts'
+  if (authStore.can('plugins')) return '/admin/plugins'
+  if (authStore.can('proxies')) return '/admin/proxies'
+  if (authStore.can('riskControl')) return '/admin/risk-control'
+  if (authStore.can('promptAudit')) return '/admin/prompt-audit'
+  if (authStore.can('affiliates')) return '/admin/affiliates/invites'
+  if (authStore.can('orders')) return '/admin/orders/dashboard'
+  if (authStore.can('auditLogs')) return '/admin/audit-logs'
+  if (authStore.can('settings')) return '/admin/settings'
   return '/dashboard'
 }
 

@@ -39,6 +39,8 @@ func TestOperatorPolicyExplicitAllowAndDefaultDeny(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/usage/cleanup-tasks/:id/cancel"},
 		{http.MethodGet, "/api/v1/admin/settings"},
 		{http.MethodGet, "/api/v1/admin/accounts"},
+		{http.MethodGet, "/api/v1/admin/plugins"},
+		{http.MethodPost, "/api/v1/admin/plugins/:id/enable"},
 		{http.MethodGet, "/api/v1/admin/audit-logs"},
 		{http.MethodGet, "/api/v1/admin/future-upstream-route"},
 	}
@@ -77,4 +79,26 @@ func TestOperatorWritePermissionAlsoRequiresItsReadPermission(t *testing.T) {
 	policy.Permissions[string(PermissionUsersRead)] = false
 	require.False(t, policy.Allows(PermissionUsersWrite))
 	require.False(t, CanAccessRouteWithPolicy(domain.RoleOperator, http.MethodPost, "/api/v1/admin/users", policy))
+}
+
+func TestExpandedModuleAndSettingsPermissionsAreDefaultDenyAndConfigurable(t *testing.T) {
+	for _, route := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/v1/admin/accounts"},
+		{http.MethodGet, "/api/v1/admin/groups"},
+		{http.MethodGet, "/api/v1/admin/settings"},
+		{http.MethodGet, "/api/v1/admin/settings/email-templates"},
+	} {
+		require.False(t, CanAccessRoute(domain.RoleOperator, route.method, route.path), "%s %s", route.method, route.path)
+	}
+
+	policy := DefaultOperatorPolicy()
+	policy.Permissions[string(PermissionAccountsRead)] = true
+	policy.Permissions[string(PermissionSettingsEmailRead)] = true
+	policy.Permissions[string(PermissionSettingsEmailWrite)] = true
+	require.True(t, CanAccessRouteWithPolicy(domain.RoleOperator, http.MethodGet, "/api/v1/admin/accounts", policy))
+	require.True(t, CanAccessRouteWithPolicy(domain.RoleOperator, http.MethodGet, "/api/v1/admin/settings/email-templates", policy))
+	require.True(t, CanAccessRouteWithPolicy(domain.RoleOperator, http.MethodPost, "/api/v1/admin/settings/email-template-preview", policy))
 }

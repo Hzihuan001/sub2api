@@ -15,6 +15,11 @@ import {
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
 
 export const useAppStore = defineStore('app', () => {
+  const normalizePublicSiteName = (value: unknown): string => {
+    if (typeof value !== 'string' || !value.trim()) return 'Moshu'
+    return value.replace(/Sub2API/g, 'Moshu').replace(/sub2api/g, 'moshu')
+  }
+
   // ==================== State ====================
 
   const sidebarCollapsed = ref<boolean>(false)
@@ -26,7 +31,7 @@ export const useAppStore = defineStore('app', () => {
   // Public settings cache state
   const publicSettingsLoaded = ref<boolean>(false)
   const publicSettingsLoading = ref<boolean>(false)
-  const siteName = ref<string>('Sub2API')
+  const siteName = ref<string>('Moshu')
   const siteLogo = ref<string>('')
   const siteVersion = ref<string>('')
   const contactInfo = ref<string>('')
@@ -293,8 +298,9 @@ export const useAppStore = defineStore('app', () => {
     if (typeof window !== 'undefined') {
       window.__APP_CONFIG__ = { ...config }
     }
-    cachedPublicSettings.value = config
-    siteName.value = config.site_name || 'Sub2API'
+    const publicConfig = { ...config, site_name: normalizePublicSiteName(config.site_name) }
+    cachedPublicSettings.value = publicConfig
+    siteName.value = publicConfig.site_name
     siteLogo.value = config.site_logo || ''
     siteVersion.value = config.version || ''
     contactInfo.value = config.contact_info || ''
