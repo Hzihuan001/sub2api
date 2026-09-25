@@ -80,6 +80,11 @@ const {
 }));
 
 const localeRef = vi.hoisted(() => ({ value: "zh-CN" }));
+const authState = vi.hoisted(() => ({
+  isAdmin: true,
+  isOperator: false,
+  canOperator: vi.fn(() => true),
+}));
 
 vi.mock("@/api", () => ({
   adminAPI: {
@@ -127,11 +132,7 @@ vi.mock("@/stores", () => ({
     showInfo: vi.fn(),
     fetchPublicSettings,
   }),
-  useAuthStore: () => ({
-    isAdmin: true,
-    isOperator: false,
-    canOperator: () => true,
-  }),
+  useAuthStore: () => authState,
 }));
 
 vi.mock("@/stores/adminSettings", () => ({
@@ -570,6 +571,13 @@ function mountView() {
   });
 }
 
+function resetAuthState() {
+  authState.isAdmin = true;
+  authState.isOperator = false;
+  authState.canOperator.mockReset();
+  authState.canOperator.mockReturnValue(true);
+}
+
 async function openPaymentTab(wrapper: ReturnType<typeof mountView>) {
   const paymentTabButton = wrapper
     .findAll("button")
@@ -634,6 +642,7 @@ describe("admin SettingsView email domain quota copy", () => {
 
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
+    resetAuthState();
     getSettings.mockReset();
     updateSettings.mockReset();
     getWebSearchEmulationConfig.mockReset();
@@ -748,6 +757,28 @@ describe("admin SettingsView payment visible method controls", () => {
         { ...menuItems[1], hide_open_button: false },
       ],
     }));
+    wrapper.unmount();
+  });
+
+  it("does not request hidden settings subsections for an operator", async () => {
+    authState.isAdmin = false;
+    authState.isOperator = true;
+    authState.canOperator.mockImplementation(
+      (permission) => permission === "settings.general.read",
+    );
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("admin.settings.tabs.general");
+    expect(wrapper.text()).not.toContain("admin.settings.tabs.gateway");
+    expect(getWebSearchEmulationConfig).not.toHaveBeenCalled();
+    expect(listProxies).not.toHaveBeenCalled();
+    expect(getUpstreamBillingProbeSettings).not.toHaveBeenCalled();
+    expect(getOllamaCloudUsageSettings).not.toHaveBeenCalled();
+    expect(getProviders).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
+
     wrapper.unmount();
   });
 
@@ -1636,6 +1667,7 @@ describe("admin SettingsView payment visible method controls", () => {
 
 describe("admin SettingsView wechat connect controls", () => {
   beforeEach(() => {
+    resetAuthState();
     getSettings.mockReset();
     updateSettings.mockReset();
     getWebSearchEmulationConfig.mockReset();
@@ -1882,6 +1914,7 @@ describe("admin SettingsView wechat connect controls", () => {
 
 describe("admin SettingsView platform quota matrix", () => {
   beforeEach(() => {
+    resetAuthState();
     getSettings.mockReset();
     updateSettings.mockReset();
     getWebSearchEmulationConfig.mockReset();

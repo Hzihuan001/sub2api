@@ -11190,8 +11190,15 @@ async function loadSettings() {
       openaiFastPolicyLoaded.value = true;
     }
 
-    // Load web search emulation config separately
-    await loadWebSearchConfig();
+    // Web Search emulation belongs to the gateway subsection. Operators may
+    // be allowed to open general settings while this subsection is disabled
+    // in their role policy. Do not issue a request for a hidden subsection:
+    // the backend correctly returns 403, but surfacing that expected denial
+    // as a page-level error makes an otherwise usable settings page look
+    // broken (and leaks an unnecessary request).
+    if (settingsTabVisible("gateway")) {
+      await loadWebSearchConfig();
+    }
   } catch (error: unknown) {
     loadFailed.value = true;
     appStore.showError(
@@ -12884,18 +12891,29 @@ async function handleDeleteProvider() {
 
 onMounted(() => {
   loadSettings();
-  loadSubscriptionGroups();
-  loadAdminApiKey();
-  loadUpstreamBillingProbeSettings();
-  loadOllamaCloudUsageSettings();
-  loadOpenCodeGoUsageSettings();
-  loadOverloadCooldownSettings();
-  loadRateLimit429CooldownSettings();
-  loadPanelRateLimitSettings();
-  loadStreamTimeoutSettings();
-  loadRectifierSettings();
-  loadBetaPolicySettings();
-  loadProviders();
+  // Keep optional settings requests aligned with the visible tab permissions.
+  // This matters for operators: a role can read one settings subsection
+  // without being granted access to all of the other settings APIs.
+  if (settingsTabVisible("general") || settingsTabVisible("users")) {
+    loadSubscriptionGroups();
+  }
+  if (settingsTabVisible("security")) {
+    loadAdminApiKey();
+    loadPanelRateLimitSettings();
+  }
+  if (settingsTabVisible("gateway")) {
+    loadUpstreamBillingProbeSettings();
+    loadOllamaCloudUsageSettings();
+    loadOpenCodeGoUsageSettings();
+    loadOverloadCooldownSettings();
+    loadRateLimit429CooldownSettings();
+    loadStreamTimeoutSettings();
+    loadRectifierSettings();
+    loadBetaPolicySettings();
+  }
+  if (settingsTabVisible("payment")) {
+    loadProviders();
+  }
 });
 
 // =========================
