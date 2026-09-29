@@ -998,7 +998,7 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["claude-fable-5"]
 	}
 	if strings.Contains(modelLower, "opus") {
-		if strings.Contains(modelLower, "opus-5-5") || strings.Contains(modelLower, "opus5.5") || strings.Contains(modelLower, "opus55") {
+		if claude.IsOpus55(modelLower) {
 			return s.fallbackPrices["claude-opus-5-5"]
 		}
 		// "opus-5" 必须先判：不能用裸 "5" 匹配，否则 claude-opus-4-5 会被误判。
