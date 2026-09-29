@@ -1,6 +1,6 @@
 services:
   sub2api:
-    image: ${SUB2API_TEST_IMAGE:-sub2api:0.2.0-custom.role-permissions-local}
+    image: ${SUB2API_TEST_IMAGE:-sub2api:0.2.9-custom.1}
     platform: linux/amd64
     build:
       context: ..
