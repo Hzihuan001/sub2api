@@ -6,7 +6,7 @@ services:
       context: ..
       dockerfile: Dockerfile
       args:
-        VERSION: 0.2.0-custom.role-permissions-local
+        VERSION: 0.2.9-custom.1
         COMMIT: ${SUB2API_TEST_COMMIT:-local}
         DATE: ${SUB2API_TEST_BUILD_DATE:-local}
     restart: unless-stopped
