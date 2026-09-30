@@ -93,6 +93,23 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
+	// Resolve mapped/Bedrock model IDs before validating Claude 5.5 constraints.
+	validationModel := parsed.Model
+	if account != nil {
+		if account.IsBedrock() {
+			if resolved, ok := ResolveBedrockModelID(account, validationModel); ok {
+				validationModel = resolved
+			}
+		} else if account.Type == AccountTypeAPIKey {
+			validationModel = account.GetMappedModel(validationModel)
+		}
+	}
+	if account != nil && account.Platform == PlatformAnthropic {
+		if err := validateClaude55Request(parsed.Body.Bytes(), validationModel); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": err.Error()}})
+			return nil, err
+		}
+	}
 	// Anthropic Fast is requested with speed=fast rather than OpenAI's
 	// service_tier. Attach it at this shared boundary so passthrough, OAuth and
 	// partial-stream results all use the same billing and usage-log path.
@@ -164,23 +181,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
 	originalModel := reqModel
-
-	// Validate Opus 5.5 request constraints before any OAuth mimicry or body
-	// normalization can silently remove unsupported fields.  Resolve the
-	// account mapping up front for API-key accounts; the full mapping below is
-	// still authoritative for forwarding and response billing.
-	validationModel := reqModel
-	if account != nil {
-		if account.Type == AccountTypeAPIKey {
-			validationModel = account.GetMappedModel(validationModel)
-		} else if account.Platform == PlatformAnthropic {
-			validationModel = claude.NormalizeModelID(validationModel)
-		}
-	}
-	if err := validateClaudeOpus55Request(body, validationModel); err != nil {
-		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
-	}
 
 	// === DEBUG: 打印客户端原始请求（headers + body 摘要）===
 	if c != nil {

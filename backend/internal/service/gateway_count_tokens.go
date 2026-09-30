@@ -23,6 +23,23 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return fmt.Errorf("parse request: empty request")
 	}
 
+	validationModel := parsed.Model
+	if account != nil {
+		if account.IsBedrock() {
+			if resolved, ok := ResolveBedrockModelID(account, validationModel); ok {
+				validationModel = resolved
+			}
+		} else if account.Type == AccountTypeAPIKey {
+			validationModel = account.GetMappedModel(validationModel)
+		}
+	}
+	if account != nil && account.Platform == PlatformAnthropic {
+		if err := validateClaude55Request(parsed.Body.Bytes(), validationModel); err != nil {
+			s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return err
+		}
+	}
+
 	if isKiroDirectModeAccount(account) {
 		inputTokens := estimateKiroInputTokens(ctx, parsed.Body.Bytes())
 		if inputTokens < 1 {
@@ -58,21 +75,6 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return nil
 	}
 	reqModel := parsed.Model
-
-	// Keep count_tokens subject to the same Opus 5.5 validation as the normal
-	// messages path, before OAuth mimicry can rewrite away unsupported fields.
-	validationModel := reqModel
-	if account != nil {
-		if account.Type == AccountTypeAPIKey {
-			validationModel = account.GetMappedModel(validationModel)
-		} else if account.Platform == PlatformAnthropic {
-			validationModel = claude.NormalizeModelID(validationModel)
-		}
-	}
-	if err := validateClaudeOpus55Request(body, validationModel); err != nil {
-		s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return err
-	}
 
 	// Pre-filter: strip empty text blocks to prevent upstream 400.
 	if err := replaceBody(StripEmptyTextBlocks(body)); err != nil {

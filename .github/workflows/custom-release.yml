@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CUSTOM_VERSION: 0.2.9-custom.2
+  CUSTOM_VERSION: 0.2.11-custom.1
 
 jobs:
   quality:
@@ -70,6 +70,10 @@ jobs:
           go version | grep -q 'go1.27.0'
           node --version | grep -q '^v20\.'
           test "$(pnpm --version)" = '9.15.9'
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-0.2.11.1 ]; then
+            echo "unexpected custom source tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -114,7 +118,7 @@ jobs:
   publish:
     name: Build and publish immutable image
     needs: quality
-    if: startsWith(github.ref, 'refs/tags/custom-')
+    if: github.ref == 'refs/tags/custom-0.2.11.1'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.name }}
