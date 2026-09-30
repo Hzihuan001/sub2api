@@ -2,11 +2,11 @@
 
 ## Fixed release coordinates
 
-- Upstream baseline: `v0.2.9` / `4c00df2e0`
-- Development branch: `codex/v0.2.9-merge-station`
-- Application version: `0.2.9-station.1`
-- Source tag: `custom-station-0.2.9.1`
-- Container tag: `ghcr.io/<fork-owner>/sub2api:0.2.9-station.1`
+- Upstream baseline: `v0.2.11` / `96f4c115c`
+- Development branch: `codex/v0.2.11-merge-station`
+- Application version: `0.2.11-station.1`
+- Source tag: `custom-station-0.2.11.1`
+- Container tag: `ghcr.io/<fork-owner>/sub2api:0.2.11-station.1`
 - Initial target platform: `linux/amd64`
 
 Never create a `v*` tag for this custom build. Never put passwords, tokens, SSH
@@ -58,7 +58,7 @@ locally rebuilt image.
 ## Fork and GHCR gate
 
 1. Set the personal Fork as `origin`; keep the official repository as `upstream`.
-2. Push only `codex/v0.2.9-merge-station` and tag `custom-station-0.2.9.1`.
+2. Push only `codex/v0.2.11-merge-station` and tag `custom-station-0.2.11.1`.
 3. The `Custom CI and GHCR release` workflow runs all tests before publishing.
 4. Record both the mutable tag and immutable `sha256` digest from the workflow summary.
 5. Pull and run that exact digest through the local container test above.
@@ -89,7 +89,7 @@ docker compose exec -T redis redis-cli ping
 Also record the Compose/1Panel ownership model, app version, current digest,
 environment variable names (not values), bind mounts, named volumes, networks,
 OpenResty upstream, and migration state. Stop immediately if the installed
-Sub2API version is newer than `v0.2.9`; this release must never downgrade it.
+Sub2API version is newer than `v0.2.11`; this release must never downgrade it.
 
 ## Backup gate
 
@@ -135,7 +135,7 @@ minutes and perform a 24-hour error-rate/audit follow-up.
 
 Set the application image back to the recorded previous digest and recreate
 only Sub2API. This station build adds no database migration beyond the
-upstream `v0.2.9` schema. An older binary will treat residual `operator` rows
+upstream `v0.2.11` schema. An older binary will treat residual `operator` rows
 as non-admin; those users temporarily lose management access while admin
 remains available.
 
