@@ -132,7 +132,26 @@ func TestGatewayOpenAICompatibleHandlersClaudeCodeOnlyFallback(t *testing.T) {
 						fallbackGroupID: fallback,
 					}}, nil, nil, nil, nil, nil, nil, nil,
 					service.NewSchedulerSnapshotService(schedulerCache, nil, nil, nil, nil),
-					nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+					nil, // concurrencyService
+					nil, // billingService
+					nil, // rateLimitService
+					nil, // billingCacheService
+					nil, // identityService
+					nil, // httpUpstream
+					nil, // deferredService
+					nil, // claudeTokenProvider
+					nil, // kiroTokenProvider
+					nil, // kiroCooldownStore
+					nil, // sessionLimitCache
+					nil, // rpmCache
+					nil, // digestStore
+					nil, // settingService
+					nil, // tlsFPProfileService
+					nil, // channelService
+					nil, // resolver
+					nil, // compositeResolver
+					nil, // balanceNotifyService
+					nil, // userPlatformQuotaRepo
 				)
 				cfg := &config.Config{RunMode: config.RunModeSimple}
 				billingCacheService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
