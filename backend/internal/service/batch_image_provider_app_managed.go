@@ -359,7 +359,7 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 	if err != nil {
 		return managedErrorLine(item.CustomID, "UPSTREAM_REQUEST_FAILED", err.Error())
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if readErr != nil {
 		return managedErrorLine(item.CustomID, "UPSTREAM_READ_FAILED", readErr.Error())
@@ -497,7 +497,7 @@ func loadManagedLines(path string) map[string][]byte {
 	if err != nil {
 		return out
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), 64<<20)
 	for scanner.Scan() {
@@ -523,7 +523,7 @@ func appendManagedLine(path string, line []byte) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := f.Write(line); err != nil {
 		return err
 	}
@@ -544,7 +544,7 @@ func fetchManagedImage(ctx context.Context, rawURL string) (string, string) {
 	if err != nil {
 		return "", ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", ""
 	}
