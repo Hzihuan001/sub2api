@@ -182,8 +182,6 @@
                   <div class="flex flex-wrap gap-1.5 text-[11px] text-gray-500 dark:text-dark-300">
                     <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-dark-700">{{ item.model }}</span>
                     <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-dark-700">{{ t('imageStudio.requestedSize') }}: {{ item.size || 'auto' }}</span>
-                    <span v-if="item.actualSize" class="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">{{ t('imageStudio.actualSize') }}: {{ item.actualSize }}</span>
-                    <span v-if="item.actualSize && item.size !== 'auto' && item.actualSize !== item.size" class="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">{{ t('imageStudio.sizeMismatch') }}</span>
                     <span v-if="!item.persisted" class="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">{{ t('imageStudio.temporary') }}</span>
                   </div>
                   <div class="flex items-center justify-between gap-2">
@@ -211,7 +209,6 @@
           <p class="whitespace-pre-wrap text-gray-800 dark:text-dark-100">{{ previewItem.prompt }}</p>
           <p class="mt-2 text-xs text-gray-500 dark:text-dark-300">
             {{ t('imageStudio.requestedSize') }}: {{ previewItem.size || 'auto' }}
-            <span v-if="previewItem.actualSize"> · {{ t('imageStudio.actualSize') }}: {{ previewItem.actualSize }}</span>
           </p>
           <p v-if="previewItem.revisedPrompt" class="mt-2 border-t border-gray-200 pt-2 text-gray-500 dark:border-dark-700 dark:text-dark-300">{{ previewItem.revisedPrompt }}</p>
         </div>

@@ -447,6 +447,38 @@ func (r *batchImageRepository) ReplaceBatchImageItemsForJob(ctx context.Context,
 	return tx.Commit()
 }
 
+// UpdateBatchImageItemProgress is used by the app-managed fan-out worker to
+// make each finished image visible before the parent batch reaches indexing.
+// The final result indexer still replaces these rows atomically, so this is a
+// progress hint rather than a second billing path.
+func (r *batchImageRepository) UpdateBatchImageItemProgress(ctx context.Context, batchID, customID, status, mimeType, fileExtension, errorCode, errorMessage string, imageCount int) error {
+	if imageCount < 0 {
+		imageCount = 0
+	}
+	_, err := r.sql.ExecContext(ctx, `
+UPDATE batch_image_items
+SET status = $3,
+    mime_type = NULLIF($4, ''),
+    file_extension = NULLIF($5, ''),
+    image_count = $6,
+    error_code = NULLIF($7, ''),
+    error_message = NULLIF($8, ''),
+    indexed_at = COALESCE(indexed_at, NOW())
+WHERE job_id = $1 AND custom_id = $2`,
+		batchID, customID, status, mimeType, fileExtension, imageCount, errorCode, errorMessage)
+	return err
+}
+
+func (r *batchImageRepository) RefreshBatchImageJobCounts(ctx context.Context, batchID string) error {
+	_, err := r.sql.ExecContext(ctx, `
+UPDATE batch_image_jobs AS j
+SET success_count = COALESCE((SELECT COUNT(*) FROM batch_image_items i WHERE i.job_id = j.batch_id AND i.status = $2), 0),
+    fail_count = COALESCE((SELECT COUNT(*) FROM batch_image_items i WHERE i.job_id = j.batch_id AND i.status = $3), 0),
+    updated_at = NOW()
+WHERE j.batch_id = $1`, batchID, service.BatchImageItemStatusSuccess, service.BatchImageItemStatusFailed)
+	return err
+}
+
 func (r *batchImageRepository) replaceBatchImageItemsForJobWithSQL(ctx context.Context, sqlq batchImageSQLExecutor, batchID string, items []service.CreateBatchImageItemParams, counts service.BatchImageCounts) error {
 	var id int64
 	var status string
@@ -778,18 +810,18 @@ RETURNING `+batchImageJobColumns,
 func createBatchImageItemWithSQL(ctx context.Context, sqlq batchImageSQLExecutor, params service.CreateBatchImageItemParams) (*service.BatchImageItem, error) {
 	return scanBatchImageItem(sqlq.QueryRowContext(ctx, `
 INSERT INTO batch_image_items (
-    job_id, custom_id, status, request_hash, prompt_preview, provider_source_object,
+    job_id, custom_id, status, request_hash, prompt_preview, input_payload, provider_source_object,
     source_line_number, source_byte_offset, source_byte_length,
     mime_type, file_extension, image_count,
     error_code, error_message, billed_amount, indexed_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6,
-    $7, $8, $9,
-    $10, $11, $12,
-    $13, $14, $15, $16
+    $1, $2, $3, $4, $5, $6, $7,
+    $8, $9, $10,
+    $11, $12, $13,
+    $14, $15, $16, $17
 )
 RETURNING `+batchImageItemColumns,
-		params.JobID, params.CustomID, params.Status, params.RequestHash, params.PromptPreview, params.ProviderSourceObject,
+		params.JobID, params.CustomID, params.Status, params.RequestHash, params.PromptPreview, params.InputPayload, params.ProviderSourceObject,
 		params.SourceLineNumber, params.SourceByteOffset, params.SourceByteLength,
 		params.MimeType, params.FileExtension, params.ImageCount,
 		params.ErrorCode, params.ErrorMessage, params.BilledAmount, params.IndexedAt,
@@ -906,7 +938,7 @@ func scanBatchImageJobs(rows *sql.Rows) ([]*service.BatchImageJob, error) {
 }
 
 const batchImageItemColumns = `
-id, job_id, custom_id, status, request_hash, prompt_preview, provider_source_object,
+id, job_id, custom_id, status, request_hash, prompt_preview, input_payload, provider_source_object,
 source_line_number, source_byte_offset, source_byte_length,
 mime_type, file_extension, image_count,
 error_code, error_message, billed_amount,
@@ -917,6 +949,7 @@ const batchImageItemSelectSQL = `SELECT ` + batchImageItemColumns + ` FROM batch
 func scanBatchImageItem(row rowScanner) (*service.BatchImageItem, error) {
 	var item service.BatchImageItem
 	var requestHash, promptPreview, providerSourceObject sql.NullString
+	var inputPayload []byte
 	var sourceLineNumber sql.NullInt64
 	var sourceByteOffset, sourceByteLength sql.NullInt64
 	var mimeType, fileExtension, errorCode, errorMessage sql.NullString
@@ -924,7 +957,7 @@ func scanBatchImageItem(row rowScanner) (*service.BatchImageItem, error) {
 	var indexedAt sql.NullTime
 
 	err := row.Scan(
-		&item.ID, &item.JobID, &item.CustomID, &item.Status, &requestHash, &promptPreview, &providerSourceObject,
+		&item.ID, &item.JobID, &item.CustomID, &item.Status, &requestHash, &promptPreview, &inputPayload, &providerSourceObject,
 		&sourceLineNumber, &sourceByteOffset, &sourceByteLength,
 		&mimeType, &fileExtension, &item.ImageCount,
 		&errorCode, &errorMessage, &billedAmount,
@@ -936,6 +969,7 @@ func scanBatchImageItem(row rowScanner) (*service.BatchImageItem, error) {
 
 	item.RequestHash = batchImageNullStringPtr(requestHash)
 	item.PromptPreview = batchImageNullStringPtr(promptPreview)
+	item.InputPayload = inputPayload
 	item.ProviderSourceObject = batchImageNullStringPtr(providerSourceObject)
 	item.SourceLineNumber = batchImageNullIntPtr(sourceLineNumber)
 	item.SourceByteOffset = batchImageNullInt64Ptr(sourceByteOffset)

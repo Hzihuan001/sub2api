@@ -89,6 +89,18 @@ func (p *BatchImageProviderProcessor) Process(ctx context.Context, batchID strin
 	if strings.TrimSpace(batchImageDerefString(job.ProviderJobName)) == "" {
 		return BatchImageProcessResult{}, ErrBatchImageMissingProviderJobName
 	}
+	// The app-managed provider performs its fan-out inside the worker call. Mark
+	// it running before the first single-image request so clients do not see a
+	// long task stuck in "queued" while per-item progress is already advancing.
+	if job.Provider == BatchImageProviderAppManaged && job.Status != BatchImageJobStatusRunning {
+		if err := p.Repo.TransitionBatchImageJobStatus(ctx, job.BatchID, BatchImageJobStatusRunning, BatchImageTransitionOptions{
+			EventType:    "managed_fanout_started",
+			EventPayload: map[string]any{"concurrency": "configured"},
+		}); err != nil {
+			return BatchImageProcessResult{}, err
+		}
+		job.Status = BatchImageJobStatusRunning
+	}
 
 	if job.Status == BatchImageJobStatusIndexing {
 		return p.indexAndSettle(ctx, job, provider, account)

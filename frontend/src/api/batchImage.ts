@@ -31,7 +31,8 @@ export interface BatchImageSubmitRequest {
   model: string
   task_name?: string
   parent_batch_id?: string
-  provider?: '' | 'gemini_api' | 'vertex' | string
+  /** Optional execution provider. `app_managed` means Sub2API fans the work out into single-image jobs. */
+  provider?: '' | 'app_managed' | 'gemini_api' | 'vertex' | string
   image_size?: '1K' | '2K' | '4K' | string
   response_mime_type?: string
   aspect_ratio?: string
@@ -47,6 +48,10 @@ export interface BatchImageJob {
   status: BatchImageStatus
   model: string
   provider: string
+  /** Execution mode returned by newer servers (for example `managed_fanout`). */
+  execution_mode?: string | null
+  /** Maximum number of single-image requests run in parallel for managed jobs. */
+  concurrency_limit?: number | null
   item_count: number
   success_count: number
   fail_count: number
@@ -92,6 +97,9 @@ export interface BatchImageModel {
   id: string
   object: string
   provider: string
+  /** `app_managed`/`managed_fanout` for app-managed fan-out models. */
+  mode?: string
+  execution_mode?: string
 }
 
 export interface BatchImageModelsResponse {

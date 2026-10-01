@@ -13,6 +13,10 @@ import (
 const (
 	BatchImageProviderGeminiAPI = "gemini_api"
 	BatchImageProviderVertex    = "vertex"
+	// BatchImageProviderAppManaged is the portable fan-out provider. It keeps
+	// the public batch contract while sending one ordinary image request per
+	// item in the background worker for accounts without a native batch API.
+	BatchImageProviderAppManaged = "app_managed"
 )
 
 const (
@@ -205,12 +209,15 @@ type CreateBatchImageJobParams struct {
 }
 
 type BatchImageItem struct {
-	ID                   int64
-	JobID                string
-	CustomID             string
-	Status               string
-	RequestHash          *string
-	PromptPreview        *string
+	ID            int64
+	JobID         string
+	CustomID      string
+	Status        string
+	RequestHash   *string
+	PromptPreview *string
+	// InputPayload stores the normalized item request (prompt, output count and
+	// reference images) so queued fan-out jobs survive process restarts.
+	InputPayload         []byte
 	ProviderSourceObject *string
 	SourceLineNumber     *int
 	SourceByteOffset     *int64
@@ -231,6 +238,7 @@ type CreateBatchImageItemParams struct {
 	Status               string
 	RequestHash          *string
 	PromptPreview        *string
+	InputPayload         []byte
 	ProviderSourceObject *string
 	SourceLineNumber     *int
 	SourceByteOffset     *int64
@@ -352,7 +360,7 @@ func NewBatchImageID() (string, error) {
 
 func IsSupportedBatchImageProvider(provider string) bool {
 	switch provider {
-	case BatchImageProviderGeminiAPI, BatchImageProviderVertex:
+	case BatchImageProviderGeminiAPI, BatchImageProviderVertex, BatchImageProviderAppManaged:
 		return true
 	default:
 		return false

@@ -45,10 +45,28 @@ func NewDefaultBatchImageProviderRegistry() *BatchImageProviderRegistry {
 }
 
 func NewBatchImageProviderRegistryFromConfig(cfg *config.Config) *BatchImageProviderRegistry {
-	return NewBatchImageProviderRegistry(
+	providers := []BatchImageProvider{
 		NewGeminiAPIBatchImageProvider(nil),
 		NewVertexBatchImageProviderFromConfig(cfg, nil, nil, nil),
-	)
+	}
+	if cfg == nil || cfg.BatchImage.AppManagedEnabled {
+		providers = append(providers, NewConfiguredAppManagedBatchImageProvider(cfg, nil, nil))
+	}
+	return NewBatchImageProviderRegistry(providers...)
+}
+
+// NewBatchImageProviderRegistryForWorker wires the persistent item repository
+// and shared upstream transport into the app-managed provider. Keeping this
+// constructor separate avoids coupling public validation to worker internals.
+func NewBatchImageProviderRegistryForWorker(cfg *config.Config, itemRepo BatchImageItemLookup, upstream HTTPUpstream) *BatchImageProviderRegistry {
+	providers := []BatchImageProvider{
+		NewGeminiAPIBatchImageProvider(nil),
+		NewVertexBatchImageProviderFromConfig(cfg, nil, nil, nil),
+	}
+	if cfg == nil || cfg.BatchImage.AppManagedEnabled {
+		providers = append(providers, NewConfiguredAppManagedBatchImageProvider(cfg, itemRepo, upstream))
+	}
+	return NewBatchImageProviderRegistry(providers...)
 }
 
 func (r *BatchImageProviderRegistry) Get(provider string) (BatchImageProvider, bool) {
@@ -81,8 +99,9 @@ type BatchImageInput struct {
 }
 
 type BatchImageInputItem struct {
-	CustomID string
-	Prompt   string
+	CustomID    string
+	Prompt      string
+	OutputCount int
 
 	ReferenceImages []BatchImageReference
 }

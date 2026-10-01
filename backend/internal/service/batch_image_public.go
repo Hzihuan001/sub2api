@@ -39,6 +39,11 @@ type BatchImageAccountSelectionRepository interface {
 	ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error)
 }
 
+type batchImageMultiPlatformAccountSelectionRepository interface {
+	ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]Account, error)
+	ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error)
+}
+
 type BatchImageGroupPricingRepository interface {
 	GetByIDLite(ctx context.Context, id int64) (*Group, error)
 }
@@ -107,24 +112,26 @@ type BatchImagePricingSnapshot struct {
 }
 
 type BatchImagePublicBatch struct {
-	ID              string   `json:"id"`
-	Object          string   `json:"object"`
-	TaskName        string   `json:"task_name"`
-	ParentBatchID   *string  `json:"parent_batch_id,omitempty"`
-	Status          string   `json:"status"`
-	Model           string   `json:"model"`
-	Provider        string   `json:"provider"`
-	ItemCount       int      `json:"item_count"`
-	SuccessCount    int      `json:"success_count"`
-	FailCount       int      `json:"fail_count"`
-	EstimatedCost   float64  `json:"estimated_cost"`
-	HoldAmount      float64  `json:"hold_amount"`
-	ActualCost      *float64 `json:"actual_cost"`
-	CreatedAt       int64    `json:"created_at"`
-	SubmittedAt     *int64   `json:"submitted_at"`
-	SettledAt       *int64   `json:"settled_at"`
-	DownloadedAt    *int64   `json:"downloaded_at,omitempty"`
-	OutputDeletedAt *int64   `json:"output_deleted_at,omitempty"`
+	ID               string   `json:"id"`
+	Object           string   `json:"object"`
+	TaskName         string   `json:"task_name"`
+	ParentBatchID    *string  `json:"parent_batch_id,omitempty"`
+	Status           string   `json:"status"`
+	Model            string   `json:"model"`
+	Provider         string   `json:"provider"`
+	ExecutionMode    string   `json:"execution_mode"`
+	ConcurrencyLimit int      `json:"concurrency_limit,omitempty"`
+	ItemCount        int      `json:"item_count"`
+	SuccessCount     int      `json:"success_count"`
+	FailCount        int      `json:"fail_count"`
+	EstimatedCost    float64  `json:"estimated_cost"`
+	HoldAmount       float64  `json:"hold_amount"`
+	ActualCost       *float64 `json:"actual_cost"`
+	CreatedAt        int64    `json:"created_at"`
+	SubmittedAt      *int64   `json:"submitted_at"`
+	SettledAt        *int64   `json:"settled_at"`
+	DownloadedAt     *int64   `json:"downloaded_at,omitempty"`
+	OutputDeletedAt  *int64   `json:"output_deleted_at,omitempty"`
 }
 
 type BatchImagePublicItem struct {
@@ -297,7 +304,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		return nil, err
 	}
 	s.invalidateAuthCache(ctx, owner.UserID)
-	if err := s.createPendingItems(ctx, job.BatchID, requestHash, normalized.Items); err != nil {
+	if err := s.createPendingItems(ctx, job.BatchID, requestHash, normalized.Items, normalized.ResponseMimeType, normalized.ImageSize); err != nil {
 		if releaseErr := s.releaseFailedSubmitHold(ctx, job, requestHash); releaseErr != nil {
 			return nil, releaseErr
 		}
@@ -324,6 +331,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		input.Items = append(input.Items, BatchImageInputItem{
 			CustomID:        item.CustomID,
 			Prompt:          item.Prompt,
+			OutputCount:     item.OutputCount,
 			ReferenceImages: refs,
 		})
 	}
@@ -480,12 +488,22 @@ func (s *BatchImagePublicService) abortOrphanProviderJob(ctx context.Context, pr
 	}
 }
 
-func (s *BatchImagePublicService) createPendingItems(ctx context.Context, batchID, requestHash string, items []BatchImageSubmitItem) error {
+func (s *BatchImagePublicService) createPendingItems(ctx context.Context, batchID, requestHash string, items []BatchImageSubmitItem, responseMimeType, imageSize string) error {
 	if s == nil || s.Repo == nil || len(items) == 0 {
 		return nil
 	}
 	params := make([]CreateBatchImageItemParams, 0, len(items))
 	for _, item := range items {
+		// Keep the normalized item payload alongside the preview. The worker may
+		// run after a restart, so it must not depend on an in-process request map.
+		payload, marshalErr := json.Marshal(managedBatchImageItemPayload{
+			Item:             item,
+			ResponseMimeType: responseMimeType,
+			ImageSize:        imageSize,
+		})
+		if marshalErr != nil {
+			return marshalErr
+		}
 		preview := truncateBatchImageMessage(item.Prompt, s.maxPromptChars())
 		params = append(params, CreateBatchImageItemParams{
 			JobID:         batchID,
@@ -493,6 +511,7 @@ func (s *BatchImagePublicService) createPendingItems(ctx context.Context, batchI
 			Status:        BatchImageItemStatusPending,
 			RequestHash:   batchImageStringPtr(requestHash),
 			PromptPreview: batchImageStringPtr(preview),
+			InputPayload:  payload,
 			ImageCount:    0,
 		})
 	}
@@ -971,6 +990,20 @@ func (s *BatchImagePublicService) listCandidateAccounts(ctx context.Context, gro
 	if s.AccountRepo == nil {
 		return nil, ErrBatchImageNoAccountAvailable
 	}
+	if platform == "*" {
+		multi, ok := s.AccountRepo.(batchImageMultiPlatformAccountSelectionRepository)
+		if !ok {
+			// Older test doubles and custom repositories may not expose the
+			// multi-platform query yet; treat that provider as having no
+			// candidates rather than failing native Gemini model discovery.
+			return []Account{}, nil
+		}
+		platforms := []string{PlatformOpenAI, PlatformDeepseek, PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformGrok}
+		if groupID != nil && *groupID > 0 {
+			return multi.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
+		}
+		return multi.ListSchedulableByPlatforms(ctx, platforms)
+	}
 	if groupID != nil && *groupID > 0 {
 		return s.AccountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
 	}
@@ -988,10 +1021,14 @@ func (s *BatchImagePublicService) ensureGroupAllowsBatchImage(ctx context.Contex
 	if err != nil || group == nil {
 		return ErrBatchImageSettlementPricingMissing
 	}
-	if !group.AllowBatchImageGeneration {
+	if !group.AllowImageGeneration {
 		return ErrBatchImageGroupDisabled
 	}
-	if group.Platform != PlatformGemini {
+	// Native Gemini/Vertex batching remains explicitly gated by the existing
+	// group switch. App-managed fan-out uses the ordinary image gateway and is
+	// available to image-enabled non-Gemini groups without changing the legacy
+	// admin group field semantics.
+	if group.Platform == PlatformGemini && !group.AllowBatchImageGeneration {
 		return ErrBatchImageGroupDisabled
 	}
 	return nil
@@ -1010,7 +1047,10 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 		if err != nil || group == nil {
 			return nil, ErrBatchImageSettlementPricingMissing
 		}
-		if !group.AllowBatchImageGeneration {
+		if !group.AllowImageGeneration {
+			return nil, ErrBatchImageGroupDisabled
+		}
+		if group.Platform == PlatformGemini && !group.AllowBatchImageGeneration {
 			return nil, ErrBatchImageGroupDisabled
 		}
 		groupDefaultMultiplier := group.RateMultiplier
@@ -1163,25 +1203,41 @@ func BatchImageJobToPublic(job *BatchImageJob) *BatchImagePublicBatch {
 		holdAmount = *job.HoldAmount
 	}
 	return &BatchImagePublicBatch{
-		ID:              job.BatchID,
-		Object:          "image.batch",
-		TaskName:        batchImagePublicTaskName(job),
-		ParentBatchID:   job.ParentBatchID,
-		Status:          PublicBatchImageStatus(job.Status),
-		Model:           job.Model,
-		Provider:        job.Provider,
-		ItemCount:       job.ItemCount,
-		SuccessCount:    job.SuccessCount,
-		FailCount:       job.FailCount,
-		EstimatedCost:   job.EstimatedCost,
-		HoldAmount:      holdAmount,
-		ActualCost:      job.ActualCost,
-		CreatedAt:       job.CreatedAt.Unix(),
-		SubmittedAt:     batchImageUnixPtr(job.SubmittedAt),
-		SettledAt:       batchImageUnixPtr(job.SettledAt),
-		DownloadedAt:    batchImageUnixPtr(job.DownloadedAt),
-		OutputDeletedAt: batchImageUnixPtr(job.OutputDeletedAt),
+		ID:               job.BatchID,
+		Object:           "image.batch",
+		TaskName:         batchImagePublicTaskName(job),
+		ParentBatchID:    job.ParentBatchID,
+		Status:           PublicBatchImageStatus(job.Status),
+		Model:            job.Model,
+		Provider:         job.Provider,
+		ExecutionMode:    batchImageExecutionMode(job.Provider),
+		ConcurrencyLimit: batchImageConcurrencyLimit(job.Provider),
+		ItemCount:        job.ItemCount,
+		SuccessCount:     job.SuccessCount,
+		FailCount:        job.FailCount,
+		EstimatedCost:    job.EstimatedCost,
+		HoldAmount:       holdAmount,
+		ActualCost:       job.ActualCost,
+		CreatedAt:        job.CreatedAt.Unix(),
+		SubmittedAt:      batchImageUnixPtr(job.SubmittedAt),
+		SettledAt:        batchImageUnixPtr(job.SettledAt),
+		DownloadedAt:     batchImageUnixPtr(job.DownloadedAt),
+		OutputDeletedAt:  batchImageUnixPtr(job.OutputDeletedAt),
 	}
+}
+
+func batchImageExecutionMode(provider string) string {
+	if provider == BatchImageProviderAppManaged {
+		return "managed_fanout"
+	}
+	return "native_batch"
+}
+
+func batchImageConcurrencyLimit(provider string) int {
+	if provider != BatchImageProviderAppManaged {
+		return 0
+	}
+	return 3
 }
 
 func BatchImageItemToPublic(item *BatchImageItem) BatchImagePublicItem {
@@ -1261,8 +1317,10 @@ func batchImageProviderPlatform(provider string) string {
 	switch provider {
 	case BatchImageProviderGeminiAPI, BatchImageProviderVertex:
 		return PlatformGemini
+	case BatchImageProviderAppManaged:
+		return "*"
 	default:
-		return PlatformGemini
+		return ""
 	}
 }
 
@@ -1270,7 +1328,7 @@ func batchImageProviderSelectionOrder(requestedProvider string) []string {
 	if strings.TrimSpace(requestedProvider) != "" {
 		return []string{strings.TrimSpace(requestedProvider)}
 	}
-	return []string{BatchImageProviderGeminiAPI, BatchImageProviderVertex}
+	return []string{BatchImageProviderGeminiAPI, BatchImageProviderVertex, BatchImageProviderAppManaged}
 }
 
 func batchImageModelsFromAccountMapping(account *Account) []string {

@@ -367,6 +367,22 @@
             </p>
             </div>
           </div>
+          <div class="mt-4 rounded-lg border border-primary-100 bg-primary-50/70 px-3 py-3 dark:border-primary-900/50 dark:bg-primary-950/20">
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span class="font-medium text-gray-800 dark:text-gray-100">{{ t('batchImage.detail.progress') }}</span>
+              <span class="tabular-nums text-gray-600 dark:text-gray-300">
+                {{ progressCompleted(currentDisplayJob || currentJob) }} / {{ (currentDisplayJob || currentJob).item_count }}
+                <span class="ml-1 text-gray-500 dark:text-gray-400">({{ progressPercent(currentDisplayJob || currentJob) }}%)</span>
+              </span>
+            </div>
+            <div class="h-2 overflow-hidden rounded-full bg-primary-100 dark:bg-dark-700" role="progressbar" :aria-valuenow="progressPercent(currentDisplayJob || currentJob)" aria-valuemin="0" aria-valuemax="100">
+              <div class="h-full rounded-full bg-primary-500 transition-all duration-300" :style="{ width: `${progressPercent(currentDisplayJob || currentJob)}%` }" />
+            </div>
+            <p class="mt-2 text-xs text-gray-600 dark:text-gray-300">
+              {{ executionModeLabel(currentDisplayJob || currentJob) }}
+              <span v-if="(currentDisplayJob || currentJob).concurrency_limit" class="ml-1">· {{ t('batchImage.detail.concurrency', { n: (currentDisplayJob || currentJob).concurrency_limit }) }}</span>
+            </p>
+          </div>
         </div>
 
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -380,11 +396,11 @@
         <div v-if="items.length" class="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
           <table class="w-full min-w-[860px] table-fixed divide-y divide-gray-200 text-sm dark:divide-dark-700">
             <colgroup>
-              <col class="w-[18%]" />
-              <col class="w-[34%]" />
+              <col class="w-[16%]" />
+              <col class="w-[31%]" />
               <col class="w-[12%]" />
               <col class="w-[10%]" />
-              <col class="w-[26%]" />
+              <col class="w-[32%]" />
             </colgroup>
             <thead class="bg-gray-50 dark:bg-dark-800/80">
               <tr>
@@ -607,6 +623,16 @@
           </div>
         </div>
 
+        <div class="rounded-lg border border-sky-200 bg-sky-50/80 px-3 py-3 text-sm leading-6 text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100">
+          <div class="flex items-start gap-2">
+            <Icon name="infoCircle" size="sm" class="mt-1 flex-shrink-0" />
+            <div>
+              <p class="font-medium">{{ t('batchImage.create.queueTitle') }}</p>
+              <p class="text-xs opacity-90">{{ t('batchImage.create.queueHint') }}</p>
+            </div>
+          </div>
+        </div>
+
         <div class="space-y-3">
           <div class="flex items-center justify-between gap-3">
             <label class="input-label mb-0">Prompt</label>
@@ -795,7 +821,7 @@ import {
 import type { ApiKey } from '@/types'
 import type { Column } from '@/components/common/types'
 
-type BatchImageJobRow = Pick<BatchImageJob, 'id' | 'task_name' | 'parent_batch_id' | 'status' | 'model' | 'provider' | 'item_count' | 'success_count' | 'fail_count' | 'estimated_cost' | 'hold_amount' | 'actual_cost' | 'created_at' | 'downloaded_at'> & {
+type BatchImageJobRow = Pick<BatchImageJob, 'id' | 'task_name' | 'parent_batch_id' | 'status' | 'model' | 'provider' | 'execution_mode' | 'concurrency_limit' | 'item_count' | 'success_count' | 'fail_count' | 'estimated_cost' | 'hold_amount' | 'actual_cost' | 'created_at' | 'downloaded_at'> & {
   api_key_id: number
   api_key_name: string
   child_count: number
@@ -938,7 +964,7 @@ const itemPreviewUrls = reactive<Record<string, string>>({})
 const previewLoadingIds = ref(new Set<string>())
 const previewErrorIds = ref(new Set<string>())
 const previewImageItem = ref<BatchImageItem | null>(null)
-const availableBatchImageModels = ref<Array<{ value: string; label: string }>>([])
+const availableBatchImageModels = ref<Array<{ value: string; label: string; provider?: string; mode?: string }>>([])
 const modelLoadError = ref('')
 const openMoreJobId = ref('')
 const moreMenuStyle = ref<Record<string, string>>({})
@@ -987,13 +1013,20 @@ let promptPopoverCloseTimer: ReturnType<typeof setTimeout> | null = null
 let promptPopoverOpenTimer: ReturnType<typeof setTimeout> | null = null
 let activePromptPopoverTarget: HTMLElement | null = null
 
-const geminiApiKeys = computed(() =>
+// A batch job can use a native provider or Sub2API's managed fan-out mode.
+// Keep the explicit group switch as the safety gate, but do not restrict the
+// Workbench keys are platform agnostic: model/provider support comes from the API response.
+const batchImageApiKeys = computed(() =>
   apiKeys.value.filter((key) =>
-    key.status === 'active' &&
-    key.group?.platform === 'gemini' &&
-    key.group?.allow_batch_image_generation === true,
+    key.status === 'active' && key.group?.status === 'active' && (
+      key.group?.allow_batch_image_generation === true ||
+      key.group?.allow_image_generation === true
+    ),
   ),
 )
+
+// Backwards-compatible alias used by the existing template/helpers.
+const geminiApiKeys = batchImageApiKeys
 
 const selectedApiKey = computed(() =>
   geminiApiKeys.value.find((key) => key.id === Number(form.apiKeyId)) || null,
@@ -1002,7 +1035,7 @@ const selectedApiKey = computed(() =>
 const apiKeyOptions = computed<SelectOption[]>(() =>
   geminiApiKeys.value.map((key) => ({
     value: key.id,
-    label: `${key.name} · ${key.group?.name || 'Gemini'}`,
+    label: `${key.name} · ${key.group?.name || t('batchImage.create.groupFallback')}`,
   })),
 )
 
@@ -1140,7 +1173,7 @@ function referenceImageLimitForModel(model: string) {
 
 const agentInstruction = computed(() => `---
 name: moshu-batch-image
-description: 当用户希望用 Gemini/Vertex 批量生成图片、批量跑提示词、下载批量生图结果、重试失败图片时使用。
+description: 当用户希望批量生成图片、批量跑提示词、下载批量生图结果、重试失败图片时使用。
 ---
 
 你是 Codex 中的批量生图执行 Agent。用户不需要手动填写页面表单；你应从当前聊天、用户给的文件、目录或上下文中整理任务名称、prompt 列表和输出目录，只有缺少关键决策时才向用户提问。
@@ -1155,7 +1188,7 @@ ${endpointBase.value}
 4. 提交前必须先计算 expected_output_count = 所有 item 的 output_count 之和。单个批量任务硬性最多 200 张输出图；超过 200 张必须拆成多组任务，不能提交一个超大任务，也不能把参考图附件上限当成生成张数上限。
 5. 如果用户提供参考图，把参考图按用途绑定到具体 item。参考图只是输入附件，不是输出图数量。模型单条限制必须按模型执行：Gemini 2.5 Flash Image 每条最多 3 张参考图；Gemini 3 Pro Image 每条最多 14 张参考图。不要把后端附件风控理解成 Pro 单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
 6. 参考图会按 output_count 重复消耗输入 token；大量任务、重复复用同一张参考图或参考图总体积较大时，优先使用 gs:// file_uri 或拆分成多组任务。
-7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。不要展示或询问内部 provider 名称。
+7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。不要展示或询问内部 provider 名称。系统会自动选择后台拆单并发执行或上游原生批量通道。
 8. 调用批量生图 API 提交、轮询、下载，不要求用户去页面里手填。
 
 API 调用规范：
@@ -1345,15 +1378,25 @@ async function loadAvailableModels() {
   try {
     const result = await listBatchImageModels(key.key)
     if (requestID !== modelRequestSeq) return
-    const seen = new Set<string>()
-    availableBatchImageModels.value = (result.data || [])
-      .map(model => String(model.id || '').trim())
-      .filter((model) => {
-        if (!model || seen.has(model)) return false
-        seen.add(model)
-        return true
-      })
-      .map(model => ({ value: model, label: model }))
+    const modelMap = new Map<string, { value: string; label: string; provider?: string; mode?: string }>()
+    for (const model of result.data || []) {
+      const value = String(model.id || '').trim()
+      if (!value) continue
+      const candidate = {
+        value,
+        label: value,
+        provider: String(model.provider || '').trim() || undefined,
+        mode: String(model.mode || model.execution_mode || '').trim() || undefined,
+      }
+      const existing = modelMap.get(value)
+      const candidateIsManaged = /managed|fanout/i.test(`${candidate.mode || ''} ${candidate.provider || ''}`)
+      const existingIsManaged = /managed|fanout/i.test(`${existing?.mode || ''} ${existing?.provider || ''}`)
+      // If the same model is exposed by both native and app-managed paths,
+      // prefer the managed fan-out entry so normal users get the stable
+      // single-image queue without having to choose an implementation mode.
+      if (!existing || (candidateIsManaged && !existingIsManaged)) modelMap.set(value, candidate)
+    }
+    availableBatchImageModels.value = [...modelMap.values()]
     form.model = availableBatchImageModels.value[0]?.value || ''
   } catch (error: any) {
     if (requestID !== modelRequestSeq) return
@@ -1403,6 +1446,8 @@ function toJobRow(job: BatchImageJob, key = selectedApiKey.value): BatchImageJob
     status: job.status,
     model: job.model,
     provider: job.provider,
+    execution_mode: job.execution_mode,
+    concurrency_limit: job.concurrency_limit,
     item_count: job.item_count,
     success_count: job.success_count,
     fail_count: job.fail_count,
@@ -1703,13 +1748,19 @@ async function submitJob() {
   if (!validateForm()) return
   const key = requireApiKey()
   if (!key) return
-	  submitting.value = true
-	  try {
+  submitting.value = true
+  try {
+    const selectedModelInfo = availableBatchImageModels.value.find(model => model.value === form.model)
+    const selectedMode = String(selectedModelInfo?.mode || selectedModelInfo?.provider || '').toLowerCase()
+    const executionProvider = selectedMode.includes('managed') || selectedMode.includes('fanout')
+      ? 'app_managed'
+      : undefined
 	    const job = await submitBatchImageJob(
 	      key.key,
 	      {
 	        model: form.model,
         task_name: form.taskName.trim() || defaultTaskName(),
+        ...(executionProvider ? { provider: executionProvider } : {}),
         image_size: '1K',
         response_mime_type: form.responseMimeType,
         items: parsedItems.value,
@@ -1742,7 +1793,12 @@ async function refreshSelected() {
     const job = await getBatchImageJob(key.key, selectedBatchId.value)
     currentJob.value = job
     upsertJob(job)
-    if (TERMINAL_STATUSES.has(job.status)) stopPolling()
+    if (TERMINAL_STATUSES.has(job.status)) {
+      stopPolling()
+      // Fetch the final per-item states once more so the progress bar and the
+      // failure list never lag behind the terminal job status.
+      void loadItems()
+    }
   } catch (error: any) {
     appStore.showError(batchImageErrorMessage(error, batchImageText('refreshFailed')))
   } finally {
@@ -1780,6 +1836,10 @@ function startPolling() {
       return
     }
     void refreshSelected()
+    // The job counters and item rows are persisted independently. Refreshing
+    // both keeps the detail dialog useful while managed fan-out workers finish
+    // individual single-image requests.
+    void loadItems()
   }, 8000)
 }
 
@@ -2371,6 +2431,23 @@ function copyInstruction() {
   void copyToClipboard(agentInstruction.value, batchImageText('copiedInstruction'))
 }
 
+function progressCompleted(job: Pick<BatchImageJob, 'status' | 'item_count' | 'success_count' | 'fail_count'> | null | undefined) {
+  if (!job) return 0
+  if (job.status === 'cancelled' || job.status === 'output_deleted') return Number(job.item_count || 0)
+  return Math.min(Math.max(Number(job.success_count || 0) + Number(job.fail_count || 0), 0), Number(job.item_count || 0))
+}
+
+function progressPercent(job: Pick<BatchImageJob, 'status' | 'item_count' | 'success_count' | 'fail_count'> | null | undefined) {
+  if (!job || !job.item_count) return 0
+  return Math.round((progressCompleted(job) / job.item_count) * 100)
+}
+
+function executionModeLabel(job: Pick<BatchImageJob, 'provider'> & { execution_mode?: string | null; concurrency_limit?: number | null }) {
+  const mode = String(job.execution_mode || job.provider || '').toLowerCase()
+  if (mode.includes('managed') || mode.includes('fanout')) return t('batchImage.detail.managedFanout')
+  return t('batchImage.detail.nativeBatch')
+}
+
 function statusLabel(jobOrStatus: BatchImageStatus | Pick<BatchImageJob, 'status' | 'success_count' | 'fail_count'>) {
   const status = typeof jobOrStatus === 'string' ? jobOrStatus : jobOrStatus.status
   if (typeof jobOrStatus !== 'string' && status === 'completed' && jobOrStatus.fail_count > 0) {
@@ -2378,6 +2455,9 @@ function statusLabel(jobOrStatus: BatchImageStatus | Pick<BatchImageJob, 'status
     return t('batchImage.status.allFailed')
   }
   const statusKeys: Record<string, string> = {
+    created: 'queued',
+    uploading: 'queued',
+    submitted: 'queued',
     queued: 'queued',
     running: 'running',
     indexing: 'processingResults',
@@ -2407,6 +2487,9 @@ function statusBadgeClass(jobOrStatus: BatchImageStatus | Pick<BatchImageJob, 's
 function itemStatusLabel(status: string) {
   const statusKeys: Record<string, string> = {
     pending: 'pending',
+    queued: 'pending',
+    processing: 'pending',
+    in_progress: 'pending',
     succeeded: 'succeeded',
     success: 'succeeded',
     failed: 'failed',

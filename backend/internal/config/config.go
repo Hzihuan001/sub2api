@@ -244,9 +244,16 @@ type BatchImageConfig struct {
 	RecoveryIntervalSeconds           int    `mapstructure:"recovery_interval_seconds"`
 	DelayedMoveLimit                  int    `mapstructure:"delayed_move_limit"`
 	RecoverLimit                      int    `mapstructure:"recover_limit"`
-	VertexEnabled                     bool   `mapstructure:"vertex_enabled"`
-	VertexProjectID                   string `mapstructure:"vertex_project_id"`
-	VertexLocation                    string `mapstructure:"vertex_location"`
+	// AppManagedEnabled enables the server-side fan-out implementation for
+	// providers without a native batch API. Each item is sent as one ordinary
+	// image request by the batch worker and settled once at the parent job.
+	AppManagedEnabled               bool   `mapstructure:"app_managed_enabled"`
+	AppManagedConcurrency           int    `mapstructure:"app_managed_concurrency"`
+	AppManagedRequestTimeoutSeconds int    `mapstructure:"app_managed_request_timeout_seconds"`
+	AppManagedResultDir             string `mapstructure:"app_managed_result_dir"`
+	VertexEnabled                   bool   `mapstructure:"vertex_enabled"`
+	VertexProjectID                 string `mapstructure:"vertex_project_id"`
+	VertexLocation                  string `mapstructure:"vertex_location"`
 	// VertexManagedGCSBucket is a server-owned bucket for batch JSONL input/output.
 	// Disable Cloud Storage soft delete on this bucket to avoid retaining deleted batch objects.
 	VertexManagedGCSBucket       string `mapstructure:"vertex_managed_gcs_bucket"`
@@ -2274,6 +2281,10 @@ func setDefaults() {
 	viper.SetDefault("batch_image.recovery_interval_seconds", 300)
 	viper.SetDefault("batch_image.delayed_move_limit", 100)
 	viper.SetDefault("batch_image.recover_limit", 100)
+	viper.SetDefault("batch_image.app_managed_enabled", true)
+	viper.SetDefault("batch_image.app_managed_concurrency", 3)
+	viper.SetDefault("batch_image.app_managed_request_timeout_seconds", 1800)
+	viper.SetDefault("batch_image.app_managed_result_dir", "./data/batch-images")
 	viper.SetDefault("batch_image.vertex_enabled", false)
 	viper.SetDefault("batch_image.vertex_project_id", "")
 	viper.SetDefault("batch_image.vertex_location", "global")
@@ -3180,6 +3191,17 @@ func (c *Config) Validate() error {
 		}
 		if c.BatchImage.RecoverLimit <= 0 {
 			return fmt.Errorf("batch_image.recover_limit must be positive")
+		}
+	}
+	if c.BatchImage.AppManagedEnabled {
+		if c.BatchImage.AppManagedConcurrency <= 0 {
+			return fmt.Errorf("batch_image.app_managed_concurrency must be positive")
+		}
+		if c.BatchImage.AppManagedRequestTimeoutSeconds <= 0 {
+			return fmt.Errorf("batch_image.app_managed_request_timeout_seconds must be positive")
+		}
+		if strings.TrimSpace(c.BatchImage.AppManagedResultDir) == "" {
+			return fmt.Errorf("batch_image.app_managed_result_dir must not be empty")
 		}
 	}
 	if c.BatchImage.VertexEnabled {
