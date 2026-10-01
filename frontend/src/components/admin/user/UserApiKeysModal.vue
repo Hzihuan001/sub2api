@@ -8,13 +8,84 @@
         <div><p class="font-medium text-gray-900 dark:text-white">{{ user.email }}</p><p class="text-sm text-gray-500 dark:text-dark-400">{{ user.username }}</p></div>
       </div>
       <div v-if="loading" class="flex justify-center py-8"><svg class="h-8 w-8 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
-      <div v-else-if="apiKeys.length === 0" class="py-8 text-center"><p class="text-sm text-gray-500">{{ t('admin.users.noApiKeys') }}</p></div>
-      <div v-else ref="scrollContainerRef" class="max-h-96 space-y-3 overflow-y-auto" @scroll="closeGroupSelector">
+      <div class="flex justify-end">
+        <button
+          v-if="!props.readOnly"
+          type="button"
+          class="btn btn-primary btn-sm"
+          data-test="create-user-api-key"
+          :disabled="creating"
+          @click="beginCreate"
+        >
+          <span class="mr-1 text-base leading-none">+</span>
+          {{ t('admin.users.createApiKey') }}
+        </button>
+      </div>
+      <form
+        v-if="!props.readOnly && showCreateForm"
+        class="space-y-3 rounded-xl border border-primary-200 bg-primary-50/50 p-4 dark:border-primary-800 dark:bg-primary-900/10"
+        data-test="create-user-api-key-form"
+        @submit.prevent="createApiKey"
+      >
+        <div>
+          <label class="input-label" for="admin-user-api-key-name">{{ t('admin.users.apiKeyName') }}</label>
+          <input
+            id="admin-user-api-key-name"
+            v-model="createName"
+            type="text"
+            required
+            maxlength="100"
+            class="input"
+            :placeholder="t('admin.users.apiKeyNamePlaceholder')"
+            data-test="create-user-api-key-name"
+          />
+        </div>
+        <div>
+          <label class="input-label" for="admin-user-api-key-group">{{ t('admin.users.group') }}</label>
+          <select id="admin-user-api-key-group" v-model="createGroupId" class="input" data-test="create-user-api-key-group">
+            <option :value="null">{{ t('admin.users.none') }}</option>
+            <option v-for="group in allGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
+          </select>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" :disabled="creating" @click="cancelCreate">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="submit" class="btn btn-primary btn-sm" :disabled="creating || !createName.trim()" data-test="submit-create-user-api-key">
+            <span v-if="creating" class="mr-1 inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            {{ creating ? t('admin.users.creatingApiKey') : t('admin.users.createApiKey') }}
+          </button>
+        </div>
+      </form>
+      <div v-if="!loading && apiKeys.length === 0" class="py-8 text-center"><p class="text-sm text-gray-500">{{ t('admin.users.noApiKeys') }}</p></div>
+      <div v-else-if="!loading" ref="scrollContainerRef" class="max-h-96 space-y-3 overflow-y-auto" @scroll="closeGroupSelector">
         <div v-for="key in apiKeys" :key="key.id" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-600 dark:bg-dark-800">
-          <div class="flex items-start justify-between">
+          <div class="flex items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
               <div class="mb-1 flex items-center gap-2"><span class="font-medium text-gray-900 dark:text-white">{{ key.name }}</span><span :class="['badge text-xs', key.status === 'active' ? 'badge-success' : 'badge-danger']">{{ key.status }}</span></div>
               <p class="truncate font-mono text-sm text-gray-500">{{ key.key.substring(0, 20) }}...{{ key.key.substring(key.key.length - 8) }}</p>
+            </div>
+            <div class="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                class="rounded-lg px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                :title="t('admin.users.copyApiKey')"
+                data-test="copy-user-api-key"
+                @click="copyApiKey(key)"
+              >
+                {{ t('admin.users.copyApiKey') }}
+              </button>
+              <button
+                v-if="!props.readOnly"
+                type="button"
+                class="rounded-lg px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                :title="t('admin.users.deleteApiKey')"
+                data-test="delete-user-api-key"
+                :disabled="deletingKeyId === key.id"
+                @click="requestDelete(key)"
+              >
+                {{ t('common.delete') }}
+              </button>
             </div>
           </div>
           <div class="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
@@ -61,6 +132,17 @@
       </div>
     </div>
   </BaseDialog>
+
+  <ConfirmDialog
+    :show="showDeleteDialog"
+    :title="t('admin.users.deleteApiKey')"
+    :message="t('admin.users.deleteApiKeyConfirm', { name: deletingKey?.name || '' })"
+    :confirm-text="t('common.delete')"
+    :cancel-text="t('common.cancel')"
+    :danger="true"
+    @confirm="deleteApiKey"
+    @cancel="cancelDelete"
+  />
 
   <!-- Group Selector Dropdown -->
   <Teleport to="body">
@@ -123,9 +205,11 @@ import { ref, computed, watch, onMounted, onUnmounted, type ComponentPublicInsta
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { useClipboard } from '@/composables/useClipboard'
 import { formatDateTime } from '@/utils/format'
 import type { AdminUser, AdminGroup, ApiKey } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 
@@ -135,6 +219,7 @@ const props = withDefaults(defineProps<{ show: boolean; user: AdminUser | null; 
 const emit = defineEmits(['close'])
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
 
 const apiKeys = ref<ApiKey[]>([])
 const allGroups = ref<AdminGroup[]>([])
@@ -146,6 +231,13 @@ const dropdownPosition = ref<{ top: number; left: number } | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const scrollContainerRef = ref<HTMLElement | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+const showCreateForm = ref(false)
+const createName = ref('')
+const createGroupId = ref<number | null>(null)
+const creating = ref(false)
+const showDeleteDialog = ref(false)
+const deletingKey = ref<ApiKey | null>(null)
+const deletingKeyId = ref<number | null>(null)
 
 const selectedKeyForGroup = computed(() => {
   if (groupSelectorKeyId.value === null) return null
@@ -166,8 +258,12 @@ watch(() => [props.show, props.user?.id] as const, ([show], _, onCleanup) => {
   if (show && props.user) {
     load()
     if (!props.readOnly) loadGroups()
+    showCreateForm.value = false
+    createName.value = ''
+    createGroupId.value = null
   } else {
     closeGroupSelector()
+    showCreateForm.value = false
   }
 })
 
@@ -194,6 +290,73 @@ const loadGroups = async () => {
     allGroups.value = groups
   } catch (error) {
     console.error('Failed to load groups:', error)
+  }
+}
+
+const beginCreate = () => {
+  createName.value = ''
+  createGroupId.value = null
+  showCreateForm.value = true
+}
+
+const cancelCreate = () => {
+  if (creating.value) return
+  showCreateForm.value = false
+}
+
+const createApiKey = async () => {
+  if (props.readOnly || !props.user) return
+  const name = createName.value.trim()
+  if (!name || creating.value) return
+
+  creating.value = true
+  try {
+    const key = await adminAPI.users.createUserApiKey(props.user.id, {
+      name,
+      group_id: createGroupId.value
+    })
+    apiKeys.value.unshift(key)
+    showCreateForm.value = false
+    createName.value = ''
+    createGroupId.value = null
+    appStore.showSuccess(t('admin.users.apiKeyCreated'))
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.users.apiKeyCreateFailed'))
+  } finally {
+    creating.value = false
+  }
+}
+
+const copyApiKey = async (key: ApiKey) => {
+  await copyToClipboard(key.key, t('admin.users.apiKeyCopied'))
+}
+
+const requestDelete = (key: ApiKey) => {
+  if (props.readOnly) return
+  deletingKey.value = key
+  showDeleteDialog.value = true
+}
+
+const cancelDelete = () => {
+  if (deletingKeyId.value !== null) return
+  deletingKey.value = null
+  showDeleteDialog.value = false
+}
+
+const deleteApiKey = async () => {
+  if (props.readOnly || !deletingKey.value || deletingKeyId.value !== null) return
+  const key = deletingKey.value
+  deletingKeyId.value = key.id
+  try {
+    await adminAPI.apiKeys.deleteApiKey(key.id)
+    apiKeys.value = apiKeys.value.filter((item) => item.id !== key.id)
+    appStore.showSuccess(t('admin.users.apiKeyDeleted'))
+    showDeleteDialog.value = false
+    deletingKey.value = null
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.users.apiKeyDeleteFailed'))
+  } finally {
+    deletingKeyId.value = null
   }
 }
 
@@ -269,6 +432,9 @@ const handleClickOutside = (event: MouseEvent) => {
 
 const handleClose = () => {
   closeGroupSelector()
+  showCreateForm.value = false
+  showDeleteDialog.value = false
+  deletingKey.value = null
   emit('close')
 }
 

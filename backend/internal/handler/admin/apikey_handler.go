@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"context"
 	"strconv"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -13,6 +15,15 @@ import (
 // AdminAPIKeyHandler handles admin API key management
 type AdminAPIKeyHandler struct {
 	adminService service.AdminService
+}
+
+// adminAPIKeyMutator is intentionally narrower than AdminService.  The
+// concrete admin service owns the regular APIKeyService so these operations
+// reuse key generation, validation, soft deletion and cache invalidation
+// without widening every AdminService test double.
+type adminAPIKeyMutator interface {
+	AdminCreateAPIKey(ctx context.Context, userID int64, req service.CreateAPIKeyRequest) (*service.APIKey, error)
+	AdminDeleteAPIKey(ctx context.Context, keyID, userID int64) error
 }
 
 // NewAdminAPIKeyHandler creates a new admin API key handler
@@ -73,4 +84,66 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		GrantedGroupName:       result.GrantedGroupName,
 	}
 	response.Success(c, resp)
+}
+
+// CreateForUser creates a new randomly generated key for the selected user.
+// POST /api/v1/admin/users/:id/api-keys
+func (h *AdminAPIKeyHandler) CreateForUser(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	var req service.CreateAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		response.BadRequest(c, "name is required")
+		return
+	}
+
+	mutator, ok := h.adminService.(adminAPIKeyMutator)
+	if !ok {
+		response.Error(c, 500, "API_KEY_SERVICE_UNAVAILABLE: api key service is not configured")
+		return
+	}
+	key, err := mutator.AdminCreateAPIKey(c.Request.Context(), userID, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"api_key": dto.APIKeyFromService(key)})
+}
+
+// Delete handles deleting a key from the user-management view.  The target
+// owner is resolved before deletion so a global key ID can never be used to
+// delete another user's key through this endpoint.
+// DELETE /api/v1/admin/api-keys/:id
+func (h *AdminAPIKeyHandler) Delete(c *gin.Context) {
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || keyID <= 0 {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+	lookup, err := h.adminService.AdminUpdateAPIKeyGroupID(c.Request.Context(), keyID, nil)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if lookup == nil || lookup.APIKey == nil {
+		response.NotFound(c, "API key not found")
+		return
+	}
+	mutator, ok := h.adminService.(adminAPIKeyMutator)
+	if !ok {
+		response.Error(c, 500, "API_KEY_SERVICE_UNAVAILABLE: api key service is not configured")
+		return
+	}
+	if err := mutator.AdminDeleteAPIKey(c.Request.Context(), keyID, lookup.APIKey.UserID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "API key deleted successfully"})
 }

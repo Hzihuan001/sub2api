@@ -213,6 +213,7 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
 		apiKeys.PUT("/:id", h.Admin.APIKey.OperatorTargetUserWriteGuard(), h.Admin.APIKey.UpdateGroup)
+		apiKeys.DELETE("/:id", h.Admin.APIKey.OperatorTargetUserWriteGuard(), h.Admin.APIKey.Delete)
 	}
 }
 
@@ -336,6 +337,7 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.GET("", h.Admin.User.List)
 		users.GET("/:id", h.Admin.User.GetByID)
 		users.POST("/:id/auth-identities", operatorTargetWrite, h.Admin.User.BindAuthIdentity)
+		users.POST("/:id/api-keys", operatorTargetWrite, h.Admin.APIKey.CreateForUser)
 		users.POST("", h.Admin.User.Create)
 		users.PUT("/:id", operatorTargetWrite, h.Admin.User.Update)
 		users.DELETE("/:id", operatorTargetWrite, h.Admin.User.Delete)

@@ -3,15 +3,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UserApiKeysModal from '../UserApiKeysModal.vue'
 import type { AdminUser } from '@/types'
 
-const { getKeys } = vi.hoisted(() => ({ getKeys: vi.fn() }))
+const { getKeys, createKey, deleteKey, copyToClipboard } = vi.hoisted(() => ({
+  getKeys: vi.fn(),
+  createKey: vi.fn(),
+  deleteKey: vi.fn(),
+  copyToClipboard: vi.fn().mockResolvedValue(true)
+}))
 vi.mock('@/api/admin', () => ({ adminAPI: {
-  users: { getUserApiKeys: getKeys }, groups: { getAll: vi.fn().mockResolvedValue([]) },
+  users: { getUserApiKeys: getKeys, createUserApiKey: createKey },
+  groups: { getAll: vi.fn().mockResolvedValue([]) },
+  apiKeys: { updateApiKeyGroup: vi.fn(), deleteApiKey: deleteKey },
 } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
+vi.mock('@/composables/useClipboard', () => ({ useClipboard: () => ({ copyToClipboard }) }))
 vi.mock('@/utils/format', () => ({ formatDateTime: (value: string) => value }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 enableAutoUnmount(afterEach)
-beforeEach(() => { getKeys.mockReset(); vi.spyOn(console, 'error').mockImplementation(() => {}) })
+beforeEach(() => {
+  getKeys.mockReset()
+  createKey.mockReset()
+  deleteKey.mockReset()
+  copyToClipboard.mockClear()
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+})
 afterEach(() => vi.restoreAllMocks())
 function deferred() {
   let resolve!: (value: unknown) => void
@@ -26,6 +40,7 @@ async function open() {
     props: { show: false, user: user(1) },
     global: { stubs: {
       BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /></div>' },
+      ConfirmDialog: { props: ['show'], emits: ['confirm', 'cancel'], template: '<div v-if="show"><button data-test="confirm-delete" @click="$emit(\'confirm\')">confirm</button><button data-test="cancel-delete" @click="$emit(\'cancel\')">cancel</button></div>' },
       GroupBadge: true, GroupOptionItem: true,
     } },
   })
@@ -76,5 +91,62 @@ describe('user API key loading', () => {
     expect(getKeys).toHaveBeenLastCalledWith(2)
     expect(wrapper.text()).toContain('second-user-key')
     expect(wrapper.text()).not.toContain('first-user-key')
+  })
+})
+
+describe('user API key actions', () => {
+  it('creates a key for the selected user', async () => {
+    getKeys.mockResolvedValue(keys(1, 'existing-key'))
+    const created = { ...keys(2, 'created-key').items[0], user_id: 1 }
+    createKey.mockResolvedValue(created)
+    const wrapper = await open(); await flushPromises()
+
+    await wrapper.find('[data-test="create-user-api-key"]').trigger('click')
+    await wrapper.find('[data-test="create-user-api-key-name"]').setValue('new key')
+    await wrapper.find('[data-test="create-user-api-key-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(createKey).toHaveBeenCalledWith(1, { name: 'new key', group_id: null })
+    expect(wrapper.text()).toContain('created-key')
+  })
+
+  it('copies the full API key value', async () => {
+    getKeys.mockResolvedValue(keys(1, 'copy-key'))
+    const wrapper = await open(); await flushPromises()
+
+    await wrapper.find('[data-test="copy-user-api-key"]').trigger('click')
+
+    expect(copyToClipboard).toHaveBeenCalledWith('sk-example-key-value-for-tests', 'admin.users.apiKeyCopied')
+  })
+
+  it('deletes a key after confirmation', async () => {
+    getKeys.mockResolvedValue(keys(1, 'delete-key'))
+    deleteKey.mockResolvedValue({ message: 'deleted' })
+    const wrapper = await open(); await flushPromises()
+
+    await wrapper.find('[data-test="delete-user-api-key"]').trigger('click')
+    await wrapper.find('[data-test="confirm-delete"]').trigger('click')
+    await flushPromises()
+
+    expect(deleteKey).toHaveBeenCalledWith(1)
+    expect(wrapper.text()).not.toContain('delete-key')
+  })
+
+  it('keeps copy available but hides mutations in read-only mode', async () => {
+    getKeys.mockResolvedValue(keys(1, 'read-only-key'))
+    const wrapper = mount(UserApiKeysModal, {
+      props: { show: false, user: user(1), readOnly: true },
+      global: { stubs: {
+        BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /></div>' },
+        ConfirmDialog: true,
+        GroupBadge: true, GroupOptionItem: true,
+      } },
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="copy-user-api-key"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="create-user-api-key"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="delete-user-api-key"]').exists()).toBe(false)
   })
 })

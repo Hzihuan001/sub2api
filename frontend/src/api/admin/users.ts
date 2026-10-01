@@ -227,6 +227,22 @@ export async function getUserApiKeys(id: number): Promise<PaginatedResponse<ApiK
 }
 
 /**
+ * Create an API key for a user from the admin user-management view.
+ * The API returns the key in an `api_key` envelope so the response shape is
+ * consistent with other admin API key operations.
+ */
+export async function createUserApiKey(
+  id: number,
+  payload: { name: string; group_id?: number | null }
+): Promise<ApiKey> {
+  const { data } = await apiClient.post<{ api_key: ApiKey }>(
+    `/admin/users/${id}/api-keys`,
+    payload
+  )
+  return data.api_key
+}
+
+/**
  * Get user's usage statistics
  * @param id - User ID
  * @param period - Time period
@@ -417,6 +433,7 @@ export const usersAPI = {
   batchUpdateLimits,
   toggleStatus,
   getUserApiKeys,
+  createUserApiKey,
   getUserUsageStats,
   getUserBalanceHistory,
   replaceGroup,

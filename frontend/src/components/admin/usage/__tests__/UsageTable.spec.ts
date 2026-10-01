@@ -191,6 +191,7 @@ describe('admin UsageTable tooltip', () => {
         }],
         loading: false,
         columns: [],
+        showCacheHitRate: true,
       },
       global: {
         stubs: {
@@ -224,6 +225,7 @@ describe('admin UsageTable tooltip', () => {
         }],
         loading: false,
         columns: [],
+        showCacheHitRate: true,
       },
       global: {
         stubs: {
@@ -242,6 +244,41 @@ describe('admin UsageTable tooltip', () => {
 
     expect(wrapper.text()).toContain('Cache Hit Rate')
     expect(wrapper.text()).toContain('--')
+  })
+
+  it('hides cache hit rate from callers that do not have the admin usage view', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-user-cache-hit-rate',
+          billing_mode: 'token',
+          input_tokens: 1_107,
+          output_tokens: 130,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 205_440,
+          image_count: 0,
+        }],
+        loading: false,
+        columns: [],
+        showCacheHitRate: false,
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="cache-hit-rate"]').exists()).toBe(false)
+
+    await wrapper.find('.group.relative').trigger('mouseenter')
+    await nextTick()
+
+    expect(wrapper.text()).not.toContain('Cache Hit Rate')
   })
 
   it('keeps the request type badge and adds a separate badge only for native compaction rows', () => {

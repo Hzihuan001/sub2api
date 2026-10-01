@@ -387,6 +387,7 @@ func buildOperatorRoutes() map[routeKey]Permission {
 		"/api/v1/admin/users/:id/attributes", "/api/v1/admin/users/:id/subscriptions")
 	add(PermissionUsersWrite, http.MethodPost,
 		"/api/v1/admin/users", "/api/v1/admin/users/:id/auth-identities",
+		"/api/v1/admin/users/:id/api-keys",
 		"/api/v1/admin/users/:id/replace-group",
 		"/api/v1/admin/users/batch-concurrency", "/api/v1/admin/users/batch-limits",
 		"/api/v1/admin/users/:id/platform-quotas/reset")
@@ -395,6 +396,7 @@ func buildOperatorRoutes() map[routeKey]Permission {
 		"/api/v1/admin/users/:id", "/api/v1/admin/users/:id/platform-quotas",
 		"/api/v1/admin/users/:id/attributes")
 	add(PermissionUsersWrite, http.MethodDelete, "/api/v1/admin/users/:id")
+	add(PermissionUsersWrite, http.MethodDelete, "/api/v1/admin/api-keys/:id")
 	add(PermissionUsersSupport, http.MethodGet,
 		"/api/v1/admin/groups/all", "/api/v1/admin/user-attributes")
 	add(PermissionUsersSupport, http.MethodPost, "/api/v1/admin/user-attributes/batch")

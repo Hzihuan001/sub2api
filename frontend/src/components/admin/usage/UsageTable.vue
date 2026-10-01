@@ -172,6 +172,7 @@
                   <svg class="h-3.5 w-3.5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
                   <span class="font-medium text-sky-600 dark:text-sky-400">{{ formatCacheTokens(row.cache_read_tokens) }}</span>
                   <span
+                    v-if="showCacheHitRate"
                     data-testid="cache-hit-rate"
                     class="font-medium text-emerald-600 dark:text-emerald-400"
                   >{{ formatCacheHitRate(row) }}</span>
@@ -388,7 +389,7 @@
               <span class="text-gray-400">{{ t('admin.usage.cacheReadTokens') }}</span>
               <span class="font-medium text-white">{{ tokenTooltipData.cache_read_tokens.toLocaleString() }}</span>
             </div>
-            <div v-if="tokenTooltipData" class="flex items-center justify-between gap-4">
+            <div v-if="showCacheHitRate && tokenTooltipData" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheHitRate') }}</span>
               <span class="font-medium text-emerald-300">{{ formatCacheHitRate(tokenTooltipData) }}</span>
             </div>
@@ -609,6 +610,8 @@ interface Props {
   showStandardCost?: boolean
   showAccountCost?: boolean
   showUpstreamEndpoint?: boolean
+  /** 管理员明细显示缓存命中率；用户明细仅显示缓存 token 数量。 */
+  showCacheHitRate?: boolean
   /** 嵌入统一卡片内使用：去掉自身卡片外观 */
   flat?: boolean
 }
@@ -623,6 +626,7 @@ const props = withDefaults(defineProps<Props>(), {
   showStandardCost: true,
   showAccountCost: true,
   showUpstreamEndpoint: true,
+  showCacheHitRate: false,
   flat: false
 })
 const emit = defineEmits<{
@@ -638,6 +642,7 @@ const showUserCharge = props.showUserCharge
 const showStandardCost = props.showStandardCost
 const showAccountCost = props.showAccountCost
 const showUpstreamEndpoint = props.showUpstreamEndpoint
+const showCacheHitRate = props.showCacheHitRate
 const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))

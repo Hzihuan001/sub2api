@@ -139,6 +139,7 @@
             :show-user-charge="canSeeUserCharge"
             :show-standard-cost="canSeeStandardCost"
             :show-account-cost="canSeeUpstreamCost"
+            :show-cache-hit-rate="true"
             @sort="handleSort"
             @userClick="handleUserClick"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"

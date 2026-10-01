@@ -26,8 +26,18 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
   return data
 }
 
+/**
+ * Delete an API key from the admin user-management view.
+ * Ownership and operator permissions are enforced by the server.
+ */
+export async function deleteApiKey(id: number): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(`/admin/api-keys/${id}`)
+  return data
+}
+
 export const apiKeysAPI = {
-  updateApiKeyGroup
+  updateApiKeyGroup,
+  deleteApiKey
 }
 
 export default apiKeysAPI

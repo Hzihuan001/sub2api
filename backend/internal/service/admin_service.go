@@ -714,6 +714,7 @@ type adminServiceImpl struct {
 	accountBillingRepo   AccountBillingSettingsRepository
 	proxyRepo            ProxyRepository
 	apiKeyRepo           APIKeyRepository
+	apiKeyService        *APIKeyService
 	redeemCodeRepo       RedeemCodeRepository
 	userGroupRateRepo    UserGroupRateRepository
 	userRPMCache         UserRPMCache
@@ -756,6 +757,7 @@ func NewAdminService(
 	accountRepo AdminAccountRepository,
 	proxyRepo ProxyRepository,
 	apiKeyRepo APIKeyRepository,
+	apiKeyService *APIKeyService,
 	redeemCodeRepo RedeemCodeRepository,
 	userGroupRateRepo UserGroupRateRepository,
 	userRPMCache UserRPMCache,
@@ -785,6 +787,7 @@ func NewAdminService(
 		accountBillingRepo:   accountRepo,
 		proxyRepo:            proxyRepo,
 		apiKeyRepo:           apiKeyRepo,
+		apiKeyService:        apiKeyService,
 		redeemCodeRepo:       redeemCodeRepo,
 		userGroupRateRepo:    userGroupRateRepo,
 		userRPMCache:         userRPMCache,

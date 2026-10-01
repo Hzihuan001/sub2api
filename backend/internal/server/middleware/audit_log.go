@@ -135,6 +135,8 @@ var auditActionOverrides = map[string]string{
 	"DELETE /api/v1/admin/backups/:id":                        "admin.backups.delete",
 	"PUT /api/v1/admin/backups/s3-config":                     "admin.backups.s3_config.update",
 	"POST /api/v1/admin/settings/admin-api-key/regenerate":    "admin.admin_api_key.regenerate",
+	"POST /api/v1/admin/users/:id/api-keys":                   "admin.users.api_keys.create",
+	"DELETE /api/v1/admin/api-keys/:id":                       "admin.api_keys.delete",
 	"DELETE /api/v1/admin/settings/admin-api-key":             "admin.admin_api_key.delete",
 	"PUT /api/v1/admin/prompt-audit/config":                   "admin.prompt_audit.config.update",
 	"POST /api/v1/admin/prompt-audit/endpoints/probe":         "admin.prompt_audit.endpoint.probe",
