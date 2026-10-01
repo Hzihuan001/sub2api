@@ -42,10 +42,13 @@
         </div>
         <div>
           <label class="input-label" for="admin-user-api-key-group">{{ t('admin.users.group') }}</label>
-          <select id="admin-user-api-key-group" v-model="createGroupId" class="input" data-test="create-user-api-key-group">
-            <option :value="null">{{ t('admin.users.none') }}</option>
-            <option v-for="group in allGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
-          </select>
+          <Select
+            id="admin-user-api-key-group"
+            v-model="createGroupId"
+            :options="createGroupOptions"
+            :searchable="false"
+            data-test="create-user-api-key-group"
+          />
         </div>
         <div class="flex justify-end gap-2">
           <button type="button" class="btn btn-secondary btn-sm" :disabled="creating" @click="cancelCreate">
@@ -212,6 +215,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 
 const props = withDefaults(defineProps<{ show: boolean; user: AdminUser | null; readOnly?: boolean }>(), {
   readOnly: false
@@ -238,6 +242,11 @@ const creating = ref(false)
 const showDeleteDialog = ref(false)
 const deletingKey = ref<ApiKey | null>(null)
 const deletingKeyId = ref<number | null>(null)
+
+const createGroupOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.users.none') },
+  ...(allGroups.value ?? []).map((group) => ({ value: group.id, label: group.name }))
+])
 
 const selectedKeyForGroup = computed(() => {
   if (groupSelectorKeyId.value === null) return null
@@ -287,7 +296,7 @@ const load = async () => {
 const loadGroups = async () => {
   try {
     const groups = await adminAPI.groups.getAll()
-    allGroups.value = groups
+    allGroups.value = groups || []
   } catch (error) {
     console.error('Failed to load groups:', error)
   }
