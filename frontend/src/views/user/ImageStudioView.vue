@@ -112,6 +112,23 @@
               </label>
             </div>
 
+            <div v-if="form.size === 'custom'" class="rounded-xl border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-900/60 dark:bg-violet-950/20">
+              <div class="grid grid-cols-2 gap-3">
+                <label class="block">
+                  <span class="input-label">{{ t('imageStudio.customWidth') }}</span>
+                  <input v-model.number="customWidth" type="number" min="256" max="3840" step="16" class="input mt-1 w-full" :disabled="generating" />
+                </label>
+                <label class="block">
+                  <span class="input-label">{{ t('imageStudio.customHeight') }}</span>
+                  <input v-model.number="customHeight" type="number" min="256" max="3840" step="16" class="input mt-1 w-full" :disabled="generating" />
+                </label>
+              </div>
+              <p class="input-hint mt-2" :class="customSize ? '' : 'text-red-600 dark:text-red-400'">
+                {{ customSize || t('imageStudio.errors.invalidCustomSize') }}
+              </p>
+              <p class="input-hint mt-1">{{ t('imageStudio.customSizeHint') }}</p>
+            </div>
+
             <div v-if="generationError" role="alert" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">
               {{ generationError }}
             </div>
@@ -164,7 +181,9 @@
                   <p class="line-clamp-2 min-h-10 text-sm text-gray-700 dark:text-dark-200" :title="item.prompt">{{ item.prompt }}</p>
                   <div class="flex flex-wrap gap-1.5 text-[11px] text-gray-500 dark:text-dark-300">
                     <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-dark-700">{{ item.model }}</span>
-                    <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-dark-700">{{ item.size || 'auto' }}</span>
+                    <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-dark-700">{{ t('imageStudio.requestedSize') }}: {{ item.size || 'auto' }}</span>
+                    <span v-if="item.actualSize" class="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">{{ t('imageStudio.actualSize') }}: {{ item.actualSize }}</span>
+                    <span v-if="item.actualSize && item.size !== 'auto' && item.actualSize !== item.size" class="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">{{ t('imageStudio.sizeMismatch') }}</span>
                     <span v-if="!item.persisted" class="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">{{ t('imageStudio.temporary') }}</span>
                   </div>
                   <div class="flex items-center justify-between gap-2">
@@ -190,6 +209,10 @@
         </div>
         <div class="rounded-xl bg-gray-50 p-4 text-sm dark:bg-dark-800">
           <p class="whitespace-pre-wrap text-gray-800 dark:text-dark-100">{{ previewItem.prompt }}</p>
+          <p class="mt-2 text-xs text-gray-500 dark:text-dark-300">
+            {{ t('imageStudio.requestedSize') }}: {{ previewItem.size || 'auto' }}
+            <span v-if="previewItem.actualSize"> · {{ t('imageStudio.actualSize') }}: {{ previewItem.actualSize }}</span>
+          </p>
           <p v-if="previewItem.revisedPrompt" class="mt-2 border-t border-gray-200 pt-2 text-gray-500 dark:border-dark-700 dark:text-dark-300">{{ previewItem.revisedPrompt }}</p>
         </div>
       </div>
@@ -233,6 +256,12 @@ import {
   saveStoredStudioImages,
   type StoredStudioImage,
 } from '@/features/image-studio/library'
+import {
+  IMAGE_STUDIO_CUSTOM_SIZE,
+  detectImageDimensions,
+  normalizeCustomImageSize,
+  parseImageDimensions,
+} from '@/features/image-studio/size'
 
 interface InputImage {
   file: File
@@ -246,6 +275,7 @@ interface GalleryItem {
   revisedPrompt?: string
   model: string
   size: string
+  actualSize?: string
   outputFormat: string
   apiKeyName: string
   url: string
@@ -285,6 +315,8 @@ const form = reactive({
   background: 'auto',
   inputFidelity: 'auto',
 })
+const customWidth = ref(1024)
+const customHeight = ref(1024)
 
 const selectedKey = computed(() => apiKeys.value.find((key) => String(key.id) === String(form.apiKeyId)) || null)
 const galleryItems = computed(() => [...temporaryGallery.value, ...storedGallery.value].sort((a, b) => b.createdAt - a.createdAt))
@@ -293,14 +325,20 @@ const apiKeyOptions = computed(() => [
   ...apiKeys.value.map((key) => ({ value: String(key.id), label: `${key.name} · ${key.group?.name || key.group?.platform || '—'}` })),
 ])
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
-const canGenerate = computed(() => !!selectedKey.value && !!form.model.trim() && !!form.prompt.trim() && !generating.value)
+const customSize = computed(() => normalizeCustomImageSize(customWidth.value, customHeight.value))
+const requestSize = computed(() => form.size === IMAGE_STUDIO_CUSTOM_SIZE ? (customSize.value || '') : form.size)
+const canGenerate = computed(() => !!selectedKey.value && !!form.model.trim() && !!form.prompt.trim() && !!requestSize.value && !generating.value)
 const sizeOptions = computed(() => [
   { value: 'auto', label: t('imageStudio.auto') },
   { value: '1024x1024', label: '1024 × 1024' },
   { value: '1536x1024', label: '1536 × 1024' },
   { value: '1024x1536', label: '1024 × 1536' },
+  { value: '2048x2048', label: '2048 × 2048' },
+  { value: '2048x1536', label: '2048 × 1536' },
+  { value: '1536x2048', label: '1536 × 2048' },
   { value: '2048x1152', label: '2048 × 1152' },
   { value: '1152x2048', label: '1152 × 2048' },
+  { value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('imageStudio.customSize') },
 ])
 const countOptions = [1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))
 const qualityOptions = computed(() => [
@@ -424,6 +462,17 @@ function makeID(): string {
   return globalThis.crypto?.randomUUID?.() || `studio-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
+function selectImageSize(value: string): void {
+  const dimensions = parseImageDimensions(value)
+  if (!dimensions || sizeOptions.value.some((option) => option.value === value)) {
+    form.size = value
+    return
+  }
+  customWidth.value = dimensions.width
+  customHeight.value = dimensions.height
+  form.size = IMAGE_STUDIO_CUSTOM_SIZE
+}
+
 async function outputToBlob(output: { b64Json?: string; url?: string }, format: string): Promise<Blob | null> {
   if (output.b64Json) return base64ImageToBlob(output.b64Json, format)
   if (!output.url) return null
@@ -440,6 +489,10 @@ async function outputToBlob(output: { b64Json?: string; url?: string }, format: 
 async function generate(): Promise<void> {
   const key = selectedKey.value
   if (!key || !form.model.trim() || !form.prompt.trim()) return
+  if (!requestSize.value) {
+    generationError.value = t('imageStudio.errors.invalidCustomSize')
+    return
+  }
   generationController?.abort()
   const controller = new AbortController()
   generationController = controller
@@ -448,7 +501,7 @@ async function generate(): Promise<void> {
   try {
     const outputs = await generateImageStudioImages(key.key, {
       model: form.model.trim(), prompt: form.prompt.trim(), count: Number(form.count) || 1,
-      size: form.size, quality: form.quality, outputFormat: form.outputFormat,
+      size: requestSize.value, quality: form.quality, outputFormat: form.outputFormat,
       background: form.background, inputFidelity: form.inputFidelity,
       images: inputImages.value.map((item) => item.file), mask: maskFile.value,
     }, controller.signal)
@@ -458,9 +511,10 @@ async function generate(): Promise<void> {
     for (let index = 0; index < outputs.length; index += 1) {
       const output = outputs[index]
       const blob = await outputToBlob(output, form.outputFormat)
+      const actualSize = blob ? await detectImageDimensions(blob) : undefined
       const metadata = {
         id: makeID(), createdAt: now + index, prompt: form.prompt.trim(), revisedPrompt: output.revisedPrompt,
-        model: form.model.trim(), size: form.size, outputFormat: form.outputFormat, apiKeyName: key.name,
+        model: form.model.trim(), size: requestSize.value, actualSize, outputFormat: form.outputFormat, apiKeyName: key.name,
       }
       if (blob) {
         stored.push({ ...metadata, blob, bytes: blob.size })
@@ -565,7 +619,7 @@ function downloadItem(item: GalleryItem): void {
 function reuseItem(item: GalleryItem): void {
   form.prompt = item.prompt
   form.model = item.model
-  form.size = item.size || 'auto'
+  selectImageSize(item.size || 'auto')
   previewItem.value = null
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }

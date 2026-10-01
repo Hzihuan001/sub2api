@@ -1,0 +1,27 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  IMAGE_STUDIO_CUSTOM_SIZE,
+  normalizeCustomImageSize,
+  parseImageDimensions,
+} from '../size'
+
+describe('image studio size helpers', () => {
+  it('accepts official-style custom dimensions and normalizes them', () => {
+    expect(normalizeCustomImageSize(2048, 2048)).toBe('2048x2048')
+    expect(normalizeCustomImageSize('2048', '1152')).toBe('2048x1152')
+  })
+
+  it('rejects sizes that are not aligned, too large, or outside the supported aspect ratio', () => {
+    expect(normalizeCustomImageSize(1025, 1024)).toBeNull()
+    expect(normalizeCustomImageSize(3840, 3840)).toBeNull()
+    expect(normalizeCustomImageSize(4096, 256)).toBeNull()
+    expect(normalizeCustomImageSize(256, 1024)).toBeNull()
+  })
+
+  it('parses persisted custom sizes and keeps the custom option distinct', () => {
+    expect(parseImageDimensions(' 2048 x 2048 ')).toEqual({ width: 2048, height: 2048 })
+    expect(parseImageDimensions(IMAGE_STUDIO_CUSTOM_SIZE)).toBeNull()
+    expect(parseImageDimensions('1024×1024')).toBeNull()
+  })
+})

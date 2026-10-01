@@ -12,6 +12,7 @@ export interface StoredStudioImage {
   revisedPrompt?: string
   model: string
   size: string
+  actualSize?: string
   outputFormat: string
   apiKeyName: string
   blob: Blob

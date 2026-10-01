@@ -88,6 +88,7 @@ describe('imageStudio API', () => {
       model: 'gpt-image-1',
       prompt: 'make it blue',
       count: 1,
+      size: '2048x2048',
       inputFidelity: 'high',
       images: [image],
       mask,
@@ -99,6 +100,7 @@ describe('imageStudio API', () => {
     expect(options?.body).toBeInstanceOf(FormData)
     const form = options?.body as FormData
     expect(form.get('prompt')).toBe('make it blue')
+    expect(form.get('size')).toBe('2048x2048')
     expect(form.get('input_fidelity')).toBe('high')
     expect(form.getAll('image')).toHaveLength(1)
     expect((form.get('image') as File).name).toBe('reference.png')
