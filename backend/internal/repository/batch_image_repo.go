@@ -808,6 +808,14 @@ RETURNING `+batchImageJobColumns,
 }
 
 func createBatchImageItemWithSQL(ctx context.Context, sqlq batchImageSQLExecutor, params service.CreateBatchImageItemParams) (*service.BatchImageItem, error) {
+	// The migration keeps input_payload nullable for items created by older
+	// clients and for native providers. Passing a zero-length []byte directly
+	// to PostgreSQL's jsonb codec is not NULL or valid JSON, so normalize the
+	// optional value before binding it.
+	var inputPayload any
+	if len(params.InputPayload) > 0 {
+		inputPayload = params.InputPayload
+	}
 	return scanBatchImageItem(sqlq.QueryRowContext(ctx, `
 INSERT INTO batch_image_items (
     job_id, custom_id, status, request_hash, prompt_preview, input_payload, provider_source_object,
@@ -821,7 +829,7 @@ INSERT INTO batch_image_items (
     $14, $15, $16, $17
 )
 RETURNING `+batchImageItemColumns,
-		params.JobID, params.CustomID, params.Status, params.RequestHash, params.PromptPreview, params.InputPayload, params.ProviderSourceObject,
+		params.JobID, params.CustomID, params.Status, params.RequestHash, params.PromptPreview, inputPayload, params.ProviderSourceObject,
 		params.SourceLineNumber, params.SourceByteOffset, params.SourceByteLength,
 		params.MimeType, params.FileExtension, params.ImageCount,
 		params.ErrorCode, params.ErrorMessage, params.BilledAmount, params.IndexedAt,
