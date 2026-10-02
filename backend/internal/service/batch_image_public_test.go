@@ -150,7 +150,9 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 			},
 		}}
 
-		got, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID}, validBatchImageSubmitRequest(), "")
+		req := validBatchImageSubmitRequest()
+		req.ImageSize = ImageBillingSize1K
+		got, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID}, req, "")
 		require.NoError(t, err)
 		require.InDelta(t, 0.134, got.EstimatedCost, 1e-12)
 
@@ -338,6 +340,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		svc, _, _, gemini, vertex := newTestBatchImagePublicService(true)
 		req := validBatchImageSubmitRequest()
 		req.Provider = BatchImageProviderVertex
+		req.ImageSize = ImageBillingSize1K
 
 		got, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
 		require.NoError(t, err)
@@ -765,7 +768,7 @@ func newTestBatchImagePublicService(enabled bool) (*BatchImagePublicService, *fa
 			MaxItemsPerJobDefault:   2,
 			MaxPromptCharsPerItem:   8,
 			DefaultResponseMimeType: "image/png",
-			DefaultImageSize:        "1K",
+			DefaultImageSize:        "2K",
 		}},
 	}
 	return svc, repo, queue, gemini, vertex
@@ -799,7 +802,7 @@ func validBatchImageSubmitRequest() BatchImageSubmitRequest {
 		Provider:         BatchImageProviderGeminiAPI,
 		ResponseMimeType: "image/png",
 		AspectRatio:      "1:1",
-		ImageSize:        "1K",
+		ImageSize:        "2K",
 		Metadata:         map[string]string{"project": "campaign-a", "secret": strings.Repeat("x", 300)},
 		Items: []BatchImageSubmitItem{
 			{CustomID: "cover_001", Prompt: "hero"},

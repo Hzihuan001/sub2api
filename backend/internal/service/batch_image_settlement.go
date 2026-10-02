@@ -257,6 +257,8 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	accountRateMultiplier := job.AccountRateMultiplier
 	inboundEndpoint := "/v1/images/batches"
 	upstreamEndpoint := "vertex:batchPredictionJobs"
+	// BatchImageJob predates persisted image-size metadata; keep the historical
+	// usage-log value until the job schema can carry the exact requested tier.
 	imageSize := "1K"
 	usageLog := &UsageLog{
 		UserID:                job.UserID,

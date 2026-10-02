@@ -1,12 +1,12 @@
 services:
   sub2api:
-    image: ${SUB2API_TEST_IMAGE:-sub2api:0.2.11-custom.7}
+    image: ${SUB2API_TEST_IMAGE:-sub2api:0.2.11-custom.8}
     platform: linux/amd64
     build:
       context: ..
       dockerfile: Dockerfile
       args:
-        VERSION: 0.2.11-custom.7
+        VERSION: 0.2.11-custom.8
         COMMIT: ${SUB2API_TEST_COMMIT:-local}
         DATE: ${SUB2API_TEST_BUILD_DATE:-local}
     restart: unless-stopped
@@ -32,6 +32,10 @@ services:
       JWT_SECRET: 4cc96dc74bfd487e9e69d70c22fd70d5dfe5e6ff11eb4afed2185ea3f18b0378
       TOTP_ENCRYPTION_KEY: b6239b52a66d1f4675973dc41bc7c71a6af410ea5ac0f6ea9e29ab847703f1b2
       TZ: Asia/Shanghai
+      BATCH_IMAGE_ENABLED: "true"
+      BATCH_IMAGE_QUEUE_ENABLED: "true"
+      BATCH_IMAGE_DEFAULT_IMAGE_SIZE: "2K"
+      BATCH_IMAGE_APP_MANAGED_ENABLED: "true"
     volumes:
       - app_data:/app/data
     depends_on:

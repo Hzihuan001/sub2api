@@ -179,7 +179,7 @@ func (p *appManagedBatchImageProvider) Get(ctx context.Context, job *BatchImageJ
 			}
 			defer func() { <-sem }()
 			var payload managedBatchImageItemPayload
-			imageSize, responseMimeType := "1K", "image/png"
+			imageSize, responseMimeType := "2K", "image/png"
 			var in BatchImageSubmitItem
 			if len(item.InputPayload) > 0 && json.Unmarshal(item.InputPayload, &payload) == nil && strings.TrimSpace(payload.Item.Prompt) != "" {
 				in = payload.Item

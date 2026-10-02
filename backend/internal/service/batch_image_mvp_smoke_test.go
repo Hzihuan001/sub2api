@@ -35,7 +35,7 @@ func TestBatchImageMVPFlow(t *testing.T) {
 		MaxItemsPerJobDefault:             10,
 		MaxPromptCharsPerItem:             8000,
 		DefaultResponseMimeType:           "image/png",
-		DefaultImageSize:                  "1K",
+		DefaultImageSize:                  "2K",
 		MaxDownloadItemsZip:               10,
 		MaxDownloadDurationSeconds:        60,
 		OutputRetentionAfterTerminalHours: 72,

@@ -601,7 +601,7 @@
           <div>
             <label class="input-label">{{ t('batchImage.create.imageSize') }}</label>
             <div class="input flex items-center bg-gray-50 text-gray-600 dark:bg-dark-900 dark:text-gray-300">
-              1K
+              2K
             </div>
             <p class="input-hint">{{ t('batchImage.create.imageSizeHint') }}</p>
           </div>
@@ -1203,7 +1203,7 @@ API 调用规范：
 {
   "model": "<按所选 Key 可用模型填写>",
   "task_name": "<从聊天推断；为空则用当前时间>",
-  "image_size": "1K",
+  "image_size": "2K",
   "response_mime_type": "image/png",
   "items": [
     {
@@ -1761,7 +1761,7 @@ async function submitJob() {
 	        model: form.model,
         task_name: form.taskName.trim() || defaultTaskName(),
         ...(executionProvider ? { provider: executionProvider } : {}),
-        image_size: '1K',
+        image_size: '2K',
         response_mime_type: form.responseMimeType,
         items: parsedItems.value,
 	      },
@@ -1951,7 +1951,7 @@ async function retryFailedJob(job: BatchImageJobRow | BatchImageJob) {
         task_name: `${job.task_name || defaultTaskName()} ${t('batchImage.messages.retryTaskNameSuffix')}`,
         parent_batch_id: rootBatchIdForRetry(job),
         provider: job.provider,
-        image_size: '1K',
+        image_size: '2K',
         response_mime_type: form.responseMimeType,
         items: failedItems,
       },

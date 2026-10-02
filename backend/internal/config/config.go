@@ -2254,7 +2254,7 @@ func setDefaults() {
 	viper.SetDefault("batch_image.max_reference_images_per_job", 1000)
 	viper.SetDefault("batch_image.max_reference_inline_bytes_per_job", 134217728)
 	viper.SetDefault("batch_image.default_response_mime_type", "image/png")
-	viper.SetDefault("batch_image.default_image_size", "1K")
+	viper.SetDefault("batch_image.default_image_size", "2K")
 	viper.SetDefault("batch_image.max_download_items_zip", 200)
 	viper.SetDefault("batch_image.max_download_bytes_per_request", 536870912)
 	viper.SetDefault("batch_image.max_download_duration_seconds", 600)

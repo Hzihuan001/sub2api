@@ -48,7 +48,7 @@ Submit request:
       ]
     }
   ],
-  "image_size": "1K",
+  "image_size": "2K",
   "response_mime_type": "image/png"
 }
 ```
@@ -225,7 +225,7 @@ Recommended production path:
 - Use a service account or Application Default Credentials for the Sub2API runtime.
 - Create one fixed Cloud Storage bucket for batch image input and output, then grant the runtime and Vertex service agent the minimum required bucket permissions.
 - Configure Sub2API with the project id, location, managed bucket, provider account, model whitelist, and pricing.
-- Enable `BATCH_IMAGE_ENABLED` globally, enable image generation on the intended Gemini group, then enable `allow_batch_image_generation` for that group. Non-Gemini groups are not eligible for batch image generation, and the admin UI only shows the batch image group switch after image generation is enabled on a Gemini group.
+- Enable `BATCH_IMAGE_ENABLED` and `BATCH_IMAGE_QUEUE_ENABLED` globally, then enable image generation on the intended group. Gemini API/Vertex native batch jobs additionally require `allow_batch_image_generation`; app-managed fan-out jobs use the existing image-generation permission and do not call a batch provider.
 
 API-key path:
 
@@ -257,7 +257,7 @@ batch_image:
   max_reference_images_per_job: 1000
   max_reference_inline_bytes_per_job: 134217728
   default_response_mime_type: "image/png"
-  default_image_size: "1K"
+  default_image_size: "2K"
 
   max_download_items_zip: 200
   max_download_bytes_per_request: 536870912

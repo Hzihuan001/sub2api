@@ -24,7 +24,7 @@ const (
 	defaultBatchImageMaxOutputCount     = 4
 	defaultBatchImageMaxPromptChars     = 8000
 	defaultBatchImageResponseMime       = "image/png"
-	defaultBatchImageImageSize          = "1K"
+	defaultBatchImageImageSize          = "2K"
 	defaultBatchImageDiscountMultiplier = 0.5
 	defaultBatchImageHoldMultiplier     = 0.6
 	maxBatchImagePublicErrorChars       = 500
@@ -821,10 +821,16 @@ func (s *BatchImagePublicService) validateSubmitRequest(req BatchImageSubmitRequ
 	if req.ImageSize == "" {
 		req.ImageSize = s.defaultImageSize()
 	}
-	if !strings.EqualFold(req.ImageSize, defaultBatchImageImageSize) {
+	// 2K is the default for the managed fan-out path. Keep accepting the
+	// legacy 1K request for API compatibility, while Vertex native batching
+	// remains limited to its existing 1K contract.
+	if !strings.EqualFold(req.ImageSize, defaultBatchImageImageSize) && !strings.EqualFold(req.ImageSize, ImageBillingSize1K) {
 		return req, ErrBatchImageInvalidItems
 	}
-	req.ImageSize = defaultBatchImageImageSize
+	if req.Provider == BatchImageProviderVertex && !strings.EqualFold(req.ImageSize, ImageBillingSize1K) {
+		return req, ErrBatchImageInvalidItems
+	}
+	req.ImageSize = strings.ToUpper(req.ImageSize)
 	req.Metadata = sanitizeBatchImageMetadata(req.Metadata)
 
 	seen := make(map[string]struct{}, len(req.Items))
