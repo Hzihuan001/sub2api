@@ -69,7 +69,7 @@ describe('operator UI contract', () => {
   it('hides dashboard links to admin-only modules from operators', () => {
     const dashboard = read('../../views/admin/DashboardView.vue')
 
-    expect(dashboard).toContain('v-if="canUseBatchImage || authStore.isAdmin"')
+    expect(dashboard).not.toContain("router.push('/batch-image')")
     expect(dashboard).toContain('v-if="authStore.isAdmin"')
     expect(dashboard).toContain("router.push('/admin/groups')")
   })

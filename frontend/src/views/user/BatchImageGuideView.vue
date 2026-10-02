@@ -480,13 +480,29 @@
                   </div>
                 </td>
                 <td class="px-3 py-2.5 text-center">
-                  <span
-                    class="inline-flex max-w-full items-center justify-center truncate rounded-md px-2.5 py-1 text-xs font-medium leading-5 ring-1 ring-inset"
-                    :class="itemResultClass(item)"
-                    :title="itemResultLabel(item)"
-                  >
-                    {{ itemResultLabel(item) }}
-                  </span>
+                  <div class="flex flex-wrap items-center justify-center gap-1.5">
+                    <span
+                      class="inline-flex max-w-full items-center justify-center truncate rounded-md px-2.5 py-1 text-xs font-medium leading-5 ring-1 ring-inset"
+                      :class="itemResultClass(item)"
+                      :title="itemResultLabel(item)"
+                    >
+                      {{ itemResultLabel(item) }}
+                    </span>
+                    <template v-if="canDownloadItem(item)">
+                      <button
+                        v-for="imageIndex in item.image_count"
+                        :key="`${itemPreviewKey(item)}-download-${imageIndex}`"
+                        type="button"
+                        class="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 transition-colors hover:border-primary-300 hover:text-primary-600 disabled:cursor-wait disabled:opacity-60 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-300"
+                        :disabled="downloadingItemKey === itemDownloadKey(item, imageIndex - 1)"
+                        :title="t('batchImage.detail.downloadOriginal', { index: imageIndex })"
+                        @click="downloadItem(item, imageIndex - 1)"
+                      >
+                        <Icon :name="downloadingItemKey === itemDownloadKey(item, imageIndex - 1) ? 'refresh' : 'download'" size="xs" :class="downloadingItemKey === itemDownloadKey(item, imageIndex - 1) ? 'animate-spin' : ''" />
+                        <span>{{ item.image_count > 1 ? imageIndex : t('batchImage.actions.download') }}</span>
+                      </button>
+                    </template>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -551,6 +567,18 @@
           />
         </div>
       </div>
+      <template #footer>
+        <button
+          v-if="previewImageItem && canDownloadItem(previewImageItem)"
+          type="button"
+          class="btn btn-primary"
+          :disabled="downloadingItemKey === itemDownloadKey(previewImageItem, 0)"
+          @click="downloadItem(previewImageItem, 0)"
+        >
+          <Icon :name="downloadingItemKey === itemDownloadKey(previewImageItem, 0) ? 'refresh' : 'download'" size="sm" class="mr-1.5" :class="downloadingItemKey === itemDownloadKey(previewImageItem, 0) ? 'animate-spin' : ''" />
+          {{ t('batchImage.imagePreview.downloadOriginal') }}
+        </button>
+      </template>
     </BaseDialog>
 
     <BaseDialog :show="showCreateModal" :title="t('batchImage.create.title')" width="wide" @close="closeCreateModal">
@@ -638,7 +666,58 @@
             <label class="input-label mb-0">Prompt</label>
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('batchImage.create.promptAdded', { count: promptRows.length }) }}</span>
           </div>
+          <div class="rounded-lg border border-gray-200 bg-gray-50/70 p-3 dark:border-dark-700 dark:bg-dark-900/40">
+            <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <span class="input-label mb-0">{{ t('batchImage.create.referenceMode') }}</span>
+              <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <input v-model="referenceMode" type="radio" value="per_item" class="h-4 w-4 text-primary-600 focus:ring-primary-500" />
+                {{ t('batchImage.create.referenceModePerItem') }}
+              </label>
+              <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <input v-model="referenceMode" type="radio" value="shared" class="h-4 w-4 text-primary-600 focus:ring-primary-500" />
+                {{ t('batchImage.create.referenceModeShared') }}
+              </label>
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ referenceMode === 'shared' ? t('batchImage.create.referenceModeSharedHint') : t('batchImage.create.referenceModePerItemHint') }}
+            </p>
+          </div>
+          <div v-if="referenceMode === 'shared'" class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p class="input-label mb-0">{{ t('batchImage.create.sharedReferenceImage') }}</p>
+                <p class="input-hint">{{ t('batchImage.create.sharedReferenceHint', { limit: selectedModelReferenceLimit }) }}</p>
+              </div>
+              <label
+                class="btn btn-secondary h-9 cursor-pointer justify-center text-sm"
+                :class="sharedReferenceImageDrafts.length >= 1 || selectedModelReferenceLimit <= 0 ? 'pointer-events-none opacity-60' : ''"
+              >
+                <Icon name="upload" size="sm" class="mr-1.5" />
+                {{ t('batchImage.create.referenceImage') }}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  class="hidden"
+                  :disabled="sharedReferenceImageDrafts.length >= 1 || selectedModelReferenceLimit <= 0"
+                  @change="handleSharedReferenceImageFiles"
+                />
+              </label>
+            </div>
+            <div v-if="sharedReferenceImageDrafts.length" class="mt-3 flex flex-wrap gap-2">
+              <span
+                v-for="(ref, refIndex) in sharedReferenceImageDrafts"
+                :key="`${ref.name}-${refIndex}`"
+                class="inline-flex max-w-full items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200"
+              >
+                <span class="max-w-[220px] truncate">{{ ref.name }}</span>
+                <button type="button" class="text-gray-400 hover:text-red-600" :title="t('batchImage.create.removeReferenceImage')" @click="removeSharedReferenceImageDraft(refIndex)">
+                  <Icon name="x" size="xs" />
+                </button>
+              </span>
+            </div>
+          </div>
           <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+            <template v-if="referenceMode === 'per_item'">
             <textarea
               v-model="promptDraft"
               rows="3"
@@ -696,6 +775,37 @@
             <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
               {{ t('batchImage.create.limitsHint', { maxPerItem: BATCH_IMAGE_MAX_OUTPUTS_PER_ITEM, maxPerJob: BATCH_IMAGE_MAX_OUTPUTS_PER_JOB, refLimit: selectedModelReferenceLimit }) }}
             </p>
+            </template>
+            <template v-else>
+              <textarea
+                v-model="promptDraft"
+                rows="3"
+                class="h-[76px] w-full resize-y rounded-md border border-gray-300 px-3 py-2 text-sm leading-5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-100 dark:focus:border-primary-500 dark:focus:ring-primary-900/40"
+                :placeholder="t('batchImage.create.promptPlaceholder')"
+              />
+              <div class="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_112px_112px] md:items-center">
+                <input
+                  v-model="customIdDraft"
+                  type="text"
+                  maxlength="255"
+                  class="input h-9 text-sm"
+                  :placeholder="t('batchImage.create.customIdPlaceholder')"
+                />
+                <Select
+                  v-model="outputCountDraft"
+                  :options="outputCountOptions"
+                  size="sm"
+                  class="w-full"
+                  :title="t('batchImage.create.outputCountPerPrompt')"
+                  :aria-label="t('batchImage.create.outputCountPerPrompt')"
+                />
+                <button type="button" class="btn btn-secondary h-9 justify-center whitespace-nowrap px-4 text-sm" :disabled="!promptDraft.trim()" @click="addPromptRow">
+                  <Icon name="plus" size="sm" class="mr-1.5" />
+                  {{ t('common.add') }}
+                </button>
+              </div>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('batchImage.create.sharedReferenceApplies') }}</p>
+            </template>
           </div>
           <div v-if="promptRows.length" class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700">
             <div
@@ -708,8 +818,8 @@
               <span v-if="row.output_count > 1" class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
                 x{{ row.output_count }}
               </span>
-              <span v-if="row.reference_images.length" class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('batchImage.create.referenceCount', { n: row.reference_images.length }, row.reference_images.length) }}
+              <span v-if="referenceMode === 'shared' ? sharedReferenceImageDrafts.length : row.reference_images.length" class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('batchImage.create.referenceCount', { n: referenceMode === 'shared' ? sharedReferenceImageDrafts.length : row.reference_images.length }, referenceMode === 'shared' ? sharedReferenceImageDrafts.length : row.reference_images.length) }}
               </span>
               <button type="button" class="btn-ghost btn-icon flex-shrink-0 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20" :title="t('common.delete')" @click="removePromptRow(index)">
                 <Icon name="trash" size="sm" />
@@ -846,6 +956,8 @@ type ReferenceImageDraft = BatchImageReferenceImage & {
   size: number
 }
 
+type ReferenceImageMode = 'per_item' | 'shared'
+
 type PreviewCacheRecord = {
   key: string
   blob: Blob
@@ -940,6 +1052,7 @@ const refreshing = ref(false)
 const cancelling = ref(false)
 const downloading = ref(false)
 const downloadingBatchId = ref('')
+const downloadingItemKey = ref('')
 const retryingBatchId = ref('')
 const bulkDownloading = ref(false)
 const bulkDeleting = ref(false)
@@ -959,7 +1072,9 @@ const promptRows = ref<PromptRow[]>([])
 const promptDraft = ref('')
 const customIdDraft = ref('')
 const outputCountDraft = ref(1)
+const referenceMode = ref<ReferenceImageMode>('per_item')
 const referenceImageDrafts = ref<ReferenceImageDraft[]>([])
+const sharedReferenceImageDrafts = ref<ReferenceImageDraft[]>([])
 const itemPreviewUrls = reactive<Record<string, string>>({})
 const previewLoadingIds = ref(new Set<string>())
 const previewErrorIds = ref(new Set<string>())
@@ -1164,6 +1279,17 @@ const parsedItems = computed<BatchImageSubmitItem[]>(() => {
     .filter(item => item.prompt)
 })
 
+const requestItems = computed<BatchImageSubmitItem[]>(() => {
+  if (referenceMode.value !== 'shared' || sharedReferenceImageDrafts.value.length === 0) {
+    return parsedItems.value
+  }
+  const references = sharedReferenceImageDrafts.value.map(({ name: _name, size: _size, ...reference }) => ({ ...reference }))
+  return parsedItems.value.map(item => ({
+    ...item,
+    reference_images: references.map(reference => ({ ...reference })),
+  }))
+})
+
 function referenceImageLimitForModel(model: string) {
   const normalized = String(model || '').toLowerCase()
   if (normalized.includes('pro-image')) return 14
@@ -1186,7 +1312,7 @@ ${endpointBase.value}
 2. 从用户要求或上下文推断任务名称；没有明确名称时用当前时间生成任务名。
 3. 从用户要求或上下文推断输出目录；如果用户没有说保存到哪里，才询问用户。
 4. 提交前必须先计算 expected_output_count = 所有 item 的 output_count 之和。单个批量任务硬性最多 200 张输出图；超过 200 张必须拆成多组任务，不能提交一个超大任务，也不能把参考图附件上限当成生成张数上限。
-5. 如果用户提供参考图，把参考图按用途绑定到具体 item。参考图只是输入附件，不是输出图数量。模型单条限制必须按模型执行：Gemini 2.5 Flash Image 每条最多 3 张参考图；Gemini 3 Pro Image 每条最多 14 张参考图。不要把后端附件风控理解成 Pro 单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
+5. 如果用户提供参考图，可选择整组任务统一复用一张，也可按用途绑定到具体 item。参考图只是输入附件，不是输出图数量。模型单条限制必须按模型执行：Gemini 2.5 Flash Image 每条最多 3 张参考图；Gemini 3 Pro Image 每条最多 14 张参考图。不要把后端附件风控理解成 Pro 单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
 6. 参考图会按 output_count 重复消耗输入 token；大量任务、重复复用同一张参考图或参考图总体积较大时，优先使用 gs:// file_uri 或拆分成多组任务。
 7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。不要展示或询问内部 provider 名称。系统会自动选择后台拆单并发执行或上游原生批量通道。
 8. 调用批量生图 API 提交、轮询、下载，不要求用户去页面里手填。
@@ -1273,7 +1399,9 @@ function addPromptRow() {
       custom_id: customID,
       prompt,
       output_count: outputCount,
-      reference_images: referenceImageDrafts.value.map(({ name: _name, size: _size, ...ref }) => ref),
+      reference_images: referenceMode.value === 'per_item'
+        ? referenceImageDrafts.value.map(({ name: _name, size: _size, ...ref }) => ref)
+        : [],
     },
   ]
   promptDraft.value = ''
@@ -1288,6 +1416,10 @@ function removePromptRow(index: number) {
 
 function removeReferenceImageDraft(index: number) {
   referenceImageDrafts.value = referenceImageDrafts.value.filter((_, currentIndex) => currentIndex !== index)
+}
+
+function removeSharedReferenceImageDraft(index: number) {
+  sharedReferenceImageDrafts.value = sharedReferenceImageDrafts.value.filter((_, currentIndex) => currentIndex !== index)
 }
 
 async function handleReferenceImageFiles(event: Event) {
@@ -1330,6 +1462,48 @@ async function handleReferenceImageFiles(event: Event) {
     })
   }
   referenceImageDrafts.value = [...referenceImageDrafts.value, ...next]
+}
+
+async function handleSharedReferenceImageFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''
+  if (files.length === 0) return
+  const limit = Math.min(selectedModelReferenceLimit.value, 1)
+  if (limit <= 0) {
+    appStore.showError(t('batchImage.create.modelNoReferenceImages'))
+    return
+  }
+  const slots = Math.max(0, limit - sharedReferenceImageDrafts.value.length)
+  if (slots <= 0) {
+    appStore.showError(t('batchImage.create.refLimitReached', { limit: 1 }))
+    return
+  }
+  const accepted = files.slice(0, slots)
+  if (accepted.length < files.length) {
+    appStore.showError(t('batchImage.create.refLimitExceededIgnored', { limit: 1 }))
+  }
+  const next: ReferenceImageDraft[] = []
+  for (const file of accepted) {
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      appStore.showError(t('batchImage.create.refFormatUnsupported'))
+      continue
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      appStore.showError(t('batchImage.create.refFileTooLarge', { name: file.name }))
+      continue
+    }
+    const data = await readFileAsBase64(file)
+    next.push({
+      id: file.name,
+      type: 'reference',
+      mime_type: file.type,
+      data,
+      name: file.name,
+      size: file.size,
+    })
+  }
+  sharedReferenceImageDrafts.value = [...sharedReferenceImageDrafts.value, ...next]
 }
 
 function readFileAsBase64(file: File): Promise<string> {
@@ -1692,7 +1866,9 @@ function resetCreateDraft() {
   promptDraft.value = ''
   customIdDraft.value = ''
   outputCountDraft.value = 1
+  referenceMode.value = 'per_item'
   referenceImageDrafts.value = []
+  sharedReferenceImageDrafts.value = []
 }
 
 function closeDetail() {
@@ -1735,7 +1911,11 @@ function validateForm(): boolean {
     return false
   }
   const refLimit = selectedModelReferenceLimit.value
-  if (promptRows.value.some(row => row.reference_images.length > refLimit)) {
+  if (referenceMode.value === 'shared' && sharedReferenceImageDrafts.value.length > Math.min(refLimit, 1)) {
+    appStore.showError(batchImageText('tooManyReferenceImages'))
+    return false
+  }
+  if (referenceMode.value === 'per_item' && promptRows.value.some(row => row.reference_images.length > refLimit)) {
     appStore.showError(batchImageText('tooManyReferenceImages'))
     return false
   }
@@ -1766,7 +1946,7 @@ async function submitJob() {
         ...(executionProvider ? { provider: executionProvider } : {}),
         image_size: requestedImageSize,
         response_mime_type: form.responseMimeType,
-        items: parsedItems.value,
+        items: requestItems.value,
 	      },
       `moshu-ui-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
 	    )
@@ -2012,6 +2192,47 @@ async function downloadJob(job: (BatchImageJobRow | Pick<BatchImageJob, 'id'>)) 
   } finally {
     downloading.value = false
     downloadingBatchId.value = ''
+  }
+}
+
+function canDownloadItem(item: Pick<BatchImageItem, 'status' | 'image_count'>) {
+  return isSuccessfulImageItem(item) && item.image_count > 0
+}
+
+function itemDownloadKey(item: Pick<BatchImageItem, 'batch_id' | 'custom_id'>, imageIndex = 0) {
+  const batchId = item.batch_id || selectedBatchId.value || currentJob.value?.id || ''
+  return `${batchId}:${item.custom_id}:${imageIndex}`
+}
+
+function itemFileExtension(item: Pick<BatchImageItem, 'file_extension' | 'mime_type'>) {
+  const extension = String(item.file_extension || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (extension) return extension
+  const mime = String(item.mime_type || '').toLowerCase()
+  if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpg'
+  if (mime.includes('webp')) return 'webp'
+  return 'png'
+}
+
+function safeItemFilename(customID: string) {
+  return String(customID || 'image').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'image'
+}
+
+async function downloadItem(item: BatchImageItem, imageIndex = 0) {
+  if (!canDownloadItem(item) || imageIndex < 0 || imageIndex >= item.image_count) return
+  const batchId = item.batch_id || selectedBatchId.value || currentJob.value?.id || ''
+  const key = keyForSelectedBatch() || requireApiKey()
+  if (!batchId || !key) return
+  const downloadKey = itemDownloadKey(item, imageIndex)
+  if (downloadingItemKey.value) return
+  downloadingItemKey.value = downloadKey
+  try {
+    const blob = await getBatchImageItemContent(key.key, batchId, item.custom_id, imageIndex)
+    const suffix = item.image_count > 1 ? `-${imageIndex + 1}` : ''
+    saveBlob(blob, `${safeItemFilename(item.custom_id)}${suffix}.${itemFileExtension(item)}`)
+  } catch (error: any) {
+    appStore.showError(batchImageErrorMessage(error, batchImageText('downloadFailed')))
+  } finally {
+    downloadingItemKey.value = ''
   }
 }
 
