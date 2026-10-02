@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
@@ -384,6 +385,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return xai.DefaultModelIDs()
 	case PlatformOpenCodeGo:
 		return DefaultOpenCodeGoModelIDs()
+	case PlatformTypeSafe:
+		return []string{typesafe.JevLatestModel}
 	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
 		return DefaultCNProviderModelIDs(platform)
 	case PlatformComposite:

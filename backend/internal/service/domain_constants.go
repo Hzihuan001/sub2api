@@ -49,6 +49,7 @@ const (
 	PlatformZhipu    = domain.PlatformZhipu
 	PlatformDeepseek = domain.PlatformDeepseek
 	PlatformMiniMax  = domain.PlatformMiniMax
+	PlatformTypeSafe = domain.PlatformTypeSafe
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro       = domain.PlatformKiro

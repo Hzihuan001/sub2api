@@ -533,13 +533,15 @@ func TestBatchImagePublicService_ListModels(t *testing.T) {
 		got, err := svc.ListModels(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID})
 		require.NoError(t, err)
 		require.Equal(t, []BatchImagePublicModel{{
-			ID:       "gemini-2.5-flash-image",
-			Object:   "image.batch.model",
-			Provider: BatchImageProviderGeminiAPI,
+			ID:                  "gemini-2.5-flash-image",
+			Object:              "image.batch.model",
+			Provider:            BatchImageProviderGeminiAPI,
+			ReferenceImageLimit: 3,
 		}, {
-			ID:       "gemini-2.5-flash-image",
-			Object:   "image.batch.model",
-			Provider: BatchImageProviderVertex,
+			ID:                  "gemini-2.5-flash-image",
+			Object:              "image.batch.model",
+			Provider:            BatchImageProviderVertex,
+			ReferenceImageLimit: 3,
 		}}, got.Data)
 	})
 
@@ -999,3 +1001,31 @@ func (r *publicBatchImageUserGroupRateRepo) GetByUserAndGroup(_ context.Context,
 
 var _ BatchImageGroupPricingRepository = (*publicBatchImageGroupRepo)(nil)
 var _ BatchImageUserGroupRateRepository = (*publicBatchImageUserGroupRateRepo)(nil)
+
+func TestMaxBatchImageReferenceImagesForModelSupportsGPTImage(t *testing.T) {
+	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2", "gpt-image-2.5-flare"} {
+		t.Run(model, func(t *testing.T) {
+			require.Equal(t, 16, maxBatchImageReferenceImagesForModel(model))
+		})
+	}
+	require.Equal(t, 3, maxBatchImageReferenceImagesForModel("gemini-2.5-flash-image"))
+	require.Equal(t, 14, maxBatchImageReferenceImagesForModel("gemini-3-pro-image-preview"))
+	require.Zero(t, maxBatchImageReferenceImagesForModel("gpt-5.6-sol"))
+}
+
+func TestDefaultBatchImageModelCandidatesIncludesGPTImage(t *testing.T) {
+	candidates := defaultBatchImageModelCandidates()
+	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2"} {
+		require.Contains(t, candidates, model)
+	}
+}
+
+func TestValidateBatchImageReferenceLimitsForAccountResolvesModelAlias(t *testing.T) {
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"model_mapping": map[string]any{"paint": "gpt-image-2"}},
+	}
+	items := []BatchImageSubmitItem{{ReferenceImages: []BatchImageReferenceInput{{MimeType: "image/png", Data: []byte("x")}}}}
+	require.NoError(t, validateBatchImageReferenceLimitsForAccount("paint", items, account))
+}

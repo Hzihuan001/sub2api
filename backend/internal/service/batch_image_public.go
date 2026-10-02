@@ -163,9 +163,10 @@ type BatchImagePublicListResponse struct {
 }
 
 type BatchImagePublicModel struct {
-	ID       string `json:"id"`
-	Object   string `json:"object"`
-	Provider string `json:"provider"`
+	ID                  string `json:"id"`
+	Object              string `json:"object"`
+	Provider            string `json:"provider"`
+	ReferenceImageLimit int    `json:"reference_image_limit,omitempty"`
 }
 
 type BatchImagePublicModelsResponse struct {
@@ -212,8 +213,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	if err != nil {
 		return nil, err
 	}
-	// 与 ListModels 使用同一鉴权谓词（AllowBatchImageGeneration + Platform==Gemini），
-	// 避免两个入口校验口径不一致留下防御纵深缺口。
+	// 与 ListModels 使用同一鉴权谓词，避免两个入口校验口径不一致留下防御纵深缺口。
 	if err := s.ensureGroupAllowsBatchImage(ctx, owner.GroupID); err != nil {
 		return nil, err
 	}
@@ -240,6 +240,13 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 
 	provider, account, err := s.selectProviderAndAccount(ctx, owner, normalized.Provider, normalized.Model)
 	if err != nil {
+		return nil, err
+	}
+	// Public model IDs may be account-level aliases (for example, `paint` →
+	// `gpt-image-2`). Validate reference-image capacity against the actual
+	// mapped upstream model after account selection, rather than rejecting an
+	// otherwise valid alias during the provider-agnostic request pass.
+	if err := validateBatchImageReferenceLimitsForAccount(normalized.Model, normalized.Items, account); err != nil {
 		return nil, err
 	}
 	pricingSnapshot, err := s.resolvePricingSnapshot(ctx, owner, normalized, provider.Name(), account)
@@ -644,7 +651,7 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 		return nil, err
 	}
 
-	modelsByProvider := make(map[string]map[string]struct{})
+	modelsByProvider := make(map[string]map[string]int)
 	for _, providerName := range batchImageProviderSelectionOrder("") {
 		provider, ok := s.ProviderRegistry.Get(providerName)
 		if !ok || provider == nil {
@@ -667,9 +674,13 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 					continue
 				}
 				if modelsByProvider[providerName] == nil {
-					modelsByProvider[providerName] = make(map[string]struct{})
+					modelsByProvider[providerName] = make(map[string]int)
 				}
-				modelsByProvider[providerName][model] = struct{}{}
+				mappedModel := account.GetMappedModel(model)
+				limit := maxBatchImageReferenceImagesForModel(mappedModel)
+				if current, exists := modelsByProvider[providerName][model]; !exists || limit > current {
+					modelsByProvider[providerName][model] = limit
+				}
 			}
 		}
 	}
@@ -683,9 +694,10 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 		sort.Strings(models)
 		for _, model := range models {
 			out = append(out, BatchImagePublicModel{
-				ID:       model,
-				Object:   "image.batch.model",
-				Provider: providerName,
+				ID:                  model,
+				Object:              "image.batch.model",
+				Provider:            providerName,
+				ReferenceImageLimit: modelsByProvider[providerName][model],
 			})
 		}
 	}
@@ -895,7 +907,10 @@ func normalizeBatchImageReferenceInputs(model string, item *BatchImageSubmitItem
 		return 0, 0, nil
 	}
 	maxRefs := maxBatchImageReferenceImagesForModel(model)
-	if maxRefs <= 0 || len(item.ReferenceImages) > maxRefs {
+	// An alias may not reveal its image capability until the selected account's
+	// model mapping is resolved. Enforce known public model limits here and do
+	// the final mapped-model check in Submit after account selection.
+	if maxRefs > 0 && len(item.ReferenceImages) > maxRefs {
 		return 0, 0, ErrBatchImageTooManyReferenceImages
 	}
 	out := make([]BatchImageReferenceInput, 0, len(item.ReferenceImages))
@@ -927,6 +942,22 @@ func normalizeBatchImageReferenceInputs(model string, item *BatchImageSubmitItem
 	return len(out), inlineBytes, nil
 }
 
+func validateBatchImageReferenceLimitsForAccount(model string, items []BatchImageSubmitItem, account *Account) error {
+	if account == nil {
+		return ErrBatchImageNoAccountAvailable
+	}
+	maxRefs := maxBatchImageReferenceImagesForModel(account.GetMappedModel(model))
+	for _, item := range items {
+		if len(item.ReferenceImages) == 0 {
+			continue
+		}
+		if maxRefs <= 0 || len(item.ReferenceImages) > maxRefs {
+			return ErrBatchImageTooManyReferenceImages
+		}
+	}
+	return nil
+}
+
 func normalizeBatchImageReferenceMimeType(v string) string {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "image/jpeg", "image/jpg":
@@ -949,6 +980,12 @@ func batchImageRepeatSuffixWidth(count int) int {
 
 func maxBatchImageReferenceImagesForModel(model string) int {
 	model = strings.ToLower(strings.TrimSpace(model))
+	// OpenAI's GPT-image edit endpoint accepts one or more input images. The
+	// managed fan-out provider sends these as multipart image[] fields, so keep
+	// the same reference-image workflow available for every GPT-image variant.
+	if strings.Contains(model, "gpt-image") {
+		return 16
+	}
 	if strings.Contains(model, "pro-image") {
 		return 14
 	}
@@ -1371,6 +1408,11 @@ func batchImageModelsFromAccountMapping(account *Account) []string {
 
 func defaultBatchImageModelCandidates() []string {
 	return []string{
+		"gpt-image-1",
+		"gpt-image-1.5",
+		"gpt-image-2",
+		"gpt-image-2.5-flare",
+		"gpt-image-2.5-sunburst",
 		"gemini-2.0-flash-exp-image-generation",
 		"gemini-2.5-flash-image",
 		"gemini-3-pro-image",

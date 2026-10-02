@@ -97,6 +97,8 @@ export interface BatchImageModel {
   id: string
   object: string
   provider: string
+  /** Maximum reference images accepted for the selected account's mapped model. */
+  reference_image_limit?: number
   /** `app_managed`/`managed_fanout` for app-managed fan-out models. */
   mode?: string
   execution_mode?: string

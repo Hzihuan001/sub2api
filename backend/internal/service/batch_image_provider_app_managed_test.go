@@ -27,15 +27,64 @@ type appManagedTestUpstream struct {
 	mu              sync.Mutex
 	calls           int
 	idempotencyKeys []string
+	lastURL         string
+	lastContentType string
+	lastBody        []byte
 }
 
 func (u *appManagedTestUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	body, _ := io.ReadAll(req.Body)
 	u.mu.Lock()
 	u.calls++
 	u.idempotencyKeys = append(u.idempotencyKeys, req.Header.Get("Idempotency-Key"))
+	u.lastURL = req.URL.String()
+	u.lastContentType = req.Header.Get("Content-Type")
+	u.lastBody = body
 	u.mu.Unlock()
 	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(
 		strings.NewReader(`{"data":[{"b64_json":"aGVsbG8="}]}`)), Request: req}, nil
+}
+
+func TestAppManagedBatchImageProviderSendsGPTImageReferenceAsEdit(t *testing.T) {
+	dir := t.TempDir()
+	upstream := &appManagedTestUpstream{}
+	jobID := "imgbatch_app_managed_gpt_reference"
+	payload, err := json.Marshal(managedBatchImageItemPayload{
+		Item: BatchImageSubmitItem{
+			CustomID: "reference",
+			Prompt:   "make this image warmer",
+			ReferenceImages: []BatchImageReferenceInput{{
+				ID:       "reference.png",
+				MimeType: "image/png",
+				Data:     []byte("PNG_BYTES"),
+			}},
+		},
+		ImageSize: "2K",
+	})
+	require.NoError(t, err)
+	repo := &appManagedTestRepo{items: map[string][]*BatchImageItem{
+		jobID: {{CustomID: "reference", InputPayload: payload}},
+	}}
+	provider := NewAppManagedBatchImageProvider(AppManagedBatchImageProviderOptions{
+		HTTPUpstream: upstream,
+		ItemRepo:     repo,
+		ResultDir:    dir,
+	})
+	account := &Account{ID: 7, Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
+		"api_key":  "test-key",
+		"base_url": "https://upstream.invalid",
+	}}
+	job := &BatchImageJob{BatchID: jobID, Model: "gpt-image-1", ItemCount: 1}
+	status, err := provider.Get(context.Background(), job, account)
+	require.NoError(t, err)
+	require.Equal(t, BatchProviderStateSucceeded, status.InternalState)
+
+	upstream.mu.Lock()
+	defer upstream.mu.Unlock()
+	require.Equal(t, "https://upstream.invalid/v1/images/edits", upstream.lastURL)
+	require.Contains(t, upstream.lastContentType, "multipart/form-data")
+	require.Contains(t, string(upstream.lastBody), "name=\"image[]\"")
+	require.Contains(t, string(upstream.lastBody), "PNG_BYTES")
 }
 
 func (u *appManagedTestUpstream) DoWithTLS(req *http.Request, proxy string, id int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {

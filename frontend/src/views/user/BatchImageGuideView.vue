@@ -1079,7 +1079,7 @@ const itemPreviewUrls = reactive<Record<string, string>>({})
 const previewLoadingIds = ref(new Set<string>())
 const previewErrorIds = ref(new Set<string>())
 const previewImageItem = ref<BatchImageItem | null>(null)
-const availableBatchImageModels = ref<Array<{ value: string; label: string; provider?: string; mode?: string }>>([])
+const availableBatchImageModels = ref<Array<{ value: string; label: string; provider?: string; mode?: string; referenceImageLimit?: number }>>([])
 const modelLoadError = ref('')
 const openMoreJobId = ref('')
 const moreMenuStyle = ref<Record<string, string>>({})
@@ -1255,8 +1255,6 @@ const endpointBase = computed(() => {
   return '<你的 Moshu API 端点>'
 })
 
-const selectedModelReferenceLimit = computed(() => referenceImageLimitForModel(form.model))
-
 const estimatedOutputCount = computed(() =>
   promptRows.value.reduce((sum, row) => sum + normalizeOutputCount(row.output_count), 0),
 )
@@ -1292,10 +1290,17 @@ const requestItems = computed<BatchImageSubmitItem[]>(() => {
 
 function referenceImageLimitForModel(model: string) {
   const normalized = String(model || '').toLowerCase()
+  if (normalized.includes('gpt-image')) return 16
   if (normalized.includes('pro-image')) return 14
   if (normalized.includes('flash-image')) return 3
   return 0
 }
+
+const selectedModelReferenceLimit = computed(() => {
+  const selected = availableBatchImageModels.value.find(model => model.value === form.model)
+  const advertised = Number(selected?.referenceImageLimit || 0)
+  return advertised > 0 ? advertised : referenceImageLimitForModel(form.model)
+})
 
 const agentInstruction = computed(() => `---
 name: moshu-batch-image
@@ -1312,7 +1317,7 @@ ${endpointBase.value}
 2. 从用户要求或上下文推断任务名称；没有明确名称时用当前时间生成任务名。
 3. 从用户要求或上下文推断输出目录；如果用户没有说保存到哪里，才询问用户。
 4. 提交前必须先计算 expected_output_count = 所有 item 的 output_count 之和。单个批量任务硬性最多 200 张输出图；超过 200 张必须拆成多组任务，不能提交一个超大任务，也不能把参考图附件上限当成生成张数上限。
-5. 如果用户提供参考图，可选择整组任务统一复用一张，也可按用途绑定到具体 item。参考图只是输入附件，不是输出图数量。模型单条限制必须按模型执行：Gemini 2.5 Flash Image 每条最多 3 张参考图；Gemini 3 Pro Image 每条最多 14 张参考图。不要把后端附件风控理解成 Pro 单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
+5. 如果用户提供参考图，可选择整组任务统一复用一张，也可按用途绑定到具体 item。参考图只是输入附件，不是输出图数量。模型单条限制必须按模型执行：GPT-image 每条最多 16 张，Gemini 2.5 Flash Image 每条最多 3 张，Gemini 3 Pro Image 每条最多 14 张。不要把后端附件风控理解成单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
 6. 参考图会按 output_count 重复消耗输入 token；大量任务、重复复用同一张参考图或参考图总体积较大时，优先使用 gs:// file_uri 或拆分成多组任务。
 7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。不要展示或询问内部 provider 名称。系统会自动选择后台拆单并发执行或上游原生批量通道。
 8. 调用批量生图 API 提交、轮询、下载，不要求用户去页面里手填。
@@ -1552,15 +1557,16 @@ async function loadAvailableModels() {
   try {
     const result = await listBatchImageModels(key.key)
     if (requestID !== modelRequestSeq) return
-    const modelMap = new Map<string, { value: string; label: string; provider?: string; mode?: string }>()
+    const modelMap = new Map<string, { value: string; label: string; provider?: string; mode?: string; referenceImageLimit?: number }>()
     for (const model of result.data || []) {
       const value = String(model.id || '').trim()
       if (!value) continue
       const candidate = {
-        value,
-        label: value,
-        provider: String(model.provider || '').trim() || undefined,
-        mode: String(model.mode || model.execution_mode || '').trim() || undefined,
+      value,
+      label: value,
+      provider: String(model.provider || '').trim() || undefined,
+      mode: String(model.mode || model.execution_mode || '').trim() || undefined,
+      referenceImageLimit: Number(model.reference_image_limit || 0) || undefined,
       }
       const existing = modelMap.get(value)
       const candidateIsManaged = /managed|fanout/i.test(`${candidate.mode || ''} ${candidate.provider || ''}`)
