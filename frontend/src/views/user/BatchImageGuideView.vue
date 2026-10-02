@@ -1755,13 +1755,16 @@ async function submitJob() {
     const executionProvider = selectedMode.includes('managed') || selectedMode.includes('fanout')
       ? 'app_managed'
       : undefined
+	    // The managed fan-out path defaults to 2K. Vertex's native batch
+	    // contract remains 1K, so keep its legacy request tier intact.
+	    const requestedImageSize = executionProvider === 'app_managed' ? '2K' : '1K'
 	    const job = await submitBatchImageJob(
 	      key.key,
 	      {
 	        model: form.model,
         task_name: form.taskName.trim() || defaultTaskName(),
         ...(executionProvider ? { provider: executionProvider } : {}),
-        image_size: '2K',
+        image_size: requestedImageSize,
         response_mime_type: form.responseMimeType,
         items: parsedItems.value,
 	      },
@@ -1951,7 +1954,7 @@ async function retryFailedJob(job: BatchImageJobRow | BatchImageJob) {
         task_name: `${job.task_name || defaultTaskName()} ${t('batchImage.messages.retryTaskNameSuffix')}`,
         parent_batch_id: rootBatchIdForRetry(job),
         provider: job.provider,
-        image_size: '2K',
+        image_size: String(job.provider || '').toLowerCase() === 'app_managed' ? '2K' : '1K',
         response_mime_type: form.responseMimeType,
         items: failedItems,
       },
