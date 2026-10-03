@@ -99,4 +99,3 @@ func (OperatorPolicyProvider) Routes() []OperatorRouteDeclaration {
 func NewOperatorPolicyProvider() OperatorPolicyProvider {
 	return OperatorPolicyProvider{}
 }
-

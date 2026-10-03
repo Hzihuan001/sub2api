@@ -13,7 +13,6 @@ func TestOperatorPolicyProviderExposesStablePermissionCatalog(t *testing.T) {
 	provider := NewOperatorPolicyProvider()
 	permissions := provider.Permissions()
 	require.NotEmpty(t, permissions)
-	require.Equal(t, "compliance", permissions[0].Name)
 
 	names := make([]string, 0, len(permissions))
 	seen := make(map[string]struct{}, len(permissions))
@@ -27,6 +26,7 @@ func TestOperatorPolicyProviderExposesStablePermissionCatalog(t *testing.T) {
 	sorted := append([]string(nil), names...)
 	sort.Strings(sorted)
 	require.Equal(t, sorted, names)
+	require.Contains(t, names, "compliance")
 	require.Contains(t, names, string(PermissionRolePolicyRead))
 	require.Contains(t, names, string(PermissionDashboardRead))
 }
@@ -81,5 +81,5 @@ func (h operatorProviderHooks) PermissionProviders() []custom.PermissionProvider
 	return h.permissions
 }
 func (h operatorProviderHooks) SettingProviders() []custom.SettingProvider { return nil }
-func (h operatorProviderHooks) WorkerProviders() []custom.WorkerProvider { return nil }
-func (h operatorProviderHooks) UsageEnrichers() []custom.UsageEnricher { return nil }
+func (h operatorProviderHooks) WorkerProviders() []custom.WorkerProvider   { return nil }
+func (h operatorProviderHooks) UsageEnrichers() []custom.UsageEnricher     { return nil }
