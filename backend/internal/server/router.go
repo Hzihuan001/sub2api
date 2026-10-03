@@ -38,6 +38,12 @@ func SetupRouter(
 	cfg *config.Config,
 	redisClient *redis.Client,
 ) *gin.Engine {
+	// Install built-in metadata adapters before route registration. This is
+	// deliberately independent from authorization enforcement and preserves any
+	// providers configured by a custom build.
+	if err := installBuiltinCustomProviders(); err != nil {
+		log.Printf("Warning: custom provider bootstrap unavailable: %v", err)
+	}
 	middleware2.SetIngressRejectRecorder(opsService)
 	// 缓存 iframe 页面的 origin 列表，用于动态注入 CSP frame-src
 	var cachedFrameOrigins atomic.Pointer[[]string]
