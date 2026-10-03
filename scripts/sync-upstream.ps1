@@ -135,13 +135,17 @@ if ($mergeCode -ne 0) {
     exit 2
 }
 
+# Conclude the upstream merge before applying any custom patch branch. Git does
+# not allow another merge while MERGE_HEAD is present; each patch therefore
+# starts from a committed upstream merge and is committed independently.
+Invoke-Git @("commit", "--no-edit", "-m", "chore: merge upstream $UpstreamTag")
+
 foreach ($patchBranch in (Read-PatchBranches -Path $Manifest)) {
     if ([string]::IsNullOrWhiteSpace($patchBranch)) { continue }
     $patchCode = Invoke-GitAllowFailure @("fetch", "--prune", "origin", $patchBranch)
     if ($patchCode -ne 0) {
         $report.Add("Patch branch was not found on origin: ``$patchBranch``")
         $report | ForEach-Object { Write-Host $_ }
-        Invoke-Git @("merge", "--abort")
         if (-not $KeepWorktree) { Invoke-Git @("switch", $BaseBranch) }
         exit 2
     }
@@ -155,10 +159,8 @@ foreach ($patchBranch in (Read-PatchBranches -Path $Manifest)) {
         if (-not $KeepWorktree) { Invoke-Git @("switch", $BaseBranch) }
         exit 2
     }
+    Invoke-Git @("commit", "--no-edit", "-m", "chore: apply custom patch $patchBranch after upstream $UpstreamTag")
 }
-
-# A no-commit merge leaves the index ready for a deterministic merge commit.
-Invoke-Git @("commit", "--no-edit", "-m", "chore: merge upstream $UpstreamTag")
 $rangeCode = Invoke-GitAllowFailure @("range-diff", "$tagRef..$baseSha", "$tagRef..HEAD")
 $report.Add("## Merge")
 $report.Add("Merge completed. ``git range-diff`` exit code: $rangeCode")

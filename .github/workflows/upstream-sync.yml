@@ -129,6 +129,9 @@ jobs:
             echo "blocked=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # Finish the upstream merge before applying custom patch branches.
+          # Git rejects a second merge while MERGE_HEAD is present.
+          git commit --no-edit -m "chore: merge upstream $TAG"
           # Apply the ordered patch stack declared in the manifest. The list
           # is intentionally empty until each isolated feature branch has its
           # own tested ref. Missing refs block the draft PR; they are never
@@ -167,8 +170,8 @@ jobs:
               echo "blocked=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            git commit --no-edit -m "chore: apply custom patch $patch after upstream $TAG"
           done <<< "$patches"
-          git commit --no-edit -m "chore: merge upstream $TAG"
           echo "noop=false" >> "$GITHUB_OUTPUT"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "blocked=false" >> "$GITHUB_OUTPUT"
