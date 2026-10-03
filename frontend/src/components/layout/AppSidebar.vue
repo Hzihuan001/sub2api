@@ -900,7 +900,6 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon, permission: 'orders' },
       ],
     },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon, permission: 'usage' },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true, permission: 'auditLogs' }
   ]
 

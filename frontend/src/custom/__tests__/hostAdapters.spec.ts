@@ -7,7 +7,8 @@ import {
   mapCustomMenuItems,
   mergeCustomRoutes,
   operatorRoleFeature,
-  promptAuditFeature
+  promptAuditFeature,
+  usageExtrasFeature
 } from '../index'
 
 describe('custom host adapters', () => {
@@ -88,6 +89,12 @@ describe('custom host adapters', () => {
     )
     expect(operatorRoleFeature.menuItems?.[0]).toEqual(
       expect.objectContaining({ path: '/admin/roles', adminOnly: true })
+    )
+    expect(usageExtrasFeature.routes?.[0]).toEqual(
+      expect.objectContaining({ path: '/admin/usage', name: 'AdminUsage' })
+    )
+    expect(usageExtrasFeature.menuItems?.[0]).toEqual(
+      expect.objectContaining({ path: '/admin/usage', permission: 'usage' })
     )
   })
 })

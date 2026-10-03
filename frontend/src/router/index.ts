@@ -645,18 +645,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/usage',
-    name: 'AdminUsage',
-    component: () => import('@/views/admin/UsageView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiredPermission: 'usage',
-      title: 'Usage Records',
-      titleKey: 'admin.usage.title',
-      descriptionKey: 'admin.usage.description'
-    }
-  },
-  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },
