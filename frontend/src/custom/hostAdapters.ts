@@ -4,9 +4,11 @@ import {
   customFeatureRegistry,
   getCustomMenuItems,
   getCustomRoutes,
+  getCustomSettingsTabs,
   type CustomFeatureRegistry,
   type CustomMenuItem
 } from './registry'
+import type { CustomSettingsTab } from './registry'
 
 /** Minimal view model consumed by host navigation surfaces. */
 export interface HostCustomNavItem {
@@ -80,4 +82,18 @@ export function getHostCustomMenuItems(
   registry: CustomFeatureRegistry = customFeatureRegistry
 ): HostCustomNavItem[] {
   return mapCustomMenuItems(getCustomMenuItems(registry), translate)
+}
+
+/**
+ * Return settings contributions in host display order without exposing the
+ * registry implementation to SettingsView. A fresh array is returned so the
+ * host may filter or sort it without mutating feature manifests.
+ */
+export function getHostCustomSettingsTabs(
+  registry: CustomFeatureRegistry = customFeatureRegistry
+): CustomSettingsTab[] {
+  return [...getCustomSettingsTabs(registry)].sort((left, right) => {
+    const orderDiff = (left.order ?? Number.POSITIVE_INFINITY) - (right.order ?? Number.POSITIVE_INFINITY)
+    return orderDiff || left.id.localeCompare(right.id)
+  })
 }

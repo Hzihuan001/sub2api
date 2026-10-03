@@ -8807,8 +8807,16 @@
           <BackupSettings />
         </div>
 
+        <!-- Custom tabs are feature-owned components. They are not mounted
+             unless a feature registers a tab in the custom registry. -->
+        <template v-for="tab in customSettingsTabs" :key="tab.key">
+          <div v-if="tab.custom && settingsTabVisible(tab.key)" v-show="activeTab === tab.key">
+            <component :is="tab.custom.component" />
+          </div>
+        </template>
+
         <!-- Save Button -->
-        <div v-show="activeTab !== 'backup'" class="flex justify-end">
+        <div v-show="isBuiltInSettingsTab(activeTab) && activeTab !== 'backup'" class="flex justify-end">
           <button
             type="submit"
             :disabled="saving || loadFailed"
@@ -8984,6 +8992,8 @@ import {
   type FingerprintSignalType,
   type FingerprintSignalRow,
 } from "./codexFingerprintSignals";
+import { getHostCustomSettingsTabs } from "@/custom";
+import type { CustomSettingsTab } from "@/custom";
 
 const { t, locale } = useI18n();
 
@@ -9038,7 +9048,7 @@ const paymentMethodsHref = computed(() =>
     : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods",
 );
 
-type SettingsTab =
+type BuiltInSettingsTab =
   | "general"
   | "agreement"
   | "features"
@@ -9048,9 +9058,15 @@ type SettingsTab =
   | "payment"
   | "email"
   | "backup";
+type SettingsTab = BuiltInSettingsTab | string;
+interface SettingsTabEntry {
+  key: SettingsTab;
+  icon: "home" | "document" | "bolt" | "shield" | "user" | "server" | "creditCard" | "mail" | "database";
+  custom?: CustomSettingsTab;
+}
 const activeTab = ref<SettingsTab>("general");
 const authStore = useAuthStore();
-const settingsTabPermission: Record<SettingsTab, Parameters<typeof authStore.canOperator>[0]> = {
+const settingsTabPermission: Record<BuiltInSettingsTab, Parameters<typeof authStore.canOperator>[0]> = {
   general: "settings.general.read",
   agreement: "settings.agreement.read",
   features: "settings.features.read",
@@ -9061,7 +9077,7 @@ const settingsTabPermission: Record<SettingsTab, Parameters<typeof authStore.can
   email: "settings.email.read",
   backup: "settings.backup.read",
 };
-const settingsTabWritePermission: Record<SettingsTab, Parameters<typeof authStore.canOperator>[0]> = {
+const settingsTabWritePermission: Record<BuiltInSettingsTab, Parameters<typeof authStore.canOperator>[0]> = {
   general: "settings.general.write",
   agreement: "settings.agreement.write",
   features: "settings.features.write",
@@ -9072,24 +9088,51 @@ const settingsTabWritePermission: Record<SettingsTab, Parameters<typeof authStor
   email: "settings.email.write",
   backup: "settings.backup.write",
 };
-const allSettingsTabs = [
-  { key: "general" as SettingsTab, icon: "home" as const },
-  { key: "agreement" as SettingsTab, icon: "document" as const },
-  { key: "features" as SettingsTab, icon: "bolt" as const },
-  { key: "security" as SettingsTab, icon: "shield" as const },
-  { key: "users" as SettingsTab, icon: "user" as const },
-  { key: "gateway" as SettingsTab, icon: "server" as const },
-  { key: "payment" as SettingsTab, icon: "creditCard" as const },
-  { key: "email" as SettingsTab, icon: "mail" as const },
-  { key: "backup" as SettingsTab, icon: "database" as const },
+const allSettingsTabs: readonly SettingsTabEntry[] = [
+  { key: "general", icon: "home" },
+  { key: "agreement", icon: "document" },
+  { key: "features", icon: "bolt" },
+  { key: "security", icon: "shield" },
+  { key: "users", icon: "user" },
+  { key: "gateway", icon: "server" },
+  { key: "payment", icon: "creditCard" },
+  { key: "email", icon: "mail" },
+  { key: "backup", icon: "database" },
 ];
+
+// The registry is empty for the stock application. Registered custom tabs are
+// appended only at this boundary, leaving all existing tab markup untouched.
+const customSettingsTabs = computed<SettingsTabEntry[]>(() => {
+  const builtInKeys = new Set(allSettingsTabs.map((tab) => tab.key));
+  return getHostCustomSettingsTabs()
+    .filter((tab) => tab.id.trim() && !builtInKeys.has(tab.id))
+    .map((tab) => ({ key: tab.id, icon: "bolt", custom: tab }));
+});
+const allSettingsTabEntries = computed(() => [...allSettingsTabs, ...customSettingsTabs.value]);
 const settingsTabs = computed(() => authStore.isAdmin
-  ? allSettingsTabs
-  : allSettingsTabs.filter((tab) => authStore.canOperator("settings.read") || authStore.canOperator(settingsTabPermission[tab.key])));
-const settingsReadOnly = computed(() => authStore.isOperator && !authStore.canOperator("settings.write") && !authStore.canOperator(settingsTabWritePermission[activeTab.value]));
-function settingsTabVisible(tab: SettingsTab): boolean {
-  return authStore.isAdmin || authStore.canOperator("settings.read") || authStore.canOperator(settingsTabPermission[tab]);
+  ? allSettingsTabEntries.value
+  : allSettingsTabEntries.value.filter((tab) => settingsTabVisible(tab.key)));
+
+function isBuiltInSettingsTab(tab: SettingsTab): tab is BuiltInSettingsTab {
+  return Object.prototype.hasOwnProperty.call(settingsTabPermission, tab);
 }
+
+function customSettingsTab(tab: SettingsTab): CustomSettingsTab | undefined {
+  return customSettingsTabs.value.find((item) => item.key === tab)?.custom;
+}
+
+function settingsTabVisible(tab: SettingsTab): boolean {
+  if (isBuiltInSettingsTab(tab)) {
+    return authStore.isAdmin || authStore.canOperator("settings.read") || authStore.canOperator(settingsTabPermission[tab]);
+  }
+  const custom = customSettingsTab(tab);
+  return !!custom && (authStore.isAdmin || authStore.canOperator("settings.read") || (!!custom.permission && authStore.canOperator(custom.permission as Parameters<typeof authStore.canOperator>[0])));
+}
+
+const settingsReadOnly = computed(() => {
+  if (!isBuiltInSettingsTab(activeTab.value)) return false;
+  return authStore.isOperator && !authStore.canOperator("settings.write") && !authStore.canOperator(settingsTabWritePermission[activeTab.value]);
+});
 watch(settingsTabs, (tabs) => {
   if (tabs.length > 0 && !settingsTabVisible(activeTab.value)) {
     activeTab.value = tabs[0].key;
