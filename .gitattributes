@@ -20,3 +20,8 @@ backend/migrations/*.sql text eol=lf
 
 # Dockerfile
 Dockerfile text eol=lf
+
+# Generated sources are regenerated from schema/provider inputs after an
+# upstream update; never resolve these files by blindly choosing one side.
+backend/ent/** linguist-generated
+backend/cmd/server/wire_gen.go linguist-generated

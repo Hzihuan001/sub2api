@@ -1,0 +1,12 @@
+# Custom distribution overlay.  Keep deploy/docker-compose.yml identical to
+# upstream; pass this file after it when running the custom image.
+services:
+  sub2api:
+    image: ${SUB2API_IMAGE:?Set SUB2API_IMAGE to a pinned custom tag or digest}
+    environment:
+      BATCH_IMAGE_ENABLED: ${BATCH_IMAGE_ENABLED:-true}
+      BATCH_IMAGE_QUEUE_ENABLED: ${BATCH_IMAGE_QUEUE_ENABLED:-true}
+      BATCH_IMAGE_DEFAULT_IMAGE_SIZE: ${BATCH_IMAGE_DEFAULT_IMAGE_SIZE:-2K}
+      BATCH_IMAGE_APP_MANAGED_ENABLED: ${BATCH_IMAGE_APP_MANAGED_ENABLED:-true}
+      SUB2API_KIRO_TIME_CONTEXT: ${SUB2API_KIRO_TIME_CONTEXT:-}
+      SUB2API_KIRO_CONVERSATION_ID_MODE: ${SUB2API_KIRO_CONVERSATION_ID_MODE:-stable}

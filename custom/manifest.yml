@@ -1,0 +1,47 @@
+version: 1
+name: sub2api-custom-layer
+upstream:
+  remote: upstream
+  mirror_branch: upstream/mainline
+  base_ref_pattern: v*
+
+# The feature list is intentionally declarative.  The sync workflow uses it to
+# apply and test custom patch stacks in a stable order.
+features:
+  - id: operator
+    owner: custom/operator
+    description: Operator role permissions and management-menu policy.
+    tests:
+      - backend/internal/authz/...
+      - frontend/src/authz
+  - id: prompt-audit
+    owner: custom/prompt-audit
+    description: Prompt capture, audit events, retention and administration UI.
+    tests:
+      - backend/internal/securityaudit/...
+      - frontend/src/features/prompt-audit
+  - id: image-studio
+    owner: custom/image-studio
+    description: Image studio, batch fan-out, references and downloads.
+    tests:
+      - backend/internal/service/batch_image_...
+      - frontend/src/features/image-studio
+  - id: branding
+    owner: custom/branding
+    description: Runtime site branding and public-facing terminology.
+    tests:
+      - frontend/src/i18n
+  - id: usage-extras
+    owner: custom/usage-extras
+    description: Admin-only usage presentation and API-key administration helpers.
+    tests:
+      - backend/internal/handler/admin_usage.go
+      - frontend/src/views/admin
+
+policies:
+  generated_sources:
+    - backend/ent
+    - backend/cmd/server/wire_gen.go
+  immutable_migrations: true
+  custom_migration_prefix: 9000_custom_
+  production_deploy_from_sync_pr: false
