@@ -1,0 +1,31 @@
+# Declarative input for scripts/sync-upstream.ps1 and upstream-sync.yml.
+# This file intentionally contains no credentials and no deployment settings.
+version: 1
+
+upstream:
+  remote: upstream
+  tag_pattern: v*
+  # Dedicated custom integration branch; do not point this at the plain
+  # upstream-tracking main branch.
+  base_branch: custom/integration
+  upgrade_branch_prefix: upgrade/upstream-
+
+# Optional ordered patch branches. Once the isolation refactor creates these
+# branches, the sync job applies them in this order after the upstream merge.
+# Keep this list empty until a patch branch is independently tested.
+patch_branches: []
+
+# Paths that must remain present in every generated upgrade branch. This is a
+# guardrail, not an instruction to auto-resolve conflicts in these files.
+protected_paths:
+  - backend/internal/authz
+  - backend/internal/securityaudit
+  - frontend/src/authz
+  - frontend/src/features/image-studio
+
+checks:
+  backend_test: go test ./...
+  frontend_install: pnpm install --frozen-lockfile
+  frontend_typecheck: pnpm run typecheck
+  compose_files:
+    - deploy/docker-compose.operator-test.yml
