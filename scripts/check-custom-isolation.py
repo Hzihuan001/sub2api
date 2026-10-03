@@ -105,13 +105,19 @@ def check_generated_sources(root: Path, run_generate: bool) -> None:
 
     if run_generate:
         assert_clean_before_generation(root)
-        completed = subprocess.run(
-            ["go", "generate", "./..."],
-            cwd=backend,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                ["go", "generate", "./..."],
+                cwd=backend,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise CheckFailure(
+                "go executable was not found; install the pinned Go toolchain "
+                "or run with --skip-generated after a CI generation step"
+            ) from exc
         if completed.returncode != 0:
             raise CheckFailure(
                 "go generate ./... failed:\n"
