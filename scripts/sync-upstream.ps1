@@ -176,6 +176,14 @@ if ($RunChecks) {
         try { & pnpm install --frozen-lockfile; if ($LASTEXITCODE -ne 0) { throw "frontend install failed" } }
         finally { Pop-Location }
     }
+    $isolationCheck = Join-Path $repoRoot "scripts/check-custom-isolation.py"
+    if (Test-Path -LiteralPath $isolationCheck) {
+        $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+        if ($null -eq $pythonCommand) { $pythonCommand = Get-Command py -ErrorAction SilentlyContinue }
+        if ($null -eq $pythonCommand) { throw "Python is required for custom isolation checks" }
+        & $pythonCommand.Source $isolationCheck --run-go-generate --base-ref $baseSha --upstream-ref $tagCommitRef
+        if ($LASTEXITCODE -ne 0) { throw "custom isolation checks failed" }
+    }
     $report.Add("Checks completed successfully.")
 }
 
