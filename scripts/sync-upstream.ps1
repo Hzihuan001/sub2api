@@ -81,10 +81,11 @@ $safeTag = $UpstreamTag -replace '[^0-9A-Za-z._-]', '-'
 if ([string]::IsNullOrWhiteSpace($UpgradeBranch)) { $UpgradeBranch = "upgrade/upstream-$safeTag" }
 $baseRef = "origin/$BaseBranch"
 $tagRef = "refs/tags/$UpstreamTag"
+$tagCommitRef = "$tagRef^{commit}"
 
 $baseSha = (git rev-parse $baseRef 2>$null).Trim()
 $baseCode = $LASTEXITCODE
-$tagSha = (git rev-parse $tagRef 2>$null).Trim()
+$tagSha = (git rev-parse $tagCommitRef 2>$null).Trim()
 $tagCode = $LASTEXITCODE
 if ($baseCode -ne 0) { throw "Cannot resolve custom base $baseRef. Create the dedicated integration branch before running sync." }
 if ($tagCode -ne 0) { throw "Cannot resolve upstream tag $tagRef" }
@@ -98,7 +99,7 @@ $report.Add("- Proposed branch: ``$UpgradeBranch``")
 $report.Add("- Deployment: never performed by this script")
 $report.Add("")
 
-if ($baseSha -eq $tagSha -or (Invoke-GitAllowFailure @("merge-base", "--is-ancestor", $tagRef, $baseRef)) -eq 0) {
+if ($baseSha -eq $tagSha -or (Invoke-GitAllowFailure @("merge-base", "--is-ancestor", $tagCommitRef, $baseRef)) -eq 0) {
     $report.Add("No update: base already points at the selected upstream tag.")
     $report | ForEach-Object { Write-Host $_ }
     exit 0
