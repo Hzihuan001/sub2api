@@ -82,9 +82,12 @@ if ([string]::IsNullOrWhiteSpace($UpgradeBranch)) { $UpgradeBranch = "upgrade/up
 $baseRef = "origin/$BaseBranch"
 $tagRef = "refs/tags/$UpstreamTag"
 
-$baseSha = (git rev-parse $baseRef).Trim()
-$tagSha = (git rev-parse $tagRef).Trim()
-if ($LASTEXITCODE -ne 0) { throw "Cannot resolve $baseRef or $tagRef" }
+$baseSha = (git rev-parse $baseRef 2>$null).Trim()
+$baseCode = $LASTEXITCODE
+$tagSha = (git rev-parse $tagRef 2>$null).Trim()
+$tagCode = $LASTEXITCODE
+if ($baseCode -ne 0) { throw "Cannot resolve custom base $baseRef. Create the dedicated integration branch before running sync." }
+if ($tagCode -ne 0) { throw "Cannot resolve upstream tag $tagRef" }
 
 $report = [System.Collections.Generic.List[string]]::new()
 $report.Add("# Upstream sync report")
