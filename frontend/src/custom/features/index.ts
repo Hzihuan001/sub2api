@@ -11,4 +11,3 @@ export function registerBuiltInCustomFeatures(): void {
 registerBuiltInCustomFeatures()
 
 export { promptAuditFeature }
-
