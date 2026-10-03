@@ -119,6 +119,69 @@ func TestNewCustomProviderSetCopiesInputAndOutputSlices(t *testing.T) {
 	}
 }
 
+func TestBuiltInFeatureManifestsAreStableAndValid(t *testing.T) {
+	manifests := BuiltInFeatureManifests()
+	if err := ValidateFeatureManifests(manifests); err != nil {
+		t.Fatalf("ValidateFeatureManifests() error = %v", err)
+	}
+	want := []FeatureID{
+		FeatureBranding,
+		FeatureImageStudio,
+		FeatureOperator,
+		FeaturePromptAudit,
+		FeatureUsageExtras,
+	}
+	got := make([]FeatureID, len(manifests))
+	for i, manifest := range manifests {
+		got[i] = manifest.ID
+		if manifest.SettingsNamespace != SettingNamespace(manifest.ID) {
+			t.Errorf("feature %q namespace = %q, want %q", manifest.ID, manifest.SettingsNamespace, SettingNamespace(manifest.ID))
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("feature order = %v, want %v", got, want)
+	}
+}
+
+func TestNamespacedSettingKey(t *testing.T) {
+	got, err := NamespacedSettingKey(FeaturePromptAudit, "retention.days")
+	if err != nil {
+		t.Fatalf("NamespacedSettingKey() error = %v", err)
+	}
+	if got != "custom.prompt-audit.retention.days" {
+		t.Fatalf("NamespacedSettingKey() = %q", got)
+	}
+
+	for _, key := range []string{"", ".days", "days.", "days..value", "days/value"} {
+		if _, err := NamespacedSettingKey(FeaturePromptAudit, key); err == nil {
+			t.Errorf("NamespacedSettingKey(%q) returned nil error", key)
+		}
+	}
+}
+
+func TestValidateFeatureManifestsRejectsDuplicateIdentity(t *testing.T) {
+	_, err := NamespacedSettingKey(FeatureID("UpperCase"), "enabled")
+	if err == nil {
+		t.Fatal("NamespacedSettingKey() accepted invalid feature ID")
+	}
+
+	err = ValidateFeatureManifests([]FeatureManifest{
+		{ID: FeatureOperator, SettingsNamespace: "custom.operator"},
+		{ID: FeatureOperator, SettingsNamespace: "custom.operator-2"},
+	})
+	if err == nil {
+		t.Fatal("ValidateFeatureManifests() accepted duplicate feature ID")
+	}
+
+	err = ValidateFeatureManifests([]FeatureManifest{
+		{ID: FeatureOperator, SettingsNamespace: "custom.same"},
+		{ID: FeatureBranding, SettingsNamespace: "custom.same"},
+	})
+	if err == nil {
+		t.Fatal("ValidateFeatureManifests() accepted duplicate settings namespace")
+	}
+}
+
 func providerIDs[T provider](providers []T) []string {
 	ids := make([]string, len(providers))
 	for i, p := range providers {
