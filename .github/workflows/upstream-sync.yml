@@ -76,7 +76,8 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$FORCE" == "true" ]]; then echo "exists=false" >> "$GITHUB_OUTPUT"; exit 0; fi
-          count="$(gh pr list --state open --search "head:upgrade/upstream-$TAG" --json number --jq 'length')"
+          safe_tag="${TAG//[^0-9A-Za-z._-]/-}"
+          count="$(gh pr list --state open --search "head:upgrade/upstream-$safe_tag" --json number --jq 'length')"
           echo "exists=$([[ "$count" != 0 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Stop when an upgrade PR already exists
@@ -92,7 +93,11 @@ jobs:
         shell: bash
         run: |
           set +e
-          branch="upgrade/upstream-$TAG"
+          safe_tag="${TAG//[^0-9A-Za-z._-]/-}"
+          branch="upgrade/upstream-$safe_tag"
+          if git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
+            branch="${branch}-${GITHUB_RUN_ID}"
+          fi
           git switch --create "$branch" "origin/$BASE_BRANCH"
           if git merge-base --is-ancestor "$TAG" "origin/$BASE_BRANCH"; then
             echo "branch=$branch" >> "$GITHUB_OUTPUT"
