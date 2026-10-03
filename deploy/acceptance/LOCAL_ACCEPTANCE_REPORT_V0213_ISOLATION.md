@@ -25,7 +25,8 @@ Date: 2026-10-03 (Asia/Shanghai)
 - Main application restart preserved database state; health and admin login remained successful.
 - Main administrator accepted the isolated compliance acknowledgement; dashboard statistics,
   usage records, and operator permission policy endpoints returned 200.
-- All three instances reported version `0.2.13-custom.4`; the image-studio route and the
+- All three instances reported version `0.2.13-custom.4` before the test-only follow-up commit;
+  the runtime code is unchanged by that follow-up. The image-studio route and the
   management system/version, dashboard, usage, and operator-permission endpoints returned 200.
 - No upstream accounts are configured in the synthetic databases, so successful model inference
   and image-provider responses require a separate controlled mock-upstream fixture before release.
