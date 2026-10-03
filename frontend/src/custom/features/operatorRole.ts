@@ -7,7 +7,7 @@ import type { CustomFeatureManifest } from '../registry'
  * policy stays in authz/permissions.ts and is intentionally not duplicated.
  */
 export const operatorRoleFeature: CustomFeatureManifest = {
-  id: 'operator-role',
+  id: 'operator',
   menuItems: [
     {
       id: 'operator-role',
