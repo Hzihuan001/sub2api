@@ -1,0 +1,260 @@
+name: Upstream sync PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: Optional official v* tag (blank selects the latest)
+        required: false
+        type: string
+      force:
+        description: Create a new branch even if an existing PR is found
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  # This branch contains the isolated custom layer. It is deliberately not
+  # the repository's plain upstream-tracking main branch.
+  BASE_BRANCH: custom/integration
+  UPSTREAM_REMOTE: upstream
+  MANIFEST: .github/upstream-sync-manifest.yml
+
+jobs:
+  sync:
+    name: Prepare upstream upgrade PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout custom base
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.BASE_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure remotes
+        shell: bash
+        run: |
+          git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1 || \
+            git remote add "$UPSTREAM_REMOTE" https://github.com/Wei-Shaw/sub2api.git
+          git fetch --prune origin "$BASE_BRANCH"
+          git fetch --prune "$UPSTREAM_REMOTE" '+refs/tags/v*:refs/tags/v*'
+
+      - name: Resolve latest upstream tag
+        id: upstream
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.upstream_tag }}
+        run: |
+          set -euo pipefail
+          tag="$REQUESTED_TAG"
+          if [[ -z "$tag" ]]; then
+            tag="$(git tag -l 'v*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+([-.].*)?$' | head -n1)"
+          fi
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.].*)?$ ]] || { echo "No valid upstream tag" >&2; exit 1; }
+          sha="$(git rev-list -n1 "$tag")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Detect duplicate upgrade PR
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.upstream.outputs.tag }}
+          FORCE: ${{ inputs.force }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$FORCE" == "true" ]]; then echo "exists=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          safe_tag="${TAG//[^0-9A-Za-z._-]/-}"
+          count="$(gh pr list --state open --search "head:upgrade/upstream-$safe_tag" --json number --jq 'length')"
+          echo "exists=$([[ "$count" != 0 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Stop when an upgrade PR already exists
+        if: steps.existing.outputs.exists == 'true'
+        run: echo "An open upgrade PR already exists for ${{ steps.upstream.outputs.tag }}"
+
+      - name: Create upgrade branch and merge upstream
+        if: steps.existing.outputs.exists != 'true'
+        id: merge
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+          SHA: ${{ steps.upstream.outputs.sha }}
+        shell: bash
+        run: |
+          set +e
+          safe_tag="${TAG//[^0-9A-Za-z._-]/-}"
+          branch="upgrade/upstream-$safe_tag"
+          if git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
+            branch="${branch}-${GITHUB_RUN_ID}"
+          fi
+          git switch --create "$branch" "origin/$BASE_BRANCH"
+          if git merge-base --is-ancestor "$TAG" "origin/$BASE_BRANCH"; then
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            echo "blocked=false" >> "$GITHUB_OUTPUT"
+            echo "noop=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git merge --no-ff --no-commit "$TAG" >merge.log 2>&1
+          code=$?
+          if [[ $code -ne 0 ]]; then
+            conflicts="$(git diff --name-only --diff-filter=U || true)"
+            git merge --abort >/dev/null 2>&1 || true
+            {
+              echo "## Upstream sync blocked"
+              echo
+              echo "- Upstream tag: `$TAG` (`$SHA`)"
+              echo "- Base branch: `$BASE_BRANCH`"
+              echo "- Merge conflicts:"
+              if [[ -n "$conflicts" ]]; then printf '%s\n' "$conflicts" | sed 's/^/- \`/; s/$/\`/'
+              else echo "  - Git reported a failure without conflict paths; see merge.log."
+              fi
+              echo
+              echo "This draft PR is intentionally blocked. No deployment was performed."
+            } > sync-report.md
+            cp merge.log sync-merge.log
+            git add sync-report.md sync-merge.log
+            git commit -m "chore: report upstream $TAG merge conflicts"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Apply the ordered patch stack declared in the manifest. The list
+          # is intentionally empty until each isolated feature branch has its
+          # own tested ref. Missing refs block the draft PR; they are never
+          # silently skipped.
+          patches="$(awk '
+            /^patch_branches:/ { inlist=1; next }
+            inlist && /^[^[:space:]-]/ { inlist=0 }
+            inlist && /^  - / { sub(/^  - /, ""); print }
+          ' "$MANIFEST")"
+          while IFS= read -r patch; do
+            [[ -z "$patch" ]] && continue
+            git fetch --prune origin "$patch" >"patch-$patch.log" 2>&1
+            if [[ $? -ne 0 ]]; then
+              echo "patch branch not found: $patch" >sync-report.md
+              cp "patch-$patch.log" sync-merge.log
+              git add sync-report.md sync-merge.log
+              git commit -m "chore: report missing patch $patch"
+              echo "branch=$branch" >> "$GITHUB_OUTPUT"
+              echo "blocked=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git merge --no-ff --no-commit "origin/$patch" >>merge.log 2>&1
+            if [[ $? -ne 0 ]]; then
+              conflicts="$(git diff --name-only --diff-filter=U || true)"
+              git merge --abort >/dev/null 2>&1 || true
+              {
+                echo "## Upstream sync blocked"
+                echo
+                echo "Patch branch `$patch` conflicted after `$TAG`."
+                if [[ -n "$conflicts" ]]; then printf '%s\n' "$conflicts" | sed 's/^/- \`/; s/$/\`/'; fi
+                echo "No deployment was performed."
+              } >sync-report.md
+              git add sync-report.md merge.log
+              git commit -m "chore: report patch $patch merge conflicts"
+              echo "branch=$branch" >> "$GITHUB_OUTPUT"
+              echo "blocked=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done <<< "$patches"
+          git commit --no-edit -m "chore: merge upstream $TAG"
+          echo "noop=false" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "blocked=false" >> "$GITHUB_OUTPUT"
+
+      - name: Run range-diff and source checks
+        if: steps.existing.outputs.exists != 'true' && steps.merge.outputs.noop != 'true'
+        id: checks
+        shell: bash
+        run: |
+          set +e
+          failed=0
+          git diff --check HEAD^..HEAD || failed=1
+          git range-diff "${{ steps.upstream.outputs.tag }}..origin/$BASE_BRANCH" "${{ steps.upstream.outputs.tag }}..HEAD" > range-diff.txt || true
+          if [[ "${{ steps.merge.outputs.blocked }}" == "true" ]]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -f backend/go.mod ]]; then
+            (cd backend && go generate ./...) > generate.log 2>&1
+            if [[ $? -ne 0 ]] || ! git diff --exit-code -- backend >/dev/null; then failed=1; fi
+          fi
+          if [[ -f scripts/check-custom-isolation.py ]]; then
+            python3 scripts/check-custom-isolation.py \
+              --skip-generated \
+              --base-ref "origin/$BASE_BRANCH" \
+              --upstream-ref "${{ steps.upstream.outputs.tag }}" \
+              > custom-isolation-check.log 2>&1
+            if [[ $? -ne 0 ]]; then failed=1; fi
+          fi
+          if [[ -f backend/go.mod ]]; then
+            (cd backend && go test ./...) > backend-test.log 2>&1
+            if [[ $? -ne 0 ]]; then failed=1; fi
+            # Exercise the repository migration/checksum tests separately so
+            # a merge cannot silently alter append-only migration behaviour.
+            (cd backend && go test ./internal/repository -run 'Migration|Migrations') > migration-check.log 2>&1
+            if [[ $? -ne 0 ]]; then failed=1; fi
+          fi
+          if [[ -f frontend/package.json ]]; then
+            corepack enable
+            (cd frontend && pnpm install --frozen-lockfile && pnpm run typecheck) > frontend-test.log 2>&1
+            if [[ $? -ne 0 ]]; then failed=1; fi
+          fi
+          if [[ $failed -ne 0 ]]; then
+            echo "## Upstream sync checks blocked" > sync-report.md
+            echo >> sync-report.md
+            echo "One or more generated-code or test checks failed. See workflow artifacts." >> sync-report.md
+            git add sync-report.md generate.log custom-isolation-check.log backend-test.log frontend-test.log 2>/dev/null || true
+            git commit -m "chore: report upstream ${{ steps.upstream.outputs.tag }} checks" || true
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload sync diagnostics
+        if: always() && steps.existing.outputs.exists != 'true' && steps.merge.outputs.noop != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-sync-${{ steps.upstream.outputs.tag }}
+          path: |
+            sync-report.md
+            sync-merge.log
+            range-diff.txt
+            generate.log
+            custom-isolation-check.log
+            migration-check.log
+            backend-test.log
+            frontend-test.log
+          if-no-files-found: ignore
+
+      - name: Create upgrade PR
+        if: always() && steps.existing.outputs.exists != 'true' && steps.merge.outputs.noop != 'true' && steps.merge.outputs.branch != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.upstream.outputs.tag }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+          BLOCKED: ${{ steps.merge.outputs.blocked }}
+          CHECK_FAILED: ${{ steps.checks.outputs.failed }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --set-upstream origin "$BRANCH"
+          if [[ "$BLOCKED" == "true" || "$CHECK_FAILED" == "true" ]]; then
+            title="[blocked] upstream sync $TAG"
+            body="Automated sync detected conflicts. See the uploaded artifact and `sync-report.md`; resolve manually before merging. No deployment was performed."
+          else
+            title="chore: sync upstream $TAG"
+            body="Automated upstream merge for `$TAG`. Range-diff, generated-code and test logs are attached as workflow artifacts. This PR does not deploy production."
+          fi
+          gh pr create --draft --base "$BASE_BRANCH" --head "$BRANCH" --title "$title" --body "$body"
