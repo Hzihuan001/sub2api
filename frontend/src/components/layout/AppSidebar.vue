@@ -207,6 +207,7 @@ interface NavItem {
   label: string
   icon: unknown
   iconSvg?: string
+  parentPath?: string
   hideInSimpleMode?: boolean
   children?: NavItem[]
   /**
@@ -230,6 +231,7 @@ function toNavItem(item: HostCustomNavItem): NavItem {
     label: item.label,
     icon: item.icon,
     iconSvg: item.iconSvg,
+    parentPath: item.parentPath,
     featureFlag: item.featureFlag,
     permission: item.permission as ManagementPermission | undefined,
     children: item.children?.map(toNavItem)
@@ -759,6 +761,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+    ...registryUserMenuItems.value.filter(item => !item.parentPath),
     { path: '/image-studio', label: t('nav.imageStudio'), icon: ImageStudioIcon, hideInSimpleMode: true },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
@@ -775,7 +778,6 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
       icon: null,
       iconSvg: item.icon_svg,
     })),
-    ...registryUserMenuItems.value,
   )
   return items
 }
@@ -873,7 +875,9 @@ const adminNavItems = computed((): NavItem[] => {
       expandOnly: true,
       children: [
         { path: '/admin/risk-control', label: t('nav.contentModeration'), icon: ShieldIcon, featureFlag: flagRiskControl, permission: 'riskControl' },
-        { path: '/admin/prompt-audit', label: t('nav.promptAudit'), icon: ShieldIcon, permission: 'promptAudit' },
+        ...registryAdminMenuItems.value
+          .filter(item => item.parentPath === '/admin/security-audit')
+          .map(item => ({ ...item, icon: item.icon ?? ShieldIcon })),
       ],
     },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, permission: 'redeemCodes' },
@@ -914,7 +918,7 @@ const adminNavItems = computed((): NavItem[] => {
   const visible = authStore.isAdmin
     ? featureVisible
     : applyOperatorPermissions(featureVisible)
-  const registryVisible = applyFeatureFlags(registryAdminMenuItems.value)
+  const registryVisible = applyFeatureFlags(registryAdminMenuItems.value.filter(item => !item.parentPath))
   visible.push(
     ...(authStore.isAdmin
       ? registryVisible

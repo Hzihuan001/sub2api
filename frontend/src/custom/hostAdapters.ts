@@ -12,6 +12,7 @@ import {
 export interface HostCustomNavItem {
   path: string
   label: string
+  parentPath?: string
   icon: unknown
   iconSvg?: string
   featureFlag?: () => boolean | undefined
@@ -58,6 +59,7 @@ export function mapCustomMenuItems(
   const mapItem = (item: CustomMenuItem): HostCustomNavItem => ({
     path: item.path,
     label: translate(item.labelKey),
+    parentPath: item.parentPath,
     icon: item.icon ?? null,
     iconSvg: item.iconSvg,
     featureFlag: item.featureFlag,

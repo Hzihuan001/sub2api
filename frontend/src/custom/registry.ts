@@ -12,6 +12,8 @@ export interface CustomMenuItem {
   id: string
   path: string
   labelKey: string
+  /** Optional host menu path that should receive this item as a child. */
+  parentPath?: string
   icon?: unknown
   iconSvg?: string
   permission?: string
