@@ -44,6 +44,20 @@ export interface CustomFeatureManifest {
   i18nNamespace?: string
 }
 
+/**
+ * A stable snapshot shape for host integrations.
+ *
+ * Router, sidebar, and settings code can consume this object without knowing
+ * how individual features are stored or registered. Every array is newly
+ * allocated by the adapter, so callers may sort/filter their copy safely.
+ */
+export interface CustomFeatureContributions {
+  routes: readonly RouteRecordRaw[]
+  menuItems: readonly CustomMenuItem[]
+  settingsTabs: readonly CustomSettingsTab[]
+  permissions: readonly string[]
+}
+
 export interface CustomFeatureRegistry {
   register(manifest: CustomFeatureManifest): void
   registerMany(manifests: readonly CustomFeatureManifest[]): void
@@ -156,3 +170,44 @@ export function createCustomFeatureRegistry(): CustomFeatureRegistry {
 /** Application-wide registry.  Feature packages register during bootstrap. */
 export const customFeatureRegistry = createCustomFeatureRegistry()
 
+/**
+ * Return all contributions in the shape expected by host surfaces.
+ *
+ * The optional registry argument makes the adapter easy to test and lets an
+ * embedded surface use a scoped registry while application code can omit it.
+ */
+export function getCustomFeatureContributions(
+  registry: CustomFeatureRegistry = customFeatureRegistry
+): CustomFeatureContributions {
+  return {
+    routes: registry.routes(),
+    menuItems: registry.menuItems(),
+    settingsTabs: registry.settingsTabs(),
+    permissions: registry.permissions()
+  }
+}
+
+/** Convenience adapters for incremental router/sidebar/settings adoption. */
+export function getCustomRoutes(
+  registry: CustomFeatureRegistry = customFeatureRegistry
+): readonly RouteRecordRaw[] {
+  return registry.routes()
+}
+
+export function getCustomMenuItems(
+  registry: CustomFeatureRegistry = customFeatureRegistry
+): readonly CustomMenuItem[] {
+  return registry.menuItems()
+}
+
+export function getCustomSettingsTabs(
+  registry: CustomFeatureRegistry = customFeatureRegistry
+): readonly CustomSettingsTab[] {
+  return registry.settingsTabs()
+}
+
+export function getCustomPermissions(
+  registry: CustomFeatureRegistry = customFeatureRegistry
+): readonly string[] {
+  return registry.permissions()
+}

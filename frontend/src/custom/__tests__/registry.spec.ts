@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   createCustomFeatureRegistry,
+  getCustomFeatureContributions,
+  getCustomMenuItems,
+  getCustomPermissions,
+  getCustomRoutes,
+  getCustomSettingsTabs,
   type CustomFeatureManifest
 } from '../registry'
 
@@ -64,6 +69,30 @@ describe('custom feature registry', () => {
     expect(registry.settingsTabs().map((tab) => tab.id)).toEqual(['a-settings', 'b-settings'])
   })
 
+  it('exposes host adapters without requiring host surfaces to know registry internals', () => {
+    const registry = createCustomFeatureRegistry()
+    const route = { path: '/image-studio', component: {} }
+    const menuItem = { id: 'image-studio', path: '/image-studio', labelKey: 'imageStudio' }
+    const settingsTab = { id: 'image-settings', labelKey: 'imageSettings', component: {} }
+    registry.register(feature('image', {
+      routes: [route],
+      menuItems: [menuItem],
+      settingsTabs: [settingsTab],
+      permissions: ['image.read']
+    }))
+
+    expect(getCustomFeatureContributions(registry)).toEqual({
+      routes: [route],
+      menuItems: [menuItem],
+      settingsTabs: [settingsTab],
+      permissions: ['image.read']
+    })
+    expect(getCustomRoutes(registry)).toEqual([route])
+    expect(getCustomMenuItems(registry)).toEqual([menuItem])
+    expect(getCustomSettingsTabs(registry)).toEqual([settingsTab])
+    expect(getCustomPermissions(registry)).toEqual(['image.read'])
+  })
+
   it('supports unregistering and clearing an isolated registry', () => {
     const registry = createCustomFeatureRegistry()
     registry.registerMany([feature('one'), feature('two')])
@@ -74,4 +103,3 @@ describe('custom feature registry', () => {
     expect(registry.features()).toEqual([])
   })
 })
-
