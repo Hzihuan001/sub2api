@@ -830,6 +830,9 @@ const registryAdminMenuItems = computed(() =>
 const registryRoleMenuItem = computed(() =>
   authStore.isAdmin ? registryAdminMenuItems.value.find((item) => item.path === '/admin/roles') : undefined
 )
+const registryUsageMenuItem = computed(() =>
+  registryAdminMenuItems.value.find((item) => item.path === '/admin/usage')
+)
 
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
@@ -900,6 +903,7 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon, permission: 'orders' },
       ],
     },
+    ...(registryUsageMenuItem.value ? [{ ...registryUsageMenuItem.value, icon: ChartIcon }] : []),
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true, permission: 'auditLogs' }
   ]
 
@@ -908,7 +912,9 @@ const adminNavItems = computed((): NavItem[] => {
     ? featureVisible
     : applyOperatorPermissions(featureVisible)
   const registryVisible = applyFeatureFlags(
-    registryAdminMenuItems.value.filter(item => !item.parentPath && item.path !== '/admin/roles')
+    registryAdminMenuItems.value.filter(
+      item => !item.parentPath && item.path !== '/admin/roles' && item.path !== '/admin/usage'
+    )
   )
   visible.push(
     ...(authStore.isAdmin
