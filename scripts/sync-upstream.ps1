@@ -141,6 +141,7 @@ foreach ($patchBranch in (Read-PatchBranches -Path $Manifest)) {
     if ($patchCode -ne 0) {
         $report.Add("Patch branch was not found on origin: ``$patchBranch``")
         $report | ForEach-Object { Write-Host $_ }
+        Invoke-Git @("merge", "--abort")
         if (-not $KeepWorktree) { Invoke-Git @("switch", $BaseBranch) }
         exit 2
     }
