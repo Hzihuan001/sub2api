@@ -199,6 +199,8 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import type { ManagementPermission } from '@/authz/permissions'
+import { getHostCustomMenuItems } from '@/custom'
+import type { HostCustomNavItem } from '@/custom'
 
 interface NavItem {
   path: string
@@ -220,6 +222,18 @@ interface NavItem {
    */
   featureFlag?: () => boolean | undefined
   permission?: ManagementPermission
+}
+
+function toNavItem(item: HostCustomNavItem): NavItem {
+  return {
+    path: item.path,
+    label: item.label,
+    icon: item.icon,
+    iconSvg: item.iconSvg,
+    featureFlag: item.featureFlag,
+    permission: item.permission as ManagementPermission | undefined,
+    children: item.children?.map(toNavItem)
+  }
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -761,6 +775,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
       icon: null,
       iconSvg: item.icon_svg,
     })),
+    ...registryUserMenuItems.value,
   )
   return items
 }
@@ -810,6 +825,19 @@ const customMenuItemsForAdmin = computed(() => {
     .filter((item) => item.visibility === 'admin')
     .sort((a, b) => a.sort_order - b.sort_order)
 })
+
+// Registry-provided menus are opt-in. Items with a management permission are
+// rendered in the management section; items without one remain user-facing.
+// An empty registry therefore leaves the existing navigation unchanged.
+const registryMenuItems = computed(() =>
+  getHostCustomMenuItems((labelKey) => t(labelKey)).map(toNavItem)
+)
+const registryUserMenuItems = computed(() =>
+  registryMenuItems.value.filter((item) => !item.permission)
+)
+const registryAdminMenuItems = computed(() =>
+  registryMenuItems.value.filter((item) => Boolean(item.permission))
+)
 
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
@@ -886,6 +914,12 @@ const adminNavItems = computed((): NavItem[] => {
   const visible = authStore.isAdmin
     ? featureVisible
     : applyOperatorPermissions(featureVisible)
+  const registryVisible = applyFeatureFlags(registryAdminMenuItems.value)
+  visible.push(
+    ...(authStore.isAdmin
+      ? registryVisible
+      : applyOperatorPermissions(registryVisible))
+  )
 
   // 简单模式下，在系统设置前插入 API密钥
   if (authStore.isSimpleMode && authStore.isAdmin) {

@@ -7,6 +7,7 @@ export {
   getCustomRoutes,
   getCustomSettingsTabs
 } from './registry'
+export { getHostCustomMenuItems, mapCustomMenuItems, mergeCustomRoutes } from './hostAdapters'
 export type {
   CustomFeatureContributions,
   CustomFeatureManifest,
@@ -14,3 +15,4 @@ export type {
   CustomMenuItem,
   CustomSettingsTab
 } from './registry'
+export type { HostCustomNavItem } from './hostAdapters'
