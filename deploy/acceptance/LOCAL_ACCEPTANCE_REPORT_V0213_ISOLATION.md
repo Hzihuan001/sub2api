@@ -4,9 +4,9 @@ Date: 2026-10-03 (Asia/Shanghai)
 
 ## Build
 
-- Source commit: `5519e9271` (custom release coordinate validation)
-- Image: `sub2api:isolation-refactor-local-v4`
-- Image manifest: `sha256:e84da7dd308c329a58cfca92eeb778554bae07a943d42545f22714b75790e5c5`
+- Source commit: `82195104d` (custom release coordinate validation and registry contract tests)
+- Image: `sub2api:isolation-refactor-local-v5`
+- Image manifest: `sha256:79d58ca4fe1b9eae9812383ba50885cc4d41a314adbe0628d154982f46bb315a`
 - Platform: `linux/amd64`
 - Compose project: `moshu-isolation-refactor`
 - Compose file: `deploy/acceptance/docker-compose.isolation.yml`
@@ -25,8 +25,7 @@ Date: 2026-10-03 (Asia/Shanghai)
 - Main application restart preserved database state; health and admin login remained successful.
 - Main administrator accepted the isolated compliance acknowledgement; dashboard statistics,
   usage records, and operator permission policy endpoints returned 200.
-- All three instances reported version `0.2.13-custom.4` before the test-only follow-up commit;
-  the runtime code is unchanged by that follow-up. The image-studio route and the
+- All three instances reported version `0.2.13-custom.5`; the image-studio route and the
   management system/version, dashboard, usage, and operator-permission endpoints returned 200.
 - No upstream accounts are configured in the synthetic databases, so successful model inference
   and image-provider responses require a separate controlled mock-upstream fixture before release.
