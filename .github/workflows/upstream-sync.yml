@@ -190,6 +190,14 @@ jobs:
             (cd backend && go generate ./...) > generate.log 2>&1
             if [[ $? -ne 0 ]] || ! git diff --exit-code -- backend >/dev/null; then failed=1; fi
           fi
+          if [[ -f scripts/check-custom-isolation.py ]]; then
+            python3 scripts/check-custom-isolation.py \
+              --skip-generated \
+              --base-ref "origin/$BASE_BRANCH" \
+              --upstream-ref "${{ steps.upstream.outputs.tag }}" \
+              > custom-isolation-check.log 2>&1
+            if [[ $? -ne 0 ]]; then failed=1; fi
+          fi
           if [[ -f backend/go.mod ]]; then
             (cd backend && go test ./...) > backend-test.log 2>&1
             if [[ $? -ne 0 ]]; then failed=1; fi
@@ -207,7 +215,7 @@ jobs:
             echo "## Upstream sync checks blocked" > sync-report.md
             echo >> sync-report.md
             echo "One or more generated-code or test checks failed. See workflow artifacts." >> sync-report.md
-            git add sync-report.md generate.log backend-test.log frontend-test.log 2>/dev/null || true
+            git add sync-report.md generate.log custom-isolation-check.log backend-test.log frontend-test.log 2>/dev/null || true
             git commit -m "chore: report upstream ${{ steps.upstream.outputs.tag }} checks" || true
             echo "failed=true" >> "$GITHUB_OUTPUT"
           else
@@ -224,6 +232,7 @@ jobs:
             sync-merge.log
             range-diff.txt
             generate.log
+            custom-isolation-check.log
             migration-check.log
             backend-test.log
             frontend-test.log
