@@ -17,6 +17,8 @@ export interface CustomMenuItem {
   icon?: unknown
   iconSvg?: string
   permission?: string
+  /** Only render this item for administrators; operators never see it. */
+  adminOnly?: boolean
   featureFlag?: () => boolean | undefined
   /** Hide this item when the host is in simple mode. */
   hideInSimpleMode?: boolean

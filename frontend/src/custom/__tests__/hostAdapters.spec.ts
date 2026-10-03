@@ -5,6 +5,7 @@ import {
   imageStudioFeature,
   mapCustomMenuItems,
   mergeCustomRoutes,
+  operatorRoleFeature,
   promptAuditFeature
 } from '../index'
 
@@ -36,13 +37,13 @@ describe('custom host adapters', () => {
     const items = mapCustomMenuItems(
       [
         { id: 'z', path: '/z', labelKey: 'z.label' },
-        { id: 'a', path: '/a', labelKey: 'a.label', order: 1, permission: 'users' }
+        { id: 'a', path: '/a', labelKey: 'a.label', order: 1, permission: 'users', adminOnly: true }
       ],
       (key) => `translated:${key}`
     )
-    expect(items.map((item) => [item.path, item.label, item.permission])).toEqual([
-      ['/a', 'translated:a.label', 'users'],
-      ['/z', 'translated:z.label', undefined]
+    expect(items.map((item) => [item.path, item.label, item.permission, item.adminOnly])).toEqual([
+      ['/a', 'translated:a.label', 'users', true],
+      ['/z', 'translated:z.label', undefined, undefined]
     ])
   })
 
@@ -66,6 +67,9 @@ describe('custom host adapters', () => {
     )
     expect(promptAuditFeature.menuItems?.[0]).toEqual(
       expect.objectContaining({ path: '/admin/prompt-audit', parentPath: '/admin/security-audit' })
+    )
+    expect(operatorRoleFeature.menuItems?.[0]).toEqual(
+      expect.objectContaining({ path: '/admin/roles', adminOnly: true })
     )
   })
 })

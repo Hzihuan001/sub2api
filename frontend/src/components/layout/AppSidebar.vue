@@ -223,6 +223,7 @@ interface NavItem {
    */
   featureFlag?: () => boolean | undefined
   permission?: ManagementPermission
+  adminOnly?: boolean
 }
 
 function toNavItem(item: HostCustomNavItem): NavItem {
@@ -234,6 +235,7 @@ function toNavItem(item: HostCustomNavItem): NavItem {
     parentPath: item.parentPath,
     featureFlag: item.featureFlag,
     permission: item.permission as ManagementPermission | undefined,
+    adminOnly: item.adminOnly,
     hideInSimpleMode: item.hideInSimpleMode,
     children: item.children?.map(toNavItem)
   }
@@ -820,10 +822,13 @@ const registryMenuItems = computed(() =>
   getHostCustomMenuItems((labelKey) => t(labelKey)).map(toNavItem)
 )
 const registryUserMenuItems = computed(() =>
-  registryMenuItems.value.filter((item) => !item.permission)
+  registryMenuItems.value.filter((item) => !item.permission && !item.adminOnly)
 )
 const registryAdminMenuItems = computed(() =>
-  registryMenuItems.value.filter((item) => Boolean(item.permission))
+  registryMenuItems.value.filter((item) => Boolean(item.permission) || item.adminOnly)
+)
+const registryRoleMenuItem = computed(() =>
+  authStore.isAdmin ? registryAdminMenuItems.value.find((item) => item.path === '/admin/roles') : undefined
 )
 
 // Admin navigation items
@@ -832,7 +837,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, permission: 'dashboard' },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring, permission: 'ops' },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true, permission: 'users' },
-    { path: '/admin/roles', label: t('nav.rolePermissions'), icon: ShieldIcon, hideInSimpleMode: true },
+    ...(registryRoleMenuItem.value ? [{ ...registryRoleMenuItem.value, icon: ShieldIcon }] : []),
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, permission: 'groups' },
     {
       path: '/admin/channels',
@@ -903,7 +908,9 @@ const adminNavItems = computed((): NavItem[] => {
   const visible = authStore.isAdmin
     ? featureVisible
     : applyOperatorPermissions(featureVisible)
-  const registryVisible = applyFeatureFlags(registryAdminMenuItems.value.filter(item => !item.parentPath))
+  const registryVisible = applyFeatureFlags(
+    registryAdminMenuItems.value.filter(item => !item.parentPath && item.path !== '/admin/roles')
+  )
   visible.push(
     ...(authStore.isAdmin
       ? registryVisible
