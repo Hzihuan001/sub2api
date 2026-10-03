@@ -4,9 +4,9 @@ Date: 2026-10-03 (Asia/Shanghai)
 
 ## Build
 
-- Source commit: `be4d7f511` (`test: add isolated three-site docker acceptance`)
+- Source commit: `16d95cc8e` (operator metadata bootstrap plus acceptance report)
 - Image: `sub2api:isolation-refactor-local`
-- Image manifest: `sha256:6a1d4528bb6c3b68abb538bf34ea189380557fa1e0820f5700c915a2009ebaa7`
+- Image manifest: `sha256:a8c006cca7a7da8afa70d77c98984bd9e77e7c3b03fcd192db57b56d390020cf`
 - Platform: `linux/amd64`
 - Compose project: `moshu-isolation-refactor`
 - Compose file: `deploy/acceptance/docker-compose.isolation.yml`
