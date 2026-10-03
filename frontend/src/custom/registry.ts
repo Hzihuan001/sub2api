@@ -18,6 +18,8 @@ export interface CustomMenuItem {
   iconSvg?: string
   permission?: string
   featureFlag?: () => boolean | undefined
+  /** Hide this item when the host is in simple mode. */
+  hideInSimpleMode?: boolean
   children?: readonly CustomMenuItem[]
   order?: number
 }

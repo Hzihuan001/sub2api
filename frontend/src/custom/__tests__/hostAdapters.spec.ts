@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   createCustomFeatureRegistry,
   getHostCustomMenuItems,
+  imageStudioFeature,
   mapCustomMenuItems,
-  mergeCustomRoutes
+  mergeCustomRoutes,
+  promptAuditFeature
 } from '../index'
 
 describe('custom host adapters', () => {
@@ -50,5 +52,20 @@ describe('custom host adapters', () => {
     expect(getHostCustomMenuItems((key) => key.toUpperCase(), registry)).toEqual([
       expect.objectContaining({ path: '/image', label: 'IMAGE' })
     ])
+  })
+
+  it('keeps built-in feature routes and menu paths stable', () => {
+    expect(imageStudioFeature.routes?.[0]).toEqual(
+      expect.objectContaining({ path: '/image-studio', name: 'ImageStudio' })
+    )
+    expect(imageStudioFeature.menuItems?.[0]).toEqual(
+      expect.objectContaining({ path: '/image-studio', hideInSimpleMode: true })
+    )
+    expect(promptAuditFeature.routes?.[0]).toEqual(
+      expect.objectContaining({ path: '/admin/prompt-audit', name: 'AdminPromptAudit' })
+    )
+    expect(promptAuditFeature.menuItems?.[0]).toEqual(
+      expect.objectContaining({ path: '/admin/prompt-audit', parentPath: '/admin/security-audit' })
+    )
   })
 })

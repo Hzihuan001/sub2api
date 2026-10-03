@@ -8,7 +8,7 @@ export {
   getCustomSettingsTabs
 } from './registry'
 export { getHostCustomMenuItems, mapCustomMenuItems, mergeCustomRoutes } from './hostAdapters'
-export { registerBuiltInCustomFeatures, promptAuditFeature } from './features'
+export { registerBuiltInCustomFeatures, imageStudioFeature, promptAuditFeature } from './features'
 export type {
   CustomFeatureContributions,
   CustomFeatureManifest,

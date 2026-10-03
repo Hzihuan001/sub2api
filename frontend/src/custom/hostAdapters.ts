@@ -17,6 +17,7 @@ export interface HostCustomNavItem {
   iconSvg?: string
   featureFlag?: () => boolean | undefined
   permission?: string
+  hideInSimpleMode?: boolean
   children?: HostCustomNavItem[]
 }
 
@@ -64,6 +65,7 @@ export function mapCustomMenuItems(
     iconSvg: item.iconSvg,
     featureFlag: item.featureFlag,
     permission: item.permission,
+    hideInSimpleMode: item.hideInSimpleMode,
     children: item.children ? mapCustomMenuItems(item.children, translate) : undefined
   })
 
