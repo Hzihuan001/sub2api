@@ -119,6 +119,10 @@ if (-not $KeepWorktree) {
 Invoke-Git @("fetch", "origin", $BaseBranch)
 $existing = git branch --list $UpgradeBranch
 if ($existing) { throw "Upgrade branch already exists: $UpgradeBranch (choose another name)" }
+$remoteExisting = git ls-remote --exit-code origin "refs/heads/$UpgradeBranch" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    throw "Upgrade branch already exists on origin: $UpgradeBranch (choose another name)"
+}
 Invoke-Git @("switch", "--create", $UpgradeBranch, $baseRef)
 
 $mergeCode = Invoke-GitAllowFailure @("merge", "--no-ff", "--no-commit", $tagRef)

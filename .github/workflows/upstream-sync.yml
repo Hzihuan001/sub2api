@@ -183,7 +183,9 @@ jobs:
         run: |
           set +e
           failed=0
-          git diff --check HEAD^..HEAD || failed=1
+          # Check the complete generated branch range, not only the last
+          # commit; patch stacks may contain several independent merge commits.
+          git diff --check "origin/$BASE_BRANCH..HEAD" || failed=1
           git range-diff "${{ steps.upstream.outputs.tag }}..origin/$BASE_BRANCH" "${{ steps.upstream.outputs.tag }}..HEAD" > range-diff.txt || true
           if [[ "${{ steps.merge.outputs.blocked }}" == "true" ]]; then
             echo "failed=true" >> "$GITHUB_OUTPUT"
