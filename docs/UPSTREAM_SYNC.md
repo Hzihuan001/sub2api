@@ -16,6 +16,15 @@ checks, then opens a draft pull request. A conflict or failed check produces a
 blocked draft PR with logs. The job never builds, publishes, or deploys an
 application image.
 
+The default tag lookup selects only stable `vX.Y.Z` tags. A pre-release may be
+selected only by supplying `upstream_tag` (or `-UpstreamTag`) explicitly. The
+upstream merge is committed before the first custom patch, and every patch is
+merged and committed independently. This keeps `MERGE_HEAD` out of the next
+merge and makes each patch boundary visible in the draft PR history. Keep
+`patch_branches` empty until a feature branch is recreated from
+`custom/integration`, contains only that feature's commits, and has passed its
+own Docker/CI acceptance; old historical feature branches must not be reused.
+
 For an offline or PowerShell-driven run, the default is a metadata-only dry
 run:
 
