@@ -2,11 +2,11 @@
 
 ## Fixed release coordinates
 
-- Upstream baseline: `v0.2.11` / `96f4c115c`
-- Development branch: `codex/v0.2.11-merge-main`
-- Application version: `0.2.11-custom.4`
-- Source tag: `custom-0.2.11.4`
-- Container tag: `ghcr.io/<fork-owner>/sub2api:0.2.11-custom.4`
+- Upstream baseline: `v0.2.13` (record the full upstream SHA in each report)
+- Development branch: `codex/isolation-refactor-v0.2.13`
+- Application version: `0.2.13-custom.5`
+- Source tag: `custom-0.2.13.5`
+- Container tag: `ghcr.io/<fork-owner>/sub2api:0.2.13-custom.5`
 - Initial target platform: `linux/amd64`
 
 Never create a `v*` tag for this custom build. Never put passwords, tokens, SSH
@@ -58,7 +58,7 @@ locally rebuilt image.
 ## Fork and GHCR gate
 
 1. Set the personal Fork as `origin`; keep the official repository as `upstream`.
-2. Push only `codex/v0.2.11-merge-main` and tag `custom-0.2.11.4`.
+2. Push the release branch and custom tag; never create a `v*` tag for a custom build.
 3. The `Custom CI and GHCR release` workflow runs all tests before publishing.
 4. Record both the mutable tag and immutable `sha256` digest from the workflow summary.
 5. Pull and run that exact digest through the local container test above.
@@ -89,7 +89,8 @@ docker compose exec -T redis redis-cli ping
 Also record the Compose/1Panel ownership model, app version, current digest,
 environment variable names (not values), bind mounts, named volumes, networks,
 OpenResty upstream, and migration state. Stop immediately if the installed
-Sub2API version is newer than `v0.1.183`; this release must never downgrade it.
+application is newer than the approved release; this release must never
+downgrade it.
 
 ## Backup gate
 
@@ -134,10 +135,10 @@ minutes and perform a 24-hour error-rate/audit follow-up.
 ## Rollback
 
 Set the application image back to the recorded previous digest and recreate
-only Sub2API. This release adds no migration beyond the already deployed
-`231_prompt_capture.sql`. An older binary will treat residual `operator` rows
-as non-admin; those users temporarily lose management access while admin
-remains available.
+only Sub2API. Record any newly applied migration in the release report. An
+older binary must never be started after an unverified irreversible migration.
+An older binary will treat residual `operator` rows as non-admin; those users
+temporarily lose management access while admin remains available.
 
 If any official irreversible migration ran during the release, restore the
 verified pre-release PostgreSQL backup together with the old image. Never run
