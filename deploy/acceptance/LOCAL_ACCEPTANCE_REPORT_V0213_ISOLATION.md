@@ -4,9 +4,9 @@ Date: 2026-10-03 (Asia/Shanghai)
 
 ## Build
 
-- Source commit: `16d95cc8e` (operator metadata bootstrap plus acceptance report)
-- Image: `sub2api:isolation-refactor-local`
-- Image manifest: `sha256:a8c006cca7a7da8afa70d77c98984bd9e77e7c3b03fcd192db57b56d390020cf`
+- Source commit: `5519e9271` (custom release coordinate validation)
+- Image: `sub2api:isolation-refactor-local-v4`
+- Image manifest: `sha256:e84da7dd308c329a58cfca92eeb778554bae07a943d42545f22714b75790e5c5`
 - Platform: `linux/amd64`
 - Compose project: `moshu-isolation-refactor`
 - Compose file: `deploy/acceptance/docker-compose.isolation.yml`
@@ -25,6 +25,10 @@ Date: 2026-10-03 (Asia/Shanghai)
 - Main application restart preserved database state; health and admin login remained successful.
 - Main administrator accepted the isolated compliance acknowledgement; dashboard statistics,
   usage records, and operator permission policy endpoints returned 200.
+- All three instances reported version `0.2.13-custom.4`; the image-studio route and the
+  management system/version, dashboard, usage, and operator-permission endpoints returned 200.
+- No upstream accounts are configured in the synthetic databases, so successful model inference
+  and image-provider responses require a separate controlled mock-upstream fixture before release.
 - No `panic`, fatal startup error, migration failure, database error, or Redis error appeared in the last five minutes of application logs.
 
 ## Quality gates
@@ -32,6 +36,7 @@ Date: 2026-10-03 (Asia/Shanghai)
 - GitHub Actions CI for PR #1: backend tests, `golangci-lint`, frontend build/typecheck, security checks and shell checks passed.
 - `scripts/check-custom-isolation.py --skip-generated --base-ref custom/integration --upstream-ref v0.2.13`: passed.
 - Compose config validation: passed.
+- `custom-release.yml` coordinate validation: `0.2.13-custom.4` / `custom-0.2.13.4` passed locally.
 - Local Windows `go test ./...`: repository backup tests require `sh` and failed because the Windows host has no `sh` executable. The same full backend test job passed on Linux CI; no source failure was observed.
 
 No production deployment was performed during this acceptance run.
