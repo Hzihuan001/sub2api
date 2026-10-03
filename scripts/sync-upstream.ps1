@@ -100,7 +100,6 @@ $report.Add("")
 
 if ($baseSha -eq $tagSha -or (Invoke-GitAllowFailure @("merge-base", "--is-ancestor", $tagRef, $baseRef)) -eq 0) {
     $report.Add("No update: base already points at the selected upstream tag.")
-    $report | Set-Content -LiteralPath (Join-Path $repoRoot "upstream-sync-report.md") -Encoding utf8
     $report | ForEach-Object { Write-Host $_ }
     exit 0
 }
