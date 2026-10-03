@@ -94,6 +94,12 @@ jobs:
           set +e
           branch="upgrade/upstream-$TAG"
           git switch --create "$branch" "origin/$BASE_BRANCH"
+          if git merge-base --is-ancestor "$TAG" "origin/$BASE_BRANCH"; then
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            echo "blocked=false" >> "$GITHUB_OUTPUT"
+            echo "noop=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git merge --no-ff --no-commit "$TAG" >merge.log 2>&1
           code=$?
           if [[ $code -ne 0 ]]; then
@@ -158,11 +164,12 @@ jobs:
             fi
           done <<< "$patches"
           git commit --no-edit -m "chore: merge upstream $TAG"
+          echo "noop=false" >> "$GITHUB_OUTPUT"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "blocked=false" >> "$GITHUB_OUTPUT"
 
       - name: Run range-diff and source checks
-        if: steps.existing.outputs.exists != 'true'
+        if: steps.existing.outputs.exists != 'true' && steps.merge.outputs.noop != 'true'
         id: checks
         shell: bash
         run: |
@@ -177,19 +184,13 @@ jobs:
           if [[ -f backend/go.mod ]]; then
             (cd backend && go generate ./...) > generate.log 2>&1
             if [[ $? -ne 0 ]] || ! git diff --exit-code -- backend >/dev/null; then failed=1; fi
-            # Migration filenames are append-only and their numeric prefixes
-            # must remain unique; duplicate prefixes can make startup order
-            # depend on filesystem ordering.
-            duplicates="$(find backend/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' 2>/dev/null | sed -nE 's/^([0-9]+[A-Za-z]*)_.*/\1/p' | sort | uniq -d)"
-            if [[ -n "$duplicates" ]]; then
-              printf 'duplicate migration prefixes:\n%s\n' "$duplicates" >> migration-check.log
-              failed=1
-            else
-              echo 'migration filename prefixes are unique' > migration-check.log
-            fi
           fi
           if [[ -f backend/go.mod ]]; then
             (cd backend && go test ./...) > backend-test.log 2>&1
+            if [[ $? -ne 0 ]]; then failed=1; fi
+            # Exercise the repository migration/checksum tests separately so
+            # a merge cannot silently alter append-only migration behaviour.
+            (cd backend && go test ./internal/repository -run 'Migration|Migrations') > migration-check.log 2>&1
             if [[ $? -ne 0 ]]; then failed=1; fi
           fi
           if [[ -f frontend/package.json ]]; then
@@ -209,7 +210,7 @@ jobs:
           fi
 
       - name: Upload sync diagnostics
-        if: always() && steps.existing.outputs.exists != 'true'
+        if: always() && steps.existing.outputs.exists != 'true' && steps.merge.outputs.noop != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: upstream-sync-${{ steps.upstream.outputs.tag }}
@@ -224,7 +225,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Create upgrade PR
-        if: always() && steps.existing.outputs.exists != 'true' && steps.merge.outputs.branch != ''
+        if: always() && steps.existing.outputs.exists != 'true' && steps.merge.outputs.noop != 'true' && steps.merge.outputs.branch != ''
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.upstream.outputs.tag }}
