@@ -45,6 +45,8 @@ jobs:
       - name: Configure remotes
         shell: bash
         run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1 || \
             git remote add "$UPSTREAM_REMOTE" https://github.com/Wei-Shaw/sub2api.git
           git fetch --prune origin "$BASE_BRANCH"
