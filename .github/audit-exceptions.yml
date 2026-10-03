@@ -35,6 +35,55 @@ exceptions:
     mitigation: "Proxy configuration not user-controlled; upgrade when axios releases fix"
     expires_on: "2026-07-10"
     owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-c29m-xwm3-cm6r"
+    severity: high
+    reason: "Axios data-URI parser is not exposed to untrusted redirect or upload URLs in the frontend"
+    mitigation: "API endpoints are fixed; track upstream axios release and remove this exception after upgrade"
+    expires_on: "2026-11-01"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-mghh-pgcx-3jjj"
+    severity: high
+    reason: "Axios redirect handling is limited to trusted application endpoints"
+    mitigation: "No user-controlled redirect targets; upgrade axios before this exception expires"
+    expires_on: "2026-11-01"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-x97p-jq2g-jp4f"
+    severity: high
+    reason: "Axios toFormData is not called with user-controlled options"
+    mitigation: "Request construction uses typed internal payloads; remove after patched axios release"
+    expires_on: "2026-11-01"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-3pq3-5fj3-cg6v"
+    severity: high
+    reason: "Axios HTTP/2 adapter is not enabled for untrusted endpoints"
+    mitigation: "Known API origins only; upgrade axios before this exception expires"
+    expires_on: "2026-11-01"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-542g-h47m-68v8"
+    severity: high
+    reason: "Axios HTTP/2 sessions are used only against configured service origins"
+    mitigation: "No arbitrary upstream URLs from users; track and apply upstream patch"
+    expires_on: "2026-11-01"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-m8m8-qj5v-23w3"
+    severity: high
+    reason: "Axios connection options are not derived from untrusted user input"
+    mitigation: "Transport configuration is internal; upgrade axios before this exception expires"
+    expires_on: "2026-11-01"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-r4gj-5m52-g5wh"
+    severity: high
+    reason: "Axios fetch adapter is not used for user-controlled redirect destinations"
+    mitigation: "Redirect destinations are constrained to trusted origins; remove after dependency upgrade"
+    expires_on: "2026-11-01"
+    owner: "security@your-domain"
   - package: nanoid
     advisory: "GHSA-2v37-7h3g-55p8"
     severity: high
