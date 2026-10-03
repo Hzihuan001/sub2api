@@ -1,0 +1,142 @@
+name: moshu-reseller-acceptance
+
+# Isolated three-site acceptance environment. The image is supplied by
+# SUB2API_IMAGE and every site owns a separate PostgreSQL, Redis, network
+# namespace (the Compose project network), and named data volumes.
+services:
+  main:
+    image: ${SUB2API_IMAGE:?Set SUB2API_IMAGE}
+    ports:
+      - "127.0.0.1:18180:8080"
+    environment: &app-env
+      AUTO_SETUP: "true"
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: "8080"
+      SERVER_MODE: release
+      RUN_MODE: standard
+      DATABASE_HOST: main-db
+      DATABASE_PORT: "5432"
+      DATABASE_USER: acceptance
+      DATABASE_PASSWORD: acceptance-only
+      DATABASE_DBNAME: sub2api
+      DATABASE_SSLMODE: disable
+      REDIS_HOST: main-redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      ADMIN_EMAIL: admin-main@acceptance.invalid
+      ADMIN_PASSWORD: acceptance-admin-password
+      JWT_SECRET: "1111111111111111111111111111111111111111111111111111111111111111"
+      TOTP_ENCRYPTION_KEY: "2222222222222222222222222222222222222222222222222222222222222222"
+      BATCH_IMAGE_ENABLED: "true"
+      BATCH_IMAGE_QUEUE_ENABLED: "true"
+      BATCH_IMAGE_DEFAULT_IMAGE_SIZE: 2K
+    depends_on:
+      main-db:
+        condition: service_healthy
+      main-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  l1:
+    image: ${SUB2API_IMAGE:?Set SUB2API_IMAGE}
+    ports:
+      - "127.0.0.1:18181:8080"
+    environment:
+      <<: *app-env
+      DATABASE_HOST: l1-db
+      REDIS_HOST: l1-redis
+      ADMIN_EMAIL: admin-l1@acceptance.invalid
+      JWT_SECRET: "3333333333333333333333333333333333333333333333333333333333333333"
+      TOTP_ENCRYPTION_KEY: "4444444444444444444444444444444444444444444444444444444444444444"
+    depends_on:
+      l1-db:
+        condition: service_healthy
+      l1-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  cos:
+    image: ${SUB2API_IMAGE:?Set SUB2API_IMAGE}
+    ports:
+      - "127.0.0.1:18182:8080"
+    environment:
+      <<: *app-env
+      DATABASE_HOST: cos-db
+      REDIS_HOST: cos-redis
+      ADMIN_EMAIL: admin-cos@acceptance.invalid
+      JWT_SECRET: "5555555555555555555555555555555555555555555555555555555555555555"
+      TOTP_ENCRYPTION_KEY: "6666666666666666666666666666666666666666666666666666666666666666"
+    depends_on:
+      cos-db:
+        condition: service_healthy
+      cos-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  main-db: &postgres
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: acceptance
+      POSTGRES_PASSWORD: acceptance-only
+      POSTGRES_DB: sub2api
+    volumes:
+      - main-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acceptance -d sub2api"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  l1-db:
+    <<: *postgres
+    volumes:
+      - l1-db-data:/var/lib/postgresql
+
+  cos-db:
+    <<: *postgres
+    volumes:
+      - cos-db-data:/var/lib/postgresql
+
+  main-redis: &redis
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - main-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  l1-redis:
+    <<: *redis
+    volumes:
+      - l1-redis-data:/data
+
+  cos-redis:
+    <<: *redis
+    volumes:
+      - cos-redis-data:/data
+
+volumes:
+  main-db-data:
+  l1-db-data:
+  cos-db-data:
+  main-redis-data:
+  l1-redis-data:
+  cos-redis-data:
