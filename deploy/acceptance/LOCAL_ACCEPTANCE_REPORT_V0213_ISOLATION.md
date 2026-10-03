@@ -23,6 +23,8 @@ Date: 2026-10-03 (Asia/Shanghai)
 - All three Redis containers healthy and isolated.
 - `/`, `/admin/dashboard`, and `/image-studio` returned 200 on all sites.
 - Main application restart preserved database state; health and admin login remained successful.
+- Main administrator accepted the isolated compliance acknowledgement; dashboard statistics,
+  usage records, and operator permission policy endpoints returned 200.
 - No `panic`, fatal startup error, migration failure, database error, or Redis error appeared in the last five minutes of application logs.
 
 ## Quality gates
