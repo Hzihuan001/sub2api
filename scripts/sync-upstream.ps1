@@ -36,7 +36,7 @@ function Get-LatestUpstreamTag {
     $tags = @(
         $raw |
             ForEach-Object { ($_ -split "`t", 2)[1] -replace '^refs/tags/', '' } |
-            Where-Object { $_ -match '^v\d+\.\d+\.\d+(?:[-+].*)?$' }
+            Where-Object { $_ -match '^v\d+\.\d+\.\d+$' }
     )
     if ($tags.Count -eq 0) { throw "No semantic v* tag was found on upstream" }
     return ($tags | Sort-Object { [version](($_ -replace '^v', '') -replace '[-+].*$', '') } -Descending | Select-Object -First 1)
