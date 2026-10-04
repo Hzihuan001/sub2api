@@ -150,6 +150,8 @@ docs/*
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
+!docs/CUSTOM_PROJECT_STATUS.md
+!docs/CUSTOM_FEATURE_LOG.md
 !docs/codex-credits.md
 !docs/legal/
 !docs/legal/*.md
