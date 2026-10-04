@@ -18,7 +18,7 @@
 | 当前工作分支 | `codex/isolation-refactor-v0.2.13` |
 | 同步框架 HEAD | `1fa5f4478`（本文档记录前；文档提交后的当前 HEAD 以 `git log` 为准） |
 | 长期集成基线 | `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071` |
-| 当前隔离改造 PR | 草稿 PR #1（如仍未合并）：`codex/isolation-refactor-v0.2.13` → `codex/v0.2.13-merge-gpt-reference` |
+| 当前隔离改造 PR | 草稿 PR #1（如仍未合并）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
 | 生产镜像 | `ghcr.io/hzihuan001/sub2api@sha256:1dc23cebaa1b8fb3d7629c0a84581c5f8f6b006268d19dff6cd5f832eef59c48` |
@@ -140,3 +140,50 @@ pwsh -NoProfile -File scripts/sync-upstream.ps1 `
 8. 相关 feature 的测试，而不是只看页面是否能打开。
 
 会话必须先报告：当前官方基线、定制版本、待合并分支、是否有未提交修改、是否需要数据库迁移，以及是否允许部署。任何秘密只从本地秘密配置或服务器安全环境读取，不写入文档、日志或 Git。
+
+## 7. 多会话协作协议
+
+本项目允许同时开多个会话处理不同定制，但所有会话共享同一套文档上下文。文档分工如下：
+
+| 文档 | 用途 | 是否追加历史 |
+| --- | --- | --- |
+| `CUSTOM_PROJECT_STATUS.md` | 当前分支、版本、正在进行的任务、阻塞点和下一步 | 否；始终维护为最新快照 |
+| `CUSTOM_FEATURE_LOG.md` | 已完成定制、官方升级、测试、发布和回滚证据 | 是；只追加，不改写旧条目 |
+| `custom/manifest.yml` | 当前允许存在的定制 feature ID、测试边界和迁移策略 | 只在功能边界真实变化时修改 |
+| `.github/upstream-sync-manifest.yml` | 官方升级基线、补丁顺序和受保护路径 | 只在补丁栈或保护策略经过验收后修改 |
+
+### 每个新会话开始前
+
+1. 先读取本文件、`CUSTOM_FEATURE_LOG.md`、`CODEX_HANDOFF.md`、`UPSTREAM_SYNC.md`、`custom/manifest.yml` 和 `.github/upstream-sync-manifest.yml`。
+2. 检查当前分支、工作树、最近标签和远程状态；不要假设上一个会话已经推送或部署。
+3. 明确本会话的 `feature ID`、目标分支、是否允许生产操作，以及当前是否有其他会话正在修改同一功能。
+4. 如果发现状态文档、代码和 Git 历史不一致，以代码和 Git 为准，先修正状态快照，再开始修改。
+5. 同一分支只允许一个写入会话；其他定制使用独立的 `codex/<feature>` 分支。发现工作树有其他会话未提交修改时先停，不覆盖、不重置、不清理。
+
+### 定制功能会话结束前
+
+1. 在 `CUSTOM_PROJECT_STATUS.md` 更新当前分支、commit、PR、测试、未完成事项和阻塞原因。
+2. 在 `CUSTOM_FEATURE_LOG.md` 追加一条完成记录；如果只完成部分工作，明确写“未发布/未部署”和剩余事项。
+3. 把新增 API、页面、配置、迁移和测试路径写清楚，避免版本更新会话重新扫描整个仓库猜测影响范围。
+4. 不把凭据、API Key、服务器秘密、真实用户数据或完整 `.env` 写入文档。
+5. 状态统一使用 `planned`、`in-progress`、`verified`、`deployed`、`blocked`、`rolled-back` 之一，避免“做过但未验收”被误认为完成。
+
+### 版本更新会话的职责
+
+版本更新会话只消费已登记且可验证的定制边界：以 `custom/integration` 为基线，通过自动升级 PR 合并官方版本，并按日志中的测试和发布证据复核功能。它不能把其他会话聊天内容当作已完成代码，也不能把旧历史分支或已移除代理商功能重新套回当前版本。
+
+如果某个定制会话尚未完成，版本更新会话必须将其标为阻塞或待复核，不得静默覆盖；如果官方升级和定制会话同时修改同一文件，应先暂停其中一个会话并记录冲突归属。
+
+### 会话之间的最小同步信息
+
+每次交接至少要能从文档中回答：
+
+- 正在处理哪个 feature ID；
+- 基于哪个官方/custom 版本和分支；
+- 最近一个 commit/PR；
+- 已通过哪些测试；
+- 是否产生迁移或配置变化；
+- 是否构建、发布或部署过；
+- 下一步和回滚方式是什么。
+
+每次交接在状态文档中保留一段简短摘要：最后更新时间、变更会话/作者、当前状态、下一步、阻塞原因和验证证据链接。这样新会话无需重新阅读完整聊天记录即可继续工作。
