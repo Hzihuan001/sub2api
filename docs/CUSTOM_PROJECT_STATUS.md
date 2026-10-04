@@ -13,9 +13,11 @@
 | --- | --- |
 | 记录日期 | 2026-10-04 |
 | 官方基线 | `v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1` |
-| 最近发布版本 | `0.2.13-custom.6` |
-| 最近发布标签 | `custom-0.2.13.6` / `1770b4c1b983a062e62dfd78dd5c34ae79071e24` |
-| 当前工作分支 | `codex/image-studio-session-20261004`（基于 `07bf51ba0`；本会话改动尚未提交） |
+| 最近生产版本 | `0.2.13-custom.6` |
+| 最近生产标签 | `custom-0.2.13.6` / `1770b4c1b983a062e62dfd78dd5c34ae79071e24` |
+| 已发布候选版本 | `0.2.13-custom.7` / `custom-0.2.13.7` / `045d95cbb289a92b9247309b222f04ec1e1f54e6` |
+| 候选镜像 digest | `ghcr.io/hzihuan001/sub2api@sha256:74a504284b0368f7c8187b98335cbca69cf4fe56b079c814986b31a724e8895a` |
+| 当前工作分支 | `codex/image-studio-session-20261004`（提交 `045d95cbb`；父工作树未修改） |
 | 协作父分支/工作树 | `codex/isolation-refactor-v0.2.13` / `07bf51ba0`；父工作树保持 clean，未被本会话修改 |
 | 同步框架 HEAD | `1fa5f4478`（本文档记录前；文档提交后的当前 HEAD 以 `git log` 为准） |
 | 长期集成基线 | `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071` |
@@ -23,7 +25,7 @@
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
 | 生产镜像 | `ghcr.io/hzihuan001/sub2api@sha256:1dc23cebaa1b8fb3d7629c0a84581c5f8f6b006268d19dff6cd5f832eef59c48` |
-| 当前发布状态 | 生产运行稳定；本次同步/隔离改造提交不等于新的生产发布 |
+| 当前发布状态 | `.7` 已推送并发布到 GHCR；生产仍运行 `.6`，部署等待 staging SSH 访问和验收门禁 |
 
 生产健康检查最近确认通过的入口：
 
@@ -35,11 +37,11 @@
 
 ### 当前会话摘要（2026-10-04）
 
-- **Feature ID**：`image-studio`；状态：`in-progress`（本地验证通过，待创建发布提交、镜像和部署记录）。
+- **Feature ID**：`image-studio`；状态：`blocked`（代码、CI、GHCR 发布已完成；部署被 staging SSH 公钥认证失败阻塞）。
 - **实现边界**：将浏览器端生图画廊改为按认证用户隔离的 IndexedDB v2 命名空间；账号切换时清理旧用户的内存结果、预览和进行中的生成，并对异步读取/保存做作用域校验；工作台透传自定义尺寸与扩展质量档位，内部测量并保存最终文件实际像素，但界面不展示实际尺寸、不弹出尺寸不匹配数字提示，也不做本地放大；Gemini 原生批量请求转发 `generationConfig.imageConfig.aspectRatio` 与 `imageSize`；API-key Images 非流式响应从 Base64/内联 data URL 回填实际尺寸元数据。
 - **数据与兼容**：没有后端数据库迁移；旧的 v1 全局 IndexedDB 保留但不自动迁移/读取，以避免跨账号显示历史内容。
-- **验证证据**：image-studio/API/size/视图前端 4 个测试文件 `18/18`；定制回归 4 个测试文件 `36/36`；`pnpm run typecheck`、定向 ESLint、`scripts/check-custom-isolation.py --skip-generated --base-ref origin/custom/integration --upstream-ref v0.2.13`、Docker 图片/Gemini 定向 Go 测试（含 Sunburst `3840x2160 + max` OAuth 出站契约）和 Docker `go vet -tags=unit ./internal/service` 均通过。宿主机未安装 Go，后端验证使用 `golang:1.27` 容器完成。
-- **已知限制/下一步**：工作台只在内部验证最终文件像素，不能证明模型内部原生生成；CPA/ChatGPT OAuth 上游仍可能忽略或改写 4K 请求，界面不显示实际尺寸，也不会伪造或自动放大。要保证原生 4K，仍需 CPA 适配器的出站/返回证据或直接使用支持该尺寸的官方 Images API-key 路径。下一步为更新 `.7` 发布版本、通过 CI/GHCR 质量门禁，再按同一 digest 完成 staging 和生产部署；在独立补丁栈验收前继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
+- **验证证据**：image-studio/API/size/视图前端 4 个测试文件 `18/18`；完整前端 lint/typecheck/test/build、完整后端 unit、隔离检查和发布 CI 均通过；GHCR 已发布候选 digest。发布镜像隔离容器已拉取并通过启动/健康检查，但完整 operator 验收在既有的“operator 修改本人 API Key 应返回 403”断言处返回 200，属于与 image-studio 无关的验收失败，未记为通过。
+- **已知限制/下一步**：工作台只在内部验证最终文件像素，不能证明模型内部原生生成；CPA/ChatGPT OAuth 上游仍可能忽略或改写 4K 请求，界面不显示实际尺寸，也不会伪造或自动放大。OVH 生产仅完成只读预检，仍运行 `.6`；Tencent staging 地址 `101.34.249.20` 当前无法使用现有 SSH 公钥认证，因此未执行 staging/生产写操作。下一步需恢复 staging SSH 访问并完成同一 digest 的 staging 验收，再按发布运行手册备份并部署生产；在独立补丁栈验收前继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
 
 ## 2. 当前定制功能边界
 
