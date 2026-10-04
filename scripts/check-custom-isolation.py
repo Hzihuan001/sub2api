@@ -13,7 +13,9 @@ The check enforces four rules:
   migrations present in the selected upstream ref are allowed to keep their
   upstream name); and
 * the backend feature manifest and the checked-in manifest have valid,
-  unique IDs and settings namespaces.
+  unique IDs and settings namespaces; and
+* every path declared as protected by the sync manifest exists in the
+  generated upgrade checkout.
 
 The script does not resolve conflicts, rewrite files, or update the database.
 Run it from a clean checkout.  If ``--run-go-generate`` is used, any generated
@@ -34,6 +36,11 @@ from typing import Iterable
 
 FEATURE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$")
 CUSTOM_MIGRATION_RE = re.compile(r"^9000_custom_[a-z0-9][a-z0-9_-]*\.sql$")
+CUSTOM_MANIFEST_MIRROR_RE = re.compile(r"^\s*mirror_branch:\s*(\S+)\s*$", re.MULTILINE)
+CUSTOM_MANIFEST_PROTECTED_PATHS_RE = re.compile(
+    r"^protected_paths:\s*\n(?P<body>(?:^[ \t]+-\s+\S+\s*$\n?)+)",
+    re.MULTILINE,
+)
 GO_FEATURE_RE = re.compile(r"^\s*(Feature\w+)\s+FeatureID\s*=\s*\"([^\"]+)\"\s*$", re.MULTILINE)
 GO_MANIFEST_RE = re.compile(
     r"ID:\s*(Feature\w+)\s*,\s*SettingsNamespace:\s*SettingNamespace\(\s*(Feature\w+)\s*\)",
@@ -297,6 +304,52 @@ def check_feature_manifests(root: Path) -> None:
     print("custom feature manifests: valid and in sync")
 
 
+def check_custom_manifest(root: Path) -> None:
+    """Validate the canonical upstream mirror ref used by custom tooling.
+
+    The sync workflow itself consumes immutable release tags, but the custom
+    manifest documents the branch from which the upstream mirror is expected
+    to be maintained.  Keep the check intentionally small and dependency-free
+    so a stale branch name fails before an upgrade PR is opened.
+    """
+
+    path = root / "custom" / "manifest.yml"
+    if not path.is_file():
+        raise CheckFailure(f"missing custom manifest: {path}")
+    contents = path.read_text(encoding="utf-8")
+    match = CUSTOM_MANIFEST_MIRROR_RE.search(contents)
+    if not match:
+        raise CheckFailure(f"{path}: missing upstream.mirror_branch")
+    mirror_ref = match.group(1)
+    if mirror_ref != "upstream/main":
+        raise CheckFailure(
+            f"{path}: upstream.mirror_branch must be upstream/main; got {mirror_ref!r}"
+        )
+    sync_manifest_path = root / ".github" / "upstream-sync-manifest.yml"
+    if not sync_manifest_path.is_file():
+        raise CheckFailure(f"missing upstream sync manifest: {sync_manifest_path}")
+    sync_contents = sync_manifest_path.read_text(encoding="utf-8")
+    protected_match = CUSTOM_MANIFEST_PROTECTED_PATHS_RE.search(sync_contents)
+    if not protected_match:
+        raise CheckFailure(f"{sync_manifest_path}: missing protected_paths list")
+    protected_paths = [
+        line.strip()[2:].strip()
+        for line in protected_match.group("body").splitlines()
+        if line.strip().startswith("-")
+    ]
+    if not protected_paths:
+        raise CheckFailure(f"{sync_manifest_path}: protected_paths must not be empty")
+    missing = [item for item in protected_paths if not (root / item).exists()]
+    if missing:
+        raise CheckFailure(
+            f"{sync_manifest_path}: protected paths are missing from the checkout: {', '.join(missing)}"
+        )
+    print(
+        "custom manifest: upstream mirror ref is upstream/main; "
+        f"protected paths present ({len(protected_paths)})"
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-ref", help="custom base ref used for migration comparison")
@@ -328,6 +381,7 @@ def main() -> int:
             check_generated_sources(root, run_generate=args.run_go_generate)
         check_migrations(root, base_ref, upstream_ref)
         check_feature_manifests(root)
+        check_custom_manifest(root)
         print("custom isolation checks: PASS")
         return 0
     except CheckFailure as exc:
