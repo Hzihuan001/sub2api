@@ -173,6 +173,21 @@
 - **部署站点**：仍未部署；Tencent staging SSH 公钥认证阻塞，OVH 生产保持 `.6`。
 - **备注**：当前剩余阻塞仅为 staging 访问与按运行手册执行 staging/生产部署。
 
+### 2026-10-05 — 已部署 — image-studio OVH 生产发布
+
+- **需求**：在确认生产环境为 OVH 后，继续部署已验证的 image-studio `.7` 镜像。
+- **Feature ID**：`image-studio`
+- **官方基线**：`v0.2.13` / `3040209f2`；生产标签 `custom-0.2.13.7`。
+- **实现边界**：运行时代码使用提交 `045d95cbb289a92b9247309b222f04ec1e1f54e6`；后续 `f4c902529` 仅修正发布验收脚本的角色归属/断言，未改变 image-studio 运行时。
+- **用户可见行为**：工作台继续只显示请求尺寸，不显示生成文件实际像素尺寸。
+- **数据库/迁移**：无新增迁移；部署前已完成 PostgreSQL custom-format dump 与 restore list 验证。
+- **测试**：前端/后端完整 CI、GHCR 发布、不可变镜像 operator 隔离验收均通过；生产部署后本机和 `https://ai.moshu.cloud/health` 均返回 `{"status":"ok"}`，连续观察 30 分钟通过，最近 30 分钟未发现 panic、数据库/Redis 连接失败或迁移失败日志。
+- **提交/PR**：分支已推送；未创建新 PR。
+- **发布镜像**：`ghcr.io/hzihuan001/sub2api@sha256:74a504284b0368f7c8187b98335cbca69cf4fe56b079c814986b31a724e8895a`。
+- **部署站点**：OVH 生产已部署；仅重建 `1Panel-sub2api-bjGj` / `sub2api` 服务，PostgreSQL、Redis、OpenResty、CPA、其他 Sub2API 实例和持久化卷未修改。备份目录为服务器上的 `custom-0.2.13.7-20261004T152235Z` 发布备份。
+- **回滚**：旧生产 digest 已记录在发布备份中。首次部署校验脚本错误地将 Compose 引用和 Docker image ID 当成同一值，触发自动回滚；修正校验后重新部署成功，最终观察期内无异常。
+- **备注**：Tencent staging 仍因 SSH 公钥不可用未部署；本次生产直接部署依据用户明确指示，后续如需 staging 验收需先通过腾讯云控制台恢复公钥访问。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：
