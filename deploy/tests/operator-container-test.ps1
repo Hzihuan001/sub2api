@@ -195,9 +195,11 @@ try {
   $ordinaryKeyId = [int64]$ordinaryKey.Json.data.id
   Assert-Status (Invoke-Api PUT "/admin/api-keys/$ordinaryKeyId" -Token $operator.Token -Body @{ group_id = 0 }) @(200) 'operator ordinary-user API key mutation'
 
-  $privilegedKey = Invoke-Api POST '/keys' -Token $operator.Token -Body @{ name = 'operator-owned-key' }
-  Assert-Status $privilegedKey @(200) 'operator personal API key creation'
-  $privilegedKeyId = [int64]$privilegedKey.Json.data.id
+  # Create the privileged-owner key on the admin account. An operator-owned
+  # key is intentionally a same-level target and must remain writable.
+  $privilegedKey = Invoke-Api POST "/admin/users/$adminId/api-keys" -Token $admin.Token -Body @{ name = 'admin-owned-key' }
+  Assert-Status $privilegedKey @(200) 'admin-owned API key creation'
+  $privilegedKeyId = [int64]$privilegedKey.Json.data.api_key.id
   Assert-Status (Invoke-Api PUT "/admin/api-keys/$privilegedKeyId" -Token $operator.Token -Body @{ group_id = 0 }) @(403) 'operator privileged-owner API key mutation'
 
   $allowed = @(
@@ -232,7 +234,7 @@ try {
   Assert-Status (Invoke-Api POST '/admin/ops/alert-rules' -Token $operator.Token -Body @{}) @(403) 'operator alert-rule mutation'
   Assert-Status (Invoke-Api POST '/admin/usage/cleanup-tasks' -Token $operator.Token -Body @{}) @(403) 'operator cleanup creation'
   Assert-Status (Invoke-Api PUT "/admin/users/$adminId" -Token $operator.Token -Body @{ status = 'disabled' }) @(403) 'operator admin mutation'
-  Assert-Status (Invoke-Api PUT "/admin/users/$operatorId" -Token $operator.Token -Body @{ username = 'changed' }) @(403) 'operator self mutation'
+  Assert-Status (Invoke-Api PUT "/admin/users/$operatorId" -Token $operator.Token -Body @{ username = 'changed' }) @(200) 'operator same-level self mutation'
   Assert-Status (Invoke-Api POST '/admin/users' -Token $operator.Token -Body @{
     email = 'forbidden-operator@operator-test.local'
     password = 'Forbidden-Test-Password-2026!'
