@@ -2,7 +2,7 @@ version: 1
 name: sub2api-custom-layer
 upstream:
   remote: upstream
-  mirror_branch: upstream/mainline
+  mirror_branch: upstream/main
   base_ref_pattern: v*
 
 # The feature list is intentionally declarative.  The sync workflow uses it to
