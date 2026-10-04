@@ -2,6 +2,7 @@
 package routes
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/custom"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -19,7 +20,9 @@ func RegisterAdminRoutes(
 	stepUpAuth middleware.StepUpAuthMiddleware,
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
+	customHosts ...*custom.Host,
 ) {
+	customHost := resolveCustomHost(customHosts)
 	// 插件 UI 使用短时能力 URL，仅提供经过安装校验的静态资源。
 	v1.GET("/plugin-ui/:token/*path", h.Admin.Plugin.ServeUIAsset)
 
@@ -144,6 +147,10 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+
+		// Custom features register under the already-authenticated admin group.
+		// An empty host is a no-op and preserves the upstream route surface.
+		customHost.RegisterAdminRoutes(admin)
 	}
 }
 

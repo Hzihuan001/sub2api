@@ -13,6 +13,7 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import { mergeCustomRoutes } from '@/custom'
 
 /**
  * Route definitions with lazy loading
@@ -222,18 +223,6 @@ const routes: RouteRecordRaw[] = [
       title: 'API Keys',
       titleKey: 'keys.title',
       descriptionKey: 'keys.description'
-    }
-  },
-  {
-    path: '/image-studio',
-    name: 'ImageStudio',
-    component: () => import('@/views/user/ImageStudioView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Image Studio',
-      titleKey: 'imageStudio.title',
-      descriptionKey: 'imageStudio.description'
     }
   },
   {
@@ -656,30 +645,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/prompt-audit',
-    name: 'AdminPromptAudit',
-    component: () => import('@/features/prompt-audit/PromptAuditView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiredPermission: 'promptAudit',
-      title: 'Prompt Audit',
-      titleKey: 'admin.promptAudit.title',
-      descriptionKey: 'admin.promptAudit.description'
-    }
-  },
-  {
-    path: '/admin/usage',
-    name: 'AdminUsage',
-    component: () => import('@/views/admin/UsageView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiredPermission: 'usage',
-      title: 'Usage Records',
-      titleKey: 'admin.usage.title',
-      descriptionKey: 'admin.usage.description'
-    }
-  },
-  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },
@@ -775,7 +740,7 @@ const routes: RouteRecordRaw[] = [
  */
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes,
+  routes: mergeCustomRoutes(routes),
   scrollBehavior(_to, _from, savedPosition) {
     // Scroll to saved position when using browser back/forward
     if (savedPosition) {

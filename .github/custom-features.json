@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "branding",
+      "settingsNamespace": "custom.branding"
+    },
+    {
+      "id": "image-studio",
+      "settingsNamespace": "custom.image-studio"
+    },
+    {
+      "id": "operator",
+      "settingsNamespace": "custom.operator"
+    },
+    {
+      "id": "prompt-audit",
+      "settingsNamespace": "custom.prompt-audit"
+    },
+    {
+      "id": "usage-extras",
+      "settingsNamespace": "custom.usage-extras"
+    }
+  ]
+}

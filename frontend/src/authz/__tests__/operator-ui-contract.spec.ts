@@ -16,7 +16,6 @@ describe('operator UI contract', () => {
       ['/admin/announcements', 'announcements'],
       ['/admin/redeem', 'redeemCodes'],
       ['/admin/promo-codes', 'promoCodes'],
-      ['/admin/usage', 'usage'],
       ['/admin/groups', 'groups'],
       ['/admin/channels', 'channels'],
       ['/admin/accounts', 'accounts'],
@@ -24,7 +23,6 @@ describe('operator UI contract', () => {
       ['/admin/plugins', 'plugins'],
       ['/admin/proxies', 'proxies'],
       ['/admin/risk-control', 'riskControl'],
-      ['/admin/prompt-audit', 'promptAudit'],
       ['/admin/affiliates', 'affiliates'],
       ['/admin/orders', 'orders'],
       ['/admin/audit-logs', 'auditLogs'],
@@ -36,6 +34,9 @@ describe('operator UI contract', () => {
     }
     expect(sidebar).toContain('function applyOperatorPermissions(items: NavItem[]): NavItem[]')
     expect(sidebar).toContain('if (item.permission && !authStore.can(item.permission)) return out')
+    expect(sidebar).toContain('registryAdminMenuItems')
+    expect(sidebar).toContain('registryUsageMenuItem')
+    expect(sidebar).toContain('getHostCustomMenuItems')
   })
 
   it('guards privileged user actions and role controls', () => {

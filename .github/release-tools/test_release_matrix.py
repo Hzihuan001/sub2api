@@ -20,6 +20,28 @@ release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 
 
+def bash_available():
+    """Return true only when the local bash executable can actually run.
+
+    Windows may expose a WSL shim named ``bash.exe`` even when no Linux
+    distribution is installed.  Treat that shim as unavailable so the
+    POSIX-only shell helper tests remain meaningful on both Windows and CI.
+    """
+    bash = shutil.which('bash')
+    if not bash:
+        return False
+    try:
+        return subprocess.run(
+            [bash, '-c', 'exit 0'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        ).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 class ReleaseMatrixTest(unittest.TestCase):
     def setUp(self):
         self.previous = Path.cwd()
@@ -60,7 +82,7 @@ class ReleaseMatrixTest(unittest.TestCase):
     def test_leaf_keeps_packaging_and_selects_only_one_target(self):
         original = release.config()
         release.generate_config(argparse.Namespace(mode='build', simple=False, goos='darwin', goarch='arm64', output='leaf.yaml'))
-        leaf = yaml.safe_load(Path('leaf.yaml').read_text())
+        leaf = yaml.safe_load(Path('leaf.yaml').read_text(encoding='utf-8'))
         self.assertEqual(leaf['builds'][0]['goos'], ['darwin'])
         self.assertEqual(leaf['builds'][0]['goarch'], ['arm64'])
         self.assertEqual(leaf['builds'][0]['ignore'], [])
@@ -74,7 +96,7 @@ class ReleaseMatrixTest(unittest.TestCase):
             with self.subTest(simple=simple):
                 original = release.config(simple)
                 release.generate_config(argparse.Namespace(mode='publish', simple=simple, output='publisher.yaml'))
-                data = yaml.safe_load(Path('publisher.yaml').read_text())
+                data = yaml.safe_load(Path('publisher.yaml').read_text(encoding='utf-8'))
                 self.assertTrue(data['builds'][0]['skip'])
                 self.assertFalse(data['archives'])
                 self.assertFalse(data['dockers'])
@@ -108,6 +130,7 @@ class ReleaseMatrixTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             release.verify(args)
 
+    @unittest.skipUnless(os.name != 'nt', 'POSIX mode bits are not portable on Windows')
     def test_linux_context_preserves_binary_executable_mode(self):
         args = self.fixture_artifacts()
         Path('Dockerfile.goreleaser').write_text('FROM scratch\nCOPY sub2api /sub2api\n')
@@ -139,6 +162,7 @@ class ReleaseMatrixTest(unittest.TestCase):
         self.assertEqual(output['owner_lower'], 'exampleowner')
         self.assertEqual(len(json.loads(output['matrix'])['include']), 5)
 
+    @unittest.skipUnless(bash_available(), 'a runnable bash is required for shell helper tests')
     def test_docker_commands_do_not_publish_during_dry_run(self):
         fake_bin = Path('bin')
         fake_bin.mkdir()
@@ -159,6 +183,7 @@ class ReleaseMatrixTest(unittest.TestCase):
         self.assertIn('ghcr.io/exampleowner/sub2api', log)
 
 
+    @unittest.skipUnless(bash_available(), 'a runnable bash is required for shell helper tests')
     def test_published_full_and_simple_image_tags(self):
         fake_bin = Path('bin')
         fake_bin.mkdir()

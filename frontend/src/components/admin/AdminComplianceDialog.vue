@@ -106,6 +106,7 @@ import Input from '@/components/common/Input.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAdminComplianceStore, useAppStore, useAuthStore } from '@/stores'
 import { getLocale } from '@/i18n'
+import { normalizePublicBranding } from '@/utils/publicBranding'
 import zhDocument from '../../../../docs/legal/admin-compliance.zh.md?raw'
 import enDocument from '../../../../docs/legal/admin-compliance.en.md?raw'
 
@@ -122,7 +123,7 @@ marked.setOptions({
 })
 
 const visible = computed(() => authStore.isAuthenticated && authStore.isManagement && complianceStore.shouldShow)
-const expectedPhrase = computed(() => complianceStore.expectedPhrase)
+const expectedPhrase = computed(() => complianceStore.displayExpectedPhrase)
 const canSubmit = computed(() => typedPhrase.value.trim() === expectedPhrase.value)
 const currentDocument = computed(() => getLocale() === 'zh' ? zhDocument : enDocument)
 const documentUrl = computed(() => {
@@ -138,7 +139,7 @@ const inputError = computed(() => {
   return t('adminCompliance.inputMismatch')
 })
 const renderedDocument = computed(() => {
-  const html = marked.parse(currentDocument.value) as string
+  const html = marked.parse(normalizePublicBranding(currentDocument.value)) as string
   return DOMPurify.sanitize(html)
 })
 

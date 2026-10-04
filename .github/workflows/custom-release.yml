@@ -14,13 +14,13 @@ concurrency:
   group: custom-release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  CUSTOM_VERSION: 0.2.13-custom.3
-
 jobs:
   quality:
     name: Full quality gate
     runs-on: ubuntu-latest
+    outputs:
+      custom_version: ${{ steps.release_coordinates.outputs.custom_version }}
+      custom_tag: ${{ steps.release_coordinates.outputs.custom_tag }}
     services:
       prompt-audit-postgres:
         image: postgres:17-alpine
@@ -48,6 +48,39 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve custom release coordinates
+        id: release_coordinates
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version_file="backend/cmd/server/VERSION"
+          source_version="$(tr -d '\r\n' < "$version_file")"
+          if [[ -z "$source_version" ]]; then
+            echo "${version_file} is empty" >&2
+            exit 1
+          fi
+
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            if [[ ! "$REF_NAME" =~ ^custom-([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)$ ]]; then
+              echo "custom releases must use custom-X.Y.Z.N tags; got ${REF_NAME}" >&2
+              exit 1
+            fi
+            release_version="${BASH_REMATCH[1]}-custom.${BASH_REMATCH[2]}"
+            if [[ "$source_version" != "$release_version" ]]; then
+              echo "${version_file} (${source_version}) does not match ${REF_NAME} (${release_version})" >&2
+              exit 1
+            fi
+            echo "custom_tag=${REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            release_version="$source_version"
+            echo "custom_tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "custom_version=${release_version}" >> "$GITHUB_OUTPUT"
+          echo "Using custom release version ${release_version}"
+
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
@@ -70,10 +103,6 @@ jobs:
           go version | grep -q 'go1.27.0'
           node --version | grep -q '^v20\.'
           test "$(pnpm --version)" = '9.15.9'
-          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != custom-0.2.13.3 ]; then
-            echo "unexpected custom source tag: $GITHUB_REF_NAME" >&2
-            exit 1
-          fi
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -118,7 +147,7 @@ jobs:
   publish:
     name: Build and publish immutable image
     needs: quality
-    if: github.ref == 'refs/tags/custom-0.2.13.3'
+    if: needs.quality.result == 'success' && github.ref_type == 'tag' && startsWith(github.ref_name, 'custom-')
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.name }}
@@ -152,16 +181,16 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.image.outputs.name }}:${{ env.CUSTOM_VERSION }}
+          tags: ${{ steps.image.outputs.name }}:${{ needs.quality.outputs.custom_version }}
           build-args: |
             NODE_IMAGE=node:24-alpine
-            VERSION=${{ env.CUSTOM_VERSION }}
+            VERSION=${{ needs.quality.outputs.custom_version }}
             COMMIT=${{ github.sha }}
             DATE=${{ steps.buildmeta.outputs.date }}
             SOURCE_REPOSITORY=${{ github.server_url }}/${{ github.repository }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.version=${{ env.CUSTOM_VERSION }}
+            org.opencontainers.image.version=${{ needs.quality.outputs.custom_version }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ steps.buildmeta.outputs.date }}
           cache-from: type=gha
@@ -171,6 +200,6 @@ jobs:
         run: |
           echo "### Custom image" >> "$GITHUB_STEP_SUMMARY"
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          echo "${{ steps.image.outputs.name }}:${CUSTOM_VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.image.outputs.name }}:${{ needs.quality.outputs.custom_version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

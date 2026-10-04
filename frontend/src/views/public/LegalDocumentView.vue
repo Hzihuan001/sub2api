@@ -99,6 +99,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { getLocale } from '@/i18n'
 import { sanitizeUrl } from '@/utils/url'
 import { useAppStore } from '@/stores/app'
+import { normalizePublicBranding } from '@/utils/publicBranding'
 import type { LoginAgreementDocument } from '@/types'
 import zhAdminCompliance from '../../../../docs/legal/admin-compliance.zh.md?raw'
 import enAdminCompliance from '../../../../docs/legal/admin-compliance.en.md?raw'
@@ -144,13 +145,20 @@ const currentDocument = computed<LoginAgreementDocument | null>(() => {
   if (!id) {
     return null
   }
-  return documents.value.find((doc) => doc.id === id) ?? null
+  const document = documents.value.find((doc) => doc.id === id)
+  return document
+    ? {
+        ...document,
+        title: normalizePublicBranding(document.title),
+        content_md: normalizePublicBranding(document.content_md)
+      }
+    : null
 })
 
 const hasContent = computed(() => Boolean(currentDocument.value?.content_md?.trim()))
 
 const renderedHtml = computed(() => {
-  const content = currentDocument.value?.content_md?.trim() || ''
+  const content = normalizePublicBranding(currentDocument.value?.content_md?.trim() || '')
   if (!content) {
     return ''
   }

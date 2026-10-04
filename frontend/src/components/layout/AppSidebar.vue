@@ -199,12 +199,15 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import type { ManagementPermission } from '@/authz/permissions'
+import { getHostCustomMenuItems } from '@/custom'
+import type { HostCustomNavItem } from '@/custom'
 
 interface NavItem {
   path: string
   label: string
   icon: unknown
   iconSvg?: string
+  parentPath?: string
   hideInSimpleMode?: boolean
   children?: NavItem[]
   /**
@@ -220,6 +223,22 @@ interface NavItem {
    */
   featureFlag?: () => boolean | undefined
   permission?: ManagementPermission
+  adminOnly?: boolean
+}
+
+function toNavItem(item: HostCustomNavItem): NavItem {
+  return {
+    path: item.path,
+    label: item.label,
+    icon: item.icon,
+    iconSvg: item.iconSvg,
+    parentPath: item.parentPath,
+    featureFlag: item.featureFlag,
+    permission: item.permission as ManagementPermission | undefined,
+    adminOnly: item.adminOnly,
+    hideInSimpleMode: item.hideInSimpleMode,
+    children: item.children?.map(toNavItem)
+  }
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -304,21 +323,6 @@ const KeyIcon = {
           'stroke-linecap': 'round',
           'stroke-linejoin': 'round',
           d: 'M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z'
-        })
-      ]
-    )
-}
-
-const ImageStudioIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
-      [
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z'
         })
       ]
     )
@@ -745,7 +749,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/image-studio', label: t('nav.imageStudio'), icon: ImageStudioIcon, hideInSimpleMode: true },
+    ...registryUserMenuItems.value.filter(item => !item.parentPath),
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
@@ -811,13 +815,32 @@ const customMenuItemsForAdmin = computed(() => {
     .sort((a, b) => a.sort_order - b.sort_order)
 })
 
+// Registry-provided menus are opt-in. Items with a management permission are
+// rendered in the management section; items without one remain user-facing.
+// An empty registry therefore leaves the existing navigation unchanged.
+const registryMenuItems = computed(() =>
+  getHostCustomMenuItems((labelKey) => t(labelKey)).map(toNavItem)
+)
+const registryUserMenuItems = computed(() =>
+  registryMenuItems.value.filter((item) => !item.permission && !item.adminOnly)
+)
+const registryAdminMenuItems = computed(() =>
+  registryMenuItems.value.filter((item) => Boolean(item.permission) || item.adminOnly)
+)
+const registryRoleMenuItem = computed(() =>
+  authStore.isAdmin ? registryAdminMenuItems.value.find((item) => item.path === '/admin/roles') : undefined
+)
+const registryUsageMenuItem = computed(() =>
+  registryAdminMenuItems.value.find((item) => item.path === '/admin/usage')
+)
+
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, permission: 'dashboard' },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring, permission: 'ops' },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true, permission: 'users' },
-    { path: '/admin/roles', label: t('nav.rolePermissions'), icon: ShieldIcon, hideInSimpleMode: true },
+    ...(registryRoleMenuItem.value ? [{ ...registryRoleMenuItem.value, icon: ShieldIcon }] : []),
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, permission: 'groups' },
     {
       path: '/admin/channels',
@@ -845,7 +868,9 @@ const adminNavItems = computed((): NavItem[] => {
       expandOnly: true,
       children: [
         { path: '/admin/risk-control', label: t('nav.contentModeration'), icon: ShieldIcon, featureFlag: flagRiskControl, permission: 'riskControl' },
-        { path: '/admin/prompt-audit', label: t('nav.promptAudit'), icon: ShieldIcon, permission: 'promptAudit' },
+        ...registryAdminMenuItems.value
+          .filter(item => item.parentPath === '/admin/security-audit')
+          .map(item => ({ ...item, icon: item.icon ?? ShieldIcon })),
       ],
     },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, permission: 'redeemCodes' },
@@ -878,7 +903,7 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon, permission: 'orders' },
       ],
     },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon, permission: 'usage' },
+    ...(registryUsageMenuItem.value ? [{ ...registryUsageMenuItem.value, icon: ChartIcon }] : []),
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true, permission: 'auditLogs' }
   ]
 
@@ -886,6 +911,16 @@ const adminNavItems = computed((): NavItem[] => {
   const visible = authStore.isAdmin
     ? featureVisible
     : applyOperatorPermissions(featureVisible)
+  const registryVisible = applyFeatureFlags(
+    registryAdminMenuItems.value.filter(
+      item => !item.parentPath && item.path !== '/admin/roles' && item.path !== '/admin/usage'
+    )
+  )
+  visible.push(
+    ...(authStore.isAdmin
+      ? registryVisible
+      : applyOperatorPermissions(registryVisible))
+  )
 
   // 简单模式下，在系统设置前插入 API密钥
   if (authStore.isSimpleMode && authStore.isAdmin) {
