@@ -8,6 +8,11 @@ git switch --create custom/integration <tested-custom-commit>
 git push --set-upstream origin custom/integration
 ```
 
+The canonical upstream mirror ref recorded in `custom/manifest.yml` is
+`upstream/main`. The official remote currently exposes `main` (not
+`mainline`); keep this metadata aligned if the upstream repository changes its
+default branch. Release synchronization still selects immutable `vX.Y.Z` tags.
+
 `.github/workflows/upstream-sync.yml` checks the official `v*` tags weekly
 and can also be started manually. It creates `upgrade/upstream-vX.Y.Z`, merges
 the selected official tag, applies the ordered `patch_branches` list from

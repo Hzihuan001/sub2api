@@ -34,6 +34,7 @@ from typing import Iterable
 
 FEATURE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$")
 CUSTOM_MIGRATION_RE = re.compile(r"^9000_custom_[a-z0-9][a-z0-9_-]*\.sql$")
+CUSTOM_MANIFEST_MIRROR_RE = re.compile(r"^\s*mirror_branch:\s*(\S+)\s*$", re.MULTILINE)
 GO_FEATURE_RE = re.compile(r"^\s*(Feature\w+)\s+FeatureID\s*=\s*\"([^\"]+)\"\s*$", re.MULTILINE)
 GO_MANIFEST_RE = re.compile(
     r"ID:\s*(Feature\w+)\s*,\s*SettingsNamespace:\s*SettingNamespace\(\s*(Feature\w+)\s*\)",
@@ -297,6 +298,30 @@ def check_feature_manifests(root: Path) -> None:
     print("custom feature manifests: valid and in sync")
 
 
+def check_custom_manifest(root: Path) -> None:
+    """Validate the canonical upstream mirror ref used by custom tooling.
+
+    The sync workflow itself consumes immutable release tags, but the custom
+    manifest documents the branch from which the upstream mirror is expected
+    to be maintained.  Keep the check intentionally small and dependency-free
+    so a stale branch name fails before an upgrade PR is opened.
+    """
+
+    path = root / "custom" / "manifest.yml"
+    if not path.is_file():
+        raise CheckFailure(f"missing custom manifest: {path}")
+    contents = path.read_text(encoding="utf-8")
+    match = CUSTOM_MANIFEST_MIRROR_RE.search(contents)
+    if not match:
+        raise CheckFailure(f"{path}: missing upstream.mirror_branch")
+    mirror_ref = match.group(1)
+    if mirror_ref != "upstream/main":
+        raise CheckFailure(
+            f"{path}: upstream.mirror_branch must be upstream/main; got {mirror_ref!r}"
+        )
+    print("custom manifest: upstream mirror ref is upstream/main")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-ref", help="custom base ref used for migration comparison")
@@ -328,6 +353,7 @@ def main() -> int:
             check_generated_sources(root, run_generate=args.run_go_generate)
         check_migrations(root, base_ref, upstream_ref)
         check_feature_manifests(root)
+        check_custom_manifest(root)
         print("custom isolation checks: PASS")
         return 0
     except CheckFailure as exc:
