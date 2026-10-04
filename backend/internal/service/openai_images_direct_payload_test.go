@@ -52,6 +52,24 @@ func TestCodexDirectImagesMultipartEdit(t *testing.T) {
 	require.False(t, gjson.GetBytes(upstreamBody, "tools").Exists())
 }
 
+func TestCodexDirectImagesPreservesSunburstSizeAndQuality(t *testing.T) {
+	parsed := &OpenAIImagesRequest{
+		Model:        "gpt-image-2.5-sunburst",
+		Prompt:       "a cat by a window",
+		Size:         "3840x2160",
+		Quality:      "max",
+		OutputFormat: "png",
+	}
+
+	body, target, err := buildOpenAIImagesOAuthPayload(parsed, parsed.Model)
+	require.NoError(t, err)
+	require.Equal(t, "https://chatgpt.com/backend-api/codex/images/generations", target)
+	require.Equal(t, "gpt-image-2.5-sunburst", gjson.GetBytes(body, "model").String())
+	require.Equal(t, "3840x2160", gjson.GetBytes(body, "size").String())
+	require.Equal(t, "max", gjson.GetBytes(body, "quality").String())
+	require.Equal(t, "png", gjson.GetBytes(body, "output_format").String())
+}
+
 func TestCodexDirectImagesPricingAndUsage(t *testing.T) {
 	prices := &PricingService{pricingData: map[string]*LiteLLMModelPricing{"gpt-image-2": {InputCostPerToken: 1}}}
 	for _, model := range []string{"gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08"} {

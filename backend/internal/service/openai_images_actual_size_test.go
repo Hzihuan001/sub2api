@@ -39,6 +39,34 @@ func TestDetectOpenAIImageResultSize(t *testing.T) {
 	require.Empty(t, detectOpenAIImageResultSize("not-image-data"))
 }
 
+func TestReconcileOpenAIImagesAPIResponseSizesUsesDecodedBytes(t *testing.T) {
+	encoded := encodeOpenAIImageTestPNG(t, 1672, 941)
+	body := []byte(fmt.Sprintf(`{"created":1710000000,"data":[{"b64_json":%q,"size":"3840x2160"},{"url":"data:image/png;base64,%s","size":"1024x1024"}]}`, encoded, encoded))
+
+	got := reconcileOpenAIImagesAPIResponseSizes(body)
+	require.Equal(t, "1672x941", gjson.GetBytes(got, "data.0.size").String())
+	require.Equal(t, "1672x941", gjson.GetBytes(got, "data.1.size").String())
+	require.Equal(t, "1672x941", gjson.GetBytes(got, "size").String())
+}
+
+func TestOpenAIImagesAPIKeyNonStreamingUsesDecodedOutputDimensions(t *testing.T) {
+	encoded := encodeOpenAIImageTestPNG(t, 1672, 941)
+	requestBody := []byte(`{"model":"gpt-image-2.5-sunburst","prompt":"draw","size":"3840x2160","quality":"max"}`)
+	c, rec := newOpenAIImagesTestContext(t, requestBody)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(fmt.Sprintf(`{"data":[{"b64_json":%q}]}`, encoded))),
+	}
+	parsed := &OpenAIImagesRequest{ResponseFormat: "b64_json", Size: "3840x2160", Quality: "max"}
+	svc := newOpenAIImagesTestService(nil)
+	_, count, sizes, err := svc.handleOpenAIImagesNonStreamingResponse(context.Background(), resp, c, newOpenAIImagesAPIKeyAccount(), parsed)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+	require.Equal(t, []string{"1672x941"}, sizes)
+	require.Equal(t, "1672x941", gjson.GetBytes(rec.Body.Bytes(), "data.0.size").String())
+}
+
 func TestOpenAIGatewayServiceForwardImages_OAuthUsesDecodedOutputDimensions(t *testing.T) {
 	run := runOpenAIOAuthImageActualSizeTest(t, false)
 

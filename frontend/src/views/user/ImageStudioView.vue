@@ -243,6 +243,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { keysAPI } from '@/api/keys'
 import { generateImageStudioImages, listImageStudioModels, type ImageStudioModel } from '@/api/imageStudio'
+import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
 import {
@@ -281,6 +282,7 @@ interface GalleryItem {
 }
 
 const { t, locale } = useI18n()
+const authStore = useAuthStore()
 const appStore = useAppStore()
 const apiKeys = ref<ApiKey[]>([])
 const models = ref<ImageStudioModel[]>([])
@@ -300,6 +302,7 @@ const previewItem = ref<GalleryItem | null>(null)
 const showClearLibraryDialog = ref(false)
 let generationController: AbortController | null = null
 let modelController: AbortController | null = null
+let libraryLoadToken = 0
 
 const form = reactive({
   apiKeyId: '',
@@ -316,6 +319,13 @@ const customWidth = ref(1024)
 const customHeight = ref(1024)
 
 const selectedKey = computed(() => apiKeys.value.find((key) => String(key.id) === String(form.apiKeyId)) || null)
+const libraryScope = computed(() => {
+  const userID = authStore.user?.id
+  if (userID === undefined || userID === null) return null
+  if (typeof userID === 'number' && !Number.isFinite(userID)) return null
+  const normalized = String(userID).trim()
+  return normalized || null
+})
 const galleryItems = computed(() => [...temporaryGallery.value, ...storedGallery.value].sort((a, b) => b.createdAt - a.createdAt))
 const apiKeyOptions = computed(() => [
   { value: '', label: loadingKeys.value ? t('imageStudio.loadingKeys') : t('imageStudio.selectKey') },
@@ -335,6 +345,8 @@ const sizeOptions = computed(() => [
   { value: '1536x2048', label: '1536 × 2048' },
   { value: '2048x1152', label: '2048 × 1152' },
   { value: '1152x2048', label: '1152 × 2048' },
+  { value: '3840x2160', label: t('imageStudio.size4kLandscape') },
+  { value: '2160x3840', label: t('imageStudio.size4kPortrait') },
   { value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('imageStudio.customSize') },
 ])
 const countOptions = [1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))
@@ -343,6 +355,8 @@ const qualityOptions = computed(() => [
   { value: 'low', label: t('imageStudio.qualityLow') },
   { value: 'medium', label: t('imageStudio.qualityMedium') },
   { value: 'high', label: t('imageStudio.qualityHigh') },
+  { value: 'xhigh', label: t('imageStudio.qualityXhigh') },
+  { value: 'max', label: t('imageStudio.qualityMax') },
 ])
 const formatOptions = [{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }, { value: 'webp', label: 'WebP' }]
 const backgroundOptions = computed(() => [
@@ -490,11 +504,13 @@ async function generate(): Promise<void> {
     generationError.value = t('imageStudio.errors.invalidCustomSize')
     return
   }
+  const scopeAtStart = libraryScope.value
   generationController?.abort()
   const controller = new AbortController()
   generationController = controller
   generating.value = true
   generationError.value = ''
+  const isCurrentGeneration = () => !controller.signal.aborted && libraryScope.value === scopeAtStart
   try {
     const outputs = await generateImageStudioImages(key.key, {
       model: form.model.trim(), prompt: form.prompt.trim(), count: Number(form.count) || 1,
@@ -502,13 +518,17 @@ async function generate(): Promise<void> {
       background: form.background, inputFidelity: form.inputFidelity,
       images: inputImages.value.map((item) => item.file), mask: maskFile.value,
     }, controller.signal)
+    if (!isCurrentGeneration()) return
     const now = Date.now()
     const stored: StoredStudioImage[] = []
     const temporary: GalleryItem[] = []
     for (let index = 0; index < outputs.length; index += 1) {
+      if (!isCurrentGeneration()) return
       const output = outputs[index]
       const blob = await outputToBlob(output, form.outputFormat)
+      if (!isCurrentGeneration()) return
       const actualSize = blob ? await detectImageDimensions(blob) : undefined
+      if (!isCurrentGeneration()) return
       const metadata = {
         id: makeID(), createdAt: now + index, prompt: form.prompt.trim(), revisedPrompt: output.revisedPrompt,
         model: form.model.trim(), size: requestSize.value, actualSize, outputFormat: form.outputFormat, apiKeyName: key.name,
@@ -520,10 +540,12 @@ async function generate(): Promise<void> {
       }
     }
     let storageFailed = false
-    if (stored.length) {
+    if (stored.length && scopeAtStart !== null) {
       try {
-        await saveStoredStudioImages(stored)
+        await saveStoredStudioImages(stored, scopeAtStart)
+        if (!isCurrentGeneration()) return
       } catch {
+        if (!isCurrentGeneration()) return
         storageFailed = true
         temporary.push(...stored.map((item) => ({
           ...item,
@@ -531,9 +553,21 @@ async function generate(): Promise<void> {
           persisted: false,
         })))
       }
+    } else if (stored.length) {
+      storageFailed = true
+      temporary.push(...stored.map((item) => ({
+        ...item,
+        url: URL.createObjectURL(item.blob),
+        persisted: false,
+      })))
+    }
+    if (!isCurrentGeneration()) {
+      revokeGalleryURLs(temporary)
+      return
     }
     temporaryGallery.value.unshift(...temporary)
     if (stored.length && !storageFailed) await loadLibrary()
+    if (!isCurrentGeneration()) return
     if (storageFailed) {
       appStore.showWarning(t('imageStudio.messages.storageUnavailable', { count: stored.length }))
     } else if (temporary.length) {
@@ -561,23 +595,47 @@ function revokeGalleryURLs(items: GalleryItem[]): void {
   items.forEach((item) => { if (item.url.startsWith('blob:')) URL.revokeObjectURL(item.url) })
 }
 
+function isCurrentGalleryItem(item: GalleryItem): boolean {
+  const source = item.persisted ? storedGallery.value : temporaryGallery.value
+  return source.some((candidate) => candidate.id === item.id && candidate.url === item.url)
+}
+
 async function loadLibrary(): Promise<void> {
-  if (typeof indexedDB === 'undefined') return
+  const loadToken = ++libraryLoadToken
+  const scope = libraryScope.value
+  if (typeof indexedDB === 'undefined' || scope === null) {
+    revokeGalleryURLs(storedGallery.value)
+    storedGallery.value = []
+    loadingLibrary.value = false
+    return
+  }
   loadingLibrary.value = true
   try {
-    const images = await listStoredStudioImages()
+    const images = await listStoredStudioImages(scope)
+    if (loadToken !== libraryLoadToken || libraryScope.value !== scope) return
+    const nextGallery = images.map((image) => ({ ...image, url: URL.createObjectURL(image.blob), persisted: true }))
+    if (loadToken !== libraryLoadToken || libraryScope.value !== scope) {
+      revokeGalleryURLs(nextGallery)
+      return
+    }
     revokeGalleryURLs(storedGallery.value)
-    storedGallery.value = images.map((image) => ({ ...image, url: URL.createObjectURL(image.blob), persisted: true }))
+    storedGallery.value = nextGallery
+    if (previewItem.value && !isCurrentGalleryItem(previewItem.value)) previewItem.value = null
   } catch (error) {
+    if (loadToken !== libraryLoadToken || libraryScope.value !== scope) return
     appStore.showError(errorMessage(error, t('imageStudio.errors.loadLibrary')))
   } finally {
-    loadingLibrary.value = false
+    if (loadToken === libraryLoadToken) loadingLibrary.value = false
   }
 }
 
 async function deleteItem(item: GalleryItem): Promise<void> {
+  if (!isCurrentGalleryItem(item)) return
   if (item.persisted) {
-    await deleteStoredStudioImage(item.id)
+    const scope = libraryScope.value
+    if (scope === null) return
+    await deleteStoredStudioImage(item.id, scope)
+    if (libraryScope.value !== scope) return
     await loadLibrary()
   } else {
     revokeGalleryURLs([item])
@@ -593,7 +651,10 @@ function clearLibrary(): void {
 async function confirmClearLibrary(): Promise<void> {
   showClearLibraryDialog.value = false
   try {
-    await clearStoredStudioImages()
+    const scope = libraryScope.value
+    if (scope === null) return
+    await clearStoredStudioImages(scope)
+    if (libraryScope.value !== scope) return
     await loadLibrary()
   } catch (error) {
     appStore.showError(errorMessage(error, t('imageStudio.errors.clearLibrary')))
@@ -606,6 +667,7 @@ function extensionFor(item: GalleryItem): string {
 }
 
 function downloadItem(item: GalleryItem): void {
+  if (!isCurrentGalleryItem(item)) return
   const anchor = document.createElement('a')
   anchor.href = item.url
   anchor.download = `moshu-image-${new Date(item.createdAt).toISOString().replace(/[:.]/g, '-')}.${extensionFor(item)}`
@@ -614,6 +676,7 @@ function downloadItem(item: GalleryItem): void {
 }
 
 function reuseItem(item: GalleryItem): void {
+  if (!isCurrentGalleryItem(item)) return
   form.prompt = item.prompt
   form.model = item.model
   selectImageSize(item.size || 'auto')
@@ -631,12 +694,25 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 watch(() => form.apiKeyId, () => { void loadModels() })
+watch(libraryScope, (scope, previousScope) => {
+  if (scope === previousScope) return
+  cancelGeneration()
+  generationError.value = ''
+  showClearLibraryDialog.value = false
+  revokeGalleryURLs(storedGallery.value)
+  revokeGalleryURLs(temporaryGallery.value)
+  storedGallery.value = []
+  temporaryGallery.value = []
+  previewItem.value = null
+  void loadLibrary()
+})
 
 onMounted(() => {
   void Promise.allSettled([loadKeys(), loadLibrary()])
 })
 
 onBeforeUnmount(() => {
+  libraryLoadToken += 1
   generationController?.abort()
   modelController?.abort()
   inputImages.value.forEach((item) => URL.revokeObjectURL(item.url))

@@ -15,6 +15,8 @@ export interface ImageDimensions {
   height: number
 }
 
+export type ImageSizeVerification = 'matched' | 'mismatch' | 'observed' | 'unknown'
+
 export function parseImageDimensions(value: string | undefined | null): ImageDimensions | null {
   if (!value) return null
   const match = /^\s*(\d+)\s*x\s*(\d+)\s*$/i.exec(value)
@@ -23,6 +25,24 @@ export function parseImageDimensions(value: string | undefined | null): ImageDim
   const height = Number(match[2])
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height)) return null
   return { width, height }
+}
+
+/**
+ * Compare the requested dimensions with the intrinsic dimensions of the
+ * returned image.  A request of `auto` (or another non-dimensional value)
+ * cannot be compared, but a readable response is still useful to report as
+ * observed.  This deliberately compares pixels only; it does not claim to
+ * prove how the upstream model produced those pixels.
+ */
+export function verifyImageSize(
+  requestedSize: string | undefined | null,
+  actualSize: string | undefined | null,
+): ImageSizeVerification {
+  const actual = parseImageDimensions(actualSize)
+  if (!actual) return 'unknown'
+  const requested = parseImageDimensions(requestedSize)
+  if (!requested) return 'observed'
+  return requested.width === actual.width && requested.height === actual.height ? 'matched' : 'mismatch'
 }
 
 export function normalizeCustomImageSize(width: number | string, height: number | string): string | null {

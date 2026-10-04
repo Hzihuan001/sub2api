@@ -4,6 +4,7 @@ import {
   IMAGE_STUDIO_CUSTOM_SIZE,
   normalizeCustomImageSize,
   parseImageDimensions,
+  verifyImageSize,
 } from '../size'
 
 describe('image studio size helpers', () => {
@@ -23,5 +24,13 @@ describe('image studio size helpers', () => {
     expect(parseImageDimensions(' 2048 x 2048 ')).toEqual({ width: 2048, height: 2048 })
     expect(parseImageDimensions(IMAGE_STUDIO_CUSTOM_SIZE)).toBeNull()
     expect(parseImageDimensions('1024×1024')).toBeNull()
+  })
+
+  it('verifies returned pixels without implying how the model rendered them', () => {
+    expect(verifyImageSize('3840x2160', '3840x2160')).toBe('matched')
+    expect(verifyImageSize('3840x2160', '1672x941')).toBe('mismatch')
+    expect(verifyImageSize('auto', '1672x941')).toBe('observed')
+    expect(verifyImageSize('3840x2160', undefined)).toBe('unknown')
+    expect(verifyImageSize('3840x2160', 'not-an-image-size')).toBe('unknown')
   })
 })

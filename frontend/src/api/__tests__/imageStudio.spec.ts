@@ -76,6 +76,29 @@ describe('imageStudio API', () => {
     })
   })
 
+  it('forwards experimental 4K dimensions and extended quality values unchanged', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: 'aW1hZ2U=' }] }),
+    } as Response)
+
+    await generateImageStudioImages('sk-image', {
+      model: 'gpt-image-2.5-sunburst',
+      prompt: 'a mountain at sunrise',
+      count: 1,
+      size: '3840x2160',
+      quality: 'max',
+      outputFormat: 'png',
+    })
+
+    const [, options] = vi.mocked(fetch).mock.calls[0]
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      model: 'gpt-image-2.5-sunburst',
+      size: '3840x2160',
+      quality: 'max',
+    })
+  })
+
   it('uses multipart edits without overriding the browser content type', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,

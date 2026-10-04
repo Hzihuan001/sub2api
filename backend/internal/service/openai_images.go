@@ -952,6 +952,43 @@ func rewriteOpenAIImagesMultipartModel(body []byte, contentType string, model st
 	return buffer.Bytes(), writer.FormDataContentType(), nil
 }
 
+// reconcileOpenAIImagesAPIResponseSizes makes the actual dimensions of
+// Images API outputs visible to downstream consumers.  Some compatible
+// providers return a requested-size echo (or no size at all) while the image
+// bytes are smaller; decoding the image header is the only reliable signal
+// available at this layer.  Remote URLs are intentionally not fetched here.
+func reconcileOpenAIImagesAPIResponseSizes(body []byte) []byte {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body
+	}
+	items := gjson.GetBytes(body, "data")
+	if !items.IsArray() {
+		return body
+	}
+	for index, item := range items.Array() {
+		if !item.IsObject() {
+			continue
+		}
+		encoded := strings.TrimSpace(item.Get("b64_json").String())
+		if encoded == "" {
+			// A few providers use an inline data URL even when the client asks
+			// for response_format=url.  It is safe to inspect that payload, but
+			// never download an arbitrary remote URL from this response path.
+			candidate := strings.TrimSpace(item.Get("url").String())
+			if strings.HasPrefix(strings.ToLower(candidate), "data:image/") {
+				encoded = candidate
+			}
+		}
+		if size := detectOpenAIImageResultSize(encoded); size != "" {
+			body, _ = sjson.SetBytes(body, fmt.Sprintf("data.%d.size", index), size)
+			if index == 0 {
+				body, _ = sjson.SetBytes(body, "size", size)
+			}
+		}
+	}
+	return body
+}
+
 func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 	dst := make(textproto.MIMEHeader, len(src))
 	for key, values := range src {
@@ -974,6 +1011,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 		return OpenAIUsage{}, 0, nil, err
 	}
 	body = s.backfillOpenAIImagesB64JSON(ctx, account, parsed, body)
+	// API-key Images providers commonly return only b64_json and either omit
+	// data[].size or echo the requested size.  The encoded image bytes are the
+	// authoritative result, so expose their dimensions for the workbench and
+	// billing instead of allowing the request size to masquerade as the output
+	// size.  This is deliberately best-effort: URL-only responses remain
+	// untouched unless they contain an inline data URL (or the optional b64
+	// backfill above has populated b64_json).
+	body = reconcileOpenAIImagesAPIResponseSizes(body)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
