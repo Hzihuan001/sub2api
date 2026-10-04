@@ -24,7 +24,7 @@
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
 | 生产镜像 | `ghcr.io/hzihuan001/sub2api@sha256:74a504284b0368f7c8187b98335cbca69cf4fe56b079c814986b31a724e8895a` |
-| 当前发布状态 | `.7` 已部署到 OVH 生产并完成 30 分钟观察；Tencent staging 未部署（SSH 公钥不可用） |
+| 当前发布状态 | `.7` 已部署到 OVH 生产并完成 30 分钟观察；Tencent staging 已退役 |
 
 生产健康检查最近确认通过的入口：
 
@@ -36,11 +36,11 @@
 
 ### 当前会话摘要（2026-10-05）
 
-- **Feature ID**：`image-studio`；状态：`deployed`（`.7` 已部署 OVH 生产；Tencent staging 因 SSH 公钥不可用未执行）。
+- **Feature ID**：`image-studio`；状态：`deployed`（`.7` 已部署 OVH 生产；Tencent staging 已退役，不再作为发布门禁）。
 - **实现边界**：将浏览器端生图画廊改为按认证用户隔离的 IndexedDB v2 命名空间；账号切换时清理旧用户的内存结果、预览和进行中的生成，并对异步读取/保存做作用域校验；工作台透传自定义尺寸与扩展质量档位，内部测量并保存最终文件实际像素，但界面不展示实际尺寸、不弹出尺寸不匹配数字提示，也不做本地放大；Gemini 原生批量请求转发 `generationConfig.imageConfig.aspectRatio` 与 `imageSize`；API-key Images 非流式响应从 Base64/内联 data URL 回填实际尺寸元数据。
 - **数据与兼容**：没有后端数据库迁移；旧的 v1 全局 IndexedDB 保留但不自动迁移/读取，以避免跨账号显示历史内容。
 - **验证证据**：image-studio/API/size/视图前端 4 个测试文件 `18/18`；完整前端 lint/typecheck/test/build、完整后端 unit、隔离检查、发布 CI 和不可变镜像 operator 隔离验收均通过。OVH 部署前完成 PostgreSQL custom dump/restore list、应用/Redis/OpenResty 持久化与配置备份；生产容器使用目标 digest 健康运行，`ai.moshu.cloud/health` 连续观察 30 分钟通过，最近 30 分钟日志无致命模式。
-- **已知限制/下一步**：工作台只在内部验证最终文件像素，不能证明模型内部原生生成；CPA/ChatGPT OAuth 上游仍可能忽略或改写 4K 请求，界面不显示实际尺寸，也不会伪造或自动放大。Tencent staging 地址 `101.34.249.20` 仍无法使用现有 SSH 公钥认证，本次按用户明确指示直接部署 OVH；后续如需 staging 验收，再通过腾讯云控制台恢复目标账号公钥。继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
+- **已知限制/下一步**：工作台只在内部验证最终文件像素，不能证明模型内部原生生成；CPA/ChatGPT OAuth 上游仍可能忽略或改写 4K 请求，界面不显示实际尺寸，也不会伪造或自动放大。Tencent staging 已停止使用，不再等待其 SSH 或执行 staging 部署；后续发布流程以本地不可变镜像验收、OVH 预检、备份和生产观察为准。继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
 
 ## 2. 当前定制功能边界
 
@@ -118,7 +118,7 @@ pwsh -NoProfile -File scripts/sync-upstream.ps1 `
 2. 创建自定义标签，例如 `custom-0.2.14.1`，版本文件对应 `0.2.14-custom.1`。
 3. 等 CI 构建 GHCR 镜像并记录不可变 digest。
 4. 拉取同一 digest 回本地做启动、健康和关键接口检查。
-5. 先在测试站验证，再按批准顺序更新生产站；只重建应用容器，保留数据库、Redis、卷、网络和代理配置。
+5. 先完成本地不可变镜像验收和 OVH 生产预检，再按批准顺序更新 OVH；只重建应用容器，保留数据库、Redis、卷、网络和代理配置。Tencent staging 已退役，不再作为发布门禁。
 6. 生产异常立即切回发布前记录的旧 digest；若发生不可逆官方迁移，先停止并按迁移回滚预案处理，不能只切镜像。
 
 ## 5. 当前自动化的限制与后续优化

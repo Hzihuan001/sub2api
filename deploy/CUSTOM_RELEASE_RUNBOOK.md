@@ -68,8 +68,9 @@ locally rebuilt image.
 
 ## Read-only server preflight
 
-Run this separately on Tencent Cloud and OVH before making any change. Save the
-output in the release report, redacting secret values.
+Tencent Cloud staging was retired on 2026-10-05. Run this preflight on the
+OVH production host before making any change. Save the output in the release
+report, redacting secret values.
 
 ```sh
 uname -m
@@ -94,8 +95,8 @@ downgrade it.
 
 ## Backup gate
 
-Before staging and again before production, create timestamped backups outside
-the application volume and verify that each file is non-empty:
+Before production, create timestamped backups outside the application volume
+and verify that each file is non-empty:
 
 - PostgreSQL custom-format dump plus a restore/list verification;
 - `.env` and all Compose/1Panel definitions;
@@ -106,26 +107,19 @@ the application volume and verify that each file is non-empty:
 Do not copy secrets into the report or repository. Do not delete/recreate
 PostgreSQL, Redis, application volumes, networks, or proxy configuration.
 
-## Tencent Cloud staging
+## Tencent Cloud staging (retired)
 
-1. Complete the read-only preflight and backup gates.
-2. Change only the Sub2API service image to the approved GHCR digest.
-3. Pull the digest and run `docker compose up -d --no-deps sub2api` (or the
-   equivalent 1Panel operation that recreates only the application container).
-4. Run health, role login, allow/deny matrix, user/API key, WebSocket, browser,
-   OpenResty, and SSE checks.
-5. Inspect application/PostgreSQL/Redis/OpenResty logs and observe for at least
-   30 minutes.
-6. Record commit, tag, digest, commands, results, timestamps, and issues. Any
-   failure restores the old image digest and blocks production.
+The Tencent staging host is no longer an active release target. Do not wait
+for its SSH access, deploy to it, or treat its unavailable credentials as a
+production blocker. Preserve its historical reports only for audit context.
 
 ## OVH production approval gate
 
-Production requires a separate human confirmation after staging passes. Reuse
-the exact staging-approved digest; never rebuild. Repeat preflight and backups,
-then change only the Sub2API image and recreate only that service. Preserve
-JWT/TOTP keys, database, Redis, volumes, ports, networks, OpenResty, and
-Cloudflare settings.
+Production requires a separate human confirmation. Use the exact digest that
+passed CI and the local immutable-image acceptance test; never rebuild. Repeat
+preflight and the backup gate, then change only the Sub2API image and recreate
+only that service. Preserve JWT/TOTP keys, database, Redis, volumes, ports,
+networks, OpenResty, and Cloudflare settings.
 
 After deployment, check health, all three role logins, representative allowed
 and denied endpoints, normal user API keys, SSE streaming, 5xx rates, database
