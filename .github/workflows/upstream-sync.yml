@@ -16,8 +16,10 @@ on:
     - cron: "17 3 * * 1"
 
 permissions:
-  contents: write
-  pull-requests: write
+  # Keep the workflow read-only by default. The sync job below is the only
+  # job allowed to publish an upgrade branch and draft PR.
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: upstream-sync
@@ -34,6 +36,9 @@ jobs:
   sync:
     name: Prepare upstream upgrade PR
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout custom base
         uses: actions/checkout@v6
@@ -70,6 +75,24 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
+      - name: Set up pinned Go toolchain
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up pinned Node and pnpm toolchain
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
       - name: Detect duplicate upgrade PR
         id: existing
         env:
@@ -96,7 +119,7 @@ jobs:
           SHA: ${{ steps.upstream.outputs.sha }}
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           safe_tag="${TAG//[^0-9A-Za-z._-]/-}"
           branch="upgrade/upstream-$safe_tag"
           if git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
@@ -109,9 +132,7 @@ jobs:
             echo "noop=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git merge --no-ff --no-commit "$TAG" >merge.log 2>&1
-          code=$?
-          if [[ $code -ne 0 ]]; then
+          if ! git merge --no-ff --no-commit "$TAG" >merge.log 2>&1; then
             conflicts="$(git diff --name-only --diff-filter=U || true)"
             git merge --abort >/dev/null 2>&1 || true
             {
@@ -148,8 +169,7 @@ jobs:
           while IFS= read -r patch; do
             [[ -z "$patch" ]] && continue
             patch_log="patch-${patch//\//_}.log"
-            git fetch --prune origin "$patch" >"$patch_log" 2>&1
-            if [[ $? -ne 0 ]]; then
+            if ! git fetch --prune origin "$patch" >"$patch_log" 2>&1; then
               echo "patch branch not found: $patch" >sync-report.md
               cp "$patch_log" sync-merge.log
               git add sync-report.md sync-merge.log
@@ -158,8 +178,7 @@ jobs:
               echo "blocked=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            git merge --no-ff --no-commit "origin/$patch" >>merge.log 2>&1
-            if [[ $? -ne 0 ]]; then
+            if ! git merge --no-ff --no-commit "origin/$patch" >>merge.log 2>&1; then
               conflicts="$(git diff --name-only --diff-filter=U || true)"
               git merge --abort >/dev/null 2>&1 || true
               {
@@ -217,8 +236,7 @@ jobs:
             if [[ $? -ne 0 ]]; then failed=1; fi
           fi
           if [[ -f frontend/package.json ]]; then
-            corepack enable
-            (cd frontend && pnpm install --frozen-lockfile && pnpm run typecheck) > frontend-test.log 2>&1
+            (cd frontend && pnpm install --frozen-lockfile && pnpm run typecheck && pnpm run lint) > frontend-test.log 2>&1
             if [[ $? -ne 0 ]]; then failed=1; fi
           fi
           if [[ $failed -ne 0 ]]; then

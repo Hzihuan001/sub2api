@@ -21,6 +21,13 @@ checks, then opens a draft pull request. A conflict or failed check produces a
 blocked draft PR with logs. The job never builds, publishes, or deploys an
 application image.
 
+The workflow uses read-only token permissions by default and grants write
+access only to the sync job that publishes the upgrade branch and draft PR.
+It pins Go from `backend/go.mod`, Node from `.nvmrc`, and pnpm 9.15.9 before
+running generation, backend tests, frontend typecheck, and lint. Git merge and
+fetch failures are handled explicitly so an unrelated command failure cannot
+be silently treated as a successful upgrade.
+
 The default tag lookup selects only stable `vX.Y.Z` tags. A pre-release may be
 selected only by supplying `upstream_tag` (or `-UpstreamTag`) explicitly. The
 upstream merge is committed before the first custom patch, and every patch is
