@@ -56,3 +56,21 @@ pwsh -NoProfile -File scripts/sync-upstream.ps1 `
 
 The script has no deployment path. Production release remains a separate,
 manually approved workflow.
+
+## Project handoff and change history
+
+Before starting an upgrade or a new customization, read
+[`CUSTOM_PROJECT_STATUS.md`](CUSTOM_PROJECT_STATUS.md) for the current branch,
+release, feature boundaries, production state and upgrade gates. Append every
+custom change and every upstream upgrade to
+[`CUSTOM_FEATURE_LOG.md`](CUSTOM_FEATURE_LOG.md); do not rewrite historical
+entries. These documents contain no credentials or server secrets and are the
+stable context for a new maintenance session.
+
+The current `patch_branches` list is intentionally empty. Do not add old
+historical branches: they mix deployment and merge history and are not safe to
+replay. A feature branch may be added only after it is recreated from
+`custom/integration`, contains one isolated feature domain, and passes its own
+tests and Docker acceptance. Until then, the sync workflow still provides the
+upstream merge, conflict report, range-diff and quality gates, but a human must
+review the custom feature boundaries before merging the draft PR.
