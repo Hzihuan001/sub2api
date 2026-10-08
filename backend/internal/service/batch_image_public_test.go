@@ -163,6 +163,31 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.InDelta(t, 0.1608, *job.HoldAmount, 1e-12)
 	})
 
+	t.Run("uses the custom dimension billing tier for group image price", func(t *testing.T) {
+		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
+		groupID := int64(7)
+		imagePrice4K := 0.30
+		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
+			groupID: {
+				ID:                           groupID,
+				Platform:                     PlatformGemini,
+				RateMultiplier:               1.0,
+				AllowImageGeneration:         true,
+				AllowBatchImageGeneration:    true,
+				ImagePrice4K:                 &imagePrice4K,
+				BatchImageDiscountMultiplier: 0.5,
+				BatchImageHoldMultiplier:     0.6,
+			},
+		}}
+
+		req := validBatchImageSubmitRequest()
+		req.ImageSize = "3840x2160"
+		got, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID}, req, "")
+		require.NoError(t, err)
+		require.InDelta(t, 0.30, got.EstimatedCost, 1e-12)
+		require.InDelta(t, 0.30, repo.jobs[got.ID].BaseUnitPrice, 1e-12)
+	})
+
 	t.Run("pricing missing rejects before provider submit", func(t *testing.T) {
 		svc, repo, queue, gemini, _ := newTestBatchImagePublicService(true)
 		svc.Pricing = &fakeBatchImagePricingResolver{err: ErrBatchImageSettlementPricingMissing}
@@ -254,6 +279,9 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 			{name: "prompt_too_long", mutate: func(r *BatchImageSubmitRequest) { r.Items[0].Prompt = strings.Repeat("x", 9) }, want: ErrBatchImagePromptTooLong},
 			{name: "unsupported_provider", mutate: func(r *BatchImageSubmitRequest) { r.Provider = "other" }, want: ErrBatchImageUnsupportedProvider},
 			{name: "vertex_rejects_2k", mutate: func(r *BatchImageSubmitRequest) { r.Provider = BatchImageProviderVertex; r.ImageSize = "2K" }, want: ErrBatchImageInvalidItems},
+			{name: "vertex_rejects_4k", mutate: func(r *BatchImageSubmitRequest) { r.Provider = BatchImageProviderVertex; r.ImageSize = "4K" }, want: ErrBatchImageInvalidItems},
+			{name: "vertex_rejects_custom_size", mutate: func(r *BatchImageSubmitRequest) { r.Provider = BatchImageProviderVertex; r.ImageSize = "1024x1024" }, want: ErrBatchImageInvalidItems},
+			{name: "invalid_custom_size", mutate: func(r *BatchImageSubmitRequest) { r.ImageSize = "1025x1024" }, want: ErrBatchImageInvalidItems},
 			{name: "too_many_outputs_per_item", mutate: func(r *BatchImageSubmitRequest) {
 				r.Items[0].OutputCount = 5
 			}, want: ErrBatchImageInvalidItems},
@@ -281,6 +309,21 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 
 				_, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
 				require.ErrorIs(t, err, tt.want)
+			})
+		}
+	})
+
+	t.Run("accepts 4K and valid custom dimensions", func(t *testing.T) {
+		for _, imageSize := range []string{"4K", "3840x2160"} {
+			t.Run(imageSize, func(t *testing.T) {
+				svc, _, _, gemini, _ := newTestBatchImagePublicService(true)
+				req := validBatchImageSubmitRequest()
+				req.ImageSize = imageSize
+
+				_, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
+				require.NoError(t, err)
+				require.Len(t, gemini.submits, 1)
+				require.Equal(t, imageSize, gemini.submits[0].ImageSize)
 			})
 		}
 	})

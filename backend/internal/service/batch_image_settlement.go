@@ -257,9 +257,7 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	accountRateMultiplier := job.AccountRateMultiplier
 	inboundEndpoint := "/v1/images/batches"
 	upstreamEndpoint := "vertex:batchPredictionJobs"
-	// BatchImageJob predates persisted image-size metadata; keep the historical
-	// usage-log value until the job schema can carry the exact requested tier.
-	imageSize := "1K"
+	imageSize := s.batchImageUsageSize(ctx, job)
 	usageLog := &UsageLog{
 		UserID:                job.UserID,
 		APIKeyID:              *job.APIKeyID,
@@ -283,6 +281,22 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		CreatedAt:             createdAt,
 	}
 	writeUsageLogBestEffort(ctx, s.UsageLogRepo, usageLog, "service.batch_image_settlement")
+}
+
+// batchImageUsageSize reads the normalized request payload that is already
+// persisted with each pending item. This keeps usage logs accurate for 2K,
+// 4K, and custom requests without adding a job-table migration. Older jobs
+// without a payload retain the historical 1K value.
+func (s *BatchImageSettlementService) batchImageUsageSize(ctx context.Context, job *BatchImageJob) string {
+	if s != nil && s.Repo != nil && job != nil && strings.TrimSpace(job.BatchID) != "" {
+		items, err := s.Repo.ListBatchImageItems(ctx, job.BatchID, BatchImageItemFilter{Limit: 1})
+		if err == nil && len(items) > 0 {
+			if requested := batchImageItemImageSize(items[0]); requested != "" {
+				return NormalizeImageBillingTierOrDefault(requested)
+			}
+		}
+	}
+	return ImageBillingSize1K
 }
 
 func (s *BatchImageSettlementService) invalidateAuthCache(ctx context.Context, userID int64) {

@@ -138,6 +138,7 @@ type BatchImagePublicItem struct {
 	CustomID      string                 `json:"custom_id"`
 	Status        string                 `json:"status"`
 	PromptPreview *string                `json:"prompt_preview,omitempty"`
+	ImageSize     string                 `json:"image_size,omitempty"`
 	MimeType      *string                `json:"mime_type"`
 	FileExtension *string                `json:"file_extension"`
 	ImageCount    int                    `json:"image_count"`
@@ -241,6 +242,12 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	provider, account, err := s.selectProviderAndAccount(ctx, owner, normalized.Provider, normalized.Model)
 	if err != nil {
 		return nil, err
+	}
+	// The provider can be selected after the provider-agnostic request
+	// validation when the caller omits `provider`; enforce Vertex's 1K-only
+	// contract against the actual selected provider as well.
+	if provider.Name() == BatchImageProviderVertex && normalized.ImageSize != ImageBillingSize1K {
+		return nil, ErrBatchImageInvalidItems
 	}
 	// Public model IDs may be account-level aliases (for example, `paint` →
 	// `gpt-image-2`). Validate reference-image capacity against the actual
@@ -833,16 +840,15 @@ func (s *BatchImagePublicService) validateSubmitRequest(req BatchImageSubmitRequ
 	if req.ImageSize == "" {
 		req.ImageSize = s.defaultImageSize()
 	}
-	// 2K is the default for the managed fan-out path. Keep accepting the
-	// legacy 1K request for API compatibility, while Vertex native batching
-	// remains limited to its existing 1K contract.
-	if !strings.EqualFold(req.ImageSize, defaultBatchImageImageSize) && !strings.EqualFold(req.ImageSize, ImageBillingSize1K) {
+	normalizedImageSize, validImageSize := normalizeBatchImageSize(req.ImageSize)
+	if !validImageSize {
 		return req, ErrBatchImageInvalidItems
 	}
-	if req.Provider == BatchImageProviderVertex && !strings.EqualFold(req.ImageSize, ImageBillingSize1K) {
+	// Vertex native batch prediction keeps its existing 1K-only contract.
+	if req.Provider == BatchImageProviderVertex && normalizedImageSize != ImageBillingSize1K {
 		return req, ErrBatchImageInvalidItems
 	}
-	req.ImageSize = strings.ToUpper(req.ImageSize)
+	req.ImageSize = normalizedImageSize
 	req.Metadata = sanitizeBatchImageMetadata(req.Metadata)
 
 	seen := make(map[string]struct{}, len(req.Items))
@@ -1124,7 +1130,9 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 		if group.BatchImageHoldMultiplier >= 0 {
 			holdMultiplier = group.BatchImageHoldMultiplier
 		}
-		if configuredUnit := group.GetImagePrice(req.ImageSize); configuredUnit != nil && *configuredUnit >= 0 {
+		// Group prices are configured per billing tier. Custom dimensions must
+		// resolve to the same tier used by ordinary image billing.
+		if configuredUnit := group.GetImagePrice(NormalizeImageBillingTierOrDefault(req.ImageSize)); configuredUnit != nil && *configuredUnit >= 0 {
 			unit = *configuredUnit
 		}
 	}
@@ -1288,6 +1296,7 @@ func BatchImageItemToPublic(item *BatchImageItem) BatchImagePublicItem {
 		CustomID:      item.CustomID,
 		Status:        "failed",
 		PromptPreview: item.PromptPreview,
+		ImageSize:     batchImageItemImageSize(item),
 		MimeType:      item.MimeType,
 		FileExtension: item.FileExtension,
 		ImageCount:    item.ImageCount,
@@ -1306,6 +1315,21 @@ func BatchImageItemToPublic(item *BatchImageItem) BatchImagePublicItem {
 		Source:  batchImageItemErrorSource(item),
 	}
 	return out
+}
+
+func batchImageItemImageSize(item *BatchImageItem) string {
+	if item == nil || len(item.InputPayload) == 0 {
+		return ""
+	}
+	var payload managedBatchImageItemPayload
+	if err := json.Unmarshal(item.InputPayload, &payload); err != nil {
+		return ""
+	}
+	imageSize, ok := normalizeBatchImageSize(payload.ImageSize)
+	if !ok {
+		return ""
+	}
+	return imageSize
 }
 
 func batchImageItemErrorSource(item *BatchImageItem) string {
