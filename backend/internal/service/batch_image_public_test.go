@@ -181,11 +181,25 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		}}
 
 		req := validBatchImageSubmitRequest()
+		req.Model = "gpt-image-2"
+		req.Provider = BatchImageProviderAppManaged
 		req.ImageSize = "3840x2160"
+		managedAccount := testBatchImageAccount(303, AccountTypeAPIKey)
+		managedAccount.Platform = PlatformOpenAI
+		managedAccount.Credentials = map[string]any{
+			"api_key":  "test-key",
+			"base_url": "https://upstream.invalid",
+		}
+		svc.AccountRepo.(*publicBatchImageAccountRepo).accounts = []Account{managedAccount}
 		got, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID}, req, "")
 		require.NoError(t, err)
 		require.InDelta(t, 0.30, got.EstimatedCost, 1e-12)
 		require.InDelta(t, 0.30, repo.jobs[got.ID].BaseUnitPrice, 1e-12)
+		managed, ok := svc.ProviderRegistry.Get(BatchImageProviderAppManaged)
+		require.True(t, ok)
+		require.IsType(t, &publicBatchImageProvider{}, managed)
+		require.Len(t, managed.(*publicBatchImageProvider).submits, 1)
+		require.Equal(t, "3840x2160", managed.(*publicBatchImageProvider).submits[0].ImageSize)
 	})
 
 	t.Run("pricing missing rejects before provider submit", func(t *testing.T) {
@@ -320,11 +334,30 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 				svc, _, _, gemini, _ := newTestBatchImagePublicService(true)
 				req := validBatchImageSubmitRequest()
 				req.ImageSize = imageSize
+				if imageSize == "3840x2160" {
+					req.Model = "gpt-image-2"
+					req.Provider = BatchImageProviderAppManaged
+					managedAccount := testBatchImageAccount(303, AccountTypeAPIKey)
+					managedAccount.Platform = PlatformOpenAI
+					managedAccount.Credentials = map[string]any{
+						"api_key":  "test-key",
+						"base_url": "https://upstream.invalid",
+					}
+					svc.AccountRepo.(*publicBatchImageAccountRepo).accounts = []Account{managedAccount}
+				}
 
 				_, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
 				require.NoError(t, err)
-				require.Len(t, gemini.submits, 1)
-				require.Equal(t, imageSize, gemini.submits[0].ImageSize)
+				if imageSize == "4K" {
+					require.Len(t, gemini.submits, 1)
+					require.Equal(t, imageSize, gemini.submits[0].ImageSize)
+				} else {
+					managed, ok := svc.ProviderRegistry.Get(BatchImageProviderAppManaged)
+					require.True(t, ok)
+					require.Len(t, managed.(*publicBatchImageProvider).submits, 1)
+					require.Empty(t, gemini.submits)
+					require.Equal(t, imageSize, managed.(*publicBatchImageProvider).submits[0].ImageSize)
+				}
 			})
 		}
 	})
@@ -798,6 +831,7 @@ func newTestBatchImagePublicService(enabled bool) (*BatchImagePublicService, *fa
 	queue := &publicBatchImageQueue{}
 	gemini := &publicBatchImageProvider{name: BatchImageProviderGeminiAPI}
 	vertex := &publicBatchImageProvider{name: BatchImageProviderVertex}
+	managed := &publicBatchImageProvider{name: BatchImageProviderAppManaged}
 	svc := &BatchImagePublicService{
 		Repo:        repo,
 		AccountRepo: &publicBatchImageAccountRepo{accounts: []Account{testBatchImageAccount(101, AccountTypeAPIKey), testBatchImageAccount(202, AccountTypeServiceAccount)}},
@@ -805,6 +839,7 @@ func newTestBatchImagePublicService(enabled bool) (*BatchImagePublicService, *fa
 		ProviderRegistry: NewBatchImageProviderRegistry(
 			gemini,
 			vertex,
+			managed,
 		),
 		Pricing:     &fakeBatchImagePricingResolver{unitPrice: 0.25},
 		BillingRepo: &fakeBatchImageBillingRepo{},
@@ -924,6 +959,24 @@ func (r *publicBatchImageAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx co
 	return r.ListSchedulableByPlatform(ctx, platform)
 }
 
+func (r *publicBatchImageAccountRepo) ListSchedulableByPlatforms(_ context.Context, platforms []string) ([]Account, error) {
+	allowed := make(map[string]struct{}, len(platforms))
+	for _, platform := range platforms {
+		allowed[platform] = struct{}{}
+	}
+	out := make([]Account, 0, len(r.accounts))
+	for _, account := range r.accounts {
+		if _, ok := allowed[account.Platform]; ok {
+			out = append(out, account)
+		}
+	}
+	return out, nil
+}
+
+func (r *publicBatchImageAccountRepo) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, _ int64, platforms []string) ([]Account, error) {
+	return r.ListSchedulableByPlatforms(ctx, platforms)
+}
+
 type publicBatchImageQueue struct {
 	enqueued []string
 	err      error
@@ -1016,6 +1069,7 @@ func (p *publicBatchImageProvider) Cleanup(_ context.Context, _ *BatchImageJob, 
 }
 
 var _ BatchImageAccountSelectionRepository = (*publicBatchImageAccountRepo)(nil)
+var _ batchImageMultiPlatformAccountSelectionRepository = (*publicBatchImageAccountRepo)(nil)
 var _ BatchImageQueue = (*publicBatchImageQueue)(nil)
 var _ BatchImageProvider = (*publicBatchImageProvider)(nil)
 
