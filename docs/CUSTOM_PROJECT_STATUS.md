@@ -11,12 +11,12 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 记录日期 | 2026-10-05 |
+| 记录日期 | 2026-10-09 |
 | 官方基线 | `v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1` |
 | 最近生产版本 | `0.2.13-custom.7` |
 | 最近生产标签 | `custom-0.2.13.7` / `045d95cbb289a92b9247309b222f04ec1e1f54e6` |
 | 生产镜像 digest | `ghcr.io/hzihuan001/sub2api@sha256:74a504284b0368f7c8187b98335cbca69cf4fe56b079c814986b31a724e8895a` |
-| 当前工作分支 | `codex/image-studio-session-20261004`（image-studio 提交 `045d95cbb`、验收修正 `f4c902529`；父工作树未修改） |
+| 当前工作分支 | `codex/image-studio-session-20261004`（image-studio 尺寸改造提交 `7a676681b`、`efc19f645`；父工作树未修改） |
 | 协作父分支/工作树 | `codex/isolation-refactor-v0.2.13` / `07bf51ba0`；父工作树保持 clean，未被本会话修改 |
 | 同步框架 HEAD | `1fa5f4478`（本文档记录前；文档提交后的当前 HEAD 以 `git log` 为准） |
 | 长期集成基线 | `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071` |
@@ -34,13 +34,13 @@
 
 生产发布必须继续使用通过验收的同一镜像 digest，不在不同服务器重新构建。
 
-### 当前会话摘要（2026-10-05）
+### 当前会话摘要（2026-10-09）
 
-- **Feature ID**：`image-studio`；状态：`deployed`（`.7` 已部署 OVH 生产；Tencent staging 已退役，不再作为发布门禁）。
-- **实现边界**：将浏览器端生图画廊改为按认证用户隔离的 IndexedDB v2 命名空间；账号切换时清理旧用户的内存结果、预览和进行中的生成，并对异步读取/保存做作用域校验；工作台透传自定义尺寸与扩展质量档位，内部测量并保存最终文件实际像素，但界面不展示实际尺寸、不弹出尺寸不匹配数字提示，也不做本地放大；Gemini 原生批量请求转发 `generationConfig.imageConfig.aspectRatio` 与 `imageSize`；API-key Images 非流式响应从 Base64/内联 data URL 回填实际尺寸元数据。
-- **数据与兼容**：没有后端数据库迁移；旧的 v1 全局 IndexedDB 保留但不自动迁移/读取，以避免跨账号显示历史内容。
-- **验证证据**：image-studio/API/size/视图前端 4 个测试文件 `18/18`；完整前端 lint/typecheck/test/build、完整后端 unit、隔离检查、发布 CI 和不可变镜像 operator 隔离验收均通过。OVH 部署前完成 PostgreSQL custom dump/restore list、应用/Redis/OpenResty 持久化与配置备份；生产容器使用目标 digest 健康运行，`ai.moshu.cloud/health` 连续观察 30 分钟通过，最近 30 分钟日志无致命模式。
-- **已知限制/下一步**：工作台只在内部验证最终文件像素，不能证明模型内部原生生成；CPA/ChatGPT OAuth 上游仍可能忽略或改写 4K 请求，界面不显示实际尺寸，也不会伪造或自动放大。Tencent staging 已停止使用，不再等待其 SSH 或执行 staging 部署；后续发布流程以本地不可变镜像验收、OVH 预检、备份和生产观察为准。继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
+- **Feature ID**：`image-studio`；状态：`verified`（尺寸改造已完成，尚未为本次改动构建或部署新镜像；`.7` 仍运行在 OVH 生产，Tencent staging 已退役）。
+- **实现边界**：单生图和批量生图统一提供 `1K`、`2K`、`4K`、自定义；单生图预设分别向上游发送 `1024x1024`、`2048x2048`、`3840x2160`，自定义尺寸沿用 16 倍数、1:3–3:1、3840×2160 像素上限；批量 app-managed GPT-image 修正 1K/4K 映射并透传合法自定义尺寸，明细返回请求尺寸用于失败重试，原生 Gemini/Vertex 继续遵守各自尺寸契约；工作台不展示生成文件实际像素尺寸。
+- **数据与兼容**：没有后端数据库迁移；批量请求尺寸随既有 item `input_payload` 持久化，公开明细只返回尺寸标量，结算按该尺寸归类 1K/2K/4K，旧任务无 payload 时回退历史 1K。
+- **验证证据**：前端定向 image-studio/视图/i18n 测试 `10/10`，`vue-tsc --noEmit` 和 ESLint 检查通过，`git diff --check` 通过；宿主机没有 Go，Docker daemon 未运行，因此本次 Go 定向测试尚未执行，需在 CI 或可用 Go/Docker 环境补跑。
+- **已知限制/下一步**：4K 预设采用合法的 3840×2160 横向画布，纵向或其他比例请使用自定义；工作台仍不能证明模型内部原生生成，只能保证请求尺寸被正确传递，最终上游像素由上游决定；提交后按既有流程在本地不可变镜像验收，再进行 OVH 预检、备份和生产观察。继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
 
 ## 2. 当前定制功能边界
 
