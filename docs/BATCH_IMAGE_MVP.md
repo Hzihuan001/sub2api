@@ -209,8 +209,10 @@ For the managed Vertex/GCS batch bucket, disable Cloud Storage soft delete or co
 - Supports Gemini `service_account` upstream accounts with valid service account JSON.
 - GCS bucket and prefix are server-managed.
 - Vertex job name and GCS paths are internal.
-- Batch image output should be treated as `1K`/default only in MVP.
-- Do not promise `2K` or `4K`.
+- App-managed GPT-image batch output accepts the same `1K`, `2K`, `4K`, and
+  validated custom `WIDTHxHEIGHT` sizes as the image workbench; the selected
+  size is forwarded to the upstream single-image request.
+- Vertex native batch prediction remains limited to its existing `1K` contract.
 
 Other Gemini account/login types are not selected by the current batch image providers unless they expose equivalent API-key or service-account credentials through the same provider flow. They were not covered by the 2026-07-07 PR validation.
 

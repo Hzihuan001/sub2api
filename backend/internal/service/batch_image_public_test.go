@@ -281,6 +281,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 			{name: "vertex_rejects_2k", mutate: func(r *BatchImageSubmitRequest) { r.Provider = BatchImageProviderVertex; r.ImageSize = "2K" }, want: ErrBatchImageInvalidItems},
 			{name: "vertex_rejects_4k", mutate: func(r *BatchImageSubmitRequest) { r.Provider = BatchImageProviderVertex; r.ImageSize = "4K" }, want: ErrBatchImageInvalidItems},
 			{name: "vertex_rejects_custom_size", mutate: func(r *BatchImageSubmitRequest) { r.Provider = BatchImageProviderVertex; r.ImageSize = "1024x1024" }, want: ErrBatchImageInvalidItems},
+			{name: "native_gemini_rejects_custom_size", mutate: func(r *BatchImageSubmitRequest) { r.Provider = BatchImageProviderGeminiAPI; r.Model = "gemini-2.5-flash-image"; r.ImageSize = "2048x1152" }, want: ErrBatchImageInvalidItems},
 			{name: "invalid_custom_size", mutate: func(r *BatchImageSubmitRequest) { r.ImageSize = "1025x1024" }, want: ErrBatchImageInvalidItems},
 			{name: "too_many_outputs_per_item", mutate: func(r *BatchImageSubmitRequest) {
 				r.Items[0].OutputCount = 5

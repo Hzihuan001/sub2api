@@ -90,7 +90,7 @@ describe('Image Studio actual size visibility', () => {
     wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="image-studio-prompt"]').setValue('A cat by a window')
-    await wrapper.findAll('select')[1].setValue('3840x2160')
+    await wrapper.findAll('select')[1].setValue('4K')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 

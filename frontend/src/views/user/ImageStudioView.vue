@@ -257,8 +257,10 @@ import {
 import {
   IMAGE_STUDIO_CUSTOM_SIZE,
   detectImageDimensions,
+  imageStudioPresetForDimensions,
   normalizeCustomImageSize,
   parseImageDimensions,
+  resolveImageStudioPresetSize,
 } from '@/features/image-studio/size'
 
 interface InputImage {
@@ -309,7 +311,7 @@ const form = reactive({
   model: '',
   prompt: '',
   count: '1',
-  size: '1024x1024',
+  size: '1K',
   quality: 'auto',
   outputFormat: 'png',
   background: 'auto',
@@ -333,20 +335,12 @@ const apiKeyOptions = computed(() => [
 ])
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
 const customSize = computed(() => normalizeCustomImageSize(customWidth.value, customHeight.value))
-const requestSize = computed(() => form.size === IMAGE_STUDIO_CUSTOM_SIZE ? (customSize.value || '') : form.size)
+const requestSize = computed(() => resolveImageStudioPresetSize(form.size, customSize.value || ''))
 const canGenerate = computed(() => !!selectedKey.value && !!form.model.trim() && !!form.prompt.trim() && !!requestSize.value && !generating.value)
 const sizeOptions = computed(() => [
-  { value: 'auto', label: t('imageStudio.auto') },
-  { value: '1024x1024', label: '1024 × 1024' },
-  { value: '1536x1024', label: '1536 × 1024' },
-  { value: '1024x1536', label: '1024 × 1536' },
-  { value: '2048x2048', label: '2048 × 2048' },
-  { value: '2048x1536', label: '2048 × 1536' },
-  { value: '1536x2048', label: '1536 × 2048' },
-  { value: '2048x1152', label: '2048 × 1152' },
-  { value: '1152x2048', label: '1152 × 2048' },
-  { value: '3840x2160', label: t('imageStudio.size4kLandscape') },
-  { value: '2160x3840', label: t('imageStudio.size4kPortrait') },
+  { value: '1K', label: t('imageStudio.size1k') },
+  { value: '2K', label: t('imageStudio.size2k') },
+  { value: '4K', label: t('imageStudio.size4k') },
   { value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('imageStudio.customSize') },
 ])
 const countOptions = [1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))
@@ -474,9 +468,21 @@ function makeID(): string {
 }
 
 function selectImageSize(value: string): void {
+  const normalizedValue = String(value || '').trim()
+  if (sizeOptions.value.some((option) => option.value === normalizedValue)) {
+    form.size = normalizedValue
+    return
+  }
   const dimensions = parseImageDimensions(value)
-  if (!dimensions || sizeOptions.value.some((option) => option.value === value)) {
-    form.size = value
+  const preset = imageStudioPresetForDimensions(value)
+  if (preset) {
+    form.size = preset
+    return
+  }
+  if (!dimensions) {
+    // Older saved requests used `auto`; keep reuse usable after the preset
+    // selector is reduced to the explicit 1K/2K/4K choices.
+    form.size = '1K'
     return
   }
   customWidth.value = dimensions.width

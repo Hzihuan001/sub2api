@@ -628,10 +628,25 @@
 
           <div>
             <label class="input-label">{{ t('batchImage.create.imageSize') }}</label>
-            <div class="input flex items-center bg-gray-50 text-gray-600 dark:bg-dark-900 dark:text-gray-300">
-              2K
-            </div>
+            <Select v-model="form.imageSize" :options="imageSizeOptions" class="w-full" :disabled="submitting" />
             <p class="input-hint">{{ t('batchImage.create.imageSizeHint') }}</p>
+          </div>
+
+          <div v-if="form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE" class="rounded-lg border border-violet-200 bg-violet-50/70 p-3 dark:border-violet-900/60 dark:bg-violet-950/20 md:col-span-2">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="block">
+                <span class="input-label">{{ t('batchImage.create.customWidth') }}</span>
+                <input v-model.number="customImageWidth" type="number" min="256" max="3840" step="16" class="input mt-1 w-full" :disabled="submitting" />
+              </label>
+              <label class="block">
+                <span class="input-label">{{ t('batchImage.create.customHeight') }}</span>
+                <input v-model.number="customImageHeight" type="number" min="256" max="3840" step="16" class="input mt-1 w-full" :disabled="submitting" />
+              </label>
+            </div>
+            <p class="input-hint mt-2" :class="customImageSize ? '' : 'text-red-600 dark:text-red-400'">
+              {{ customImageSize || t('batchImage.create.invalidCustomSize') }}
+            </p>
+            <p class="input-hint mt-1">{{ t('batchImage.create.customSizeHint') }}</p>
           </div>
 
           <div>
@@ -930,8 +945,13 @@ import {
 } from '@/api/batchImage'
 import type { ApiKey } from '@/types'
 import type { Column } from '@/components/common/types'
+import {
+  IMAGE_STUDIO_CUSTOM_SIZE,
+  normalizeCustomImageSize,
+  parseImageDimensions,
+} from '@/features/image-studio/size'
 
-type BatchImageJobRow = Pick<BatchImageJob, 'id' | 'task_name' | 'parent_batch_id' | 'status' | 'model' | 'provider' | 'execution_mode' | 'concurrency_limit' | 'item_count' | 'success_count' | 'fail_count' | 'estimated_cost' | 'hold_amount' | 'actual_cost' | 'created_at' | 'downloaded_at'> & {
+type BatchImageJobRow = Pick<BatchImageJob, 'id' | 'task_name' | 'parent_batch_id' | 'status' | 'model' | 'provider' | 'image_size' | 'execution_mode' | 'concurrency_limit' | 'item_count' | 'success_count' | 'fail_count' | 'estimated_cost' | 'hold_amount' | 'actual_cost' | 'created_at' | 'downloaded_at'> & {
   api_key_id: number
   api_key_name: string
   child_count: number
@@ -1028,6 +1048,7 @@ const form = reactive({
   apiKeyId: 0,
   taskName: '',
   model: '',
+  imageSize: '2K',
   responseMimeType: 'image/png',
 })
 
@@ -1071,6 +1092,8 @@ const expandedParentIds = ref(new Set<string>())
 const promptRows = ref<PromptRow[]>([])
 const promptDraft = ref('')
 const customIdDraft = ref('')
+const customImageWidth = ref(2048)
+const customImageHeight = ref(2048)
 const outputCountDraft = ref(1)
 const referenceMode = ref<ReferenceImageMode>('per_item')
 const referenceImageDrafts = ref<ReferenceImageDraft[]>([])
@@ -1259,6 +1282,15 @@ const estimatedOutputCount = computed(() =>
   promptRows.value.reduce((sum, row) => sum + normalizeOutputCount(row.output_count), 0),
 )
 
+const customImageSize = computed(() => normalizeCustomImageSize(customImageWidth.value, customImageHeight.value))
+const requestImageSize = computed(() => form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE ? (customImageSize.value || '') : form.imageSize)
+const imageSizeOptions = computed<SelectOption[]>(() => [
+  { value: '1K', label: t('batchImage.create.imageSize1k') },
+  { value: '2K', label: t('batchImage.create.imageSize2k') },
+  { value: '4K', label: t('batchImage.create.imageSize4k') },
+  { value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('batchImage.create.imageSizeCustom') },
+])
+
 const parsedItems = computed<BatchImageSubmitItem[]>(() => {
   const used = new Set<string>()
   return promptRows.value
@@ -1354,6 +1386,7 @@ API 调用规范：
 }
 
 必须遵守：
+- image_size 按用户要求填写 1K、2K、4K，自定义尺寸填写合法的 WIDTHxHEIGHT（宽高为 16 的倍数、比例 1:3 到 3:1、总像素不超过 3840×2160）。
 - 不要把 API Key 写入仓库、日志、提交记录或最终回复。
 - 不要把参考图 base64 写入最终回复、日志或公开文件。恢复记录中只保存参考图文件名、用途、数量和请求 JSON 文件路径；若请求 JSON 文件包含 base64，应保存在用户指定输出目录且不要提交到仓库。
 - output_count 表示同一 prompt 和参考图重复生成几张，默认 1，每条最多 4；这不是依赖 Gemini 单次请求返回多图，而是系统展开成多个真实任务项。提交前必须确认预计输出图总数不超过 200，超过就拆分成多组任务。绝不能因为参考图附件有更高的内部保护阈值，就提交会生成超过 200 张图的任务。
@@ -1626,6 +1659,7 @@ function toJobRow(job: BatchImageJob, key = selectedApiKey.value): BatchImageJob
     status: job.status,
     model: job.model,
     provider: job.provider,
+    image_size: job.image_size,
     execution_mode: job.execution_mode,
     concurrency_limit: job.concurrency_limit,
     item_count: job.item_count,
@@ -1867,7 +1901,10 @@ function closeCreateModal() {
 
 function resetCreateDraft() {
   form.taskName = ''
+  form.imageSize = '2K'
   form.responseMimeType = 'image/png'
+  customImageWidth.value = 2048
+  customImageHeight.value = 2048
   promptRows.value = []
   promptDraft.value = ''
   customIdDraft.value = ''
@@ -1912,6 +1949,10 @@ function validateForm(): boolean {
     appStore.showError(batchImageText('promptRequired'))
     return false
   }
+  if (!requestImageSize.value) {
+    appStore.showError(batchImageText('invalidImageSize'))
+    return false
+  }
   if (estimatedOutputCount.value > BATCH_IMAGE_MAX_OUTPUTS_PER_JOB) {
     appStore.showError(batchImageText('tooManyOutputImages'))
     return false
@@ -1941,31 +1982,29 @@ async function submitJob() {
     const executionProvider = selectedMode.includes('managed') || selectedMode.includes('fanout')
       ? 'app_managed'
       : undefined
-	    // The managed fan-out path defaults to 2K. Vertex's native batch
-	    // contract remains 1K, so keep its legacy request tier intact.
-	    const requestedImageSize = executionProvider === 'app_managed' ? '2K' : '1K'
-	    const job = await submitBatchImageJob(
-	      key.key,
-	      {
-	        model: form.model,
+    const requestedImageSize = requestImageSize.value
+    const job = await submitBatchImageJob(
+      key.key,
+      {
+        model: form.model,
         task_name: form.taskName.trim() || defaultTaskName(),
         ...(executionProvider ? { provider: executionProvider } : {}),
         image_size: requestedImageSize,
         response_mime_type: form.responseMimeType,
         items: requestItems.value,
-	      },
+      },
       `moshu-ui-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-	    )
-	    currentJob.value = job
-	    selectedBatchId.value = job.id
-	    selectedBatchApiKeyId.value = key.id
-	    items.value = []
-	    upsertJob(job)
-	    showCreateModal.value = false
-	    resetCreateDraft()
-	    appStore.showSuccess(batchImageText('submitted'))
-	    void loadItems()
-	    startPolling()
+    )
+    currentJob.value = job
+    selectedBatchId.value = job.id
+    selectedBatchApiKeyId.value = key.id
+    items.value = []
+    upsertJob(job)
+    showCreateModal.value = false
+    resetCreateDraft()
+    appStore.showSuccess(batchImageText('submitted'))
+    void loadItems()
+    startPolling()
   } catch (error: any) {
     appStore.showError(batchImageErrorMessage(error, batchImageText('submitFailed')))
   } finally {
@@ -2117,6 +2156,18 @@ async function retrySelected() {
   await retryFailedJob(currentJob.value)
 }
 
+function batchImageSizeForJob(job: Pick<BatchImageJob, 'provider' | 'image_size'>, itemSize = ''): string {
+  const persisted = String(itemSize || job.image_size || '').trim()
+  if (/^(1K|2K|4K)$/i.test(persisted)) return persisted.toUpperCase()
+  const dimensions = parseImageDimensions(persisted)
+  if (dimensions) {
+    return normalizeCustomImageSize(dimensions.width, dimensions.height) || (String(job.provider || '').toLowerCase() === 'app_managed' ? '2K' : '1K')
+  }
+  // Older servers did not return image_size. Preserve their provider-specific
+  // defaults while newer servers round-trip the user's selected size.
+  return String(job.provider || '').toLowerCase() === 'app_managed' ? '2K' : '1K'
+}
+
 async function retryFailedJob(job: BatchImageJobRow | BatchImageJob) {
   if (!canRetry(job) || retryingBatchId.value) return
   closeMoreMenu()
@@ -2125,8 +2176,8 @@ async function retryFailedJob(job: BatchImageJobRow | BatchImageJob) {
   retryingBatchId.value = job.id
   try {
     const sourceItems = await ensureItemsForRetry(key.key, job.id)
-    const failedItems = sourceItems
-      .filter(item => item.status === 'failed')
+    const failedSourceItems = sourceItems.filter(item => item.status === 'failed')
+    const failedItems = failedSourceItems
       .map(item => ({ custom_id: retryCustomID(item.custom_id), prompt: String(item.prompt_preview || '').trim() }))
       .filter(item => item.prompt)
     if (failedItems.length === 0) {
@@ -2140,7 +2191,7 @@ async function retryFailedJob(job: BatchImageJobRow | BatchImageJob) {
         task_name: `${job.task_name || defaultTaskName()} ${t('batchImage.messages.retryTaskNameSuffix')}`,
         parent_batch_id: rootBatchIdForRetry(job),
         provider: job.provider,
-        image_size: String(job.provider || '').toLowerCase() === 'app_managed' ? '2K' : '1K',
+        image_size: batchImageSizeForJob(job, failedSourceItems.find(item => String(item.image_size || '').trim())?.image_size || ''),
         response_mime_type: form.responseMimeType,
         items: failedItems,
       },
@@ -2825,6 +2876,7 @@ type BatchImageTextKey =
   | 'insufficientBalance'
   | 'invalidModel'
   | 'invalidItems'
+  | 'invalidImageSize'
   | 'duplicateCustomId'
   | 'promptTooLong'
   | 'invalidReferenceImage'

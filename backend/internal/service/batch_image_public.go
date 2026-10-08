@@ -844,6 +844,19 @@ func (s *BatchImagePublicService) validateSubmitRequest(req BatchImageSubmitRequ
 	if !validImageSize {
 		return req, ErrBatchImageInvalidItems
 	}
+	// Native Gemini/Vertex batch contracts accept tier values, while arbitrary
+	// WIDTHxHEIGHT requests are supported by the app-managed GPT-image path.
+	// Reject custom geometry for an explicitly native provider before it can be
+	// serialized into an incompatible imageConfig.imageSize field.
+	if strings.Contains(normalizedImageSize, "x") {
+		switch req.Provider {
+		case BatchImageProviderGeminiAPI, BatchImageProviderVertex:
+			return req, ErrBatchImageInvalidItems
+		}
+		if req.Provider == "" && isGeminiCompatibleImageModel(req.Model) {
+			return req, ErrBatchImageInvalidItems
+		}
+	}
 	// Vertex native batch prediction keeps its existing 1K-only contract.
 	if req.Provider == BatchImageProviderVertex && normalizedImageSize != ImageBillingSize1K {
 		return req, ErrBatchImageInvalidItems

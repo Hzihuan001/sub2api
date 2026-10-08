@@ -10,6 +10,32 @@ export const IMAGE_STUDIO_MIN_DIMENSION = 256
 export const IMAGE_STUDIO_MAX_DIMENSION = 3840
 export const IMAGE_STUDIO_MAX_PIXEL_AREA = 3840 * 2160
 
+/** Preset tiers shown by the workbench and the concrete dimensions sent to GPT-image. */
+export const IMAGE_STUDIO_SIZE_PRESETS = {
+  '1K': '1024x1024',
+  '2K': '2048x2048',
+  '4K': '3840x2160',
+} as const
+
+export type ImageStudioSizePreset = keyof typeof IMAGE_STUDIO_SIZE_PRESETS
+
+export function imageStudioPresetForDimensions(value: string | undefined | null): ImageStudioSizePreset | null {
+  const dimensions = parseImageDimensions(value)
+  if (!dimensions) return null
+  const entry = (Object.entries(IMAGE_STUDIO_SIZE_PRESETS) as Array<[ImageStudioSizePreset, string]>)
+    .find(([, presetSize]) => presetSize === `${dimensions.width}x${dimensions.height}`)
+  return entry?.[0] || null
+}
+
+export function resolveImageStudioPresetSize(value: string | undefined | null, customSize = ''): string {
+  const normalized = String(value || '').trim().toUpperCase()
+  if (normalized in IMAGE_STUDIO_SIZE_PRESETS) {
+    return IMAGE_STUDIO_SIZE_PRESETS[normalized as ImageStudioSizePreset]
+  }
+  if (value === IMAGE_STUDIO_CUSTOM_SIZE) return customSize
+  return String(value || '').trim()
+}
+
 export interface ImageDimensions {
   width: number
   height: number

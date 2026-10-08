@@ -2,12 +2,30 @@ import { describe, expect, it } from 'vitest'
 
 import {
   IMAGE_STUDIO_CUSTOM_SIZE,
+  IMAGE_STUDIO_SIZE_PRESETS,
   normalizeCustomImageSize,
   parseImageDimensions,
+  imageStudioPresetForDimensions,
+  resolveImageStudioPresetSize,
   verifyImageSize,
 } from '../size'
 
 describe('image studio size helpers', () => {
+  it('maps the workbench size tiers to concrete upstream dimensions', () => {
+    expect(IMAGE_STUDIO_SIZE_PRESETS).toEqual({
+      '1K': '1024x1024',
+      '2K': '2048x2048',
+      '4K': '3840x2160',
+    })
+    expect(resolveImageStudioPresetSize('1K')).toBe('1024x1024')
+    expect(resolveImageStudioPresetSize('2K')).toBe('2048x2048')
+    expect(resolveImageStudioPresetSize('4K')).toBe('3840x2160')
+    expect(resolveImageStudioPresetSize(IMAGE_STUDIO_CUSTOM_SIZE, '2048x1152')).toBe('2048x1152')
+    expect(imageStudioPresetForDimensions('1024x1024')).toBe('1K')
+    expect(imageStudioPresetForDimensions('3840x2160')).toBe('4K')
+    expect(imageStudioPresetForDimensions('1536x1024')).toBeNull()
+  })
+
   it('accepts official-style custom dimensions and normalizes them', () => {
     expect(normalizeCustomImageSize(2048, 2048)).toBe('2048x2048')
     expect(normalizeCustomImageSize('2048', '1152')).toBe('2048x1152')
