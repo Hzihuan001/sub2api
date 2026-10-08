@@ -211,7 +211,7 @@
 - **实现边界**：单生图下拉改为 `1K`、`2K`、`4K`、自定义，预设发送 `1024x1024`、`2048x2048`、`3840x2160`；批量工作台新增相同选项及合法自定义宽高；app-managed GPT-image 修正 1K/4K 映射并透传自定义尺寸；批量明细携带请求尺寸以保证失败重试不退回固定默认；分组计费和结算按自定义尺寸归类计费档位；原生 Gemini/Vertex 尺寸契约保持限制；工作台不显示实际生成像素尺寸。主要提交：`7a676681b`、`efc19f645`。
 - **用户可见行为**：单生图、批量生图均可选择 1K/2K/4K 或自定义尺寸；4K 预设为横向 3840×2160，其他比例使用自定义输入。
 - **数据库/迁移**：无新增迁移；尺寸复用既有批量 item `input_payload` 保存，不新增 job 表字段。
-- **测试**：前端 image-studio/视图/i18n 定向测试 `10/10`，`vue-tsc --noEmit` 和 ESLint 检查通过，`git diff --check` 通过；宿主机无 Go 且 Docker daemon 未运行，后端 Go 定向测试待 CI 或可用环境补跑。
+- **测试**：前端 image-studio/视图/i18n 定向测试 `10/10`，`vue-tsc --noEmit`、ESLint、生产构建和 `scripts/check-custom-isolation.py` 均通过，`git diff --check` 通过；宿主机无 Go 且 Docker daemon 未运行，后端 Go 定向测试待 CI 或可用环境补跑。
 - **提交/PR**：已在本地分支提交，未推送、未创建 PR；本条记录随后随文档提交更新。
 - **发布镜像**：无；生产仍使用既有 `custom-0.2.13.7` 镜像 digest。
 - **部署站点**：未部署本次改动；OVH 生产保持运行，Tencent staging 已退役。

@@ -39,7 +39,7 @@
 - **Feature ID**：`image-studio`；状态：`verified`（尺寸改造已完成，尚未为本次改动构建或部署新镜像；`.7` 仍运行在 OVH 生产，Tencent staging 已退役）。
 - **实现边界**：单生图和批量生图统一提供 `1K`、`2K`、`4K`、自定义；单生图预设分别向上游发送 `1024x1024`、`2048x2048`、`3840x2160`，自定义尺寸沿用 16 倍数、1:3–3:1、3840×2160 像素上限；批量 app-managed GPT-image 修正 1K/4K 映射并透传合法自定义尺寸，明细返回请求尺寸用于失败重试，原生 Gemini/Vertex 继续遵守各自尺寸契约；工作台不展示生成文件实际像素尺寸。
 - **数据与兼容**：没有后端数据库迁移；批量请求尺寸随既有 item `input_payload` 持久化，公开明细只返回尺寸标量，结算按该尺寸归类 1K/2K/4K，旧任务无 payload 时回退历史 1K。
-- **验证证据**：前端定向 image-studio/视图/i18n 测试 `10/10`，`vue-tsc --noEmit` 和 ESLint 检查通过，`git diff --check` 通过；宿主机没有 Go，Docker daemon 未运行，因此本次 Go 定向测试尚未执行，需在 CI 或可用 Go/Docker 环境补跑。
+- **验证证据**：前端定向 image-studio/视图/i18n 测试 `10/10`，`vue-tsc --noEmit`、ESLint、生产构建和 `scripts/check-custom-isolation.py` 均通过，`git diff --check` 通过；宿主机没有 Go，Docker daemon 未运行，因此本次 Go 定向测试尚未执行，需在 CI 或可用 Go/Docker 环境补跑。
 - **已知限制/下一步**：4K 预设采用合法的 3840×2160 横向画布，纵向或其他比例请使用自定义；工作台仍不能证明模型内部原生生成，只能保证请求尺寸被正确传递，最终上游像素由上游决定；提交后按既有流程在本地不可变镜像验收，再进行 OVH 预检、备份和生产观察。继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
 
 ## 2. 当前定制功能边界
