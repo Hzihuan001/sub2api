@@ -6,11 +6,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -33,7 +33,7 @@ func (s *availableModelsAdminService) GetAccount(_ context.Context, id int64) (*
 func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
 	return router
 }
@@ -332,168 +332,54 @@ func TestAccountHandlerGetAvailableModels_GeminiGoogleOneUsesConservativeCatalog
 	require.NotContains(t, ids, "gemini-2.5-flash-image")
 }
 
-func TestAccountHandlerGetAvailableModels_KiroOAuthFallsBackToDefaults(t *testing.T) {
-	svc := &availableModelsAdminService{
-		stubAdminService: newStubAdminService(),
-		account: service.Account{
-			ID:       44,
-			Name:     "kiro-oauth",
-			Platform: service.PlatformKiro,
-			Type:     service.AccountTypeOAuth,
-			Status:   service.StatusActive,
-		},
+func TestAccountHandlerGetAvailableModels_Antigravity(t *testing.T) {
+	defaults := antigravity.DefaultModels()
+	known := defaults[0]
+	custom := antigravity.ClaudeModel{ID: "claude-custom-alias", Type: "model", DisplayName: "claude-custom-alias"}
+	cases := []struct {
+		name        string
+		credentials map[string]any
+		want        []antigravity.ClaudeModel
+	}{
+		{name: "nil credentials", want: defaults},
+		{name: "missing mapping", credentials: map[string]any{}, want: defaults},
+		{name: "empty JSON mapping", credentials: map[string]any{"model_mapping": map[string]any{}}, want: defaults},
+		{name: "empty string mapping", credentials: map[string]any{"model_mapping": map[string]string{}}, want: defaults},
+		{name: "blank key", credentials: map[string]any{"model_mapping": map[string]any{" ": "upstream-model"}}, want: defaults},
+		{name: "JSON mapping keys and metadata", credentials: map[string]any{"model_mapping": map[string]any{
+			known.ID: known.ID, custom.ID: "upstream-model",
+		}}, want: []antigravity.ClaudeModel{custom, known}},
+		{name: "string mapping keys and metadata", credentials: map[string]any{"model_mapping": map[string]string{
+			known.ID: known.ID, custom.ID: "upstream-model",
+		}}, want: []antigravity.ClaudeModel{custom, known}},
 	}
-	router := setupAvailableModelsRouter(svc)
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/44/models", nil)
-	router.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	var resp struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, accountType := range []string{service.AccountTypeOAuth, service.AccountTypeAPIKey} {
+				t.Run(accountType, func(t *testing.T) {
+					svc := &availableModelsAdminService{
+						stubAdminService: newStubAdminService(),
+						account:          service.Account{ID: 51, Platform: service.PlatformAntigravity, Type: accountType, Credentials: tc.credentials},
+					}
+					rec := httptest.NewRecorder()
+					setupAvailableModelsRouter(svc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/51/models", nil))
+					require.Equal(t, http.StatusOK, rec.Code)
+					var resp struct {
+						Data []antigravity.ClaudeModel `json:"data"`
+					}
+					require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+					require.Equal(t, tc.want, resp.Data)
+				})
+			}
+		})
 	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.NotEmpty(t, resp.Data)
-
-	ids := make([]string, 0, len(resp.Data))
-	for _, model := range resp.Data {
-		ids = append(ids, model.ID)
-	}
-	require.True(t, slices.Contains(ids, "claude-opus-4-7"))
-	require.True(t, slices.Contains(ids, "claude-opus-4-6"))
-	require.True(t, slices.Contains(ids, "claude-sonnet-4-6"))
-	require.False(t, slices.Contains(ids, "kiro-claude-opus-4-7"))
-	require.False(t, slices.Contains(ids, "gpt-4o"))
-}
-
-func TestAccountHandlerGetAvailableModels_KiroOAuthUsesExplicitModelMapping(t *testing.T) {
-	svc := &availableModelsAdminService{
-		stubAdminService: newStubAdminService(),
-		account: service.Account{
-			ID:       47,
-			Name:     "kiro-oauth-mapped",
-			Platform: service.PlatformKiro,
-			Type:     service.AccountTypeOAuth,
-			Status:   service.StatusActive,
-			Credentials: map[string]any{
-				"model_mapping": map[string]any{
-					"claude-sonnet-4-6": "claude-sonnet-4.6",
-					"custom-model":      "custom-upstream-model",
-				},
-			},
-		},
-	}
-	router := setupAvailableModelsRouter(svc)
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/47/models", nil)
-	router.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	var resp struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Len(t, resp.Data, 2)
-
-	ids := make([]string, 0, len(resp.Data))
-	for _, model := range resp.Data {
-		ids = append(ids, model.ID)
-	}
-	require.True(t, slices.Contains(ids, "claude-sonnet-4-6"))
-	require.True(t, slices.Contains(ids, "custom-model"))
-	require.False(t, slices.Contains(ids, "claude-opus-4-7"))
-}
-
-func TestAccountHandlerGetAvailableModels_KiroAPIKeyUsesExplicitModelMapping(t *testing.T) {
-	svc := &availableModelsAdminService{
-		stubAdminService: newStubAdminService(),
-		account: service.Account{
-			ID:       45,
-			Name:     "kiro-apikey",
-			Platform: service.PlatformKiro,
-			Type:     service.AccountTypeAPIKey,
-			Status:   service.StatusActive,
-			Credentials: map[string]any{
-				"model_mapping": map[string]any{
-					"claude-sonnet-4-6": "claude-sonnet-4.6",
-					"custom-model":      "custom-upstream-model",
-				},
-			},
-		},
-	}
-	router := setupAvailableModelsRouter(svc)
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/45/models", nil)
-	router.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	var resp struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Len(t, resp.Data, 2)
-
-	ids := make([]string, 0, len(resp.Data))
-	for _, model := range resp.Data {
-		ids = append(ids, model.ID)
-	}
-	require.True(t, slices.Contains(ids, "claude-sonnet-4-6"))
-	require.True(t, slices.Contains(ids, "custom-model"))
-}
-
-func TestAccountHandlerGetAvailableModels_KiroAPIKeyWithoutMappingFallsBackToDefaults(t *testing.T) {
-	svc := &availableModelsAdminService{
-		stubAdminService: newStubAdminService(),
-		account: service.Account{
-			ID:       46,
-			Name:     "kiro-apikey-defaults",
-			Platform: service.PlatformKiro,
-			Type:     service.AccountTypeAPIKey,
-			Status:   service.StatusActive,
-		},
-	}
-	router := setupAvailableModelsRouter(svc)
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/46/models", nil)
-	router.ServeHTTP(rec, req)
-
-	require.Equal(t, http.StatusOK, rec.Code)
-
-	var resp struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.NotEmpty(t, resp.Data)
-
-	ids := make([]string, 0, len(resp.Data))
-	for _, model := range resp.Data {
-		ids = append(ids, model.ID)
-	}
-	require.True(t, slices.Contains(ids, "claude-opus-4-7"))
-	require.True(t, slices.Contains(ids, "claude-opus-4-6"))
-	require.False(t, slices.Contains(ids, "kiro-claude-opus-4-7"))
 }
 
 func TestAccountHandlerSyncUpstreamModels_ConfigErrorReturnsBadRequest(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
 		account: service.Account{
-			ID:       48,
+			ID:       44,
 			Name:     "openai-apikey-missing-key",
 			Platform: service.PlatformOpenAI,
 			Type:     service.AccountTypeAPIKey,
@@ -506,7 +392,7 @@ func TestAccountHandlerSyncUpstreamModels_ConfigErrorReturnsBadRequest(t *testin
 	router := setupSyncUpstreamModelsRouter(svc, &syncUpstreamHTTPUpstream{})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/48/models/sync-upstream", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/44/models/sync-upstream", nil)
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
@@ -610,7 +496,7 @@ func TestAccountHandlerSyncUpstreamModels_UpstreamErrorDoesNotExposeBody(t *test
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
 		account: service.Account{
-			ID:       49,
+			ID:       45,
 			Name:     "openai-apikey-upstream-error",
 			Platform: service.PlatformOpenAI,
 			Type:     service.AccountTypeAPIKey,
@@ -629,7 +515,7 @@ func TestAccountHandlerSyncUpstreamModels_UpstreamErrorDoesNotExposeBody(t *test
 	router := setupSyncUpstreamModelsRouter(svc, upstream)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/49/models/sync-upstream", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/45/models/sync-upstream", nil)
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusBadGateway, rec.Code)

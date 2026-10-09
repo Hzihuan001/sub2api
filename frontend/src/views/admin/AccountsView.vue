@@ -4,6 +4,7 @@
       <template #filters>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
           <AccountTableFilters
+            class="lg:w-auto lg:flex-1"
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
@@ -258,14 +259,11 @@
           <template #cell-platform_type="{ row }">
             <div class="flex min-w-0 flex-col gap-1">
               <div class="flex flex-wrap items-center gap-1">
-                <PlatformTypeBadge
-                  :platform="row.platform"
-                  :type="row.type"
+                <PlatformTypeBadge :platform="row.platform" :type="row.type"
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
-                  :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at"
-                />
+                  :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
                 <span
                   v-if="getAntigravityTierLabel(row)"
                   :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
@@ -302,9 +300,6 @@
           <template #cell-today_stats="{ row }">
             <AccountTodayStatsCell
               :stats="todayStatsByAccountId[String(row.id)] ?? null"
-              :platform="row.platform"
-              :kiro-credit-unit-price-usd="getKiroCreditUnitPriceUsd(row)"
-              :is-relay="isKiroRelayAccount(row)"
               :loading="todayStatsLoading"
               :error="todayStatsError"
             />
@@ -319,21 +314,15 @@
             </div>
           </template>
           <template #cell-usage="{ row }">
-            <!-- request-batched-usage 只传给父组件真会批量拉取的账号：一旦传了回调，
-                 单元格就进入批量托管模式并放弃自身取数；若此处判定与
-                 accountSupportsBatchUsage 不一致（如 Kiro），该账号将永远拿不到用量 -->
             <AccountUsageCell
               :account="row"
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
-              @kiro-usage-meta="handleKiroUsageMeta(row, $event)"
               :batched-usage="usageBatchByAccountId[String(row.id)] ?? null"
               :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
               :batched-usage-loading="usageBatchLoadingByAccountId[String(row.id)] === true"
-              :request-batched-usage="
-                isDesktopViewport && accountSupportsBatchUsage(row) ? queueBatchedUsage : null
-              "
+              :request-batched-usage="isDesktopViewport ? queueBatchedUsage : null"
               @account-updated="handleAccountUpdated"
               @usage-loaded="handleAccountUsageLoaded(row.id, $event)"
             />
@@ -498,34 +487,6 @@
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
     <TotpStepUpDialog :controller="accountExportStepUp" />
-    <ConfirmDialog
-      :show="showBulkDeleteConfirm"
-      :title="t('admin.accounts.bulkDeleteTitle')"
-      :message="t('admin.accounts.bulkDeleteConfirm', { count: selIds.length })"
-      :confirm-text="t('common.delete')"
-      :cancel-text="t('common.cancel')"
-      :danger="true"
-      @confirm="handleBulkDelete"
-      @cancel="showBulkDeleteConfirm = false"
-    />
-    <ConfirmDialog
-      :show="showBulkResetConfirm"
-      :title="t('admin.accounts.bulkResetStatusTitle')"
-      :message="t('admin.accounts.bulkResetStatusConfirm', { count: selIds.length })"
-      :confirm-text="t('common.confirm')"
-      :cancel-text="t('common.cancel')"
-      @confirm="handleBulkResetStatus"
-      @cancel="showBulkResetConfirm = false"
-    />
-    <ConfirmDialog
-      :show="showBulkRefreshConfirm"
-      :title="t('admin.accounts.bulkRefreshTokenTitle')"
-      :message="t('admin.accounts.bulkRefreshTokenConfirm', { count: selIds.length })"
-      :confirm-text="t('common.confirm')"
-      :cancel-text="t('common.cancel')"
-      @confirm="handleBulkRefreshToken"
-      @cancel="showBulkRefreshConfirm = false"
-    />
   </AppLayout>
 </template>
 
@@ -571,7 +532,6 @@ import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRules
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
 import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
-import { isKiroRelayAccount } from '@/utils/kiroAccount'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -640,9 +600,6 @@ const showImportData = ref(false)
 const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
-const showBulkDeleteConfirm = ref(false)
-const showBulkResetConfirm = ref(false)
-const showBulkRefreshConfirm = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
@@ -777,8 +734,7 @@ const buildDefaultTodayStats = (): WindowStats => ({
   tokens: 0,
   cost: 0,
   standard_cost: 0,
-  user_cost: 0,
-  kiro_credits: 0
+  user_cost: 0
 })
 
 const accountSupportsBatchUsage = (account: Account) => {
@@ -1441,32 +1397,11 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.schedulable !== next.schedulable ||
     current.status !== next.status ||
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||
-    current.kiro_quota_state !== next.kiro_quota_state ||
-    current.kiro_quota_reason !== next.kiro_quota_reason ||
-    current.kiro_quota_reset_at !== next.kiro_quota_reset_at ||
-    current.kiro_runtime_state !== next.kiro_runtime_state ||
-    current.kiro_runtime_reason !== next.kiro_runtime_reason ||
-    current.kiro_runtime_reset_at !== next.kiro_runtime_reset_at ||
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
     buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
     buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
   )
-}
-
-const handleKiroUsageMeta = (account: Account, meta: { plan_type?: string }) => {
-  if (account.platform !== 'kiro') return
-  account.credentials = {
-    ...(account.credentials || {}),
-    ...(meta.plan_type ? { plan_type: meta.plan_type } : {})
-  }
-}
-
-const getKiroCreditUnitPriceUsd = (account: Account): number => {
-  if (account.platform !== 'kiro') return 0
-  const raw = account.extra?.kiro_credit_unit_price_usd
-  const value = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : 0
-  return Number.isFinite(value) && value > 0 ? value : 0
 }
 
 const syncAccountRefs = (nextAccount: Account) => {
@@ -1925,12 +1860,8 @@ const toggleSelectAllVisible = (event: Event) => {
 }
 const handleBulkDelete = async () => {
   const accountIds = [...selIds.value]
-  if (!showBulkDeleteConfirm.value) {
-    showBulkDeleteConfirm.value = true
-    return
-  }
+  if (!confirm(t('admin.accounts.bulkActions.confirmDelete', { count: accountIds.length }))) return
   try {
-    showBulkDeleteConfirm.value = false
     const result = await adminAPI.accounts.batchDelete(accountIds)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', {
@@ -1949,12 +1880,8 @@ const handleBulkDelete = async () => {
   }
 }
 const handleBulkResetStatus = async () => {
-  if (!showBulkResetConfirm.value) {
-    showBulkResetConfirm.value = true
-    return
-  }
+  if (!confirm(t('common.confirm'))) return
   try {
-    showBulkResetConfirm.value = false
     const result = await adminAPI.accounts.batchClearError(selIds.value)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
@@ -1969,13 +1896,9 @@ const handleBulkResetStatus = async () => {
   }
 }
 const handleBulkRefreshToken = async () => {
-  if (!showBulkRefreshConfirm.value) {
-    showBulkRefreshConfirm.value = true
-    return
-  }
+  if (!confirm(t('common.confirm'))) return
   const accountIds = [...selIds.value]
   try {
-    showBulkRefreshConfirm.value = false
     const result = await adminAPI.accounts.batchRefresh(accountIds)
     if (result.failed > 0) {
       appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
@@ -2224,13 +2147,7 @@ const accountMatchesCurrentFilters = (account: Account) => {
   if (filters.status) {
     const now = Date.now()
     const rateLimitResetAt = account.rate_limit_reset_at ? new Date(account.rate_limit_reset_at).getTime() : Number.NaN
-    const kiroRuntimeResetAt = account.kiro_runtime_reset_at ? new Date(account.kiro_runtime_reset_at).getTime() : Number.NaN
-    const isKiroRuntimeLimited =
-      account.platform === 'kiro' &&
-      account.kiro_runtime_state === 'cooldown' &&
-      Number.isFinite(kiroRuntimeResetAt) &&
-      kiroRuntimeResetAt > now
-    const isRateLimited = (Number.isFinite(rateLimitResetAt) && rateLimitResetAt > now) || isKiroRuntimeLimited
+    const isRateLimited = Number.isFinite(rateLimitResetAt) && rateLimitResetAt > now
     const tempUnschedUntil = account.temp_unschedulable_until ? new Date(account.temp_unschedulable_until).getTime() : Number.NaN
     const isTempUnschedulable = Number.isFinite(tempUnschedUntil) && tempUnschedUntil > now
 
@@ -2363,7 +2280,7 @@ const handleExportData = async () => {
           }
     ))
     const timestamp = formatExportTimestamp()
-    const filename = `moshu-account-${timestamp}.json`
+    const filename = `sub2api-account-${timestamp}.json`
     const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')

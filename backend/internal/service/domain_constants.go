@@ -45,16 +45,18 @@ const (
 	PlatformAntigravity = domain.PlatformAntigravity
 	PlatformGrok        = domain.PlatformGrok
 	// 国产 OpenAI 兼容供应商（与 grok 一样经 OpenAI 网关转发）。
-	PlatformKimi     = domain.PlatformKimi
-	PlatformZhipu    = domain.PlatformZhipu
-	PlatformDeepseek = domain.PlatformDeepseek
-	PlatformMiniMax  = domain.PlatformMiniMax
-	PlatformTypeSafe = domain.PlatformTypeSafe
+	PlatformKimi        = domain.PlatformKimi
+	PlatformZhipu       = domain.PlatformZhipu
+	PlatformDeepseek    = domain.PlatformDeepseek
+	PlatformMiniMax     = domain.PlatformMiniMax
+	PlatformOpenCodeGo  = domain.PlatformOpenCodeGo
+	PlatformTypeSafe    = domain.PlatformTypeSafe
+	PlatformCommandCode = domain.PlatformCommandCode
+	PlatformCline       = domain.PlatformCline
+	PlatformComposite   = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
-	PlatformKiro       = domain.PlatformKiro
-	PlatformOpenCodeGo = domain.PlatformOpenCodeGo
-	PlatformComposite  = domain.PlatformComposite
+	PlatformKiro = domain.PlatformKiro
 )
 
 // 账号接入模式（国产供应商）：按量付费 vs Coding Plan。
@@ -82,36 +84,41 @@ const (
 	DefaultZhipuCodingBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 	DefaultDeepseekBaseURL    = "https://api.deepseek.com"
 	// MiniMax 按量付费与 Coding/Token Plan 共用推理域名，靠 API Key 区分套餐。
-	DefaultMiniMaxBaseURL     = "https://api.minimaxi.com/v1"
-	DefaultOpenCodeGoBaseURL  = "https://opencode.ai/zen/go/v1"
+	DefaultMiniMaxBaseURL = "https://api.minimaxi.com/v1"
+	// OpenCode Go：Chat Completions / Responses / models 共用 /v1 基址。
+	DefaultOpenCodeGoBaseURL = "https://opencode.ai/zen/go/v1"
+	// OpenCode Zen：按量付费网关，模型列表为 /zen/v1/models。
 	DefaultOpenCodeZenBaseURL = "https://opencode.ai/zen/v1"
+	// Command Code Provider API：Chat Completions / Responses / models 共用 /provider/v1 基址。
+	DefaultCommandCodeBaseURL = "https://api.commandcode.ai/provider/v1"
+	// Cline API：只提供 Chat Completions（{base}/chat/completions）与模型列表。
+	DefaultClineBaseURL = "https://api.cline.bot/api/v1"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。
 const (
-	DefaultKimiPayGAnthropicBaseURL    = "https://api.moonshot.cn/anthropic"
-	DefaultKimiCodingAnthropicBaseURL  = "https://api.kimi.com/coding"
-	DefaultZhipuAnthropicBaseURL       = "https://open.bigmodel.cn/api/anthropic"
-	DefaultDeepseekAnthropicBaseURL    = "https://api.deepseek.com/anthropic"
-	DefaultMiniMaxAnthropicBaseURL     = "https://api.minimaxi.com/anthropic"
+	DefaultKimiPayGAnthropicBaseURL   = "https://api.moonshot.cn/anthropic"
+	DefaultKimiCodingAnthropicBaseURL = "https://api.kimi.com/coding"
+	DefaultZhipuAnthropicBaseURL      = "https://open.bigmodel.cn/api/anthropic"
+	DefaultDeepseekAnthropicBaseURL   = "https://api.deepseek.com/anthropic"
+	DefaultMiniMaxAnthropicBaseURL    = "https://api.minimaxi.com/anthropic"
+	// OpenCode Go Anthropic 基址不含 /v1：nativeAnthropicTargetURL 会再拼 /v1/messages。
 	DefaultOpenCodeGoAnthropicBaseURL  = "https://opencode.ai/zen/go"
 	DefaultOpenCodeZenAnthropicBaseURL = "https://opencode.ai/zen"
+	// Command Code 的 Anthropic 端点为 /provider/v1/messages（Claude 系模型只在此端点提供）。
+	DefaultCommandCodeAnthropicBaseURL = "https://api.commandcode.ai/provider"
 )
 
-// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek/minimax）。
+// IsCNProvider 报告 platform 是否为国产 OpenAI 兼容供应商（kimi/zhipu/deepseek/minimax），
+// 以平台清单（domain/platforms.go）为准。
 func IsCNProvider(platform string) bool {
-	switch platform {
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
-		return true
-	default:
-		return false
-	}
+	return domain.IsCNProviderPlatform(platform)
 }
 
 // DefaultCNProviderModelIDs returns conservative native model candidates for
-// the built-in OpenAI-compatible providers. These IDs are used by management
-// selectors only; they do not authorize routing by themselves.
+// built-in OpenAI-compatible providers. These IDs are management selector
+// hints only; account mappings remain the source of truth for routing.
 func DefaultCNProviderModelIDs(platform string) []string {
 	switch platform {
 	case PlatformKimi:
@@ -127,32 +134,26 @@ func DefaultCNProviderModelIDs(platform string) []string {
 	}
 }
 
-func IsOpenCodeGo(platform string) bool { return platform == PlatformOpenCodeGo }
+// IsOpenCodeGo 报告 platform 是否为 OpenCode Go 订阅网关。
+func IsOpenCodeGo(platform string) bool {
+	return platform == PlatformOpenCodeGo
+}
 
+// IsMultiProtocolAPIKeyProvider 报告 platform 是否为多协议 API Key 网关
+// （国产供应商 + OpenCode）：走 OpenAI 网关、支持 adaptive 协议分流。
+// 归属以 provider profile 登记为准（见 provider_profile.go）。
 func IsMultiProtocolAPIKeyProvider(platform string) bool {
-	return IsCNProvider(platform) || platform == PlatformOpenCodeGo
+	return LookupProviderProfile(platform) != nil
 }
 
-// AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
-// ent/schema/user_platform_quota.go 的 Validate 函数独立维护（构建期约束），
-// 若新增平台需同步修改该 schema。
-var AllowedQuotaPlatforms = []string{
-	PlatformAnthropic,
-	PlatformOpenAI,
-	PlatformGemini,
-	PlatformAntigravity,
-	PlatformKiro,
-	PlatformGrok,
-	PlatformKimi,
-	PlatformZhipu,
-	PlatformDeepseek,
-	PlatformMiniMax,
-	PlatformOpenCodeGo,
-}
+// AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表：全部已登记的
+// 具体平台（domain/platforms.go），ent/schema/user_platform_quota.go 的校验同源。
+var AllowedQuotaPlatforms = domain.ConcretePlatformIDs()
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。
 // openai/anthropic/grok 有原生用量窗口；kimi/zhipu/minimax 的 Coding Plan 同样暴露
 // 5h/weekly 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
+// OpenCode Go 与 Command Code 的订阅套餐另有月度窗口。
 var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformOpenAI,
 	PlatformAnthropic,
@@ -161,6 +162,7 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformZhipu,
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
+	PlatformCommandCode,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
@@ -399,7 +401,6 @@ const (
 	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
 	SettingKeyCompactHomeEnabled          = "compact_home_enabled"          // 是否启用内置简洁首页
 	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮
-	SettingKeySubscriptionEnabled         = "subscription_enabled"          // 是否启用订阅功能
 	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口
 	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作为 iframe src）
 	SettingKeyTableDefaultPageSize        = "table_default_page_size"       // 表格默认每页条数
@@ -553,6 +554,15 @@ const (
 	// user-facing aggregate view. When false: user endpoint returns an empty list and the
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
+
+	// SettingKeySubscriptionEnabled is a DB-backed soft switch for the user-facing
+	// subscription surface: sidebar entries, purchase-page subscription tab, header
+	// progress badge, usage billing-type filter and the /subscriptions route. When
+	// false users can no longer buy or browse subscriptions from the UI; the
+	// subscriptions API, existing subscription billing and admin subscription
+	// management are unaffected. Together with BALANCE_PAYMENT_DISABLED it forms the
+	// admin "site billing mode" selector. Defaults to true (opt-out feature).
+	SettingKeySubscriptionEnabled = "subscription_enabled"
 
 	// SettingKeyModelPlazaEnabled is a DB-backed soft switch for the Model Plaza page
 	// (public group/model pricing showcase). When false: the plaza endpoint returns 404
@@ -720,8 +730,11 @@ const (
 	// SettingKeyOpenAICodexVersionAutoSyncEnabled 是否启用 Codex 客户端版本号自动同步（默认 true）。
 	SettingKeyOpenAICodexVersionAutoSyncEnabled = "openai_codex_version_auto_sync_enabled"
 	// SettingKeyClaudeCodeClientVersion 网关对 Anthropic 上游声明的 Claude Code CLI 客户端版本号（管理员覆写）。
+	// 空值表示跟随自动同步值；自动同步也没有结果时回退到 claude.CLIVersion()（环境变量覆盖 + 内置基线）。
+	// 版本太旧会被 Anthropic 拒绝（claude_code_version_too_old），故该值需保持跟随官方发布。
 	SettingKeyClaudeCodeClientVersion = "claude_code_client_version"
 	// SettingKeyClaudeCodeClientVersionSynced 自动同步任务写入的官方 Claude Code CLI 最新版本号。
+	// 由同步任务独占写入，面板只读展示；管理员覆写请用 SettingKeyClaudeCodeClientVersion。
 	SettingKeyClaudeCodeClientVersionSynced = "claude_code_client_version_synced"
 	// SettingKeyClaudeCodeVersionAutoSyncEnabled 是否启用 Claude Code 客户端版本号自动同步（默认 true）。
 	SettingKeyClaudeCodeVersionAutoSyncEnabled = "claude_code_version_auto_sync_enabled"

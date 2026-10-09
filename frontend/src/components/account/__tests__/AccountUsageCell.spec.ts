@@ -25,15 +25,6 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
-vi.mock('@/i18n', () => ({
-  i18n: {
-    global: {
-      t: (key: string) => key
-    }
-  },
-  getLocale: () => 'en'
-}))
-
 function makeAccount(overrides: Partial<Account>): Account {
   return {
     id: 1,
@@ -56,12 +47,6 @@ function makeAccount(overrides: Partial<Account>): Account {
     overload_until: null,
     temp_unschedulable_until: null,
     temp_unschedulable_reason: null,
-    kiro_quota_state: null,
-    kiro_quota_reason: null,
-    kiro_quota_reset_at: null,
-    kiro_runtime_state: null,
-    kiro_runtime_reason: null,
-    kiro_runtime_reset_at: null,
     session_window_start: null,
     session_window_end: null,
     session_window_status: null,
@@ -277,6 +262,149 @@ describe('AccountUsageCell', () => {
     expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
+  })
+
+  it.each(['opencode_go', 'kimi', 'zhipu', 'deepseek', 'minimax'] as const)(
+    '%s 平台 OpenCode Go eligible 时只渲染 OpenCode 用量单元格并跳过 CN 子单元格',
+    async (platform) => {
+      const wrapper = mount(AccountUsageCell, {
+        props: {
+          account: makeAccount({
+            id: 9100,
+            platform,
+            type: 'apikey',
+            credentials: { account_mode: platform === 'opencode_go' ? 'go' : 'coding' },
+            opencode_go_usage: makeOpenCodeGoUsage(9100)
+          })
+        },
+        global: {
+          stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+        }
+      })
+
+      await flushPromises()
+
+      // 同一账号只渲染一次 OpenCode 用量单元格
+      expect(wrapper.findAll('[data-test="opencode-go-cell"]')).toHaveLength(1)
+      expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
+      expect(wrapper.find('div[title="admin.accounts.cnProviders.noBalanceEndpoint"]').exists()).toBe(false)
+      expect(getUsage).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    { name: 'opencode_go（go 模式）', platform: 'opencode_go' as const, mode: 'go' },
+    { name: 'kimi（coding 模式）', platform: 'kimi' as const, mode: 'coding' }
+  ])('OpenCode Go 不合格时（$name）仍渲染 CN 子单元格', async ({ platform, mode }) => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9101,
+          platform,
+          type: 'apikey',
+          credentials: { account_mode: mode },
+          opencode_go_usage: makeOpenCodeGoUsage(9101, { eligible: false })
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-test="opencode-go-cell"]')).toHaveLength(0)
+  })
+
+  it('openai apikey 挂载 OpenCode Go 时在非 CN 分支渲染一次且不渲染占位符', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9102,
+          platform: 'openai',
+          type: 'apikey',
+          opencode_go_usage: makeOpenCodeGoUsage(9102)
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-test="opencode-go-cell"]')).toHaveLength(1)
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+    // 用量单元格已渲染时不再叠加 `-` 占位符
+    expect(wrapper.text()).not.toContain('-')
+  })
+
+  it('Command Code 账号渲染额度与积分余额单元格', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9103,
+          platform: 'command_code',
+          type: 'apikey',
+          credentials: { api_key: 'user_test_key', account_mode: 'payg' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('-')
+  })
+
+  it('自定义中转的 Command Code 账号没有可查的用量接口，显示占位符', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9105,
+          platform: 'command_code',
+          type: 'apikey',
+          credentials: { api_key: 'user_test_key', account_mode: 'payg', base_url: 'https://relay.example.com/v1' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('div[title="admin.accounts.cnProviders.noBalanceEndpoint"]').exists()).toBe(true)
+  })
+
+  it('Cline 账号渲染 ClinePass 窗口与积分余额单元格', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9104,
+          platform: 'cline',
+          type: 'apikey',
+          credentials: { api_key: 'sk-cline' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
+    // 子单元格可见时不显示 `-` 占位符（按量账号与订阅账号用同一套单元格）。
+    expect(wrapper.text()).not.toContain('-')
   })
 
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
@@ -857,153 +985,6 @@ describe('AccountUsageCell', () => {
   expect(getUsage).toHaveBeenCalledWith(2004)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
-  })
-
-  it('Kiro OAuth 会用 passive source 拉取并展示 credits 额度', async () => {
-    const account = makeAccount({
-      id: 3001,
-      platform: 'kiro',
-      type: 'oauth',
-      extra: {},
-      credentials: {}
-    })
-
-    getUsage.mockResolvedValue({
-      source: 'passive',
-      kiro_subscription_name: 'KIRO PRO+',
-      kiro_credit: {
-        current_usage: 125,
-        usage_limit: 2000,
-        percentage_used: 6.25,
-      },
-      kiro_bonus: {
-        current_usage: 25,
-        usage_limit: 500,
-        percentage_used: 5,
-        days_remaining: 7,
-      },
-      kiro_reset_at: '2099-03-13T12:00:00Z',
-    })
-
-    const wrapper = mount(AccountUsageCell, {
-      props: {
-        account
-      },
-      global: {
-        stubs: {
-          UsageProgressBar: true,
-          AccountQuotaInfo: true
-        }
-      }
-    })
-
-    await flushPromises()
-
-    expect(getUsage).toHaveBeenCalledWith(3001, 'passive', false)
-    expect(wrapper.emitted('kiroUsageMeta')?.[0]).toEqual([
-      {
-        plan_type: 'KIRO PRO+'
-      }
-    ])
-    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroCredits')
-    expect(wrapper.text()).toContain('125 / 2.0K')
-    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroBonus')
-    expect(wrapper.text()).toContain('25 / 500')
-    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroDaysLeft')
-    expect(wrapper.text()).toContain('admin.accounts.usageWindow.kiroReset')
-  })
-
-  it('Kiro OAuth 会展示运行时冷却状态', async () => {
-    getUsage.mockResolvedValue({
-      source: 'passive',
-      kiro_runtime_state: 'cooldown',
-      kiro_runtime_reason: 'rate_limit_exceeded',
-      kiro_runtime_reset_at: '2099-03-13T12:00:00Z',
-      kiro_credit: {
-        current_usage: 10,
-        usage_limit: 100,
-        percentage_used: 10,
-      },
-    })
-
-    const wrapper = mount(AccountUsageCell, {
-      props: {
-        account: makeAccount({
-          id: 3002,
-          platform: 'kiro',
-          type: 'oauth',
-          extra: {},
-          credentials: {}
-        })
-      },
-      global: {
-        stubs: {
-          UsageProgressBar: true,
-          AccountQuotaInfo: true
-        }
-      }
-    })
-
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('admin.accounts.status.rateLimited')
-    expect(wrapper.text()).toContain('admin.accounts.status.rateLimitedUntil')
-  })
-
-  it('Kiro OAuth 会展示 profile 异常和 usage forbidden 徽章', async () => {
-    getUsage.mockResolvedValueOnce({
-      source: 'passive',
-      error_code: 'forbidden',
-      error: 'usage API error: kiro usage request failed (status 400): {"message":"profileArn is required for this request."}',
-    })
-
-    const profileWrapper = mount(AccountUsageCell, {
-      props: {
-        account: makeAccount({
-          id: 3003,
-          platform: 'kiro',
-          type: 'oauth',
-          extra: {},
-          credentials: {}
-        })
-      },
-      global: {
-        stubs: {
-          UsageProgressBar: true,
-          AccountQuotaInfo: true
-        }
-      }
-    })
-
-    await flushPromises()
-    expect(profileWrapper.text()).toContain('admin.accounts.usageError')
-
-    getUsage.mockResolvedValueOnce({
-      source: 'passive',
-      error_code: 'forbidden',
-      error: 'usage API error: kiro usage request failed (status 403): {"message":"User is not authorized to access this feature."}',
-    })
-
-    const forbiddenWrapper = mount(AccountUsageCell, {
-      props: {
-        account: makeAccount({
-          id: 3004,
-          platform: 'kiro',
-          type: 'oauth',
-          extra: {},
-          credentials: {}
-        })
-      },
-      global: {
-        stubs: {
-          UsageProgressBar: true,
-          AccountQuotaInfo: true
-        }
-      }
-    })
-
-    await flushPromises()
-    expect(forbiddenWrapper.text()).toContain('admin.accounts.forbidden')
   })
 
   it('Key 账号会展示 today stats 徽章并带 A/U 提示', async () => {

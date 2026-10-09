@@ -463,12 +463,22 @@
                     >
                       {{ t("admin.settings.streamTimeout.action") }}
                     </label>
-                    <div class="w-64">
-                      <Select
-                        v-model="streamTimeoutForm.action"
-                        :options="streamTimeoutActionOptions"
-                      />
-                    </div>
+                    <select
+                      v-model="streamTimeoutForm.action"
+                      class="input w-64"
+                    >
+                      <option value="temp_unsched">
+                        {{
+                          t("admin.settings.streamTimeout.actionTempUnsched")
+                        }}
+                      </option>
+                      <option value="error">
+                        {{ t("admin.settings.streamTimeout.actionError") }}
+                      </option>
+                      <option value="none">
+                        {{ t("admin.settings.streamTimeout.actionNone") }}
+                      </option>
+                    </select>
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                       {{ t("admin.settings.streamTimeout.actionHint") }}
                     </p>
@@ -1176,6 +1186,7 @@
                           | 'all'
                           | 'priority'
                           | 'flex'
+                          | 'missing'
                       "
                       :options="openaiFastPolicyTierOptions"
                     />
@@ -3669,10 +3680,18 @@
                     >
                       {{ t("admin.settings.oidc.tokenAuthMethod") }}
                     </label>
-                    <Select
+                    <select
                       v-model="form.oidc_connect_token_auth_method"
-                      :options="oidcTokenAuthMethodOptions"
-                    />
+                      class="input font-mono text-sm"
+                    >
+                      <option value="client_secret_post">
+                        client_secret_post
+                      </option>
+                      <option value="client_secret_basic">
+                        client_secret_basic
+                      </option>
+                      <option value="none">none</option>
+                    </select>
                   </div>
 
                   <div>
@@ -4038,7 +4057,7 @@
                       </tr>
                     </thead>
                     <tbody class="space-y-2">
-                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok'] as const)" :key="p" class="align-top">
+                      <tr v-for="p in platformQuotaRows(form.default_platform_quotas)" :key="p" class="align-top">
                         <td class="pr-4 py-1">
                           <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                         </td>
@@ -4373,7 +4392,7 @@
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
+                            <tr v-for="p in platformQuotaRows(authSourceDefaults[authSource.source].platform_quotas)" :key="`${authSource.source}-pq-${p}`" class="align-top">
                               <td class="pr-4 py-1">
                                 <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                               </td>
@@ -4545,12 +4564,11 @@
                     :key="`codex-fp-${i}`"
                     class="mb-2 flex items-center gap-2"
                   >
-                    <Select
-                      v-model="row.type"
-                      :options="codexFingerprintTypeOptions"
-                      class="w-32"
-                      size="sm"
-                    />
+                    <select v-model="row.type" class="input w-32 text-sm">
+                      <option value="header_exact">{{ t("admin.settings.gatewayForwarding.codexFpTypeHeaderExact") }}</option>
+                      <option value="header_prefix">{{ t("admin.settings.gatewayForwarding.codexFpTypeHeaderPrefix") }}</option>
+                      <option value="body_path">{{ t("admin.settings.gatewayForwarding.codexFpTypeBodyPath") }}</option>
+                    </select>
                     <input
                       v-model="row.match"
                       type="text"
@@ -5318,15 +5336,18 @@
                   >
                     {{ t("admin.settings.gatewayForwarding.grokDefaultBaseURLMode") }}
                   </label>
-                  <div class="mt-2">
-                    <Select
-                      id="grok-default-base-url-mode"
-                      v-model="form.grok_default_base_url_mode"
-                      :options="grokDefaultBaseURLModeOptions"
-                      :aria-label="t('admin.settings.gatewayForwarding.grokDefaultBaseURLMode')"
-                      data-testid="grok-default-base-url-mode"
-                    />
-                  </div>
+                  <select
+                    id="grok-default-base-url-mode"
+                    v-model="form.grok_default_base_url_mode"
+                    class="input mt-2 w-full"
+                    data-testid="grok-default-base-url-mode"
+                  >
+                    <option value="cli">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeCLI") }}</option>
+                    <option value="api">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeAPI") }}</option>
+                    <option value="us-east-1">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeUSEast1") }}</option>
+                    <option value="us-west-2">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeUSWest2") }}</option>
+                    <option value="eu-west-1">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeEUWest1") }}</option>
+                  </select>
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.gatewayForwarding.grokDefaultBaseURLModeHint") }}
                   </p>
@@ -5340,26 +5361,19 @@
                 >
                   {{ t("admin.settings.gatewayForwarding.openaiTTFTMode") }}
                 </label>
-                <Select
+                <select
                   id="openai-ttft-mode"
                   v-model="form.openai_ttft_mode"
-                  :options="[
-                    {
-                      value: 'semantic',
-                      label: t(
-                        'admin.settings.gatewayForwarding.openaiTTFTModeSemantic',
-                      ),
-                    },
-                    {
-                      value: 'visible',
-                      label: t(
-                        'admin.settings.gatewayForwarding.openaiTTFTModeVisible',
-                      ),
-                    },
-                  ]"
-                  class="mt-2 w-full"
+                  class="input mt-2 w-full"
                   data-testid="openai-ttft-mode"
-                />
+                >
+                  <option value="semantic">
+                    {{ t("admin.settings.gatewayForwarding.openaiTTFTModeSemantic") }}
+                  </option>
+                  <option value="visible">
+                    {{ t("admin.settings.gatewayForwarding.openaiTTFTModeVisible") }}
+                  </option>
+                </select>
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t("admin.settings.gatewayForwarding.openaiTTFTModeHint") }}
                 </p>
@@ -5845,6 +5859,61 @@
                   </p>
                 </div>
                 <Toggle v-model="form.openai_codex_version_auto_sync_enabled" />
+              </div>
+
+              <!-- Claude Code 客户端版本号 -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.claudeCodeClientVersion",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model="form.claude_code_client_version"
+                  type="text"
+                  class="input w-full font-mono text-sm"
+                  placeholder="2.1.280"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.claudeCodeClientVersionHint",
+                    )
+                  }}
+                </p>
+              </div>
+
+              <!-- Claude Code 版本号自动同步 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.claudeCodeVersionAutoSync",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.claudeCodeVersionAutoSyncHint",
+                      )
+                    }}
+                  </p>
+                  <p
+                    v-if="claudeSyncedVersionLabel"
+                    class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {{ claudeSyncedVersionLabel }}
+                  </p>
+                </div>
+                <Toggle v-model="form.claude_code_version_auto_sync_enabled" />
               </div>
 
             </div>
@@ -6902,7 +6971,7 @@
 	        <!-- /Tab: General -->
 
 	        <!-- Tab: Login Agreement -->
-	        <div v-if="settingsTabVisible('agreement')" v-show="activeTab === 'agreement'" class="space-y-6">
+        <div v-if="settingsTabVisible('agreement')" v-show="activeTab === 'agreement'" class="space-y-6">
 	          <div class="card">
 	            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
 	              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -7316,6 +7385,36 @@
                 rows="6"
                 class="input font-mono text-sm"
               ></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.siteBillingMode.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.siteBillingMode.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div class="min-w-0">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.siteBillingMode.label') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ siteBillingModeHint }}
+                </p>
+              </div>
+              <div class="w-full shrink-0 sm:w-56">
+                <Select
+                  :modelValue="siteBillingMode"
+                  :options="siteBillingModeOptions"
+                  @update:modelValue="siteBillingMode = $event as SiteBillingMode"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -8362,6 +8461,14 @@
             </div>
           </div>
 
+          <!-- 充值优惠阶梯（独立卡片，与服务商管理同级） -->
+          <RechargeBonusTierEditor
+            v-if="form.payment_enabled"
+            v-model="form.payment_recharge_bonus_tiers"
+            v-model:mode="form.payment_recharge_bonus_mode"
+            v-model:notice="form.payment_recharge_bonus_notice"
+          />
+
           <!-- Provider Management -->
           <PaymentProviderList
             v-if="form.payment_enabled"
@@ -8807,8 +8914,7 @@
           <BackupSettings />
         </div>
 
-        <!-- Custom tabs are feature-owned components. They are not mounted
-             unless a feature registers a tab in the custom registry. -->
+        <!-- Custom settings tabs are mounted only when contributed by a registered feature. -->
         <template v-for="tab in customSettingsTabs" :key="tab.key">
           <div v-if="tab.custom && settingsTabVisible(tab.key)" v-show="activeTab === tab.key">
             <component :is="tab.custom.component" />
@@ -8883,32 +8989,6 @@
         @confirm="handleAffiliateConfirm"
         @cancel="cancelAffiliateConfirm"
       />
-      <ConfirmDialog
-        :show="showResetWebSearchUsageDialog"
-        :title="t('admin.settings.webSearchEmulation.resetUsageConfirm')"
-        :message="t('admin.settings.webSearchEmulation.resetUsageConfirm')"
-        :confirm-text="t('common.confirm')"
-        @confirm="confirmResetWebSearchUsage"
-        @cancel="showResetWebSearchUsageDialog = false"
-      />
-      <ConfirmDialog
-        :show="showRegenerateApiKeyDialog"
-        :title="t('admin.settings.adminApiKey.regenerateConfirm')"
-        :message="t('admin.settings.adminApiKey.regenerateConfirm')"
-        :confirm-text="t('common.confirm')"
-        danger
-        @confirm="confirmRegenerateAdminApiKey"
-        @cancel="showRegenerateApiKeyDialog = false"
-      />
-      <ConfirmDialog
-        :show="showDeleteApiKeyDialog"
-        :title="t('admin.settings.adminApiKey.deleteConfirm')"
-        :message="t('admin.settings.adminApiKey.deleteConfirm')"
-        :confirm-text="t('common.delete')"
-        danger
-        @confirm="confirmDeleteAdminApiKey"
-        @cancel="showDeleteApiKeyDialog = false"
-      />
       <!-- 关闭 step-up 开关等敏感保存操作触发的 TOTP 二次验证 -->
       <TotpStepUpDialog :controller="settingsStepUp" />
     </div>
@@ -8917,6 +8997,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from "vue";
+import { listPlatformIds } from "@/constants/platformCatalog";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
 import {
@@ -8954,7 +9035,14 @@ import type {
 import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
-import Select from "@/components/common/Select.vue";
+import Select, { type SelectOption } from "@/components/common/Select.vue";
+import {
+  SITE_BILLING_MODES,
+  SITE_BILLING_MODE_I18N_KEYS,
+  billingModeToSettings,
+  resolveSiteBillingMode,
+  type SiteBillingMode,
+} from "@/utils/siteBillingMode";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
@@ -8965,6 +9053,14 @@ import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
+import RechargeBonusTierEditor from "@/components/admin/settings/RechargeBonusTierEditor.vue";
+import {
+  normalizeRechargeBonusMode,
+  normalizeRechargeBonusTiers,
+  sanitizeRechargeBonusTiersForSubmit,
+  type RechargeBonusMode,
+  type RechargeBonusTierDraft,
+} from "@/utils/rechargeBonus";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
@@ -8977,6 +9073,8 @@ import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { useAppStore, useAuthStore } from "@/stores";
+import { getHostCustomSettingsTabs } from "@/custom";
+import type { CustomSettingsTab } from "@/custom";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
 import {
@@ -8989,43 +9087,16 @@ import {
   parseFingerprintSignalsToRows,
   serializeFingerprintRowsToJSON,
   defaultFingerprintSignalRows,
-  type FingerprintSignalType,
   type FingerprintSignalRow,
 } from "./codexFingerprintSignals";
-import { getHostCustomSettingsTabs } from "@/custom";
-import type { CustomSettingsTab } from "@/custom";
 
 const { t, locale } = useI18n();
 
-// Select 选项（i18n label 用 computed 保证切换语言响应式）
-const grokDefaultBaseURLModeOptions = computed(() => [
-  { value: "cli", label: t("admin.settings.gatewayForwarding.grokBaseURLModeCLI") },
-  { value: "api", label: t("admin.settings.gatewayForwarding.grokBaseURLModeAPI") },
-  { value: "us-east-1", label: t("admin.settings.gatewayForwarding.grokBaseURLModeUSEast1") },
-  { value: "us-west-2", label: t("admin.settings.gatewayForwarding.grokBaseURLModeUSWest2") },
-  { value: "eu-west-1", label: t("admin.settings.gatewayForwarding.grokBaseURLModeEUWest1") },
-]);
-const streamTimeoutActionOptions = computed(() => [
-  { value: "temp_unsched", label: t("admin.settings.streamTimeout.actionTempUnsched") },
-  { value: "error", label: t("admin.settings.streamTimeout.actionError") },
-  { value: "none", label: t("admin.settings.streamTimeout.actionNone") },
-]);
-const oidcTokenAuthMethodOptions = [
-  { value: "client_secret_post", label: "client_secret_post" },
-  { value: "client_secret_basic", label: "client_secret_basic" },
-  { value: "none", label: "none" },
-];
 const customMenuVisibilityOptions = computed(() => [
   { value: "user", label: t("admin.settings.customMenu.visibilityUser") },
   { value: "admin", label: t("admin.settings.customMenu.visibilityAdmin") },
 ]);
-const codexFingerprintTypeOptions = computed<
-  { value: FingerprintSignalType; label: string }[]
->(() => [
-  { value: "header_exact", label: t("admin.settings.gatewayForwarding.codexFpTypeHeaderExact") },
-  { value: "header_prefix", label: t("admin.settings.gatewayForwarding.codexFpTypeHeaderPrefix") },
-  { value: "body_path", label: t("admin.settings.gatewayForwarding.codexFpTypeBodyPath") },
-]);
+
 const appStore = useAppStore();
 // 关闭 step-up 开关是敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 码重试
 const settingsStepUp = useStepUp();
@@ -9100,13 +9171,11 @@ const allSettingsTabs: readonly SettingsTabEntry[] = [
   { key: "backup", icon: "database" },
 ];
 
-// The registry is empty for the stock application. Registered custom tabs are
-// appended only at this boundary, leaving all existing tab markup untouched.
 const customSettingsTabs = computed<SettingsTabEntry[]>(() => {
   const builtInKeys = new Set(allSettingsTabs.map((tab) => tab.key));
   return getHostCustomSettingsTabs()
     .filter((tab) => tab.id.trim() && !builtInKeys.has(tab.id))
-    .map((tab) => ({ key: tab.id, icon: "bolt", custom: tab }));
+    .map((tab) => ({ key: tab.id, icon: "bolt" as const, custom: tab }));
 });
 const allSettingsTabEntries = computed(() => [...allSettingsTabs, ...customSettingsTabs.value]);
 const settingsTabs = computed(() => authStore.isAdmin
@@ -9783,12 +9852,22 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_weight_upstream_cost: string;
   openai_advanced_scheduler_weight_previous_response: string;
   openai_advanced_scheduler_weight_session_sticky: string;
-  // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
+  // 充值赠送阶梯编辑态：允许留空的行，提交时清洗为 RechargeBonusTier[]
+  payment_recharge_bonus_tiers: RechargeBonusTierDraft[];
+  payment_recharge_bonus_mode: RechargeBonusMode;
+  payment_recharge_bonus_notice: string;
+  // 系统全局平台限额 map；form 内始终归一化为全部平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
   account_scheduling_thresholds: ReturnType<typeof normalizeAccountSchedulingThresholdsMap>;
 };
 
 const schedulingThresholdPlatforms = SCHEDULING_THRESHOLD_PLATFORMS;
+
+// 平台限额表格的行：平台清单顺序中、已在归一化 map 里的平台（清单晚于设置加载时
+// 不渲染尚未归一化的平台，保持模板非空绑定）。
+function platformQuotaRows(map: DefaultPlatformQuotasMap | undefined): string[] {
+  return listPlatformIds().filter((platform) => !!map?.[platform]);
+}
 
 const form = reactive<SettingsForm>({
   registration_enabled: true,
@@ -9847,6 +9926,9 @@ const form = reactive<SettingsForm>({
   payment_balance_recharge_multiplier: 1,
   payment_subscription_usd_to_cny_rate: 0,
   payment_recharge_fee_rate: 0,
+  payment_recharge_bonus_tiers: [],
+  payment_recharge_bonus_mode: "bonus",
+  payment_recharge_bonus_notice: "",
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
@@ -9869,9 +9951,9 @@ const form = reactive<SettingsForm>({
     url: string;
     page_slug?: string;
     pass_auth_context: boolean;
-    hide_open_button?: boolean;
     visibility: "user" | "admin";
     sort_order: number;
+    hide_open_button?: boolean;
   }>,
   custom_endpoints: [] as Array<{
     name: string;
@@ -10046,6 +10128,10 @@ const form = reactive<SettingsForm>({
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   openai_codex_client_version_synced: "",
   openai_codex_version_auto_sync_enabled: true,
+  claude_code_client_version: "",
+  // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
+  claude_code_client_version_synced: "",
+  claude_code_version_auto_sync_enabled: true,
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -10069,6 +10155,8 @@ const form = reactive<SettingsForm>({
   channel_monitor_hide_user_ranking: false,
   // Available Channels feature switch
   available_channels_enabled: false,
+  // Subscription feature switch (user sidebar "My Subscriptions" entry)
+  subscription_enabled: true,
   // Model Plaza feature switches + description
   model_plaza_enabled: false,
   model_plaza_require_auth: false,
@@ -10381,18 +10469,11 @@ function quotaPercentage(provider: WebSearchProviderConfig): number {
   return ((provider.quota_used ?? 0) / provider.quota_limit) * 100;
 }
 
-const showResetWebSearchUsageDialog = ref(false);
-let pendingResetWebSearchIdx = -1;
-function resetWebSearchUsage(idx: number) {
+async function resetWebSearchUsage(idx: number) {
   const provider = webSearchConfig.providers[idx];
   if (!provider) return;
-  pendingResetWebSearchIdx = idx;
-  showResetWebSearchUsageDialog.value = true;
-}
-async function confirmResetWebSearchUsage() {
-  showResetWebSearchUsageDialog.value = false;
-  const provider = webSearchConfig.providers[pendingResetWebSearchIdx];
-  if (!provider) return;
+  if (!confirm(t("admin.settings.webSearchEmulation.resetUsageConfirm")))
+    return;
   try {
     await adminAPI.settings.resetWebSearchUsage({
       provider_type: provider.type,
@@ -11052,6 +11133,14 @@ const codexSyncedVersionLabel = computed(() => {
   });
 });
 
+const claudeSyncedVersionLabel = computed(() => {
+  const synced = form.claude_code_client_version_synced?.trim();
+  if (!synced) return "";
+  return t("admin.settings.gatewayForwarding.claudeCodeVersionSyncedValue", {
+    version: synced,
+  });
+});
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -11065,9 +11154,7 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
-    // An explicit null means the optional OAuth scheduling override was
-    // intentionally cleared (use each account's own rate).  Preserve that
-    // sentinel instead of leaving the form's default value in place.
+    // For this optional override, null explicitly selects per-account rates.
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
     }
@@ -11120,6 +11207,13 @@ async function loadSettings() {
           }))
         : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
+    form.payment_recharge_bonus_tiers = normalizeRechargeBonusTiers(
+      settings.payment_recharge_bonus_tiers,
+    );
+    form.payment_recharge_bonus_mode = normalizeRechargeBonusMode(
+      settings.payment_recharge_bonus_mode,
+    );
+    form.payment_recharge_bonus_notice = settings.payment_recharge_bonus_notice || "";
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
     form.account_scheduling_thresholds = normalizeAccountSchedulingThresholdsMap(
       settings.account_scheduling_thresholds,
@@ -11307,6 +11401,24 @@ function findDuplicateDefaultSubscription(
     return false;
   });
 }
+
+// 站点类型：由 subscription_enabled 与 payment_balance_disabled 两个开关派生的单选，
+// 保存时同时写回两者，避免出现「既无充值也无订阅」的组合。
+const siteBillingModeOptions = computed<SelectOption[]>(() =>
+  SITE_BILLING_MODES.map((mode) => ({
+    value: mode,
+    label: t(`admin.settings.features.siteBillingMode.options.${SITE_BILLING_MODE_I18N_KEYS[mode]}`),
+  })),
+);
+const siteBillingMode = computed<SiteBillingMode>({
+  get: () => resolveSiteBillingMode(form),
+  set: (mode) => {
+    Object.assign(form, billingModeToSettings(mode));
+  },
+});
+const siteBillingModeHint = computed(() =>
+  t(`admin.settings.features.siteBillingMode.hints.${SITE_BILLING_MODE_I18N_KEYS[siteBillingMode.value]}`),
+);
 
 async function saveSettings() {
   saving.value = true;
@@ -11674,6 +11786,9 @@ async function saveSettings() {
         form.openai_codex_client_version?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
+      claude_code_client_version: form.claude_code_client_version?.trim() || "",
+      claude_code_version_auto_sync_enabled:
+        form.claude_code_version_auto_sync_enabled,
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:
@@ -11706,6 +11821,11 @@ async function saveSettings() {
       payment_subscription_usd_to_cny_rate:
         Number(form.payment_subscription_usd_to_cny_rate) || 0,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
+      payment_recharge_bonus_tiers: sanitizeRechargeBonusTiersForSubmit(
+        form.payment_recharge_bonus_tiers,
+      ),
+      payment_recharge_bonus_mode: form.payment_recharge_bonus_mode,
+      payment_recharge_bonus_notice: form.payment_recharge_bonus_notice,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
       payment_product_name_prefix: form.payment_product_name_prefix,
@@ -11776,6 +11896,8 @@ async function saveSettings() {
       channel_monitor_hide_user_ranking: Boolean(form.channel_monitor_hide_user_ranking),
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
+      // Subscription feature switch
+      subscription_enabled: form.subscription_enabled,
       // Model Plaza feature switches + description
       model_plaza_enabled: form.model_plaza_enabled,
       model_plaza_require_auth: form.model_plaza_require_auth,
@@ -12026,20 +12148,13 @@ async function createAdminApiKey() {
   }
 }
 
-const showRegenerateApiKeyDialog = ref(false);
-const showDeleteApiKeyDialog = ref(false);
-function regenerateAdminApiKey() {
-  showRegenerateApiKeyDialog.value = true;
-}
-async function confirmRegenerateAdminApiKey() {
-  showRegenerateApiKeyDialog.value = false;
+async function regenerateAdminApiKey() {
+  if (!confirm(t("admin.settings.adminApiKey.regenerateConfirm"))) return;
   await createAdminApiKey();
 }
-function deleteAdminApiKey() {
-  showDeleteApiKeyDialog.value = true;
-}
-async function confirmDeleteAdminApiKey() {
-  showDeleteApiKeyDialog.value = false;
+
+async function deleteAdminApiKey() {
+  if (!confirm(t("admin.settings.adminApiKey.deleteConfirm"))) return;
   adminApiKeyOperating.value = true;
   try {
     await adminAPI.settings.deleteAdminApiKey();
@@ -12447,6 +12562,7 @@ const openaiFastPolicyTierOptions = computed(() => [
     label: t("admin.settings.openaiFastPolicy.tierUltrafast"),
   },
   { value: "flex", label: t("admin.settings.openaiFastPolicy.tierFlex") },
+  { value: "missing", label: t("admin.settings.openaiFastPolicy.tierMissing") },
 ]);
 
 const openaiFastPolicyActionOptions = computed(() => [

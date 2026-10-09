@@ -184,7 +184,7 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 type CreateGroupRequest struct {
 	Name                      string                        `json:"name" binding:"required"`
 	Description               string                        `json:"description"`
-	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok kimi zhipu deepseek minimax opencode_go typesafe composite"`
+	Platform                  string                        `json:"platform" binding:"omitempty,group_platform"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
 	IsExclusive               bool                          `json:"is_exclusive"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -250,7 +250,7 @@ type CreateGroupRequest struct {
 	MaxReasoningEffortOverLimit string `json:"max_reasoning_effort_over_limit"`
 	// Anthropic/OpenAI 推理强度映射，可按模型精确名、前缀或后缀限定。
 	ReasoningEffortMappings []service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
-	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	// Kiro cache emulation and sticky-session settings.
 	KiroCacheEmulationEnabled       bool     `json:"kiro_cache_emulation_enabled"`
 	KiroAutoStickyEnabled           *bool    `json:"kiro_auto_sticky_enabled"`
 	KiroStickySessionTTLSeconds     *int     `json:"kiro_sticky_session_ttl_seconds"`
@@ -267,7 +267,7 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name                      string                         `json:"name"`
 	Description               *string                        `json:"description"`
-	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity kiro grok kimi zhipu deepseek minimax opencode_go typesafe composite"`
+	Platform                  string                         `json:"platform" binding:"omitempty,group_platform"`
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -334,7 +334,7 @@ type UpdateGroupRequest struct {
 	MaxReasoningEffortOverLimit *string `json:"max_reasoning_effort_over_limit"`
 	// nil 不修改，空数组清空，非空数组替换。
 	ReasoningEffortMappings *[]service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
-	// Kiro 模拟缓存配置（仅 kiro 分组生效）
+	// Kiro cache emulation and sticky-session settings.
 	KiroCacheEmulationEnabled       *bool    `json:"kiro_cache_emulation_enabled"`
 	KiroAutoStickyEnabled           *bool    `json:"kiro_auto_sticky_enabled"`
 	KiroStickySessionTTLSeconds     *int     `json:"kiro_sticky_session_ttl_seconds"`
@@ -350,7 +350,7 @@ type UpdateGroupRequest struct {
 type CompositeRouteRequest struct {
 	PublicModel    string `json:"public_model" binding:"required"`
 	MatchType      string `json:"match_type" binding:"omitempty,oneof=exact prefix"`
-	TargetPlatform string `json:"target_platform" binding:"required,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek minimax opencode_go typesafe"`
+	TargetPlatform string `json:"target_platform" binding:"required,concrete_platform"`
 	UpstreamModel  string `json:"upstream_model"`
 	Endpoint       string `json:"endpoint" binding:"omitempty,oneof=any messages count_tokens responses chat_completions embeddings images gemini"`
 	Priority       int    `json:"priority"`
@@ -656,13 +656,11 @@ func (h *GroupHandler) GetEffectiveModels(c *gin.Context) {
 		response.BadRequest(c, "Invalid group ID")
 		return
 	}
-
 	models, err := h.adminService.GetGroupEffectiveModels(c.Request.Context(), groupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-
 	response.Success(c, gin.H{"models": models})
 }
 

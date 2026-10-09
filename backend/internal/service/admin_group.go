@@ -12,6 +12,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -104,9 +105,7 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		return candidates, nil
 	}
 
-	// Configuration candidates must stay stable while an account is paused,
-	// rate-limited or temporarily unavailable.
-	accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", id, "")
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +114,6 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	for _, model := range candidates {
 		seen[model] = struct{}{}
 	}
-	extraModels := make([]string, 0)
 	for _, acc := range accounts {
 		if platform == PlatformComposite {
 			if !isConcreteRequestPlatform(acc.Platform) {
@@ -133,11 +131,9 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 				continue
 			}
 			seen[model] = struct{}{}
-			extraModels = append(extraModels, model)
+			candidates = append(candidates, model)
 		}
 	}
-	sort.Strings(extraModels)
-	candidates = append(candidates, extraModels...)
 	return candidates, nil
 }
 
@@ -284,6 +280,10 @@ func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*Composi
 	}, nil
 }
 
+// GetGroupEffectiveModels returns the model ids that are actually exposed by a
+// group after account mappings and the optional allowlist are applied.  This
+// is intentionally derived from schedulable accounts so the admin UI matches
+// the gateway's current account snapshot.
 func (s *adminServiceImpl) GetGroupEffectiveModels(ctx context.Context, id int64) ([]string, error) {
 	group, err := s.groupRepo.GetByIDLite(ctx, id)
 	if err != nil {
@@ -306,7 +306,10 @@ func resolveGroupEffectiveModels(group *Group, accounts []Account) []string {
 	modelSet := make(map[string]struct{})
 	matchingAccounts := 0
 	for i := range accounts {
-		if accounts[i].Platform != group.Platform {
+		if group.Platform != PlatformComposite && accounts[i].Platform != group.Platform {
+			continue
+		}
+		if group.Platform == PlatformComposite && !isConcreteRequestPlatform(accounts[i].Platform) {
 			continue
 		}
 		matchingAccounts++
@@ -409,7 +412,13 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 func compositeDefaultModelsListCandidateIDs() []string {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0)
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformKiro, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo} {
+	for _, platform := range domain.CompositePrecedencePlatformIDs() {
+		// TypeSafe stays out of the static composite candidates (jev-latest only works
+		// through /v1/systemone); groups with TypeSafe accounts still get it from the
+		// account model mappings collected by GetGroupModelsListCandidates.
+		if platform == PlatformTypeSafe {
+			continue
+		}
 		for _, id := range defaultModelsListCandidateIDs(platform) {
 			if _, ok := seen[id]; ok {
 				continue
@@ -761,11 +770,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ModelAllowlist:                  modelAllowlist,
 		// 固定账号 manifest 配置：账号绑定发生在分组创建之后，创建路径禁止开启，
 		// 成员关系无从校验（前端创建对话框也不展示）。
-		CodexModelsManifestConfig:       normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
-		RPMLimit:                        input.RPMLimit,
-		MaxReasoningEffort:              maxReasoningEffort,
-		MaxReasoningEffortOverLimit:     maxReasoningEffortOverLimit,
-		ReasoningEffortMappings:         reasoningEffortMappings,
+		CodexModelsManifestConfig:   normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
+		RPMLimit:                    input.RPMLimit,
+		MaxReasoningEffort:          maxReasoningEffort,
+		MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
+		ReasoningEffortMappings:     reasoningEffortMappings,
 		KiroCacheEmulationEnabled:       input.KiroCacheEmulationEnabled,
 		KiroAutoStickyEnabled:           kiroAutoStickyEnabled,
 		KiroCacheEmulationRatio:         kiroCacheEmulationRatio,
@@ -1241,7 +1250,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.AllowLive = false
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
-	NormalizeGroupRuntimeFields(group)
 	// 固定账号 manifest 配置：按最终平台归一化（切出 openai 平台时静默归零，
 	// 与 ForceOpenAIFast 同一收口）；校验仅在本次显式携带配置时进行，
 	// 避免脏 ID 阻塞无关字段更新。
@@ -1255,6 +1263,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
 	}
+
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 	}
@@ -1455,10 +1464,7 @@ func (s *adminServiceImpl) ClearGroupRateMultipliers(ctx context.Context, groupI
 	if s.userGroupRateRepo == nil {
 		return nil
 	}
-	if err := s.userGroupRateRepo.DeleteByGroupID(ctx, groupID); err != nil {
-		return err
-	}
-	return nil
+	return s.userGroupRateRepo.DeleteByGroupID(ctx, groupID)
 }
 
 func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error {
@@ -1473,10 +1479,7 @@ func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, gro
 			return fmt.Errorf("rate_multiplier must be > 0 (user_id=%d)", e.UserID)
 		}
 	}
-	if err := s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries); err != nil {
-		return err
-	}
-	return nil
+	return s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries)
 }
 
 func (s *adminServiceImpl) ClearGroupRPMOverrides(ctx context.Context, groupID int64) error {

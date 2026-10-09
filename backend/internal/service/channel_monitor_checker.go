@@ -239,10 +239,7 @@ func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 				"model":      model,
 				"messages":   []map[string]string{{"role": "user", "content": prompt}},
 				"max_tokens": monitorChallengeMaxTokens,
-				// 探活只需要尽快收到 challenge 的第一个文本片段。
-				// 使用流式响应避免上游在生成完整响应前长时间保持无响应，
-				// 同时由 extractOpenAIChatMonitorText 兼容 SSE 与部分兼容端返回的 JSON。
-				"stream": true,
+				"stream":     true,
 			})
 		},
 		buildHeaders: func(apiKey string) map[string]string {
@@ -280,11 +277,8 @@ func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool
 	return adapter, MonitorAPIModeChatCompletions, ok
 }
 
-// callProviderWithChallenge is the probe-specific variant of callProvider.
-// expected enables the streaming probe to stop as soon as the known arithmetic
-// challenge is present, instead of waiting for a slow upstream to finish a
-// response that is already sufficient for health checking. An empty expected
-// value preserves the original full-response behavior used by endpoint tests.
+// callProviderWithChallenge is used by health probes so streaming-compatible
+// providers can stop reading once the challenge text has arrived.
 func callProviderWithChallenge(ctx context.Context, provider, endpoint, apiKey, model, prompt, expected string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
 	requestedAPIMode := checkAPIMode(opts)
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
@@ -299,7 +293,7 @@ func callProviderWithChallenge(ctx context.Context, provider, endpoint, apiKey, 
 		return "", "", 0, err
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
-	full := joinURL(endpoint, adapter.buildPath(model))
+	full := joinURL(endpoint, monitorRequestPath(provider, endpoint, adapter, model))
 	var respBytes []byte
 	if shouldUseStreamingProbe(provider, apiMode, opts, body) {
 		respBytes, status, err = postStreamingJSON(ctx, full, body, headers, expected)
@@ -315,10 +309,6 @@ func callProviderWithChallenge(ctx context.Context, provider, endpoint, apiKey, 
 	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil
 }
 
-// shouldUseStreamingProbe is deliberately narrower than "body contains
-// stream=true": custom replace-mode monitors are user-specified requests and
-// must retain their existing semantics. The built-in OpenAI-compatible chat
-// probe (including DeepSeek/Kimi/Grok) is the only path upgraded here.
 func shouldUseStreamingProbe(provider, apiMode string, opts *CheckOptions, body []byte) bool {
 	if !isOpenAICompatibleChatProvider(provider) || defaultAPIMode(apiMode) != MonitorAPIModeChatCompletions {
 		return false
@@ -329,18 +319,6 @@ func shouldUseStreamingProbe(provider, apiMode string, opts *CheckOptions, body 
 	return gjson.GetBytes(body, "stream").Bool()
 }
 
-func extractMonitorResponseText(adapter providerAdapter, respBytes []byte) string {
-	if adapter.extractText != nil {
-		return adapter.extractText(respBytes)
-	}
-	return gjson.GetBytes(respBytes, adapter.textPath).String()
-}
-
-// extractOpenAIChatMonitorText extracts assistant text from an OpenAI-compatible
-// Chat Completions response. Probe requests use stream=true, so the normal
-// response is an SSE body containing delta.content fragments. A few compatible
-// gateways still return a regular JSON response despite stream=true; retain a
-// JSON fallback so those gateways remain monitorable.
 func extractOpenAIChatMonitorText(respBytes []byte) string {
 	var parts []string
 	forEachOpenAISSEDataPayload(string(respBytes), func(payload []byte) {
@@ -351,14 +329,9 @@ func extractOpenAIChatMonitorText(respBytes []byte) string {
 	if len(parts) > 0 {
 		return strings.Join(parts, "")
 	}
-
-	// JSON fallback for providers that ignore stream=true (or test doubles).
 	return gjson.GetBytes(respBytes, "choices.0.message.content").String()
 }
 
-// extractOpenAIChatMonitorPayload extracts text from one decoded SSE data
-// payload and reports whether that payload is terminal. The terminal signal is
-// useful for providers that send an empty final delta before [DONE].
 func extractOpenAIChatMonitorPayload(payload []byte) (text string, terminal bool) {
 	if strings.TrimSpace(string(payload)) == "[DONE]" {
 		return "", true
@@ -373,6 +346,46 @@ func extractOpenAIChatMonitorPayload(payload []byte) (text string, terminal bool
 	finishReason := gjson.GetBytes(payload, "choices.0.finish_reason")
 	terminal = finishReason.Exists() && finishReason.Type != gjson.Null && strings.TrimSpace(finishReason.String()) != ""
 	return text, terminal
+}
+
+// callProvider 通过 providerAdapters 分发到具体实现。
+// opts 承载用户的自定义 headers / body 覆盖（可为 nil）。
+//
+// 返回值：
+//   - extractedText: 按 textPath 抽出的成功文本，仅在 status 2xx 时有意义；非 2xx 时通常为空串
+//   - rawBody: 完整响应体的字符串形式（已被 monitorResponseMaxBytes 截断），用于错误路径保留上游真实回包
+//   - status: HTTP 状态码
+//   - err: 网络 / 序列化错误
+func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
+	requestedAPIMode := checkAPIMode(opts)
+	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
+		return "", "", 0, err
+	}
+	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode)
+	if !ok {
+		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
+	}
+	body, err := buildRequestBody(adapter, provider, apiMode, model, prompt, opts)
+	if err != nil {
+		return "", "", 0, err
+	}
+	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
+	full := joinURL(endpoint, monitorRequestPath(provider, endpoint, adapter, model))
+	respBytes, status, err := postRawJSON(ctx, full, body, headers)
+	if err != nil {
+		return "", "", status, err
+	}
+	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
+		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
+	}
+	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil
+}
+
+func extractMonitorResponseText(adapter providerAdapter, respBytes []byte) string {
+	if adapter.extractText != nil {
+		return adapter.extractText(respBytes)
+	}
+	return gjson.GetBytes(respBytes, adapter.textPath).String()
 }
 
 func extractAnthropicMonitorText(respBytes []byte) string {
@@ -593,9 +606,14 @@ func hasNonEmptyBodyValue(v any) bool {
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
 // adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
 func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
-	req, err := newMonitorRequest(ctx, fullURL, payload, headers)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := monitorHTTPClient.Do(req)
@@ -611,13 +629,9 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 	return respBody, resp.StatusCode, nil
 }
 
-// postStreamingJSON sends a probe request with stream=true and incrementally
-// parses OpenAI-compatible SSE frames. It returns as soon as the expected
-// challenge appears in a text delta or the provider sends finish_reason/[DONE].
-// This prevents a monitor from holding a worker for the remainder of a slow or
-// stalled generation after the channel has already proved it can answer.
-// Non-2xx responses are read as ordinary bounded bodies so upstream diagnostics
-// remain unchanged.
+// postStreamingJSON incrementally reads SSE probes and returns once the
+// challenge is observed or the upstream signals completion. This keeps health
+// checks from waiting for a slow provider to finish generating extra output.
 func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, headers map[string]string, expected string) ([]byte, int, error) {
 	req, err := newMonitorRequest(ctx, fullURL, payload, headers)
 	if err != nil {
@@ -628,7 +642,6 @@ func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, head
 		return nil, 0, fmt.Errorf("do request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
 		if readErr != nil {
@@ -636,13 +649,10 @@ func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, head
 		}
 		return body, resp.StatusCode, nil
 	}
-
 	var raw bytes.Buffer
 	var parser openAICompatSSEFrameParser
 	var text strings.Builder
 	scanner := bufio.NewScanner(io.LimitReader(resp.Body, monitorResponseMaxBytes))
-	// A single SSE line normally remains tiny, but allow a provider to include a
-	// larger JSON chunk without turning the monitor into an unbounded reader.
 	scanner.Buffer(make([]byte, 4*1024), monitorResponseMaxBytes)
 	consumeFrame := func(frame openAICompatSSEFrame, ok bool) bool {
 		if !ok {
@@ -674,7 +684,6 @@ func postStreamingJSON(ctx context.Context, fullURL string, payload []byte, head
 		}
 		return false
 	}
-
 	for scanner.Scan() {
 		line := strings.TrimSuffix(scanner.Text(), "\r")
 		_, _ = raw.WriteString(line)
@@ -707,6 +716,37 @@ func newMonitorRequest(ctx context.Context, fullURL string, payload []byte, head
 		req.Header.Set(k, v)
 	}
 	return req, nil
+}
+
+// monitorRequestPath 返回探测请求路径。智谱按 endpoint 区分：
+//   - 已带 /paas/v4（含 Coding Plan 的 /api/coding/paas/v4）：只追加 /chat/completions
+//   - 官方域名根地址：/api/paas/v4/chat/completions
+//   - 中转站 / 本站网关：只暴露 OpenAI 兼容的 /v1/chat/completions，与 Kimi / DeepSeek 一致
+func monitorRequestPath(provider, endpoint string, adapter providerAdapter, model string) string {
+	if provider != MonitorProviderZhipu {
+		return adapter.buildPath(model)
+	}
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return providerOpenAIPath
+	}
+	if strings.Contains(u.EscapedPath(), "/paas/v4") {
+		return "/chat/completions"
+	}
+	if isZhipuOfficialHost(u) {
+		return adapter.buildPath(model)
+	}
+	return providerOpenAIPath
+}
+
+func isZhipuOfficialHost(u *url.URL) bool {
+	host := strings.ToLower(u.Hostname())
+	for _, official := range []string{"bigmodel.cn", "z.ai"} {
+		if host == official || strings.HasSuffix(host, "."+official) {
+			return true
+		}
+	}
+	return false
 }
 
 // joinURL 保留 base 的上游路径前缀，并避免重复追加已有的 API 路径前缀。

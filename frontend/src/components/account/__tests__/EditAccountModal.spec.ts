@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { flushPromises, mount } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
+import {
+  BUILTIN_PLATFORM_CATALOG,
+  resetPlatformCatalog,
+  setPlatformCatalog
+} from '@/constants/platformCatalog'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -70,6 +75,7 @@ const BaseDialogStub = defineComponent({
 const ModelWhitelistSelectorStub = defineComponent({
   name: 'ModelWhitelistSelector',
   props: {
+    modelMappings: { type: Array, default: () => [] },
     modelValue: {
       type: Array,
       default: () => []
@@ -216,45 +222,6 @@ function buildVertexAccount() {
   } as any
 }
 
-function buildKiroOAuthAccount() {
-  return {
-    id: 3,
-    name: 'Kiro OAuth',
-    notes: '',
-    platform: 'kiro',
-    type: 'oauth',
-    credentials: {
-      model_mapping: {
-        'kiro-model': 'kiro-model'
-      }
-    },
-    extra: {
-      kiro_credit_unit_price_usd: 0.071
-    },
-    proxy_id: null,
-    concurrency: 1,
-    priority: 1,
-    rate_multiplier: 1,
-    status: 'active',
-    group_ids: [],
-    expires_at: null,
-    auto_pause_on_expired: false
-  } as any
-}
-
-function buildKiroAPIKeyAccount(baseUrl?: string) {
-  return {
-    ...buildAccount(),
-    id: baseUrl ? 8 : 7,
-    name: baseUrl ? 'Kiro Relay API Key' : 'Kiro Direct API Key',
-    platform: 'kiro',
-    credentials: {
-      api_key: baseUrl ? 'sk-relay' : 'ksk_direct',
-      ...(baseUrl ? { base_url: baseUrl } : {})
-    }
-  } as any
-}
-
 function buildAntigravityAccount(projectId = 'configured-project') {
   return {
     id: 3,
@@ -369,72 +336,22 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
-  it('uses the Kiro direct API-key placeholder when base_url is absent', () => {
-    const wrapper = mountModal(buildKiroAPIKeyAccount())
-
-    expect(wrapper.find('input[type="password"][placeholder="ksk_..."]').exists()).toBe(true)
-    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(true)
-  })
-
-  it('keeps the relay API-key placeholder when a Kiro base_url is present', () => {
-    const wrapper = mountModal(buildKiroAPIKeyAccount('https://relay.example/v1'))
-
-    expect(wrapper.find('input[type="password"][placeholder="sk-..."]').exists()).toBe(true)
-    expect(wrapper.find('input[placeholder="https://your-relay.example.com"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(false)
-  })
-
-  it('loads and submits Kiro direct API-key API region', async () => {
-    const account = buildKiroAPIKeyAccount()
-    account.credentials.api_region = 'eu-central-1'
-    updateAccountMock.mockReset()
-    checkMixedChannelRiskMock.mockReset()
-    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
-    updateAccountMock.mockResolvedValue(account)
-
+  it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
     const wrapper = mountModal(account)
-    const regionSelect = wrapper.get<HTMLSelectElement>('[data-testid="edit-kiro-api-region-select"]')
-    expect(regionSelect.element.value).toBe('eu-central-1')
-    expect(regionSelect.find('option[value="eu-central-1"]').exists()).toBe(true)
-    expect(regionSelect.find('option[value="eu-central-1"]').text()).toBe('eu-central-1')
-
-    await regionSelect.setValue('eu-west-1')
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelMappings')).toEqual([
+      { from: 'gpt-latest', to: 'deepseek-chat' }
+    ])
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-
-    expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
-    expect(credentials?.api_region).toBe('eu-west-1')
-  })
-
-  it('ignores SSO region when rehydrating the Kiro direct API-key API region', () => {
-    const account = buildKiroAPIKeyAccount()
-    account.credentials.region = 'eu-central-1'
-
-    const wrapper = mountModal(account)
-
-    // region 是 Identity Center 区域,不得作为推理区域回退。
-    expect((wrapper.get('[data-testid="edit-kiro-api-region-select"]').element as HTMLSelectElement).value)
-      .toBe('us-east-1')
-  })
-
-  it('hides the API region field for Kiro OAuth accounts and never promotes their SSO region', async () => {
-    const account = buildKiroOAuthAccount()
-    account.credentials.region = 'eu-central-1'
-    updateAccountMock.mockReset()
-    checkMixedChannelRiskMock.mockReset()
-    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
-    updateAccountMock.mockResolvedValue(account)
-
-    const wrapper = mountModal(account)
-    expect(wrapper.find('[data-testid="edit-kiro-api-region-select"]').exists()).toBe(false)
-
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-    await flushPromises()
-
-    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
-    expect(credentials).not.toHaveProperty('api_region')
-    expect(credentials?.region).toBe('eu-central-1')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual(account.credentials.model_mapping)
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true, account: { ...account } })
+    expect(wrapper.getComponent(ModelWhitelistSelectorStub).props('modelMappings')).toEqual([
+      { from: 'gpt-latest', to: 'deepseek-chat' }
+    ])
   })
 
   it('sets expiry presets from now instead of extending the saved expiry', async () => {
@@ -623,6 +540,104 @@ describe('EditAccountModal', () => {
       account_mode: 'go',
       api_protocol: 'adaptive',
       base_url: 'https://opencode.ai/zen/go/v1'
+    })
+  })
+
+  describe('providers using the generic form', () => {
+    beforeEach(() => {
+      setPlatformCatalog({
+        platforms: [
+          ...BUILTIN_PLATFORM_CATALOG.platforms,
+          {
+            id: 'acme_router',
+            display_name: 'Acme Router',
+            gateway: 'openai',
+            cn_provider: false,
+            multi_protocol: {
+              default_mode: 'standard',
+              routing: 'by_model',
+              modes: [
+                {
+                  mode: 'standard',
+                  base_urls: {
+                    chat_completions: 'https://api.acme-router.example/provider/v1',
+                    anthropic: 'https://api.acme-router.example/provider'
+                  },
+                  protocol_rules: [{ pattern: 'claude-*', protocol: 'anthropic' }]
+                },
+                {
+                  mode: 'team',
+                  base_urls: {
+                    chat_completions: 'https://team.acme-router.example/provider/v1',
+                    anthropic: 'https://team.acme-router.example/provider'
+                  },
+                  protocol_rules: [{ pattern: 'sonnet-*', protocol: 'anthropic' }]
+                }
+              ]
+            }
+          }
+        ],
+        composite_precedence: [...BUILTIN_PLATFORM_CATALOG.composite_precedence, 'acme_router']
+      })
+      checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    })
+
+    afterEach(() => {
+      resetPlatformCatalog()
+    })
+
+    function commandCodeAccount() {
+      const account = buildAccount()
+      account.platform = 'acme_router'
+      account.credentials = {
+        api_key: 'sk-cc',
+        account_mode: 'standard',
+        api_protocol: 'adaptive',
+        base_url: 'https://relay.example.com/v1',
+        api_base_urls: {
+          chat_completions: 'https://relay.example.com/v1',
+          anthropic: 'https://relay.example.com'
+        },
+        protocol_rules: [{ pattern: 'custom-*', protocol: 'anthropic' }]
+      }
+      updateAccountMock.mockReset().mockResolvedValue(account)
+      return account
+    }
+
+    it('preserves stored endpoints and rules on submit', async () => {
+      const wrapper = mountModal(commandCodeAccount())
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+      expect(updateAccountMock).toHaveBeenCalledTimes(1)
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+        account_mode: 'standard',
+        api_protocol: 'adaptive',
+        base_url: 'https://relay.example.com/v1',
+        api_base_urls: {
+          chat_completions: 'https://relay.example.com/v1',
+          anthropic: 'https://relay.example.com'
+        },
+        protocol_rules: [{ pattern: 'custom-*', protocol: 'anthropic' }]
+      })
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.api_base_urls).not.toHaveProperty('responses')
+    })
+
+    it('offers the provider modes and keeps customised endpoints when switching mode', async () => {
+      const wrapper = mountModal(commandCodeAccount())
+      const modeButtons = wrapper.get('[data-testid="edit-generic-account-mode"]').findAll('button')
+      expect(modeButtons.map(button => button.text())).toEqual(['standard', 'team'])
+      await modeButtons[1].trigger('click')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+        account_mode: 'team',
+        // 自定义端点与规则不是上一模式的默认值，切换模式时保留。
+        api_base_urls: {
+          chat_completions: 'https://relay.example.com/v1',
+          anthropic: 'https://relay.example.com'
+        },
+        protocol_rules: [{ pattern: 'custom-*', protocol: 'anthropic' }]
+      })
     })
   })
 
@@ -1600,25 +1615,6 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_mode).toBe('http_bridge')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_oauth_responses_websockets_v2_enabled).toBe(true)
-  })
-
-  it('hydrates and submits Kiro OAuth credit unit price in extra', async () => {
-    const account = buildKiroOAuthAccount()
-    updateAccountMock.mockReset()
-    checkMixedChannelRiskMock.mockReset()
-    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
-    updateAccountMock.mockResolvedValue(account)
-
-    const wrapper = mountModal(account)
-    const input = wrapper.get<HTMLInputElement>('[data-testid="kiro-credit-unit-price-usd"]')
-
-    expect(input.element.value).toBe('0.071')
-
-    await input.setValue('0.08')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-
-    expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.kiro_credit_unit_price_usd).toBe(0.08)
   })
 
   it('allows saving apikey account when backend redacted api_key but credentials_status reports it exists', async () => {

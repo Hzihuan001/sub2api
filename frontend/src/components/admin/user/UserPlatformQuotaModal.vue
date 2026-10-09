@@ -3,7 +3,6 @@
     :show="show"
     :title="t('admin.users.platformQuota.title')"
     width="wide"
-    :close-on-escape="!confirmDialog.show"
     @close="$emit('close')"
   >
     <div v-if="user" class="space-y-4">
@@ -17,92 +16,86 @@
         {{ t('admin.users.platformQuota.subtitle', { email: user.email }) }}
       </p>
       <div v-if="loading" class="py-10 text-center text-gray-500">{{ t('common.loading') }}</div>
-      <div v-else class="space-y-3">
-        <div class="overflow-x-auto">
-          <table class="min-w-full text-sm">
-            <thead>
-              <tr class="border-b border-gray-200 text-gray-700 dark:border-dark-700 dark:text-gray-300">
-                <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.platform') }}</th>
-                <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.daily') }}</th>
-                <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.weekly') }}</th>
-                <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.monthly') }}</th>
-                <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.usage') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in quotas" :key="row.platform" class="border-b border-gray-100 dark:border-dark-800">
-                <td class="px-3 py-2 font-mono text-gray-900 dark:text-white">{{ row.platform }}</td>
-                <td class="px-3 py-2">
-                  <div class="flex items-center gap-1">
-                    <input
-                      v-model.number="row.daily_limit_usd"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      class="input w-24"
-                      :placeholder="t('admin.users.platformQuota.placeholder')"
-                    />
-                    <button
-                      type="button"
-                      class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
-                      :disabled="!!resetting[`${row.platform}.daily`]"
-                      :title="t('admin.users.platformQuota.reset.button')"
-                      @click="onReset(row.platform, 'daily')"
-                    >↻</button>
-                  </div>
-                </td>
-                <td class="px-3 py-2">
-                  <div class="flex items-center gap-1">
-                    <input
-                      v-model.number="row.weekly_limit_usd"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      class="input w-24"
-                      :placeholder="t('admin.users.platformQuota.placeholder')"
-                    />
-                    <button
-                      type="button"
-                      class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
-                      :disabled="!!resetting[`${row.platform}.weekly`]"
-                      :title="t('admin.users.platformQuota.reset.button')"
-                      @click="onReset(row.platform, 'weekly')"
-                    >↻</button>
-                  </div>
-                </td>
-                <td class="px-3 py-2">
-                  <div class="flex items-center gap-1">
-                    <input
-                      v-model.number="row.monthly_limit_usd"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      class="input w-24"
-                      :placeholder="t('admin.users.platformQuota.placeholder')"
-                    />
-                    <button
-                      type="button"
-                      class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
-                      :disabled="!!resetting[`${row.platform}.monthly`]"
-                      :title="t('admin.users.platformQuota.reset.button')"
-                      @click="onReset(row.platform, 'monthly')"
-                    >↻</button>
-                  </div>
-                </td>
-                <td class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                  {{ formatUsage(row.daily_usage_usd) }} / {{ formatUsage(row.weekly_usage_usd) }} / {{ formatUsage(row.monthly_usage_usd) }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="text-xs text-gray-500">{{ t('admin.users.platformQuota.hint') }}</p>
-        <div>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            @click="onClearAll"
-          >
+      <div v-else class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-200 text-gray-700 dark:border-dark-700 dark:text-gray-300">
+              <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.platform') }}</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.daily') }}</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.weekly') }}</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.monthly') }}</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.usage') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in quotas" :key="row.platform" class="border-b border-gray-100 dark:border-dark-800">
+              <td class="px-3 py-2 font-mono text-gray-900 dark:text-white">{{ row.platform }}</td>
+              <td class="px-3 py-2">
+                <div class="flex items-center gap-1">
+                  <input
+                    v-model.number="row.daily_limit_usd"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input w-24"
+                    :placeholder="t('admin.users.platformQuota.placeholder')"
+                  />
+                  <button
+                    type="button"
+                    class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
+                    :disabled="!!resetting[`${row.platform}.daily`] || !savedConfigured.has(row.platform)"
+                    :title="t(savedConfigured.has(row.platform) ? 'admin.users.platformQuota.reset.button' : 'admin.users.platformQuota.reset.unavailable')"
+                    @click="onReset(row.platform, 'daily')"
+                  >↻</button>
+                </div>
+              </td>
+              <td class="px-3 py-2">
+                <div class="flex items-center gap-1">
+                  <input
+                    v-model.number="row.weekly_limit_usd"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input w-24"
+                    :placeholder="t('admin.users.platformQuota.placeholder')"
+                  />
+                  <button
+                    type="button"
+                    class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
+                    :disabled="!!resetting[`${row.platform}.weekly`] || !savedConfigured.has(row.platform)"
+                    :title="t(savedConfigured.has(row.platform) ? 'admin.users.platformQuota.reset.button' : 'admin.users.platformQuota.reset.unavailable')"
+                    @click="onReset(row.platform, 'weekly')"
+                  >↻</button>
+                </div>
+              </td>
+              <td class="px-3 py-2">
+                <div class="flex items-center gap-1">
+                  <input
+                    v-model.number="row.monthly_limit_usd"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input w-24"
+                    :placeholder="t('admin.users.platformQuota.placeholder')"
+                  />
+                  <button
+                    type="button"
+                    class="text-xs text-gray-400 hover:text-amber-500 disabled:opacity-50"
+                    :disabled="!!resetting[`${row.platform}.monthly`] || !savedConfigured.has(row.platform)"
+                    :title="t(savedConfigured.has(row.platform) ? 'admin.users.platformQuota.reset.button' : 'admin.users.platformQuota.reset.unavailable')"
+                    @click="onReset(row.platform, 'monthly')"
+                  >↻</button>
+                </div>
+              </td>
+              <td class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ formatUsage(row.daily_usage_usd) }} / {{ formatUsage(row.weekly_usage_usd) }} / {{ formatUsage(row.monthly_usage_usd) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="mt-3 text-xs text-gray-500">{{ t('admin.users.platformQuota.hint') }}</p>
+        <div class="mt-3">
+          <button type="button" class="btn btn-secondary text-sm" @click="onClearAll">
             {{ t('admin.users.platformQuota.clearAll') }}
           </button>
         </div>
@@ -119,16 +112,6 @@
       </div>
     </template>
   </BaseDialog>
-
-  <ConfirmDialog
-    :show="confirmDialog.show"
-    :title="confirmDialog.title"
-    :message="confirmDialog.message"
-    :confirm-text="confirmDialog.confirmText"
-    :cancel-text="t('common.cancel')"
-    @confirm="confirmPendingAction"
-    @cancel="cancelPendingAction"
-  />
 </template>
 
 <script setup lang="ts">
@@ -136,10 +119,9 @@ import { ref, reactive, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import { PLATFORM_QUOTA_PLATFORMS } from '@/api/admin/users'
+import { platformQuotaPlatforms } from '@/api/admin/users'
 import type { AdminUser, PlatformQuotaItem, PlatformQuotaPlatform, PlatformQuotaWindow } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
 const props = defineProps<{ show: boolean; user: AdminUser | null }>()
 const emit = defineEmits(['close', 'success'])
@@ -165,22 +147,18 @@ const loading = ref(false)
 const submitting = ref(false)
 const resetting = reactive<Record<string, boolean>>({})
 const quotas = ref<QuotaRow[]>([])
+// 已保存且至少配置了一档限额的平台。只有这些平台在后端有配额记录，重置用量窗口才有对象。
+const savedConfigured = ref<Set<PlatformQuotaPlatform>>(new Set())
 
-type PendingConfirmAction = () => void | Promise<void>
-
-const confirmDialog = reactive<{
-  show: boolean
-  title: string
-  message: string
-  confirmText: string
-  pending: PendingConfirmAction | null
-}>({
-  show: false,
-  title: '',
-  message: '',
-  confirmText: '',
-  pending: null,
-})
+function configuredPlatforms(items: PlatformQuotaItem[]): Set<PlatformQuotaPlatform> {
+  const out = new Set<PlatformQuotaPlatform>()
+  for (const it of items) {
+    if (it.daily_limit_usd != null || it.weekly_limit_usd != null || it.monthly_limit_usd != null) {
+      out.add(it.platform)
+    }
+  }
+  return out
+}
 
 function emptyRow(p: PlatformQuotaPlatform): QuotaRow {
   return {
@@ -197,7 +175,7 @@ function emptyRow(p: PlatformQuotaPlatform): QuotaRow {
 function normalize(items: PlatformQuotaItem[]): QuotaRow[] {
   const byPlatform = new Map<PlatformQuotaPlatform, PlatformQuotaItem>()
   for (const it of items) byPlatform.set(it.platform, it)
-  return PLATFORM_QUOTA_PLATFORMS.map((p) => {
+  return platformQuotaPlatforms().map((p) => {
     const it = byPlatform.get(p)
     if (!it) return emptyRow(p)
     return {
@@ -217,35 +195,17 @@ function formatUsage(n: number): string {
   return n.toFixed(2)
 }
 
-function openConfirmDialog(message: string, pending: PendingConfirmAction) {
-  confirmDialog.title = t('admin.users.platformQuota.title')
-  confirmDialog.message = message
-  confirmDialog.confirmText = t('common.confirm')
-  confirmDialog.pending = pending
-  confirmDialog.show = true
-}
-
-async function confirmPendingAction() {
-  const pending = confirmDialog.pending
-  confirmDialog.show = false
-  confirmDialog.pending = null
-  if (pending) await pending()
-}
-
-function cancelPendingAction() {
-  confirmDialog.show = false
-  confirmDialog.pending = null
-}
-
 async function load() {
   if (!props.user) return
   loading.value = true
   try {
     const data = await adminAPI.users.getPlatformQuotas(props.user.id)
     quotas.value = normalize(data.platform_quotas || [])
+    savedConfigured.value = configuredPlatforms(data.platform_quotas || [])
   } catch {
     appStore.showError(t('admin.users.platformQuota.loadFailed'))
-    quotas.value = PLATFORM_QUOTA_PLATFORMS.map(emptyRow)
+    quotas.value = platformQuotaPlatforms().map(emptyRow)
+    savedConfigured.value = new Set()
   } finally {
     loading.value = false
   }
@@ -259,10 +219,8 @@ watch(
 function onClearAll() {
   // 二次确认：一键清空全部平台的 daily/weekly/monthly 限额属于高风险批量操作，
   // 误点后所有平台变为"无限额"，且本地无 undo 机制（需要逐个手动重填或取消保存）。
-  openConfirmDialog(t('admin.users.platformQuota.clearAllConfirm'), clearAllLimits)
-}
-
-function clearAllLimits() {
+  const confirmed = window.confirm(t('admin.users.platformQuota.clearAllConfirm'))
+  if (!confirmed) return
   for (const row of quotas.value) {
     row.daily_limit_usd = null
     row.weekly_limit_usd = null
@@ -317,19 +275,16 @@ function normalizeLimit(v: number | null | undefined): number | null {
 async function onReset(platform: PlatformQuotaPlatform, quotaWindow: PlatformQuotaWindow) {
   if (!props.user) return
   const windowLabel = t(`admin.users.platformQuota.window${quotaWindow.charAt(0).toUpperCase() + quotaWindow.slice(1)}`)
-  openConfirmDialog(
-    t('admin.users.platformQuota.reset.confirm', { platform, window: windowLabel }),
-    () => resetWindow(platform, quotaWindow, windowLabel)
+  const confirmed = window.confirm(
+    t('admin.users.platformQuota.reset.confirm', { platform, window: windowLabel })
   )
-}
-
-async function resetWindow(platform: PlatformQuotaPlatform, quotaWindow: PlatformQuotaWindow, windowLabel: string) {
-  if (!props.user) return
+  if (!confirmed) return
   const key = `${platform}.${quotaWindow}`
   resetting[key] = true
   try {
     const data = await adminAPI.users.resetPlatformQuotaWindow(props.user.id, platform, quotaWindow)
     quotas.value = normalize(data.platform_quotas || [])
+    savedConfigured.value = configuredPlatforms(data.platform_quotas || [])
     appStore.showSuccess(t('admin.users.platformQuota.reset.success', { platform, window: windowLabel }))
   } catch (e: any) {
     appStore.showError(e?.response?.data?.message || t('admin.users.platformQuota.reset.failed'))
