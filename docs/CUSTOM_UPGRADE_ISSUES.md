@@ -12,7 +12,7 @@
 - **候选分支**：`codex/v0.2.15-merge-integration`
 - **工作目录**：`D:\projects\sub2api-custom-upgrade-v0.2.15`
 - **当前状态**：代码合并、本地质量门禁、代码推送和生产部署已完成
-- **生产状态**：主站、L1、COS 均运行 `0.2.15-custom.1`；应用容器健康，数据库、Redis、卷和网络未重建
+- **生产状态**：主站运行 `0.2.15-custom.2`；L1、COS 保持原版本；应用容器健康，数据库、Redis、卷和网络未重建
 
 ## 记录规则
 
@@ -21,6 +21,15 @@
    通过“整文件选 ours/theirs”静默覆盖。
 3. 数据库迁移只允许追加；本轮未确认迁移前不得推送或部署。
 4. 每条记录必须说明是否已经验证，未验证不得写成已解决。
+
+## 2026-10-11 — `custom-0.2.15.2` 发布与生产部署
+
+- **现象/原因**：v0.2.15 首次候选遗漏独立生图会话中的工作台改动；GitHub Fork 的 Actions dispatch 被仓库策略拒绝。
+- **处理**：在 v0.2.15 候选上恢复 image-studio 1K/2K/4K/自定义尺寸、批量任务尺寸持久化与重试、Gemini 尺寸透传、API-key 图片像素元数据解析、用户隔离画廊和界面尺寸隐藏；本地通过同等质量门禁后直接构建并推送 GHCR。
+- **提交/镜像**：`eb509b8ef`、标签 `custom-0.2.15.2`；`ghcr.io/hzihuan001/sub2api@sha256:7b49d3d555c3427917fbfc9315497214a74df3ddb49c6a9c17ee5ecf13726eab`。
+- **备份**：生产备份目录 `/root/sub2api-release-backups/custom-0.2.15.2-20261010T182500Z`；PostgreSQL 自定义格式 dump 通过 `pg_restore --list` 校验（1320 条目录项）。
+- **验证**：后端受影响测试、前端全量 Vitest `2915/2915`、typecheck、lint、生产构建、custom isolation 和本地 Docker 验收通过；生产主站及 L1/COS 健康端点均返回 200/`status=ok`，主站容器 healthy、重启次数 0，最近日志无 panic/fatal/migration/database/redis 错误。
+- **部署范围**：仅替换主站应用镜像并执行 `docker compose up -d --no-deps sub2api`；PostgreSQL、Redis、卷、网络和 OpenResty 未重建。失败时恢复 Compose 备份中的旧 digest 即可回滚。
 
 ## 2026-10-10 — v0.2.15 首次合并检查
 

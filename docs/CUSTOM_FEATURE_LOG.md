@@ -8,21 +8,22 @@
 
 ## 当前状态（2026-10-11）
 
-- 最近发布：`custom-0.2.15.1`，官方基线 `v0.2.15`。
-- 当前生产镜像：`ghcr.io/hzihuan001/sub2api@sha256:ec2e0efb603d8b364cdfccacb8dfa2449d8071116853487849abb9f540b4511e`。
-- 当前升级工作分支：`codex/v0.2.15-image-studio-sync`；在 `codex/v0.2.15-merge-integration` 上补回 image-studio 独立补丁，尚未发布。
+- 最近发布：`custom-0.2.15.2`，官方基线 `v0.2.15`。
+- 当前生产镜像：`ghcr.io/hzihuan001/sub2api@sha256:7b49d3d555c3427917fbfc9315497214a74df3ddb49c6a9c17ee5ecf13726eab`。
+- 当前升级工作分支：`codex/v0.2.15-image-studio-sync`；已补回 image-studio 独立补丁并完成生产部署。
 - 长期集成基线：`origin/custom/integration`，当前为 `fd7c1b914`。
 - 本文件和项目状态文档不包含服务器凭据、API Key、私钥、`.env` 或生产数据库内容。
 
-### 2026-10-11 — 未发布 — v0.2.15 生图工作台补丁回补
+### 2026-10-11 — `custom-0.2.15.2` — v0.2.15 生图工作台补丁回补与发布
 
 - **原因**：v0.2.15 合并与发布时遗漏了独立生图会话中的工作台改动。
 - **处理**：按功能边界移植 1K/2K/4K/自定义尺寸、批量尺寸持久化与重试、Gemini `imageConfig` 透传、API-key 图片实际像素内部解析、按用户隔离的 IndexedDB v2 画廊，以及不在界面展示实际尺寸的行为；未带入旧版本号、旧发布记录或代理商代码。
 - **提交来源**：`045d95cbb`、`7a676681b`、`efc19f645`（仅选择生图代码和测试，按 v0.2.15 当前结构合并）。
 - **数据库/迁移**：无新增后端迁移；沿用批量 item `input_payload` 保存尺寸，旧任务无尺寸时回退 1K。
-- **验证**：后端 image/Gemini 定向测试通过；前端生图定向测试 `19/19`、typecheck、lint、生产构建和 custom isolation 检查通过。Docker 镜像联合验收待本地构建完成后记录。
-- **发布状态**：未推送、未创建新标签、未部署；当前生产仍使用 `custom-0.2.15.1`。
-- **回滚**：丢弃本分支即可恢复到已发布 v0.2.15；无新增数据库恢复要求。
+- **验证**：后端 image/Gemini 定向测试通过；前端生图定向测试 `19/19`，全量 Vitest `2915/2915`，typecheck、lint、生产构建、custom isolation 和本地 Docker 联合验收均通过。
+- **发布**：提交 `eb509b8ef`，标签 `custom-0.2.15.2`，GHCR 镜像 digest 为 `sha256:7b49d3d555c3427917fbfc9315497214a74df3ddb49c6a9c17ee5ecf13726eab`；GitHub Actions 因 Fork 工作流限制未能 dispatch，使用已通过同等质量门禁的本地构建镜像发布。
+- **生产部署**：OVH 主站已只重建应用容器；`https://ai.moshu.cloud/health`、L1、COS 健康检查均返回 `{"status":"ok"}`，主站容器 healthy、重启次数为 0，PostgreSQL/Redis 容器 ID 保持不变。备份目录：`/root/sub2api-release-backups/custom-0.2.15.2-20261010T182500Z`。
+- **回滚**：恢复生产 Compose 备份中的旧 digest 后仅重建主站应用容器；本次无新增数据库迁移，不需要回滚数据库。
 
 ## 当前功能清单
 

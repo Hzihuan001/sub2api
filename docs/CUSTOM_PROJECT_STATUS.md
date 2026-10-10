@@ -13,8 +13,8 @@
 | --- | --- |
 | 记录日期 | 2026-10-11 |
 | 官方基线 | `v0.2.15` / `f2669c8cf62555cd92389b3f55920e9e6e7c6ff2` |
-| 最近发布版本 | `0.2.15-custom.1` |
-| 最近发布标签 | `custom-0.2.15.1` / `24b8228af` |
+| 最近发布版本 | `0.2.15-custom.2` |
+| 最近发布标签 | `custom-0.2.15.2` / `eb509b8ef` |
 | 当前工作分支 | `codex/v0.2.15-image-studio-sync`（基于已发布 v0.2.15 候选） |
 | 协作父分支/工作树 | `codex/v0.2.15-merge-integration` / 已发布候选；生产未被本次补丁修改 |
 | 同步框架 HEAD | `1fa5f4478`（本文档记录前；文档提交后的当前 HEAD 以 `git log` 为准） |
@@ -22,8 +22,8 @@
 | 当前隔离改造 PR | 草稿 PR #1（如仍未合并）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 生产镜像 | `ghcr.io/hzihuan001/sub2api@sha256:ec2e0efb603d8b364cdfccacb8dfa2449d8071116853487849abb9f540b4511e` |
-| 当前发布状态 | v0.2.15-custom.1 已部署；image-studio 回补分支尚未发布 |
+| 生产镜像 | `ghcr.io/hzihuan001/sub2api@sha256:7b49d3d555c3427917fbfc9315497214a74df3ddb49c6a9c17ee5ecf13726eab` |
+| 当前发布状态 | v0.2.15-custom.2 已部署；image-studio 回补已生效 |
 
 生产健康检查最近确认通过的入口：
 
@@ -35,11 +35,11 @@
 
 ### 当前会话摘要（2026-10-11）
 
-- **Feature ID**：`image-studio`；状态：`in-progress`（已移植到 v0.2.15 候选，待 Docker 验收、提交和发布）。
+- **Feature ID**：`image-studio`；状态：`released`（已移植到 v0.2.15、完成 Docker 验收并发布）。
 - **实现边界**：将浏览器端生图画廊改为按认证用户隔离的 IndexedDB v2 命名空间；账号切换时清理旧用户的内存结果、预览和进行中的生成，并对异步读取/保存做作用域校验；工作台透传 1K/2K/4K/自定义尺寸与扩展质量档位，内部测量并保存最终文件实际像素，但界面不展示实际尺寸、不弹出尺寸不匹配数字提示，也不做本地放大；Gemini 原生批量请求转发 `generationConfig.imageConfig.aspectRatio` 与 `imageSize`；API-key Images 非流式响应从 Base64/内联 data URL 回填实际尺寸元数据；批量 item 保存请求尺寸并在失败重试中复用。
 - **数据与兼容**：没有后端数据库迁移；旧的 v1 全局 IndexedDB 保留但不自动迁移/读取，以避免跨账号显示历史内容。
-- **验证证据**：image-studio/API/size/视图前端 4 个测试文件 `19/19`；`pnpm run typecheck`、定向 ESLint、生产构建、`scripts/check-custom-isolation.py --skip-generated --base-ref origin/custom/integration --upstream-ref v0.2.15`、Go 1.27.2 图片/Gemini 定向测试均通过。Docker 联合验收待本地构建完成后补记。
-- **已知限制/下一步**：工作台只在内部验证最终文件像素，不能证明模型内部原生生成；CPA/ChatGPT OAuth 上游仍可能忽略或改写 4K 请求，界面不显示实际尺寸，也不会伪造或自动放大。要保证原生 4K，仍需 CPA 适配器的出站/返回证据或直接使用支持该尺寸的官方 Images API-key 路径。通过 Docker 验收后再决定是否创建 `custom-0.2.15.2` 发布坐标；在独立补丁栈验收前继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
+- **验证证据**：image-studio/API/size/视图前端 4 个测试文件 `19/19`；全量 Vitest `2915/2915`；`pnpm run typecheck`、lint、生产构建、`scripts/check-custom-isolation.py --skip-generated --base-ref origin/custom/integration --upstream-ref v0.2.15`、Go 1.27.2 图片/Gemini 定向测试和本地 Docker 联合验收均通过。
+- **已知限制/下一步**：工作台只在内部验证最终文件像素，不能证明模型内部原生生成；CPA/ChatGPT OAuth 上游仍可能忽略或改写 4K 请求，界面不显示实际尺寸，也不会伪造或自动放大。要保证原生 4K，仍需 CPA 适配器的出站/返回证据或直接使用支持该尺寸的官方 Images API-key 路径。下一次官方升级继续从 `custom/integration` 建立独立升级分支，并复用 feature isolation 检查。
 
 ## 2. 当前定制功能边界
 
