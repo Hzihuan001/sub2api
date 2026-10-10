@@ -11,8 +11,8 @@
 - **定制基线**：`origin/custom/integration` / `fd7c1b914`
 - **候选分支**：`codex/v0.2.15-merge-integration`
 - **工作目录**：`D:\projects\sub2api-custom-upgrade-v0.2.15`
-- **当前状态**：代码合并与本地质量门禁已完成；Docker 验收完成后进入推送、镜像发布和分阶段部署
-- **生产状态**：保持不变
+- **当前状态**：代码合并、本地质量门禁、代码推送和生产部署已完成
+- **生产状态**：主站、L1、COS 均运行 `0.2.15-custom.1`；应用容器健康，数据库、Redis、卷和网络未重建
 
 ## 记录规则
 
@@ -135,7 +135,24 @@
 - [x] 复核 operator、Prompt Audit、Moshu 生图/批量生图、branding、管理员使用记录
 - [x] 检查 v0.2.15 新增 Cline/Command Code 不被定制平台过滤逻辑误伤
 - [x] 本地 Docker 验收
-- [ ] 人工确认后才推送、构建镜像或部署
+- [x] 人工确认后推送、构建镜像并分阶段部署
+
+## 12. 发布与生产部署记录
+
+- 分支已推送：`codex/v0.2.15-merge-integration`；标签：`custom-0.2.15.1`。
+- 本地 GHCR 推送被 GitHub 令牌拒绝（令牌缺少 `write:packages`）；仓库 Actions 状态接口显示
+  已启用，但手动 dispatch 返回 disabled，未将此异常伪装成 CI 成功。
+- 为不阻塞已批准的上线，使用同一通过质量门禁的 `linux/amd64` 镜像直接安全传输到 OVH，
+  镜像内容 ID：`sha256:ec2e0efb603d8b364cdfccacb8dfa2449d8071116853487849abb9f540b4511e`；
+  标签与 OCI 版本为 `0.2.15-custom.1`，提交为 `24b8228afbbf84c572b068ac4d1157b184f774db`。
+- 生产备份目录：`/opt/sub2api-backups/v0.2.15-custom.1-20261010T053925Z`，包括三份
+  PostgreSQL dump、应用/数据库/Redis 数据归档、Compose 文件、旧容器检查信息和校验和。
+- 部署顺序：主站 → L1 → COS；每站仅 `docker compose up -d --no-deps` 应用服务。
+  三站 `/health` 内外部检查均返回 HTTP 200，容器均 healthy、重启次数为 0，最近 15 分钟无
+  panic、fatal、migration failed、database error 或 redis error。
+- 当前 Compose 使用本机已加载的 `ghcr.io/hzihuan001/sub2api:0.2.15-custom.1` 标签，
+  不是 GHCR 不可变 digest。补齐 `write:packages` 后，应先将该 tag 发布到 GHCR，再把三套
+  Compose 固定为 GHCR digest；在此之前不要执行 `docker compose pull` 覆盖本机镜像。
 
 ## 10. 本轮前端全量测试维护说明
 
