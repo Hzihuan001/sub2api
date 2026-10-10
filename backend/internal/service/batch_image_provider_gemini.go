@@ -267,6 +267,15 @@ type geminiFileData struct {
 
 type geminiGenerationConfig struct {
 	ResponseModalities []string `json:"responseModalities"`
+	// ImageConfig is optional because older callers do not provide image
+	// generation dimensions. Gemini's GenerateContent schema accepts the
+	// imageConfig object only for image-capable models.
+	ImageConfig *geminiImageConfig `json:"imageConfig,omitempty"`
+}
+
+type geminiImageConfig struct {
+	AspectRatio string `json:"aspectRatio,omitempty"`
+	ImageSize   string `json:"imageSize,omitempty"`
 }
 
 func BuildGeminiBatchJSONL(input BatchImageInput) ([]byte, error) {
@@ -299,8 +308,9 @@ func BuildGeminiBatchJSONL(input BatchImageInput) ([]byte, error) {
 			return nil, err
 		}
 
-		// TODO(batch-image): add response_mime_type/aspect_ratio/image_size once the
-		// Gemini batch image REST shape is stabilized for those options.
+		// Gemini's native GenerateContent imageConfig only defines aspectRatio and
+		// imageSize. ResponseMimeType has no field in this image config and is
+		// intentionally not emitted in this request shape.
 		line := geminiJSONLLine{
 			Key: customID,
 			Request: geminiGenerateRequest{
@@ -309,6 +319,7 @@ func BuildGeminiBatchJSONL(input BatchImageInput) ([]byte, error) {
 				}},
 				GenerationConfig: geminiGenerationConfig{
 					ResponseModalities: []string{"TEXT", "IMAGE"},
+					ImageConfig:        geminiBatchImageConfig(input),
 				},
 			},
 		}
@@ -317,6 +328,20 @@ func BuildGeminiBatchJSONL(input BatchImageInput) ([]byte, error) {
 		}
 	}
 	return buf.Bytes(), nil
+}
+
+// geminiBatchImageConfig keeps the optional imageConfig object absent for
+// legacy requests, while forwarding dimensions when the caller supplied them.
+// omitempty on the fields prevents empty values from being sent upstream.
+func geminiBatchImageConfig(input BatchImageInput) *geminiImageConfig {
+	config := &geminiImageConfig{
+		AspectRatio: strings.TrimSpace(input.AspectRatio),
+		ImageSize:   strings.ToUpper(strings.TrimSpace(input.ImageSize)),
+	}
+	if config.AspectRatio == "" && config.ImageSize == "" {
+		return nil
+	}
+	return config
 }
 
 func batchImageGeminiParts(prompt string, refs []BatchImageReference) ([]geminiPart, error) {

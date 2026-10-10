@@ -48,6 +48,8 @@ export interface BatchImageJob {
   status: BatchImageStatus
   model: string
   provider: string
+  /** Requested tier or concrete WIDTHxHEIGHT dimensions, when returned by the server. */
+  image_size?: string | null
   /** Execution mode returned by newer servers (for example `managed_fanout`). */
   execution_mode?: string | null
   /** Maximum number of single-image requests run in parallel for managed jobs. */
@@ -70,6 +72,8 @@ export interface BatchImageItem {
   source_task_name?: string
   custom_id: string
   status: string
+  /** Requested tier or concrete dimensions persisted with the item. */
+  image_size?: string | null
   prompt_preview?: string | null
   mime_type: string | null
   file_extension: string | null

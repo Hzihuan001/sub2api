@@ -101,6 +101,61 @@ func TestBuildGeminiBatchJSONL_WritesReferenceImages(t *testing.T) {
 	require.Equal(t, "gs://bucket/refs/style.jpg", fileData["fileUri"])
 }
 
+func TestBuildGeminiBatchJSONL_WritesOptionalImageConfig(t *testing.T) {
+	input := validGeminiBatchInput()
+	input.AspectRatio = " 16:9 "
+	input.ImageSize = " 2k "
+	input.ResponseMimeType = "image/jpeg"
+
+	jsonl, err := BuildGeminiBatchJSONL(input)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(jsonl), &got))
+	request := got["request"].(map[string]any)
+	config := request["generationConfig"].(map[string]any)
+	imageConfig := config["imageConfig"].(map[string]any)
+	require.Equal(t, "16:9", imageConfig["aspectRatio"])
+	require.Equal(t, "2K", imageConfig["imageSize"])
+	// response_mime_type is not part of Gemini's GenerateContent imageConfig.
+	_, hasResponseMimeType := imageConfig["responseMimeType"]
+	require.False(t, hasResponseMimeType)
+	_, hasResponseFormat := config["responseFormat"]
+	require.False(t, hasResponseFormat)
+}
+
+func TestBuildGeminiBatchJSONL_OmitsImageConfigWhenUnset(t *testing.T) {
+	input := validGeminiBatchInput()
+	input.AspectRatio = " \t"
+	input.ImageSize = "\n"
+	input.ResponseMimeType = "image/jpeg"
+
+	jsonl, err := BuildGeminiBatchJSONL(input)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(jsonl), &got))
+	config := got["request"].(map[string]any)["generationConfig"].(map[string]any)
+	_, hasImageConfig := config["imageConfig"]
+	require.False(t, hasImageConfig)
+}
+
+func TestBuildGeminiBatchJSONL_OmitsEmptyImageConfigFields(t *testing.T) {
+	input := validGeminiBatchInput()
+	input.ImageSize = "2K"
+
+	jsonl, err := BuildGeminiBatchJSONL(input)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(jsonl), &got))
+	config := got["request"].(map[string]any)["generationConfig"].(map[string]any)
+	imageConfig := config["imageConfig"].(map[string]any)
+	_, hasAspectRatio := imageConfig["aspectRatio"]
+	require.False(t, hasAspectRatio)
+	require.Equal(t, "2K", imageConfig["imageSize"])
+}
+
 func TestGeminiProvider_SubmitUploadsJSONLThenCreatesBatch(t *testing.T) {
 	client := &fakeGeminiBatchClient{
 		uploaded: &GeminiUploadedFile{Name: "files/input-jsonl"},

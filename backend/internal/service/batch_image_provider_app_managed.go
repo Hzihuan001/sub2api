@@ -440,13 +440,23 @@ func (p *appManagedBatchImageProvider) cancelPath(batchID string) string {
 
 func managedImageSize(value string) string {
 	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "1K":
+		return "1024x1024"
 	case "2K":
 		return "2048x2048"
 	case "4K":
-		return "4096x4096"
+		// The supported 4K contract is capped at 3840x2160. Keep the
+		// tier's default on that legal landscape canvas instead of emitting
+		// an unsupported 4096x4096 request.
+		return "3840x2160"
 	case "512", "512X512":
 		return "512x512"
 	default:
+		if normalized, ok := normalizeBatchImageSize(value); ok {
+			if strings.Contains(normalized, "x") {
+				return normalized
+			}
+		}
 		return "1024x1024"
 	}
 }

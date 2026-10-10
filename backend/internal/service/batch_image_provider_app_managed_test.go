@@ -158,3 +158,22 @@ func TestAppManagedBatchImageProviderDoesNotSilentlyDropFileReference(t *testing
 	require.NoError(t, err)
 	require.Contains(t, string(result), "REFERENCE_UNAVAILABLE")
 }
+
+func TestManagedImageSizeSupportsTiersAndCustomDimensions(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "1K", input: "1K", want: "1024x1024"},
+		{name: "2K", input: "2K", want: "2048x2048"},
+		{name: "4K", input: "4K", want: "3840x2160"},
+		{name: "custom", input: "2160X3840", want: "2160x3840"},
+		{name: "legacy fallback", input: "", want: "1024x1024"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, managedImageSize(tt.input))
+		})
+	}
+}
