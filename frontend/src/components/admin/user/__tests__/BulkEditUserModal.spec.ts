@@ -83,6 +83,8 @@ describe('BulkEditUserModal', () => {
     await wrapper.get('[data-test="concurrency-input"]').setValue('5')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
+    await wrapper.get('[data-test="bulk-confirm-ok"]').trigger('click')
+    await flushPromises()
 
     expect(showError).toHaveBeenCalledWith(expected)
     expect(wrapper.emitted('close')).toBeUndefined()

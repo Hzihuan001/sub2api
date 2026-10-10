@@ -176,14 +176,13 @@ describe('admin AccountsView select all filtered results', () => {
     { name: 'clears the selection after every account succeeds', result: { total: 3, success: 3, failed: 0 }, expectedIds: [] },
     { name: 'keeps the original selection when failure details are missing', result: { total: 3, success: 2, failed: 1 }, expectedIds: [1, 2, 3] },
   ])('$name after a batch token refresh and table reload', async ({ result, expectedIds }) => {
+    vi.spyOn(globalThis, 'confirm').mockReturnValue(true)
     listAccounts.mockResolvedValue({ items: makeAccounts(3), total: 3, page: 1, page_size: 20, pages: 1 })
     batchRefresh.mockResolvedValue(result)
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="select-page"]').trigger('click')
     await wrapper.get('[data-test="refresh-token"]').trigger('click')
-    expect(batchRefresh).not.toHaveBeenCalled()
-    await wrapper.get('[data-test="confirm-action"]').trigger('click')
     await flushPromises()
 
     expect(batchRefresh).toHaveBeenCalledWith([1, 2, 3])
@@ -194,7 +193,6 @@ describe('admin AccountsView select all filtered results', () => {
     if (result.failed > 0) {
       expect(showError).toHaveBeenCalledWith('admin.accounts.bulkActions.partialSuccess')
       await wrapper.get('[data-test="refresh-token"]').trigger('click')
-      await wrapper.get('[data-test="confirm-action"]').trigger('click')
       await flushPromises()
       expect(batchRefresh).toHaveBeenLastCalledWith(expectedIds)
     }

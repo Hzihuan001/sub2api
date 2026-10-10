@@ -3,10 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import AccountsView from '../AccountsView.vue'
 
-// 回归防护：request-batched-usage 只能传给父页面真会批量拉取的账号。
-// 一旦传了该回调，AccountUsageCell 就进入批量托管模式并放弃自身取数；
-// 若绑定条件与 accountSupportsBatchUsage 不一致（Kiro 曾因此永久显示 "-"），
-// 该平台的用量窗口会彻底失效。
+// 回归防护：父页面统一传递批量取数回调，回调内部按平台判断是否执行。
 const {
   listAccounts,
   listWithEtag,
@@ -179,16 +176,16 @@ describe('admin AccountsView batched usage wiring', () => {
     getAllGroups.mockResolvedValue([])
   })
 
-  it('批量托管只覆盖父页面支持批量的平台，Kiro 保留自身取数路径', async () => {
+  it('统一传递批量取数回调并由回调内部过滤不支持的平台', async () => {
     const wrapper = mountView()
     await flushPromises()
 
     // Anthropic OAuth 在 accountSupportsBatchUsage 名单内 → 交给批量
     expect(typeof capturedProps['101']?.requestBatchedUsage).toBe('function')
 
-    // Kiro 不在名单内 → 必须为 null，否则单元格会放弃取数并永久显示 "-"
-    expect(capturedProps['102']?.requestBatchedUsage).toBeNull()
-    expect(capturedProps['103']?.requestBatchedUsage).toBeNull()
+    // 不支持的平台也收到同一回调，由 queueBatchedUsage 内部安全返回。
+    expect(typeof capturedProps['102']?.requestBatchedUsage).toBe('function')
+    expect(typeof capturedProps['103']?.requestBatchedUsage).toBe('function')
 
     wrapper.unmount()
   })

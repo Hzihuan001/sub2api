@@ -35,7 +35,7 @@ features:
     owner: custom/usage-extras
     description: Admin-only usage presentation and API-key administration helpers.
     tests:
-      - backend/internal/handler/admin_usage.go
+      - backend/internal/handler/admin/usage_handler.go
       - frontend/src/views/admin
 
 policies:

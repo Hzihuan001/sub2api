@@ -6,11 +6,9 @@ import {
 } from '../platformColors'
 
 describe('platformColors', () => {
-  it('Kiro 平台使用独立紫色主题，不复用 Anthropic 橙色', () => {
-    expect(platformBadgeClass('kiro')).toContain('violet')
-    expect(platformTextClass('kiro')).toContain('violet')
-    expect(platformGradientClass('kiro')).toContain('from-violet-500')
-    expect(platformGradientClass('kiro')).toContain('to-fuchsia-500')
-    expect(platformBadgeClass('kiro')).not.toContain('orange')
+  it('uses the neutral theme for platforms that are not in the built-in catalog', () => {
+    expect(platformBadgeClass('unknown_platform')).toContain('slate')
+    expect(platformTextClass('unknown_platform')).toContain('primary')
+    expect(platformGradientClass('unknown_platform')).toContain('primary')
   })
 })

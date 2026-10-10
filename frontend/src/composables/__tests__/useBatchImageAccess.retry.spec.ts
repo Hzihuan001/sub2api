@@ -9,7 +9,7 @@ beforeEach(() => { vi.resetModules(); list.mockReset() })
 describe('batch image access lookup', () => {
   it('retries a failed lookup when another consumer requests access', async () => {
     list.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({
-      items: [{ status: 'active', group: { platform: 'gemini', allow_batch_image_generation: true } }], pages: 1,
+      items: [{ status: 'active', group: { status: 'active', platform: 'gemini', allow_batch_image_generation: true } }], pages: 1,
     })
     const { useBatchImageAccess } = await import('../useBatchImageAccess')
     const access = useBatchImageAccess()
