@@ -40,6 +40,26 @@ func TestNormalizeBatchImageSize(t *testing.T) {
 	}
 }
 
+func TestIsBatchImageSizeSupportedByModel(t *testing.T) {
+	for _, tc := range []struct {
+		model string
+		size  string
+		want  bool
+	}{
+		{model: "seedream-5.0-pro", size: "2K", want: true},
+		{model: "seedream-5.0-pro", size: "4K", want: false},
+		{model: "seedream-5.0-pro", size: "256x256", want: false},
+		{model: "seedream-5.0-pro", size: "960x960", want: true},
+		{model: "doubao-seedream-5-0-pro-260628", size: "2048x2048", want: true},
+		{model: "dola-seedream-5-0-pro-260628", size: "3072x1536", want: false},
+		{model: "gpt-image-2.5-sunburst", size: "3840x2160", want: true},
+	} {
+		t.Run(tc.model+"/"+tc.size, func(t *testing.T) {
+			require.Equal(t, tc.want, isBatchImageSizeSupportedByModel(tc.model, tc.size))
+		})
+	}
+}
+
 func TestBatchImageItemToPublicExposesRequestedImageSize(t *testing.T) {
 	payload, err := json.Marshal(managedBatchImageItemPayload{ImageSize: "3840X2160"})
 	require.NoError(t, err)

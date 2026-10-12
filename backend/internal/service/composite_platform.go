@@ -130,6 +130,8 @@ func DetectModelPlatform(model string) (string, bool) {
 	case strings.HasPrefix(normalized, "gpt-"),
 		strings.HasPrefix(normalized, "chatgpt-"),
 		strings.HasPrefix(normalized, "codex-"),
+		strings.Contains(normalized, "seedream-5.0-pro"),
+		strings.Contains(normalized, "seedream-5-0-pro"),
 		strings.HasPrefix(normalized, "text-embedding-"),
 		strings.HasPrefix(normalized, "text-moderation-"),
 		strings.HasPrefix(normalized, "omni-moderation-"),

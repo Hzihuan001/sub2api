@@ -71,7 +71,7 @@
               </div>
             </div>
 
-            <div v-if="inputImages.length" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <div v-if="inputImages.length && !nativeGeminiModel" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
               <label class="block">
                 <span class="input-label">{{ t('imageStudio.mask') }}</span>
                 <div class="mt-1 flex items-center gap-2">
@@ -338,10 +338,11 @@ const apiKeyOptions = computed(() => [
   ...apiKeys.value.map((key) => ({ value: String(key.id), label: `${key.name} · ${key.group?.name || key.group?.platform || '—'}` })),
 ])
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
+const nativeGeminiModel = computed(() => selectedKey.value?.group?.platform === 'gemini')
 const customSize = computed(() => normalizeImageStudioCustomSize(form.model, customWidth.value, customHeight.value))
 const requestSize = computed(() => resolveImageStudioRequestSize(form.model, form.size, customSize.value || ''))
 const referenceImageLimit = computed(() => {
-  if (isGeminiNanoBananaModel(form.model)) return 14
+  if (nativeGeminiModel.value || isGeminiNanoBananaModel(form.model)) return 14
   if (isSeedreamImageModel(form.model)) return 10
   return 4
 })
@@ -546,7 +547,7 @@ async function generate(): Promise<void> {
       size: requestSize.value, quality: form.quality, outputFormat: form.outputFormat,
       background: form.background, inputFidelity: form.inputFidelity,
       images: inputImages.value.map((item) => item.file), mask: maskFile.value,
-      nativeGemini: key.group?.platform === 'gemini' && form.model.trim().toLowerCase().startsWith('gemini-'),
+      nativeGemini: nativeGeminiModel.value,
     }, controller.signal)
     if (!isCurrentGeneration()) return
     const now = Date.now()
@@ -561,7 +562,8 @@ async function generate(): Promise<void> {
       if (!isCurrentGeneration()) return
       const metadata = {
         id: makeID(), createdAt: now + index, prompt: form.prompt.trim(), revisedPrompt: output.revisedPrompt,
-        model: form.model.trim(), size: requestSize.value, actualSize, outputFormat: form.outputFormat, apiKeyName: key.name,
+        model: form.model.trim(), size: requestSize.value, actualSize,
+        outputFormat: output.mimeType?.split('/')[1] || form.outputFormat, apiKeyName: key.name,
       }
       if (blob) {
         stored.push({ ...metadata, blob, bytes: blob.size })
@@ -732,6 +734,7 @@ watch(() => form.model, (model) => {
     removed.forEach((item) => URL.revokeObjectURL(item.url))
     if (inputImages.value.length === 0) clearMask()
   }
+  if (nativeGeminiModel.value && maskFile.value) clearMask()
 })
 watch(libraryScope, (scope, previousScope) => {
   if (scope === previousScope) return

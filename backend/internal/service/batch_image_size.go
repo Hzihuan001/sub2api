@@ -10,6 +10,11 @@ const (
 	batchImageMinDimension = 256
 	batchImageMaxDimension = 3840
 	batchImageMaxPixelArea = 3840 * 2160
+	batchImageSeedreamMinPixelArea = 921_600
+	// Seedream 5.0 Pro exposes the 2K/custom contract through compatible
+	// adapters; keep the API-side limit aligned with the workbench so callers
+	// cannot bypass it by submitting directly to the batch endpoint.
+	batchImageSeedreamMaxPixelArea = 4_624_220
 )
 
 // normalizeBatchImageSize validates the public batch image size contract and
@@ -46,4 +51,32 @@ func normalizeBatchImageSize(value string) (string, bool) {
 		return "", false
 	}
 	return fmt.Sprintf("%dx%d", width, height), true
+}
+
+// isBatchImageSizeSupportedByModel applies model-specific restrictions after
+// account model_mapping has been resolved. Generic size validation above is
+// intentionally provider-agnostic because GPT-image supports the full 4K
+// contract while Seedream 5.0 Pro does not.
+func isBatchImageSizeSupportedByModel(model, size string) bool {
+	if !isSeedreamImageGenerationModel(model) {
+		return true
+	}
+	normalized := strings.ToUpper(strings.TrimSpace(size))
+	if normalized == ImageBillingSize4K {
+		return false
+	}
+	if !strings.Contains(normalized, "X") {
+		return true
+	}
+	parts := strings.Split(normalized, "X")
+	if len(parts) != 2 {
+		return false
+	}
+	width, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
+	height, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if errW != nil || errH != nil || width <= 0 || height <= 0 {
+		return false
+	}
+	pixelArea := width * height
+	return pixelArea >= batchImageSeedreamMinPixelArea && pixelArea <= batchImageSeedreamMaxPixelArea
 }
