@@ -248,6 +248,35 @@
 - **回滚**：删除/回退本地提交即可；无数据库恢复要求，生产镜像与运行数据未变更。
 - **备注**：模型上线后必须实测 Gemini legacy `generateContent` 是否继续接受 `imageConfig`；若上游仅开放 Interactions API，需要另行增加适配。Seedream 的最终部署 ID、可用尺寸和返回格式以实际账号 provider 文档为准；批量列表仍要求账号映射和有效模型定价，不能仅凭前端显示判断已可生成。
 
+### 2026-10-13 — 未发布 — image-studio 联调前置优化
+
+- **需求**：继续降低两个新模型上线后的联调风险，补齐模型发现、参考图数量、原生 Gemini 批量比例和 Seedream 部署 ID覆盖。
+- **Feature ID**：`image-studio`
+- **实现边界**：提交 `97a9b8d7c`、`f920a400d`、`55950c128`；Gemini 分组模型发现改用 `/v1beta/models` 并规范化 `models/` 前缀；Nano Banana 单生图参考图上限为 14、Seedream 为 10，切换模型自动释放被裁剪的本地预览 URL；批量原生 Gemini 的 1K/2K 使用 `1:1`、4K 使用 `16:9`；Seedream 兼容模型识别覆盖 `seedream-5.0-pro`、`doubao-/dola-seedream-5-0-pro-*` 等映射部署 ID，并增加映射转发测试。
+- **用户可见行为**：模型提示不再硬编码 `/v1/models`；Gemini Nano/Seedream 的参考图数量按模型能力显示和限制。
+- **数据库/迁移**：无新增迁移。
+- **测试**：前端 image-studio 定向 Vitest `14/14`、`vue-tsc --noEmit`、定向 ESLint、`check:i18n` 和 `git diff --check` 通过；后端新增 Seedream 部署 ID/转发回归测试，本机无 Go 工具链，待 CI 或可用 Go 环境补跑。
+- **提交/PR**：`97a9b8d7c`、`f920a400d`、`55950c128`，仅本地提交，未推送、未创建 PR。
+- **发布镜像**：无；未构建、未打标签。
+- **部署站点**：未部署；OVH 生产保持 `custom-0.2.13.9`，Tencent staging 已退役。
+- **回滚**：回退上述本地提交即可，无数据库恢复要求。
+- **备注**：仍需在模型实际上线后验证 Gemini legacy `generateContent`/Interactions 兼容性、Seedream 是否接受 `n`/WebP/编辑端点，以及 provider 映射对应的批量价格配置。
+
+### 2026-10-13 — 未发布 — image-studio 尺寸契约与复合路由收紧
+
+- **需求**：继续优化新模型上线前的失败前置校验，避免 Seedream 非法尺寸到达上游，并确保公共 alias/部署 ID 能命中 OpenAI-compatible 复合路由。
+- **Feature ID**：`image-studio`
+- **官方基线**：`v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1`；基于生产 `custom-0.2.13.9`，本地提交 `badcec5a3`。
+- **实现边界**：`DetectModelPlatform` 识别 `seedream-5.0-pro`、`doubao-/dola-seedream-5-0-pro-*`；批量账号映射解析后拒绝 Seedream `4K`，并校验自定义总像素下限 921600 与上限 4624220；单生图和批量工作台共用 Seedream 最小像素校验，GPT-image 原有 4K/自定义规则不变。
+- **用户可见行为**：Seedream 自定义输入低于官方最小像素或超过约 4.62MP 时，工作台立即提示尺寸无效；Seedream 4K 不再出现在工作台选项中。
+- **数据库/迁移**：无新增迁移。
+- **测试**：前端 image-studio 定向 Vitest `14/14`、`vue-tsc --noEmit`、定向 ESLint、`check:i18n` 和 `git diff --check` 通过；后端新增批量尺寸与复合路由回归测试，本机无 Go 工具链，待 CI 或可用 Go 环境补跑。
+- **提交/PR**：`badcec5a3`，仅本地提交，未推送、未创建 PR。
+- **发布镜像**：无；未构建、未打标签。
+- **部署站点**：未部署；OVH 生产保持 `custom-0.2.13.9`，Tencent staging 已退役。
+- **回滚**：回退 `badcec5a3` 即可，无数据库恢复要求。
+- **备注**：像素范围依据 [Seedream 5.0 Pro 图片生成 API](https://docs.volcengine.com/docs/ark/image-generation-api?lang=en)；真实模型上线后仍需验证 `quality`、WebP、`n`、编辑端点和实际返回尺寸。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：
