@@ -258,9 +258,11 @@ import {
   IMAGE_STUDIO_CUSTOM_SIZE,
   detectImageDimensions,
   imageStudioPresetForDimensions,
-  normalizeCustomImageSize,
+  normalizeImageStudioCustomSize,
   parseImageDimensions,
-  resolveImageStudioPresetSize,
+  resolveImageStudioRequestSize,
+  supportsImageStudio4K,
+  supportsImageStudioCustomSize,
 } from '@/features/image-studio/size'
 
 interface InputImage {
@@ -334,14 +336,14 @@ const apiKeyOptions = computed(() => [
   ...apiKeys.value.map((key) => ({ value: String(key.id), label: `${key.name} · ${key.group?.name || key.group?.platform || '—'}` })),
 ])
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
-const customSize = computed(() => normalizeCustomImageSize(customWidth.value, customHeight.value))
-const requestSize = computed(() => resolveImageStudioPresetSize(form.size, customSize.value || ''))
+const customSize = computed(() => normalizeImageStudioCustomSize(form.model, customWidth.value, customHeight.value))
+const requestSize = computed(() => resolveImageStudioRequestSize(form.model, form.size, customSize.value || ''))
 const canGenerate = computed(() => !!selectedKey.value && !!form.model.trim() && !!form.prompt.trim() && !!requestSize.value && !generating.value)
 const sizeOptions = computed(() => [
   { value: '1K', label: t('imageStudio.size1k') },
   { value: '2K', label: t('imageStudio.size2k') },
-  { value: '4K', label: t('imageStudio.size4k') },
-  { value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('imageStudio.customSize') },
+  ...(supportsImageStudio4K(form.model) ? [{ value: '4K', label: t('imageStudio.size4k') }] : []),
+  ...(supportsImageStudioCustomSize(form.model) ? [{ value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('imageStudio.customSize') }] : []),
 ])
 const countOptions = [1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))
 const qualityOptions = computed(() => [
@@ -365,7 +367,7 @@ const fidelityOptions = computed(() => [
 ])
 
 function apiKeyCanGenerateImages(key: ApiKey): boolean {
-  return key.status === 'active' && key.group?.status === 'active' && key.group?.allow_image_generation === true && ['openai', 'grok', 'composite'].includes(key.group.platform)
+  return key.status === 'active' && key.group?.status === 'active' && key.group?.allow_image_generation === true && ['openai', 'grok', 'composite', 'gemini'].includes(key.group.platform)
 }
 
 async function loadKeys(): Promise<void> {
@@ -469,14 +471,26 @@ function makeID(): string {
 
 function selectImageSize(value: string): void {
   const normalizedValue = String(value || '').trim()
+  if (!supportsImageStudioCustomSize(form.model) && normalizedValue === IMAGE_STUDIO_CUSTOM_SIZE) {
+    form.size = '1K'
+    return
+  }
   if (sizeOptions.value.some((option) => option.value === normalizedValue)) {
     form.size = normalizedValue
     return
   }
   const dimensions = parseImageDimensions(value)
   const preset = imageStudioPresetForDimensions(value)
-  if (preset) {
+  if (preset && (preset !== '4K' || supportsImageStudio4K(form.model))) {
     form.size = preset
+    return
+  }
+  if (!supportsImageStudio4K(form.model)) {
+    form.size = '2K'
+    return
+  }
+  if (!supportsImageStudioCustomSize(form.model)) {
+    form.size = '1K'
     return
   }
   if (!dimensions) {
@@ -490,8 +504,8 @@ function selectImageSize(value: string): void {
   form.size = IMAGE_STUDIO_CUSTOM_SIZE
 }
 
-async function outputToBlob(output: { b64Json?: string; url?: string }, format: string): Promise<Blob | null> {
-  if (output.b64Json) return base64ImageToBlob(output.b64Json, format)
+async function outputToBlob(output: { b64Json?: string; url?: string; mimeType?: string }, format: string): Promise<Blob | null> {
+  if (output.b64Json) return base64ImageToBlob(output.b64Json, output.mimeType?.split('/')[1] || format)
   if (!output.url) return null
   if (output.url.startsWith('data:')) return (await fetch(output.url)).blob()
   try {
@@ -523,6 +537,7 @@ async function generate(): Promise<void> {
       size: requestSize.value, quality: form.quality, outputFormat: form.outputFormat,
       background: form.background, inputFidelity: form.inputFidelity,
       images: inputImages.value.map((item) => item.file), mask: maskFile.value,
+      nativeGemini: key.group?.platform === 'gemini' && form.model.trim().toLowerCase().startsWith('gemini-'),
     }, controller.signal)
     if (!isCurrentGeneration()) return
     const now = Date.now()
@@ -700,6 +715,10 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 watch(() => form.apiKeyId, () => { void loadModels() })
+watch(() => form.model, (model) => {
+  if (!supportsImageStudioCustomSize(model) && form.size === IMAGE_STUDIO_CUSTOM_SIZE) form.size = '1K'
+  if (!supportsImageStudio4K(model) && form.size === '4K') form.size = '2K'
+})
 watch(libraryScope, (scope, previousScope) => {
   if (scope === previousScope) return
   cancelGeneration()

@@ -9,6 +9,7 @@ export const IMAGE_STUDIO_CUSTOM_SIZE = 'custom'
 export const IMAGE_STUDIO_MIN_DIMENSION = 256
 export const IMAGE_STUDIO_MAX_DIMENSION = 3840
 export const IMAGE_STUDIO_MAX_PIXEL_AREA = 3840 * 2160
+export const IMAGE_STUDIO_SEEDREAM_MAX_PIXEL_AREA = 4_624_220
 
 /** Preset tiers shown by the workbench and the concrete dimensions sent to GPT-image. */
 export const IMAGE_STUDIO_SIZE_PRESETS = {
@@ -18,6 +19,48 @@ export const IMAGE_STUDIO_SIZE_PRESETS = {
 } as const
 
 export type ImageStudioSizePreset = keyof typeof IMAGE_STUDIO_SIZE_PRESETS
+
+/** Native Gemini Nano Banana accepts image-size tiers, not WIDTHxHEIGHT. */
+export function isGeminiNanoBananaModel(model: string | undefined | null): boolean {
+  const normalized = String(model || '').trim().toLowerCase()
+  return normalized === 'gemini-nano-banana-2.1' || normalized.startsWith('gemini-nano-banana-2.1-')
+}
+
+/** Seedream aliases are forwarded through an OpenAI-compatible image adapter. */
+export function isSeedreamImageModel(model: string | undefined | null): boolean {
+  const normalized = String(model || '').trim().toLowerCase()
+  return normalized === 'seedream-5.0-pro' || normalized.startsWith('seedream-5.0-pro-')
+}
+
+export function supportsImageStudioCustomSize(model: string | undefined | null): boolean {
+  return !isGeminiNanoBananaModel(model)
+}
+
+/** Seedream 5.0 Pro's published contract tops out at the 2K tier. */
+export function supportsImageStudio4K(model: string | undefined | null): boolean {
+  return !isSeedreamImageModel(model)
+}
+
+export function normalizeImageStudioCustomSize(model: string | undefined | null, width: number | string, height: number | string): string | null {
+  const normalized = normalizeCustomImageSize(width, height)
+  if (!normalized) return null
+  if (!isSeedreamImageModel(model)) return normalized
+  const dimensions = parseImageDimensions(normalized)
+  return dimensions && dimensions.width * dimensions.height <= IMAGE_STUDIO_SEEDREAM_MAX_PIXEL_AREA ? normalized : null
+}
+
+/** Resolve the request representation for a model-specific image-size contract. */
+export function resolveImageStudioRequestSize(
+  model: string | undefined | null,
+  value: string | undefined | null,
+  customSize = '',
+): string {
+  const normalized = String(value || '').trim().toUpperCase()
+  if (isGeminiNanoBananaModel(model)) {
+    return normalized in IMAGE_STUDIO_SIZE_PRESETS ? normalized : ''
+  }
+  return resolveImageStudioPresetSize(value, customSize)
+}
 
 export function imageStudioPresetForDimensions(value: string | undefined | null): ImageStudioSizePreset | null {
   const dimensions = parseImageDimensions(value)

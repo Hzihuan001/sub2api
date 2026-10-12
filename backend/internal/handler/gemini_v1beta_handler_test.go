@@ -15,6 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGeminiRequestContainsImageOutput(t *testing.T) {
+	require.True(t, geminiRequestContainsImageOutput([]byte(`{"generationConfig":{"responseModalities":["TEXT","IMAGE"]}}`)))
+	require.True(t, geminiRequestContainsImageOutput([]byte(`{"generationConfig":{"responseModalities":["image"]}}`)))
+	require.False(t, geminiRequestContainsImageOutput([]byte(`{"generationConfig":{"responseModalities":["TEXT"]}}`)))
+}
+
 func TestGeminiV1BetaListModels_AllowlistFiltersNativeResponse(t *testing.T) {
 	body := []byte(`{"models":[{"name":"models/gemini-2.5-pro"},{"name":"models/gemini-2.5-flash"}],"nextPageToken":"next"}`)
 	filtered, dropped, ok := filterUpstreamGeminiModelsBody(body, service.GroupModelAllowlist{Enabled: true, Models: []string{"gemini-2.5-pro"}})

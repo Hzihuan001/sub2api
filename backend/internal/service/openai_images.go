@@ -492,9 +492,17 @@ func isGrokImageGenerationModel(model string) bool {
 		strings.HasPrefix(model, "grok-imagine-image")
 }
 
+// isSeedreamImageGenerationModel identifies the public Seedream alias family.
+// Provider-specific deployment IDs are intentionally handled by account
+// model_mapping and are not hard-coded here.
+func isSeedreamImageGenerationModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return model == "seedream-5.0-pro" || strings.HasPrefix(model, "seedream-5.0-pro-") || strings.Contains(model, "seedream-5-0-pro")
+}
+
 func validateOpenAIImagesModel(model string) error {
 	model = strings.TrimSpace(model)
-	if isOpenAIImageGenerationModel(model) {
+	if isOpenAIImageGenerationModel(model) || isSeedreamImageGenerationModel(model) {
 		return nil
 	}
 	if model == "" {
@@ -507,6 +515,9 @@ func validateOpenAIImagesModel(model string) error {
 // drives native Responses tool conversion, pricing and rate-limit policy.
 func isGeminiCompatibleImageModel(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "gemini-nano-banana-2.1" || strings.HasPrefix(model, "gemini-nano-banana-2.1-") {
+		return true
+	}
 	return strings.HasPrefix(model, "gemini-") &&
 		(strings.HasSuffix(model, "-image") || strings.Contains(model, "-image-"))
 }
@@ -521,7 +532,7 @@ func validateCompatibleImagesModel(model string) error {
 // RequiredCapabilityForModel also applies the API-key-only fence when channel
 // mapping introduces a compatible provider model after request parsing.
 func (req *OpenAIImagesRequest) RequiredCapabilityForModel(model string) OpenAIImagesCapability {
-	if isGeminiCompatibleImageModel(model) {
+	if isGeminiCompatibleImageModel(model) || isSeedreamImageGenerationModel(model) {
 		return OpenAIImagesCapabilityAPIKey
 	}
 	return req.RequiredCapability
@@ -543,7 +554,7 @@ func classifyOpenAIImagesCapability(req *OpenAIImagesRequest) OpenAIImagesCapabi
 	if req == nil {
 		return OpenAIImagesCapabilityNative
 	}
-	if isGeminiCompatibleImageModel(req.Model) {
+	if isGeminiCompatibleImageModel(req.Model) || isSeedreamImageGenerationModel(req.Model) {
 		return OpenAIImagesCapabilityAPIKey
 	}
 	if req.ExplicitModel || req.ExplicitSize {

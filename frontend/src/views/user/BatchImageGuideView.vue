@@ -947,8 +947,13 @@ import type { ApiKey } from '@/types'
 import type { Column } from '@/components/common/types'
 import {
   IMAGE_STUDIO_CUSTOM_SIZE,
+  isGeminiNanoBananaModel,
   normalizeCustomImageSize,
+  normalizeImageStudioCustomSize,
   parseImageDimensions,
+  resolveImageStudioRequestSize,
+  supportsImageStudio4K,
+  supportsImageStudioCustomSize,
 } from '@/features/image-studio/size'
 
 type BatchImageJobRow = Pick<BatchImageJob, 'id' | 'task_name' | 'parent_batch_id' | 'status' | 'model' | 'provider' | 'image_size' | 'execution_mode' | 'concurrency_limit' | 'item_count' | 'success_count' | 'fail_count' | 'estimated_cost' | 'hold_amount' | 'actual_cost' | 'created_at' | 'downloaded_at'> & {
@@ -1282,13 +1287,21 @@ const estimatedOutputCount = computed(() =>
   promptRows.value.reduce((sum, row) => sum + normalizeOutputCount(row.output_count), 0),
 )
 
-const customImageSize = computed(() => normalizeCustomImageSize(customImageWidth.value, customImageHeight.value))
-const requestImageSize = computed(() => form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE ? (customImageSize.value || '') : form.imageSize)
+const customImageSize = computed(() => normalizeImageStudioCustomSize(form.model, customImageWidth.value, customImageHeight.value))
+const selectedBatchModelInfo = computed(() => availableBatchImageModels.value.find(model => model.value === form.model))
+const nativeGeminiBatchModel = computed(() => {
+  const provider = String(selectedBatchModelInfo.value?.provider || selectedBatchModelInfo.value?.mode || '').toLowerCase()
+  return provider === 'gemini_api' || provider === 'gemini_api_batch' || provider === 'vertex' || provider === 'vertex_ai'
+})
+const requestImageSize = computed(() => {
+  if (nativeGeminiBatchModel.value) return form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE ? '' : String(form.imageSize || '').toUpperCase()
+  return resolveImageStudioRequestSize(form.model, form.imageSize, customImageSize.value || '')
+})
 const imageSizeOptions = computed<SelectOption[]>(() => [
   { value: '1K', label: t('batchImage.create.imageSize1k') },
   { value: '2K', label: t('batchImage.create.imageSize2k') },
-  { value: '4K', label: t('batchImage.create.imageSize4k') },
-  { value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('batchImage.create.imageSizeCustom') },
+  ...(supportsImageStudio4K(form.model) ? [{ value: '4K', label: t('batchImage.create.imageSize4k') }] : []),
+  ...(supportsImageStudioCustomSize(form.model) && !nativeGeminiBatchModel.value ? [{ value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('batchImage.create.imageSizeCustom') }] : []),
 ])
 
 const parsedItems = computed<BatchImageSubmitItem[]>(() => {
@@ -1323,6 +1336,8 @@ const requestItems = computed<BatchImageSubmitItem[]>(() => {
 function referenceImageLimitForModel(model: string) {
   const normalized = String(model || '').toLowerCase()
   if (normalized.includes('gpt-image')) return 16
+  if (isGeminiNanoBananaModel(normalized)) return 14
+  if (normalized.includes('seedream-5.0-pro')) return 10
   if (normalized.includes('pro-image')) return 14
   if (normalized.includes('flash-image')) return 3
   return 0
@@ -3061,8 +3076,11 @@ watch(
 )
 
 watch(
-  () => form.model,
+  [() => form.model, nativeGeminiBatchModel],
   () => {
+    if (!supportsImageStudioCustomSize(form.model) && form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE) form.imageSize = '1K'
+    if (!supportsImageStudio4K(form.model) && form.imageSize === '4K') form.imageSize = '2K'
+    if (nativeGeminiBatchModel.value && form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE) form.imageSize = '2K'
     const limit = selectedModelReferenceLimit.value
     if (limit <= 0) {
       referenceImageDrafts.value = []

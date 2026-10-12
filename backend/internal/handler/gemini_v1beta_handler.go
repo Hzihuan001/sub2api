@@ -338,6 +338,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleError(c, http.StatusBadRequest, "Request body is empty")
 		return
 	}
+	if geminiRequestContainsImageOutput(body) && !service.GroupAllowsImageGeneration(apiKey.Group) {
+		googleError(c, http.StatusForbidden, service.ImageGenerationPermissionMessage())
+		return
+	}
 
 	setOpsRequestContext(c, modelName, stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
@@ -764,6 +768,25 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		)
 		return
 	}
+}
+
+// geminiRequestContainsImageOutput keeps native Gemini image generation under
+// the same group-level image permission used by the OpenAI Images endpoint.
+func geminiRequestContainsImageOutput(body []byte) bool {
+	var payload struct {
+		GenerationConfig struct {
+			ResponseModalities []string `json:"responseModalities"`
+		} `json:"generationConfig"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false
+	}
+	for _, modality := range payload.GenerationConfig.ResponseModalities {
+		if strings.EqualFold(strings.TrimSpace(modality), "image") {
+			return true
+		}
+	}
+	return false
 }
 
 func parseGeminiModelAction(rest string) (model string, action string, err error) {
