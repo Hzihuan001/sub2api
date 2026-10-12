@@ -71,7 +71,7 @@
               </div>
             </div>
 
-            <div v-if="inputImages.length && !nativeGeminiModel" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <div v-if="inputImages.length && !nativeGeminiModel && !seedreamImageModel" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
               <label class="block">
                 <span class="input-label">{{ t('imageStudio.mask') }}</span>
                 <div class="mt-1 flex items-center gap-2">
@@ -106,7 +106,7 @@
                 <span class="input-label">{{ t('imageStudio.background') }}</span>
                 <Select v-model="form.background" :options="backgroundOptions" :disabled="generating" class="mt-1 w-full" />
               </label>
-              <label v-if="inputImages.length" class="block">
+              <label v-if="inputImages.length && !nativeGeminiModel && !seedreamImageModel" class="block">
                 <span class="input-label">{{ t('imageStudio.inputFidelity') }}</span>
                 <Select v-model="form.inputFidelity" :options="fidelityOptions" :disabled="generating" class="mt-1 w-full" />
               </label>
@@ -339,6 +339,7 @@ const apiKeyOptions = computed(() => [
 ])
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
 const nativeGeminiModel = computed(() => selectedKey.value?.group?.platform === 'gemini')
+const seedreamImageModel = computed(() => isSeedreamImageModel(form.model))
 const customSize = computed(() => normalizeImageStudioCustomSize(form.model, customWidth.value, customHeight.value))
 const requestSize = computed(() => resolveImageStudioRequestSize(form.model, form.size, customSize.value || ''))
 const referenceImageLimit = computed(() => {
@@ -353,20 +354,28 @@ const sizeOptions = computed(() => [
   ...(supportsImageStudio4K(form.model) ? [{ value: '4K', label: t('imageStudio.size4k') }] : []),
   ...(supportsImageStudioCustomSize(form.model) ? [{ value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('imageStudio.customSize') }] : []),
 ])
-const countOptions = [1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))
+const countOptions = computed(() => (seedreamImageModel.value
+  ? [{ value: '1', label: '1' }]
+  : [1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))))
 const qualityOptions = computed(() => [
   { value: 'auto', label: t('imageStudio.auto') },
-  { value: 'low', label: t('imageStudio.qualityLow') },
-  { value: 'medium', label: t('imageStudio.qualityMedium') },
-  { value: 'high', label: t('imageStudio.qualityHigh') },
-  { value: 'xhigh', label: t('imageStudio.qualityXhigh') },
-  { value: 'max', label: t('imageStudio.qualityMax') },
+  ...(!seedreamImageModel.value && !nativeGeminiModel.value ? [
+    { value: 'low', label: t('imageStudio.qualityLow') },
+    { value: 'medium', label: t('imageStudio.qualityMedium') },
+    { value: 'high', label: t('imageStudio.qualityHigh') },
+    { value: 'xhigh', label: t('imageStudio.qualityXhigh') },
+    { value: 'max', label: t('imageStudio.qualityMax') },
+  ] : []),
 ])
-const formatOptions = [{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }, { value: 'webp', label: 'WebP' }]
+const formatOptions = computed(() => nativeGeminiModel.value
+  ? [{ value: 'png', label: 'PNG' }]
+  : seedreamImageModel.value
+    ? [{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }]
+    : [{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }, { value: 'webp', label: 'WebP' }])
 const backgroundOptions = computed(() => [
   { value: 'auto', label: t('imageStudio.auto') },
-  { value: 'opaque', label: t('imageStudio.backgroundOpaque') },
-  { value: 'transparent', label: t('imageStudio.backgroundTransparent') },
+  ...(!nativeGeminiModel.value ? [{ value: 'opaque', label: t('imageStudio.backgroundOpaque') }] : []),
+  ...(!nativeGeminiModel.value && !seedreamImageModel.value ? [{ value: 'transparent', label: t('imageStudio.backgroundTransparent') }] : []),
 ])
 const fidelityOptions = computed(() => [
   { value: 'auto', label: t('imageStudio.auto') },
@@ -543,9 +552,12 @@ async function generate(): Promise<void> {
   const isCurrentGeneration = () => !controller.signal.aborted && libraryScope.value === scopeAtStart
   try {
     const outputs = await generateImageStudioImages(key.key, {
-      model: form.model.trim(), prompt: form.prompt.trim(), count: Number(form.count) || 1,
-      size: requestSize.value, quality: form.quality, outputFormat: form.outputFormat,
-      background: form.background, inputFidelity: form.inputFidelity,
+      model: form.model.trim(), prompt: form.prompt.trim(), count: seedreamImageModel.value ? 1 : Number(form.count) || 1,
+      size: requestSize.value,
+      quality: seedreamImageModel.value || nativeGeminiModel.value ? 'auto' : form.quality,
+      outputFormat: nativeGeminiModel.value ? 'png' : seedreamImageModel.value && !['png', 'jpeg'].includes(form.outputFormat) ? 'png' : form.outputFormat,
+      background: seedreamImageModel.value || nativeGeminiModel.value ? 'auto' : form.background,
+      inputFidelity: seedreamImageModel.value || nativeGeminiModel.value ? 'auto' : form.inputFidelity,
       images: inputImages.value.map((item) => item.file), mask: maskFile.value,
       nativeGemini: nativeGeminiModel.value,
     }, controller.signal)
@@ -729,12 +741,20 @@ watch(() => form.apiKeyId, () => { void loadModels() })
 watch(() => form.model, (model) => {
   if (!supportsImageStudioCustomSize(model) && form.size === IMAGE_STUDIO_CUSTOM_SIZE) form.size = '1K'
   if (!supportsImageStudio4K(model) && form.size === '4K') form.size = '2K'
+  if (seedreamImageModel.value || nativeGeminiModel.value) {
+    form.count = '1'
+    form.quality = 'auto'
+    form.inputFidelity = 'auto'
+    if (nativeGeminiModel.value) form.outputFormat = 'png'
+    if (seedreamImageModel.value && !['png', 'jpeg'].includes(form.outputFormat)) form.outputFormat = 'png'
+    if (nativeGeminiModel.value || seedreamImageModel.value) form.background = 'auto'
+  }
   if (inputImages.value.length > referenceImageLimit.value) {
     const removed = inputImages.value.splice(referenceImageLimit.value)
     removed.forEach((item) => URL.revokeObjectURL(item.url))
     if (inputImages.value.length === 0) clearMask()
   }
-  if (nativeGeminiModel.value && maskFile.value) clearMask()
+  if ((nativeGeminiModel.value || seedreamImageModel.value) && maskFile.value) clearMask()
 })
 watch(libraryScope, (scope, previousScope) => {
   if (scope === previousScope) return

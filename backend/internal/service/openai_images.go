@@ -239,12 +239,34 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 	if err := validateCompatibleImagesModel(req.Model); err != nil {
 		return nil, err
 	}
+	if err := validateSeedreamImagesRequest(req); err != nil {
+		return nil, err
+	}
 	if !isImageSizeSupportedByModel(req.Model, req.Size) {
 		return nil, fmt.Errorf("unsupported image size %q for model %q", req.Size, req.Model)
 	}
 	req.SizeTier = normalizeOpenAIImageSizeTier(req.Size)
 	req.RequiredCapability = classifyOpenAIImagesCapability(req)
 	return req, nil
+}
+
+func validateSeedreamImagesRequest(req *OpenAIImagesRequest) error {
+	if req == nil || !isSeedreamImageGenerationModel(req.Model) {
+		return nil
+	}
+	if req.N != 1 {
+		return fmt.Errorf("Seedream image generation supports n=1 only")
+	}
+	if strings.TrimSpace(req.Quality) != "" {
+		return fmt.Errorf("Seedream image generation does not support quality")
+	}
+	if strings.TrimSpace(req.InputFidelity) != "" {
+		return fmt.Errorf("Seedream image generation does not support input_fidelity")
+	}
+	if outputFormat := strings.ToLower(strings.TrimSpace(req.OutputFormat)); outputFormat != "" && outputFormat != "png" && outputFormat != "jpeg" {
+		return fmt.Errorf("Seedream image generation supports png or jpeg output_format only")
+	}
+	return nil
 }
 
 func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
