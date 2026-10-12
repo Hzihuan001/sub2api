@@ -237,12 +237,12 @@
 
 - **需求**：为即将上线的 `gemini-nano-banana-2.1` 和 `seedream-5.0-pro` 改造单生图、批量生图和尺寸处理；改造后暂不上线，待上游模型上线后再联调。
 - **Feature ID**：`image-studio`
-- **官方基线**：`v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1`；基于生产 `custom-0.2.13.9`，本地提交 `76ab4779d`。
+- **官方基线**：`v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1`；基于生产 `custom-0.2.13.9`，本地提交 `76ab4779d`、`e3bbcf841`。
 - **实现边界**：Gemini 原生分组单生图改走 `/v1beta/models/{model}:generateContent`，发送 `responseModalities: ["IMAGE"]`、`imageConfig.imageSize` 和 4K 的 `16:9` 比例，并解析 `inlineData`；原生 Gemini 图片请求复用分组图片权限。批量 Gemini/Vertex 保留 `1K`/`2K`/`4K` 档位并将公开 alias 映射为账号部署模型；Seedream 公开 alias 走 OpenAI-compatible API-key 转发，允许官方部署 ID（如 `seedream-5-0-pro`）通过 `model_mapping` 透传，扩展参考图上限和批量候选。
 - **用户可见行为**：Nano Banana 单/批量可选 `1K`、`2K`、`4K`，不显示任意像素自定义；Seedream 隐藏 4K 预设，保留合法自定义尺寸但限制到约 4.62MP；GPT-image 原有 1K/2K/4K/自定义行为不变。
 - **数据库/迁移**：无新增迁移；模型 alias、尺寸和参考图继续复用既有请求与批量 `input_payload`。
 - **测试**：前端定向 Vitest `13/13` 通过，`vue-tsc --noEmit` 通过，ESLint 定向检查通过，`git diff --check` 通过；后端新增模型识别、Gemini 图片权限、批量映射/参考图上限测试，因本机无 Go 工具链尚未执行，需在 CI 或可用 Go 环境补跑。
-- **提交/PR**：`76ab4779d`，仅本地提交，未推送、未创建 PR。
+- **提交/PR**：`76ab4779d`、`e3bbcf841`，仅本地提交，未推送、未创建 PR。
 - **发布镜像**：无；未构建新镜像、未创建新标签。
 - **部署站点**：未部署；OVH 生产继续运行 `custom-0.2.13.9`，Tencent staging 已退役。
 - **回滚**：删除/回退本地提交即可；无数据库恢复要求，生产镜像与运行数据未变更。
