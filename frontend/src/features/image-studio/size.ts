@@ -29,7 +29,7 @@ export function isGeminiNanoBananaModel(model: string | undefined | null): boole
 /** Seedream aliases are forwarded through an OpenAI-compatible image adapter. */
 export function isSeedreamImageModel(model: string | undefined | null): boolean {
   const normalized = String(model || '').trim().toLowerCase()
-  return normalized === 'seedream-5.0-pro' || normalized.startsWith('seedream-5.0-pro-')
+  return normalized === 'seedream-5.0-pro' || normalized.startsWith('seedream-5.0-pro-') || normalized.includes('seedream-5-0-pro')
 }
 
 export function supportsImageStudioCustomSize(model: string | undefined | null): boolean {
