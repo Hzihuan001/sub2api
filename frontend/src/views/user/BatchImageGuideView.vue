@@ -1297,6 +1297,10 @@ const requestImageSize = computed(() => {
   if (nativeGeminiBatchModel.value) return form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE ? '' : String(form.imageSize || '').toUpperCase()
   return resolveImageStudioRequestSize(form.model, form.imageSize, customImageSize.value || '')
 })
+const nativeGeminiBatchAspectRatio = computed(() => {
+  if (!nativeGeminiBatchModel.value) return ''
+  return form.imageSize === '4K' ? '16:9' : '1:1'
+})
 const imageSizeOptions = computed<SelectOption[]>(() => [
   { value: '1K', label: t('batchImage.create.imageSize1k') },
   { value: '2K', label: t('batchImage.create.imageSize2k') },
@@ -2005,6 +2009,7 @@ async function submitJob() {
         task_name: form.taskName.trim() || defaultTaskName(),
         ...(executionProvider ? { provider: executionProvider } : {}),
         image_size: requestedImageSize,
+        ...(nativeGeminiBatchAspectRatio.value ? { aspect_ratio: nativeGeminiBatchAspectRatio.value } : {}),
         response_mime_type: form.responseMimeType,
         items: requestItems.value,
       },
