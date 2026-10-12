@@ -208,7 +208,7 @@ async function generateNativeGeminiImageStudioImages(
     const tier = /^(1K|2K|4K)$/.test(size) ? size : '2K'
     const imageConfig: Record<string, string> = { imageSize: tier }
     const aspectRatio = aspectRatioForImageSize(request.size)
-    if (aspectRatio) imageConfig.aspectRatio = aspectRatio
+    imageConfig.aspectRatio = aspectRatio || (tier === '4K' ? '16:9' : '1:1')
     const body = {
       contents: [{ role: 'user', parts: [{ text: request.prompt }, ...references, ...mask] }],
       generationConfig: { responseModalities: ['IMAGE'], imageConfig },

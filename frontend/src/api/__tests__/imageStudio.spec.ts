@@ -42,7 +42,7 @@ describe('imageStudio API', () => {
     const [url, options] = vi.mocked(fetch).mock.calls[0]
     expect(String(url)).toMatch(/\/v1beta\/models\/gemini-nano-banana-2\.1:generateContent$/)
     expect(JSON.parse(String(options?.body))).toMatchObject({
-      generationConfig: { responseModalities: ['IMAGE'], imageConfig: { imageSize: '4K' } },
+      generationConfig: { responseModalities: ['IMAGE'], imageConfig: { imageSize: '4K', aspectRatio: '16:9' } },
     })
   })
 

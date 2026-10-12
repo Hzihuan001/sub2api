@@ -244,8 +244,11 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		return nil, err
 	}
 	// The provider can be selected after the provider-agnostic request
-	// validation when the caller omits `provider`; enforce Vertex's 1K-only
-	// contract against the actual selected provider as well.
+	// validation when the caller omits `provider`; enforce native Gemini/Vertex
+	// tier-only contracts against the actual selected provider as well.
+	if (provider.Name() == BatchImageProviderGeminiAPI || provider.Name() == BatchImageProviderVertex) && strings.Contains(normalized.ImageSize, "x") {
+		return nil, ErrBatchImageInvalidItems
+	}
 	if provider.Name() == BatchImageProviderVertex && normalized.ImageSize != ImageBillingSize1K {
 		return nil, ErrBatchImageInvalidItems
 	}
