@@ -10,7 +10,7 @@ export default {
     model: '模型',
     modelPlaceholder: '选择或输入模型 ID',
     loadingModels: '正在加载模型…',
-    modelHint: '模型建议来自该密钥的 /v1/models；仍可手动输入分组支持的模型 ID。',
+    modelHint: '模型建议来自该密钥可用的模型列表；仍可手动输入分组支持的模型 ID。',
     prompt: '提示词',
     promptPlaceholder: '描述你希望生成或修改的图片…',
     promptHint: '提交后会按该密钥所属分组正常计费。',

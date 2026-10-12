@@ -10,7 +10,7 @@ export default {
     model: 'Model',
     modelPlaceholder: 'Select or enter a model ID',
     loadingModels: 'Loading models…',
-    modelHint: 'Suggestions come from this key’s /v1/models response. You can still enter an image model ID supported by the group.',
+    modelHint: 'Suggestions come from the models available to this key. You can still enter an image model ID supported by the group.',
     prompt: 'Prompt',
     promptPlaceholder: 'Describe the image you want to create or edit…',
     promptHint: 'The request is billed through the selected key’s group.',
