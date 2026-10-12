@@ -252,7 +252,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	if provider.Name() == BatchImageProviderVertex && normalized.ImageSize != ImageBillingSize1K {
 		return nil, ErrBatchImageInvalidItems
 	}
-	if !isBatchImageSizeSupportedByModel(account.GetMappedModel(normalized.Model), normalized.ImageSize) {
+	if !isImageSizeSupportedByModel(account.GetMappedModel(normalized.Model), normalized.ImageSize) {
 		return nil, ErrBatchImageInvalidItems
 	}
 	// Public model IDs may be account-level aliases (for example, `paint` →
