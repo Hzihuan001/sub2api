@@ -36,6 +36,7 @@ describe('image studio size helpers', () => {
     expect(supportsImageStudioCustomSize('gemini-nano-banana-2.1')).toBe(false)
     expect(supportsImageStudioCustomSize('seedream-5.0-pro')).toBe(true)
     expect(supportsImageStudio4K('seedream-5.0-pro')).toBe(false)
+    expect(supportsImageStudio4K('doubao-seedream-5-0-pro-260628')).toBe(false)
     expect(supportsImageStudio4K('gpt-image-2.5-sunburst')).toBe(true)
     expect(normalizeImageStudioCustomSize('seedream-5.0-pro', 2048, 2048)).toBe('2048x2048')
     expect(normalizeImageStudioCustomSize('seedream-5.0-pro', 3072, 1536)).toBeNull()
