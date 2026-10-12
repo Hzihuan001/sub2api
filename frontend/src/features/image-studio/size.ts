@@ -9,6 +9,7 @@ export const IMAGE_STUDIO_CUSTOM_SIZE = 'custom'
 export const IMAGE_STUDIO_MIN_DIMENSION = 256
 export const IMAGE_STUDIO_MAX_DIMENSION = 3840
 export const IMAGE_STUDIO_MAX_PIXEL_AREA = 3840 * 2160
+export const IMAGE_STUDIO_SEEDREAM_MIN_PIXEL_AREA = 921_600
 export const IMAGE_STUDIO_SEEDREAM_MAX_PIXEL_AREA = 4_624_220
 
 /** Preset tiers shown by the workbench and the concrete dimensions sent to GPT-image. */
@@ -46,7 +47,9 @@ export function normalizeImageStudioCustomSize(model: string | undefined | null,
   if (!normalized) return null
   if (!isSeedreamImageModel(model)) return normalized
   const dimensions = parseImageDimensions(normalized)
-  return dimensions && dimensions.width * dimensions.height <= IMAGE_STUDIO_SEEDREAM_MAX_PIXEL_AREA ? normalized : null
+  if (!dimensions) return null
+  const pixelArea = dimensions.width * dimensions.height
+  return pixelArea >= IMAGE_STUDIO_SEEDREAM_MIN_PIXEL_AREA && pixelArea <= IMAGE_STUDIO_SEEDREAM_MAX_PIXEL_AREA ? normalized : null
 }
 
 /** Resolve the request representation for a model-specific image-size contract. */
