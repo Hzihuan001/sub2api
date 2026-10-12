@@ -69,6 +69,27 @@ describe('imageStudio API', () => {
     )
   })
 
+  it('loads native Gemini models from the Gemini v1beta envelope', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        models: [
+          { name: 'models/gemini-nano-banana-2.1', display_name: 'Nano Banana 2.1' },
+          { name: 'models/gemini-2.5-flash', display_name: 'Chat' },
+          { name: 'models/gemini-nano-banana-2.1', display_name: 'Duplicate' },
+        ],
+      }),
+    } as Response)
+
+    await expect(listImageStudioModels('sk-gemini', undefined, { nativeGemini: true })).resolves.toEqual([
+      { id: 'gemini-nano-banana-2.1', name: 'Nano Banana 2.1' },
+    ])
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/v1beta\/models$/),
+      expect.objectContaining({ headers: { Authorization: 'Bearer sk-gemini' } }),
+    )
+  })
+
   it('uses the JSON generations endpoint for text-to-image requests', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,

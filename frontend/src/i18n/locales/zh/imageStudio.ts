@@ -17,7 +17,7 @@ export default {
     referenceImages: '参考图（可选）',
     addImages: '添加图片',
     removeImage: '移除参考图',
-    referenceHint: 'PNG、JPEG 或 WebP，单张不超过 10 MB，最多 4 张。添加后自动使用图片编辑接口。',
+    referenceHint: 'PNG、JPEG 或 WebP，单张不超过 10 MB，最多 {max} 张。添加后自动使用图片编辑接口。',
     mask: '蒙版（可选）',
     selectMask: '选择 PNG 蒙版',
     replaceMask: '更换蒙版',

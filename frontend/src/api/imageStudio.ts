@@ -36,6 +36,10 @@ interface GatewayModelsResponse {
   data?: GatewayModelItem[]
 }
 
+interface GeminiModelsResponse {
+  models?: GatewayModelItem[]
+}
+
 interface GatewayImageItem {
   url?: string
   b64_json?: string
@@ -83,17 +87,31 @@ function authHeaders(apiKey: string, extra?: HeadersInit): HeadersInit {
   return { Authorization: `Bearer ${apiKey}`, ...extra }
 }
 
-export async function listImageStudioModels(apiKey: string, signal?: AbortSignal): Promise<ImageStudioModel[]> {
-  const response = await fetch(buildGatewayUrl('/v1/models'), {
+export interface ImageStudioModelListOptions {
+  nativeGemini?: boolean
+}
+
+function normalizeModelID(value: unknown): string {
+  return String(value || '').trim().replace(/^models\//i, '')
+}
+
+export async function listImageStudioModels(
+  apiKey: string,
+  signal?: AbortSignal,
+  options?: ImageStudioModelListOptions,
+): Promise<ImageStudioModel[]> {
+  const nativeGemini = options?.nativeGemini === true
+  const response = await fetch(buildGatewayUrl(nativeGemini ? '/v1beta/models' : '/v1/models'), {
     headers: authHeaders(apiKey),
     signal,
   })
   if (!response.ok) throw await parseGatewayError(response)
-  const payload = await response.json() as GatewayModelsResponse
+  const payload = await response.json() as GatewayModelsResponse & GeminiModelsResponse
+  const items = nativeGemini ? (payload.models || []) : (payload.data || [])
   const seen = new Set<string>()
-  return (payload.data || [])
+  return items
     .map((item) => ({
-      id: String(item.id || item.name || '').trim(),
+      id: normalizeModelID(item.id || item.name),
       name: String(item.display_name || item.name || item.id || '').trim(),
     }))
     .filter((item) => item.id && isLikelyImageModel(item.id))

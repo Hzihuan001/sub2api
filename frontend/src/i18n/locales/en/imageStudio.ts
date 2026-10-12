@@ -17,7 +17,7 @@ export default {
     referenceImages: 'Reference images (optional)',
     addImages: 'Add images',
     removeImage: 'Remove reference image',
-    referenceHint: 'PNG, JPEG, or WebP; up to 10 MB each and 4 images. Adding an image automatically uses the edits endpoint.',
+    referenceHint: 'PNG, JPEG, or WebP; up to 10 MB each and {max} images. Adding an image automatically uses the edits endpoint.',
     mask: 'Mask (optional)',
     selectMask: 'Select PNG mask',
     replaceMask: 'Replace mask',

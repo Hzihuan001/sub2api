@@ -53,7 +53,7 @@
             <div>
               <div class="flex items-center justify-between gap-3">
                 <span class="input-label">{{ t('imageStudio.referenceImages') }}</span>
-                <button type="button" class="btn btn-ghost btn-sm" :disabled="generating || inputImages.length >= 4" @click="referenceInput?.click()">
+                <button type="button" class="btn btn-ghost btn-sm" :disabled="generating || inputImages.length >= referenceImageLimit" @click="referenceInput?.click()">
                   <Icon name="upload" size="sm" class="mr-1" />{{ t('imageStudio.addImages') }}
                 </button>
               </div>
@@ -67,7 +67,7 @@
                 </div>
               </div>
               <div v-else class="mt-2 rounded-xl border border-dashed border-gray-300 px-4 py-5 text-center text-xs text-gray-500 dark:border-dark-600 dark:text-dark-300">
-                {{ t('imageStudio.referenceHint') }}
+                {{ t('imageStudio.referenceHint', { max: referenceImageLimit }) }}
               </div>
             </div>
 
@@ -258,6 +258,8 @@ import {
   IMAGE_STUDIO_CUSTOM_SIZE,
   detectImageDimensions,
   imageStudioPresetForDimensions,
+  isGeminiNanoBananaModel,
+  isSeedreamImageModel,
   normalizeImageStudioCustomSize,
   parseImageDimensions,
   resolveImageStudioRequestSize,
@@ -338,6 +340,11 @@ const apiKeyOptions = computed(() => [
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
 const customSize = computed(() => normalizeImageStudioCustomSize(form.model, customWidth.value, customHeight.value))
 const requestSize = computed(() => resolveImageStudioRequestSize(form.model, form.size, customSize.value || ''))
+const referenceImageLimit = computed(() => {
+  if (isGeminiNanoBananaModel(form.model)) return 14
+  if (isSeedreamImageModel(form.model)) return 10
+  return 4
+})
 const canGenerate = computed(() => !!selectedKey.value && !!form.model.trim() && !!form.prompt.trim() && !!requestSize.value && !generating.value)
 const sizeOptions = computed(() => [
   { value: '1K', label: t('imageStudio.size1k') },
@@ -403,7 +410,9 @@ async function loadModels(): Promise<void> {
   modelController = controller
   loadingModels.value = true
   try {
-    const result = await listImageStudioModels(key.key, controller.signal)
+    const result = await listImageStudioModels(key.key, controller.signal, {
+      nativeGemini: key.group?.platform === 'gemini',
+    })
     if (controller.signal.aborted) return
     models.value = result
     if (!result.some((model) => model.id === form.model)) form.model = result[0]?.id || ''
@@ -433,7 +442,7 @@ function validateImage(file: File): boolean {
 
 function addReferenceImages(event: Event): void {
   const input = event.target as HTMLInputElement
-  const remaining = Math.max(0, 4 - inputImages.value.length)
+  const remaining = Math.max(0, referenceImageLimit.value - inputImages.value.length)
   const files = Array.from(input.files || []).slice(0, remaining).filter(validateImage)
   inputImages.value.push(...files.map((file) => ({ file, url: URL.createObjectURL(file) })))
   input.value = ''
@@ -718,6 +727,11 @@ watch(() => form.apiKeyId, () => { void loadModels() })
 watch(() => form.model, (model) => {
   if (!supportsImageStudioCustomSize(model) && form.size === IMAGE_STUDIO_CUSTOM_SIZE) form.size = '1K'
   if (!supportsImageStudio4K(model) && form.size === '4K') form.size = '2K'
+  if (inputImages.value.length > referenceImageLimit.value) {
+    const removed = inputImages.value.splice(referenceImageLimit.value)
+    removed.forEach((item) => URL.revokeObjectURL(item.url))
+    if (inputImages.value.length === 0) clearMask()
+  }
 })
 watch(libraryScope, (scope, previousScope) => {
   if (scope === previousScope) return
