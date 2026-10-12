@@ -40,7 +40,7 @@ func TestNormalizeBatchImageSize(t *testing.T) {
 	}
 }
 
-func TestIsBatchImageSizeSupportedByModel(t *testing.T) {
+func TestIsImageSizeSupportedByModel(t *testing.T) {
 	for _, tc := range []struct {
 		model string
 		size  string
@@ -55,7 +55,7 @@ func TestIsBatchImageSizeSupportedByModel(t *testing.T) {
 		{model: "gpt-image-2.5-sunburst", size: "3840x2160", want: true},
 	} {
 		t.Run(tc.model+"/"+tc.size, func(t *testing.T) {
-			require.Equal(t, tc.want, isBatchImageSizeSupportedByModel(tc.model, tc.size))
+			require.Equal(t, tc.want, isImageSizeSupportedByModel(tc.model, tc.size))
 		})
 	}
 }

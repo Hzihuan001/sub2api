@@ -239,6 +239,9 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 	if err := validateCompatibleImagesModel(req.Model); err != nil {
 		return nil, err
 	}
+	if !isImageSizeSupportedByModel(req.Model, req.Size) {
+		return nil, fmt.Errorf("unsupported image size %q for model %q", req.Size, req.Model)
+	}
 	req.SizeTier = normalizeOpenAIImageSizeTier(req.Size)
 	req.RequiredCapability = classifyOpenAIImagesCapability(req)
 	return req, nil

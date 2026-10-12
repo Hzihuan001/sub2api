@@ -53,11 +53,11 @@ func normalizeBatchImageSize(value string) (string, bool) {
 	return fmt.Sprintf("%dx%d", width, height), true
 }
 
-// isBatchImageSizeSupportedByModel applies model-specific restrictions after
+// isImageSizeSupportedByModel applies model-specific restrictions after
 // account model_mapping has been resolved. Generic size validation above is
 // intentionally provider-agnostic because GPT-image supports the full 4K
 // contract while Seedream 5.0 Pro does not.
-func isBatchImageSizeSupportedByModel(model, size string) bool {
+func isImageSizeSupportedByModel(model, size string) bool {
 	if !isSeedreamImageGenerationModel(model) {
 		return true
 	}
