@@ -307,6 +307,21 @@
 - **回滚**：回退 `064fa42d9` 即可，无数据库恢复要求。
 - **备注**：规则依据 [Seedream 5.0 Pro 图片生成 API](https://docs.volcengine.com/docs/ark/image-generation-api?lang=en)；实际模型上线后仍需确认编辑端点的参考图字段兼容性。
 
+### 2026-10-13 — 未发布 — image-studio 不兼容蒙版请求清理
+
+- **需求**：防止在不同密钥/模型分组之间切换时，旧的 GPT-image 蒙版残留到 Gemini 或 Seedream 请求。
+- **Feature ID**：`image-studio`
+- **官方基线**：`v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1`；基于生产 `custom-0.2.13.9`，本地提交 `f6f008b14`。
+- **实现边界**：单生图提交层根据当前模型能力清除 Gemini/Seedream 的 `mask` 字段；仅 GPT-compatible 编辑请求继续发送蒙版。
+- **用户可见行为**：切换模型或密钥后不会把不可见的旧蒙版继续发送到不支持该字段的上游。
+- **数据库/迁移**：无新增迁移。
+- **测试**：前端 image-studio 定向 Vitest `14/14`、`vue-tsc --noEmit`、`check:i18n`、定向 ESLint 和 `git diff --check` 通过；后端既有参数回归用例待 CI/可用 Go 环境执行。
+- **提交/PR**：`f6f008b14`，仅本地提交，未推送、未创建 PR。
+- **发布镜像**：无；未构建、未打标签。
+- **部署站点**：未部署；OVH 生产保持 `custom-0.2.13.9`，Tencent staging 已退役。
+- **回滚**：回退 `f6f008b14` 即可，无数据库恢复要求。
+- **备注**：模型实际上线后仍需验证 Gemini/Seedream 编辑端点是否接受参考图字段。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：

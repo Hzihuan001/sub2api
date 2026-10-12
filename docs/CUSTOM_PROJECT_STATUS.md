@@ -16,7 +16,7 @@
 | 最近生产版本 | `0.2.13-custom.9` |
 | 最近生产标签 | `custom-0.2.13.9` / `f6fadd781d587a65cd3a4b4e0da7ef5e04535873` |
 | 生产镜像 digest | `ghcr.io/hzihuan001/sub2api@sha256:c33d5601a7a967474eb9281189df9e511b00a5af544c824d268a8b87bfc063d8` |
-| 当前工作分支 | `codex/image-studio-session-20261004`（image-studio 模型适配提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9`；父工作树未修改） |
+| 当前工作分支 | `codex/image-studio-session-20261004`（image-studio 模型适配提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9`、`f6f008b14`；父工作树未修改） |
 | 协作父分支/工作树 | `codex/isolation-refactor-v0.2.13` / `07bf51ba0`；父工作树保持 clean，未被本会话修改 |
 | 同步框架 HEAD | `1fa5f4478`（本文档记录前；文档提交后的当前 HEAD 以 `git log` 为准） |
 | 长期集成基线 | `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071` |
@@ -37,7 +37,7 @@
 ### 当前会话摘要（2026-10-13）
 
 - **Feature ID**：`image-studio`；状态：`in-progress`（适配代码已完成，未上线；生产仍为 `.9`）。
-- **实现边界**：提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9` 增加 `gemini-nano-banana-2.1` 原生 Gemini 单生图 `/v1beta` 请求转换与权限门禁，支持 `1K`/`2K`/`4K`、参考图和 `inlineData` 响应解析；Gemini 密钥模型发现改走 `/v1beta/models`；批量 Gemini/Vertex 保留上游尺寸档位、4K 明确传 `16:9` 并将公开别名映射为账号部署模型；`seedream-5.0-pro` 走 OpenAI-compatible API-key 转发，支持账号 `model_mapping` 部署 ID、动态参考图上限和自定义尺寸校验。复合路由将 Seedream 公共 alias/部署 ID 识别为 OpenAI；单生图解析、单生图前端和批量提交均隐藏/拒绝 Seedream 4K，自定义尺寸限制为 921600–4624220 总像素；Seedream 单生图限制为单张、PNG/JPEG，并隐藏不兼容的质量、WebP、蒙版和参考图保真度选项。
+- **实现边界**：提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9`、`f6f008b14` 增加 `gemini-nano-banana-2.1` 原生 Gemini 单生图 `/v1beta` 请求转换与权限门禁，支持 `1K`/`2K`/`4K`、参考图和 `inlineData` 响应解析；Gemini 密钥模型发现改走 `/v1beta/models`；批量 Gemini/Vertex 保留上游尺寸档位、4K 明确传 `16:9` 并将公开别名映射为账号部署模型；`seedream-5.0-pro` 走 OpenAI-compatible API-key 转发，支持账号 `model_mapping` 部署 ID、动态参考图上限和自定义尺寸校验。复合路由将 Seedream 公共 alias/部署 ID 识别为 OpenAI；单生图解析、单生图前端和批量提交均隐藏/拒绝 Seedream 4K，自定义尺寸限制为 921600–4624220 总像素；Seedream 单生图限制为单张、PNG/JPEG，并隐藏不兼容的质量、WebP、蒙版和参考图保真度选项；切换分组时请求层清除残留蒙版。
 - **数据与兼容**：没有后端数据库迁移；公开别名不写入新的表字段，批量任务继续复用既有 `input_payload`；原生 Gemini 不接受任意 `WIDTHxHEIGHT`，自定义尺寸仅适用于兼容图片接口。
 - **验证证据**：前端定向 Vitest `14/14` 通过，`vue-tsc --noEmit`、`check:i18n` 和 ESLint 定向检查通过，`git diff --check` 通过；本机无 Go 工具链，新增后端单元测试待 CI/可用 Go 环境补跑。
 - **发布证据**：本次未构建镜像、未创建新标签、未部署；OVH 生产保持 `custom-0.2.13.9` 和既有 digest，Tencent staging 已退役。
