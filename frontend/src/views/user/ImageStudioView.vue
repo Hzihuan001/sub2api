@@ -558,7 +558,8 @@ async function generate(): Promise<void> {
       outputFormat: nativeGeminiModel.value ? 'png' : seedreamImageModel.value && !['png', 'jpeg'].includes(form.outputFormat) ? 'png' : form.outputFormat,
       background: seedreamImageModel.value || nativeGeminiModel.value ? 'auto' : form.background,
       inputFidelity: seedreamImageModel.value || nativeGeminiModel.value ? 'auto' : form.inputFidelity,
-      images: inputImages.value.map((item) => item.file), mask: maskFile.value,
+      images: inputImages.value.map((item) => item.file),
+      mask: nativeGeminiModel.value || seedreamImageModel.value ? null : maskFile.value,
       nativeGemini: nativeGeminiModel.value,
     }, controller.signal)
     if (!isCurrentGeneration()) return
