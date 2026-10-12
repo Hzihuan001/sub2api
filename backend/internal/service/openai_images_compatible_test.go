@@ -91,6 +91,24 @@ func TestCompatibleImagesRejectUnsupportedSeedreamSizes(t *testing.T) {
 	}
 }
 
+func TestCompatibleImagesRejectUnsupportedSeedreamOptions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, suffix := range []string{
+		`"n":2`,
+		`"quality":"high"`,
+		`"input_fidelity":"high"`,
+		`"output_format":"webp"`,
+	} {
+		t.Run(suffix, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":"seedream-5.0-pro","prompt":"draw",%s}`, suffix))
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, openAIImagesGenerationsEndpoint, bytes.NewReader(body))
+			_, err := (&OpenAIGatewayService{}).ParseOpenAIImagesRequest(c, body)
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestCompatibleImagesForwardGemini(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, kind := range []string{"generation", "json_edit", "multipart_edit", "composite_multipart_alias", "channel_mapping", "account_mapping"} {
