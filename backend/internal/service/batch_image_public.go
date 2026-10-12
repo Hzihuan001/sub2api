@@ -329,7 +329,9 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 
 	input := BatchImageInput{
 		BatchID:          job.BatchID,
-		Model:            normalized.Model,
+		// Keep the public alias on the job for billing/UI, but send the
+		// provider deployment ID to native Gemini/Vertex batch APIs.
+		Model:            account.GetMappedModel(normalized.Model),
 		DisplayName:      job.BatchID,
 		ResponseMimeType: normalized.ResponseMimeType,
 		AspectRatio:      normalized.AspectRatio,
@@ -1005,6 +1007,12 @@ func maxBatchImageReferenceImagesForModel(model string) int {
 	if strings.Contains(model, "gpt-image") {
 		return 16
 	}
+	if strings.Contains(model, "nano-banana") {
+		return 14
+	}
+	if strings.Contains(model, "seedream-5") {
+		return 10
+	}
 	if strings.Contains(model, "pro-image") {
 		return 14
 	}
@@ -1450,8 +1458,10 @@ func defaultBatchImageModelCandidates() []string {
 		"gpt-image-2",
 		"gpt-image-2.5-flare",
 		"gpt-image-2.5-sunburst",
+		"seedream-5.0-pro",
 		"gemini-2.0-flash-exp-image-generation",
 		"gemini-2.5-flash-image",
+		"gemini-nano-banana-2.1",
 		"gemini-3-pro-image",
 		"gemini-3-pro-image-preview",
 		"gemini-3.1-flash-image",

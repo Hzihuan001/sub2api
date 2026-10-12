@@ -4,9 +4,13 @@ import {
   IMAGE_STUDIO_CUSTOM_SIZE,
   IMAGE_STUDIO_SIZE_PRESETS,
   normalizeCustomImageSize,
+  normalizeImageStudioCustomSize,
   parseImageDimensions,
   imageStudioPresetForDimensions,
   resolveImageStudioPresetSize,
+  resolveImageStudioRequestSize,
+  supportsImageStudio4K,
+  supportsImageStudioCustomSize,
   verifyImageSize,
 } from '../size'
 
@@ -24,6 +28,17 @@ describe('image studio size helpers', () => {
     expect(imageStudioPresetForDimensions('1024x1024')).toBe('1K')
     expect(imageStudioPresetForDimensions('3840x2160')).toBe('4K')
     expect(imageStudioPresetForDimensions('1536x1024')).toBeNull()
+  })
+
+  it('keeps Gemini Nano Banana on native size tiers and limits Seedream to its published 2K tier', () => {
+    expect(resolveImageStudioRequestSize('gemini-nano-banana-2.1', '4K')).toBe('4K')
+    expect(resolveImageStudioRequestSize('gemini-nano-banana-2.1', IMAGE_STUDIO_CUSTOM_SIZE, '2048x1152')).toBe('')
+    expect(supportsImageStudioCustomSize('gemini-nano-banana-2.1')).toBe(false)
+    expect(supportsImageStudioCustomSize('seedream-5.0-pro')).toBe(true)
+    expect(supportsImageStudio4K('seedream-5.0-pro')).toBe(false)
+    expect(supportsImageStudio4K('gpt-image-2.5-sunburst')).toBe(true)
+    expect(normalizeImageStudioCustomSize('seedream-5.0-pro', 2048, 2048)).toBe('2048x2048')
+    expect(normalizeImageStudioCustomSize('seedream-5.0-pro', 3072, 1536)).toBeNull()
   })
 
   it('accepts official-style custom dimensions and normalizes them', () => {

@@ -19,7 +19,31 @@ describe('imageStudio API', () => {
     expect(isLikelyImageModel('gpt-image-1')).toBe(true)
     expect(isLikelyImageModel('grok-imagine-1.0')).toBe(true)
     expect(isLikelyImageModel('gemini-2.5-flash-image')).toBe(true)
+    expect(isLikelyImageModel('gemini-nano-banana-2.1')).toBe(true)
+    expect(isLikelyImageModel('seedream-5.0-pro')).toBe(true)
     expect(isLikelyImageModel('claude-sonnet-4')).toBe(false)
+  })
+
+  it('uses the native Gemini generateContent route for Gemini image keys', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'aW1hZ2U=' } }] } }] }),
+    } as Response)
+
+    const result = await generateImageStudioImages('sk-gemini', {
+      model: 'gemini-nano-banana-2.1',
+      prompt: 'a lighthouse',
+      count: 1,
+      size: '4K',
+      nativeGemini: true,
+    })
+
+    expect(result).toEqual([{ b64Json: 'aW1hZ2U=', mimeType: 'image/png' }])
+    const [url, options] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toMatch(/\/v1beta\/models\/gemini-nano-banana-2\.1:generateContent$/)
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      generationConfig: { responseModalities: ['IMAGE'], imageConfig: { imageSize: '4K' } },
+    })
   })
 
   it('loads, filters, and deduplicates models through the selected API key', async () => {

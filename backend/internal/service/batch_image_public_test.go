@@ -1058,12 +1058,14 @@ func TestMaxBatchImageReferenceImagesForModelSupportsGPTImage(t *testing.T) {
 	}
 	require.Equal(t, 3, maxBatchImageReferenceImagesForModel("gemini-2.5-flash-image"))
 	require.Equal(t, 14, maxBatchImageReferenceImagesForModel("gemini-3-pro-image-preview"))
+	require.Equal(t, 14, maxBatchImageReferenceImagesForModel("gemini-nano-banana-2.1"))
+	require.Equal(t, 10, maxBatchImageReferenceImagesForModel("seedream-5.0-pro"))
 	require.Zero(t, maxBatchImageReferenceImagesForModel("gpt-5.6-sol"))
 }
 
 func TestDefaultBatchImageModelCandidatesIncludesGPTImage(t *testing.T) {
 	candidates := defaultBatchImageModelCandidates()
-	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2"} {
+	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2", "gemini-nano-banana-2.1", "seedream-5.0-pro"} {
 		require.Contains(t, candidates, model)
 	}
 }
