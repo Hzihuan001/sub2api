@@ -57,6 +57,27 @@ func TestCompatibleImagesGeminiModels(t *testing.T) {
 	}
 }
 
+func TestCompatibleImagesSeedreamDeploymentIDs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, model := range []string{
+		"seedream-5.0-pro",
+		"seedream-5.0-pro-260628",
+		"doubao-seedream-5-0-pro-260628",
+		"dola-seedream-5-0-pro-260628",
+		"provider/seedream-5.0-pro-202610",
+	} {
+		t.Run(model, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":%q,"prompt":"draw"}`, model))
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, openAIImagesGenerationsEndpoint, bytes.NewReader(body))
+			parsed, err := (&OpenAIGatewayService{}).ParseOpenAIImagesRequest(c, body)
+			require.NoError(t, err)
+			require.Equal(t, OpenAIImagesCapabilityAPIKey, parsed.RequiredCapability)
+			require.False(t, isOpenAIImageGenerationModel(model))
+		})
+	}
+}
+
 func TestCompatibleImagesForwardGemini(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, kind := range []string{"generation", "json_edit", "multipart_edit", "composite_multipart_alias", "channel_mapping", "account_mapping"} {
@@ -137,6 +158,30 @@ func TestCompatibleImagesForwardGemini(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCompatibleImagesForwardSeedreamMappedDeployment(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	model := "seedream-5.0-pro"
+	upstreamModel := "doubao-seedream-5-0-pro-260628"
+	body := []byte(fmt.Sprintf(`{"model":%q,"prompt":"draw","size":"2048x2048","output_format":"png"}`, model))
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, openAIImagesGenerationsEndpoint, bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"aW1hZ2U="}]}`))}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "image-key", "base_url": "https://compatible.example/v1",
+		"model_mapping": map[string]any{model: upstreamModel},
+	}}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	result, err := svc.ForwardImages(c.Request.Context(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.Equal(t, upstreamModel, result.UpstreamModel)
+	require.Equal(t, "https://compatible.example"+openAIImagesGenerationsEndpoint, upstream.lastReq.URL.String())
+	require.Equal(t, upstreamModel, gjson.GetBytes(upstream.lastBody, "model").String())
 }
 
 func TestCompatibleImagesNativeAccountsRejectGeminiBeforeForwarding(t *testing.T) {

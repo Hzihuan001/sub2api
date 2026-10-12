@@ -497,7 +497,11 @@ func isGrokImageGenerationModel(model string) bool {
 // model_mapping and are not hard-coded here.
 func isSeedreamImageGenerationModel(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
-	return model == "seedream-5.0-pro" || strings.HasPrefix(model, "seedream-5.0-pro-") || strings.Contains(model, "seedream-5-0-pro")
+	// Providers use both the public dotted alias and deployment IDs such as
+	// doubao-/dola-seedream-5-0-pro-260628. Keep the provider prefix opaque,
+	// but require the complete 5.0 Pro family marker to avoid accepting Lite
+	// or older Seedream models by accident.
+	return strings.Contains(model, "seedream-5.0-pro") || strings.Contains(model, "seedream-5-0-pro")
 }
 
 func validateOpenAIImagesModel(model string) error {
