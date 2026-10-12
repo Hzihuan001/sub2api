@@ -292,6 +292,21 @@
 - **回滚**：回退 `1c9ab9db6` 即可，无数据库恢复要求。
 - **备注**：仍待模型上线后用真实 provider 验证合法自定义尺寸、返回像素和计费映射。
 
+### 2026-10-13 — 未发布 — image-studio Seedream 参数契约收紧
+
+- **需求**：继续降低 Seedream 上线后的请求失败率，避免把 GPT-image 专用参数和 Seedream 不支持的多图生成选项送到上游。
+- **Feature ID**：`image-studio`
+- **官方基线**：`v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1`；基于生产 `custom-0.2.13.9`，本地提交 `064fa42d9`。
+- **实现边界**：单生图工作台按模型收紧数量、质量、格式、背景、蒙版和参考图保真度控件；Seedream 固定单张、仅 PNG/JPEG；单生图 API 解析层拒绝 `n>1`、`quality`、`input_fidelity` 和 WebP；GPT-image/Gemini 选项保持原有行为。
+- **用户可见行为**：选择 Seedream 后只显示可用格式和单张输出，避免用户选择上游不支持的质量/格式组合。
+- **数据库/迁移**：无新增迁移。
+- **测试**：前端 image-studio 定向 Vitest `14/14`、`vue-tsc --noEmit` 和定向 ESLint 通过；新增后端参数拒绝回归用例，本机无 Go 工具链，待 CI 或可用 Go 环境补跑；`git diff --check` 通过。
+- **提交/PR**：`064fa42d9`，仅本地提交，未推送、未创建 PR。
+- **发布镜像**：无；未构建、未打标签。
+- **部署站点**：未部署；OVH 生产保持 `custom-0.2.13.9`，Tencent staging 已退役。
+- **回滚**：回退 `064fa42d9` 即可，无数据库恢复要求。
+- **备注**：规则依据 [Seedream 5.0 Pro 图片生成 API](https://docs.volcengine.com/docs/ark/image-generation-api?lang=en)；实际模型上线后仍需确认编辑端点的参考图字段兼容性。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：
