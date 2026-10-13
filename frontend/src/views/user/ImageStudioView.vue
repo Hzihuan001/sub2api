@@ -35,10 +35,14 @@
 
               <label class="block">
                 <span class="input-label">{{ t('imageStudio.model') }}</span>
-                <input v-model.trim="form.model" list="image-studio-models" class="input mt-1 w-full" :disabled="!selectedKey || generating" :placeholder="modelPlaceholder" data-test="image-studio-model" />
-                <datalist id="image-studio-models">
-                  <option v-for="model in models" :key="model.id" :value="model.id">{{ model.name }}</option>
-                </datalist>
+                <Select
+                  v-model="form.model"
+                  :options="modelOptions"
+                  :placeholder="modelPlaceholder"
+                  :disabled="!selectedKey || loadingModels || generating"
+                  class="mt-1 w-full"
+                  data-test="image-studio-model"
+                />
                 <span v-if="modelError" class="input-hint text-red-600 dark:text-red-400">{{ modelError }}</span>
                 <span v-else class="input-hint">{{ t('imageStudio.modelHint') }}</span>
               </label>
@@ -88,7 +92,7 @@
             <div class="grid grid-cols-2 gap-3">
               <label class="block">
                 <span class="input-label">{{ t('imageStudio.size') }}</span>
-                <Select v-model="form.size" :options="sizeOptions" :disabled="generating" class="mt-1 w-full" />
+                <Select v-model="form.size" :options="sizeOptions" :disabled="generating" class="mt-1 w-full" data-test="image-studio-size" />
               </label>
               <label class="block">
                 <span class="input-label">{{ t('imageStudio.count') }}</span>
@@ -337,6 +341,10 @@ const apiKeyOptions = computed(() => [
   { value: '', label: loadingKeys.value ? t('imageStudio.loadingKeys') : t('imageStudio.selectKey') },
   ...apiKeys.value.map((key) => ({ value: String(key.id), label: `${key.name} · ${key.group?.name || key.group?.platform || '—'}` })),
 ])
+const modelOptions = computed(() => models.value.map((model) => ({
+  value: model.id,
+  label: model.name && model.name !== model.id ? `${model.name} · ${model.id}` : model.id,
+})))
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
 const nativeGeminiModel = computed(() => selectedKey.value?.group?.platform === 'gemini')
 const seedreamImageModel = computed(() => isSeedreamImageModel(form.model))
