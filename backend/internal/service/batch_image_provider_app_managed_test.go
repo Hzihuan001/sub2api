@@ -207,9 +207,9 @@ func TestDecodeManagedImageDataDetectsImageMimeType(t *testing.T) {
 		},
 		{
 			name:       "webp plain base64",
-			bytes:      []byte{'R', 'I', 'F', 'F', 0x04, 0x00, 0x00, 0x00, 'W', 'E', 'B', 'P'},
+			bytes:      []byte{'R', 'I', 'F', 'F', 0x08, 0x00, 0x00, 0x00, 'W', 'E', 'B', 'P', 'V', 'P', '8', ' '},
 			wantMime:   "image/webp",
-			wantBase64: "UklGRgQAAABXRUJQ",
+			wantBase64: "UklGRggAAABXRUJQVlA4IA==",
 		},
 	}
 	for _, tt := range tests {
@@ -253,7 +253,7 @@ func TestAppManagedBatchImageProviderDetectsB64ImageMimeType(t *testing.T) {
 			} `json:"candidates"`
 		} `json:"response"`
 	}
-	require.NoError(t, json.Unmarshal(strings.TrimSpace(string(result)), &line))
+	require.NoError(t, json.Unmarshal(result, &line))
 	require.Equal(t, "image/jpeg", line.Response.Candidates[0].Content.Parts[0].InlineData.MimeType)
 }
 

@@ -64,6 +64,7 @@ type appManagedBatchImageProvider struct {
 	resultDir    string
 	concurrency  int
 	timeout      time.Duration
+	bananaNow    func() time.Time
 }
 
 func NewAppManagedBatchImageProvider(opts AppManagedBatchImageProviderOptions) BatchImageProvider {
@@ -126,6 +127,9 @@ func (p *appManagedBatchImageProvider) Get(ctx context.Context, job *BatchImageJ
 	}
 	if job == nil || strings.TrimSpace(job.BatchID) == "" {
 		return nil, ErrBatchImageProviderInvalidInput
+	}
+	if isBananaRouterGeminiAccount(account) {
+		return p.getBananaRouterBatch(ctx, job, account)
 	}
 	if _, err := os.Stat(p.cancelPath(job.BatchID)); err == nil {
 		return &BatchProviderStatus{RawState: "CANCELLED", InternalState: BatchProviderStateCancelled, Done: true}, nil
@@ -277,7 +281,11 @@ func (p *appManagedBatchImageProvider) persistManagedProgress(ctx context.Contex
 	if strings.TrimSpace(parsed.CustomID) == "" {
 		parsed.CustomID = customID
 	}
-	if err := updater.UpdateBatchImageItemProgress(ctx, batchID, parsed.CustomID, parsed.Status, parsed.MimeType, parsed.FileExtension, parsed.ErrorCode, parsed.ErrorMessage, parsed.ImageCount); err != nil {
+	status := BatchImageItemStatusFailed
+	if parsed.Status == BatchImageParsedStatusSucceeded {
+		status = BatchImageItemStatusSuccess
+	}
+	if err := updater.UpdateBatchImageItemProgress(ctx, batchID, parsed.CustomID, status, parsed.MimeType, parsed.FileExtension, parsed.ErrorCode, parsed.ErrorMessage, parsed.ImageCount); err != nil {
 		return err
 	}
 	return updater.RefreshBatchImageJobCounts(ctx, batchID)
@@ -287,9 +295,6 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 	model := account.GetMappedModel(job.Model)
 	if strings.TrimSpace(model) == "" {
 		model = job.Model
-	}
-	if isBananaRouterGeminiAccount(account) {
-		return p.generateOneBananaRouter(ctx, job, account, model, item, imageSize, aspectRatio)
 	}
 	imageSize = managedImageSize(imageSize)
 	// Keep the requested output format in the persisted payload for future
@@ -405,18 +410,13 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 	return line
 }
 
-// generateOneBananaRouter uses BananaRouter's asynchronous Gemini-compatible
-// endpoint for one item. The parent app-managed provider still supplies the
-// same bounded fan-out, checkpointing, cancellation, and settlement behavior
-// as GPT-image batches; only the per-item upstream protocol differs.
-func (p *appManagedBatchImageProvider) generateOneBananaRouter(ctx context.Context, job *BatchImageJob, account *Account, model string, item BatchImageSubmitItem, imageSize, aspectRatio string) []byte {
-	base := managedAccountBaseURL(account)
+func bananaRouterRequestBody(item BatchImageSubmitItem, imageSize, aspectRatio string) ([]byte, error) {
 	parts := make([]map[string]any, 0, 1+len(item.ReferenceImages))
 	parts = append(parts, map[string]any{"text": item.Prompt})
 	for _, ref := range item.ReferenceImages {
 		mimeType := normalizeBatchImageReferenceMimeType(ref.MimeType)
 		if mimeType == "" {
-			return managedErrorLine(item.CustomID, "REFERENCE_INVALID", "reference image mime_type is required")
+			return nil, fmt.Errorf("reference image mime_type is required")
 		}
 		switch {
 		case len(ref.Data) > 0 && strings.TrimSpace(ref.FileURI) == "":
@@ -430,7 +430,7 @@ func (p *appManagedBatchImageProvider) generateOneBananaRouter(ctx context.Conte
 				"fileUri":  strings.TrimSpace(ref.FileURI),
 			}})
 		default:
-			return managedErrorLine(item.CustomID, "REFERENCE_INVALID", "reference image must contain exactly one of data or file_uri")
+			return nil, fmt.Errorf("reference image must contain exactly one of data or file_uri")
 		}
 	}
 	imageConfig := map[string]any{}
@@ -447,70 +447,10 @@ func (p *appManagedBatchImageProvider) generateOneBananaRouter(ctx context.Conte
 		generationConfig["imageConfig"] = imageConfig
 	}
 	body := map[string]any{
-		"contents": []any{map[string]any{"parts": parts}},
+		"contents":         []any{map[string]any{"parts": parts}},
 		"generationConfig": generationConfig,
 	}
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return managedErrorLine(item.CustomID, "REQUEST_BUILD_FAILED", err.Error())
-	}
-	path := "/v1beta/models/" + url.PathEscape(strings.TrimSpace(model)) + ":asyncGenerateContent"
-	target := buildBananaRouterEndpointURL(base, path)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(payload))
-	if err != nil {
-		return managedErrorLine(item.CustomID, "REQUEST_BUILD_FAILED", err.Error())
-	}
-	setBananaRouterHeaders(req, managedAccountAPIKey(account), managedItemIdempotencyKey(job, item.CustomID))
-	resp, err := p.doManagedRequest(req, account)
-	if err != nil {
-		return managedErrorLine(item.CustomID, "UPSTREAM_REQUEST_FAILED", err.Error())
-	}
-	var submit bananaRouterAsyncResponse
-	readErr := decodeManagedJSONResponse(resp, &submit)
-	if readErr != nil {
-		return managedErrorLine(item.CustomID, readErr.code, readErr.message)
-	}
-	if images := bananaRouterResponseImages(submit.Raw); len(images) > 0 {
-		return managedImageResultLine(ctx, item.CustomID, images)
-	}
-	taskID := strings.TrimSpace(submit.TaskID)
-	if taskID == "" {
-		return managedErrorLine(item.CustomID, "EMPTY_ASYNC_TASK", "BananaRouter did not return a task id")
-	}
-	for {
-		if err := waitManagedPoll(ctx, 5*time.Second); err != nil {
-			return managedErrorLine(item.CustomID, "UPSTREAM_REQUEST_FAILED", err.Error())
-		}
-		pollPath := "/v1/async-tasks/" + url.PathEscape(taskID)
-		pollReq, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, buildBananaRouterEndpointURL(base, pollPath), nil)
-		if reqErr != nil {
-			return managedErrorLine(item.CustomID, "REQUEST_BUILD_FAILED", reqErr.Error())
-		}
-		setBananaRouterHeaders(pollReq, managedAccountAPIKey(account), "")
-		pollResp, pollErr := p.doManagedRequest(pollReq, account)
-		if pollErr != nil {
-			return managedErrorLine(item.CustomID, "UPSTREAM_REQUEST_FAILED", pollErr.Error())
-		}
-		var status bananaRouterAsyncResponse
-		readErr = decodeManagedJSONResponse(pollResp, &status)
-		if readErr != nil {
-			return managedErrorLine(item.CustomID, readErr.code, readErr.message)
-		}
-		if images := bananaRouterResponseImages(status.Raw); len(images) > 0 {
-			return managedImageResultLine(ctx, item.CustomID, images)
-		}
-		state := strings.ToLower(strings.TrimSpace(status.Status))
-		if state == "failed" || state == "error" || state == "cancelled" || state == "canceled" || state == "expired" {
-			message := strings.TrimSpace(status.ErrorMessage)
-			if message == "" {
-				message = "BananaRouter asynchronous task failed"
-			}
-			return managedErrorLine(item.CustomID, "BANANA_ASYNC_FAILED", message)
-		}
-		if state == "completed" || state == "succeeded" || state == "success" || state == "done" {
-			return managedErrorLine(item.CustomID, "EMPTY_IMAGE_OUTPUT", "BananaRouter task completed without an image")
-		}
-	}
+	return json.Marshal(body)
 }
 
 func (p *appManagedBatchImageProvider) doManagedRequest(req *http.Request, account *Account) (*http.Response, error) {
@@ -531,10 +471,10 @@ func (p *appManagedBatchImageProvider) doManagedRequest(req *http.Request, accou
 }
 
 type bananaRouterAsyncResponse struct {
-	TaskID      string
-	Status      string
+	TaskID       string
+	Status       string
 	ErrorMessage string
-	Raw         map[string]json.RawMessage
+	Raw          map[string]json.RawMessage
 }
 
 func (r *bananaRouterAsyncResponse) UnmarshalJSON(data []byte) error {
@@ -559,13 +499,15 @@ func (r *bananaRouterAsyncResponse) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	for _, key := range []string{"error", "message", "errorMessage", "error_message"} {
+	for _, key := range []string{"error", "message", "errorMessage", "error_message", "statusMessage"} {
 		if value, ok := raw[key]; ok {
 			var text string
 			if json.Unmarshal(value, &text) == nil {
 				r.ErrorMessage = text
 			} else {
-				var object struct{ Message string `json:"message"` }
+				var object struct {
+					Message string `json:"message"`
+				}
 				_ = json.Unmarshal(value, &object)
 				r.ErrorMessage = object.Message
 			}
@@ -695,17 +637,6 @@ func managedImageResultLine(ctx context.Context, customID string, images []json.
 	return line
 }
 
-func waitManagedPoll(ctx context.Context, delay time.Duration) error {
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
 func setBananaRouterHeaders(req *http.Request, apiKey, idempotencyKey string) {
 	req.Header.Set("Content-Type", "application/json")
 	if strings.TrimSpace(apiKey) != "" {
@@ -737,7 +668,19 @@ func bananaImageSize(value string) string {
 	}
 }
 
-func (p *appManagedBatchImageProvider) Cancel(_ context.Context, job *BatchImageJob, _ *Account) error {
+func (p *appManagedBatchImageProvider) Cancel(ctx context.Context, job *BatchImageJob, account *Account) error {
+	if isBananaRouterGeminiAccount(account) {
+		if job == nil {
+			return ErrBatchImageProviderInvalidInput
+		}
+		repo, ok := p.itemRepo.(BatchImageAsyncStateRepository)
+		if !ok {
+			return fmt.Errorf("managed async state repository is unavailable")
+		}
+		// Cancellation stops unsubmitted work. Submitted tasks must be drained
+		// and indexed so successful images are still settled exactly once.
+		return repo.RequestBatchImageAsyncCancel(ctx, job.BatchID)
+	}
 	if job != nil {
 		_ = os.Remove(p.resultPath(job.BatchID))
 		if err := os.MkdirAll(p.resultDir, 0750); err == nil {
@@ -841,10 +784,8 @@ func managedAccountBaseURL(account *Account) string {
 	return ""
 }
 
-// BananaRouter and compatible Gemini gateways expose the native Generate
-// Content API but not Google's file-upload Batch API. Treat a custom Gemini
-// base URL as an async managed-fanout account; official Google endpoints stay
-// on the existing native batch provider.
+// Async task support is a provider capability, not a property of custom URLs.
+// Private compatible deployments can opt in through account extra metadata.
 func isBananaRouterGeminiAccount(account *Account) bool {
 	if account == nil || !account.IsGemini() || account.Type != AccountTypeAPIKey || managedAccountAPIKey(account) == "" {
 		return false
@@ -854,13 +795,13 @@ func isBananaRouterGeminiAccount(account *Account) bool {
 		return false
 	}
 	u, err := url.Parse(base)
-	if err != nil || u.Hostname() == "" {
-		return true
+	if err != nil || u.Hostname() == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
+		return false
 	}
-	host := strings.ToLower(u.Hostname())
-	return host != "generativelanguage.googleapis.com" &&
-		host != "aiplatform.googleapis.com" &&
-		!strings.HasSuffix(host, ".googleapis.com")
+	if protocol := strings.TrimSpace(account.GetExtraString("batch_image_protocol")); protocol != "" {
+		return protocol == bananaRouterAsyncProtocol
+	}
+	return strings.EqualFold(u.Hostname(), "api.bananarouter.com")
 }
 
 func managedErrorLine(customID, code, message string) []byte {

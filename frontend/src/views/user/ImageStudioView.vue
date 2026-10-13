@@ -348,8 +348,9 @@ const modelOptions = computed(() => models.value.map((model) => ({
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
 const nativeGeminiModel = computed(() => selectedKey.value?.group?.platform === 'gemini')
 const seedreamImageModel = computed(() => isSeedreamImageModel(form.model))
+const customSizeSupported = computed(() => supportsImageStudioCustomSize(form.model, nativeGeminiModel.value))
 const customSize = computed(() => normalizeImageStudioCustomSize(form.model, customWidth.value, customHeight.value))
-const requestSize = computed(() => resolveImageStudioRequestSize(form.model, form.size, customSize.value || ''))
+const requestSize = computed(() => resolveImageStudioRequestSize(form.model, form.size, customSize.value || '', nativeGeminiModel.value))
 const referenceImageLimit = computed(() => {
   if (nativeGeminiModel.value || isGeminiNanoBananaModel(form.model)) return 14
   if (isSeedreamImageModel(form.model)) return 10
@@ -360,7 +361,7 @@ const sizeOptions = computed(() => [
   { value: '1K', label: t('imageStudio.size1k') },
   { value: '2K', label: t('imageStudio.size2k') },
   ...(supportsImageStudio4K(form.model) ? [{ value: '4K', label: t('imageStudio.size4k') }] : []),
-  ...(supportsImageStudioCustomSize(form.model) ? [{ value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('imageStudio.customSize') }] : []),
+  ...(customSizeSupported.value ? [{ value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('imageStudio.customSize') }] : []),
 ])
 const countOptions = computed(() => (seedreamImageModel.value
   ? [{ value: '1', label: '1' }]
@@ -498,7 +499,7 @@ function makeID(): string {
 
 function selectImageSize(value: string): void {
   const normalizedValue = String(value || '').trim()
-  if (!supportsImageStudioCustomSize(form.model) && normalizedValue === IMAGE_STUDIO_CUSTOM_SIZE) {
+  if (!customSizeSupported.value && normalizedValue === IMAGE_STUDIO_CUSTOM_SIZE) {
     form.size = '1K'
     return
   }
@@ -516,7 +517,7 @@ function selectImageSize(value: string): void {
     form.size = '2K'
     return
   }
-  if (!supportsImageStudioCustomSize(form.model)) {
+  if (!customSizeSupported.value) {
     form.size = '1K'
     return
   }
@@ -747,8 +748,8 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 watch(() => form.apiKeyId, () => { void loadModels() })
-watch(() => form.model, (model) => {
-  if (!supportsImageStudioCustomSize(model) && form.size === IMAGE_STUDIO_CUSTOM_SIZE) form.size = '1K'
+watch([() => form.model, nativeGeminiModel], ([model]) => {
+  if (!customSizeSupported.value && form.size === IMAGE_STUDIO_CUSTOM_SIZE) form.size = '1K'
   if (!supportsImageStudio4K(model) && form.size === '4K') form.size = '2K'
   if (seedreamImageModel.value || nativeGeminiModel.value) {
     form.count = '1'

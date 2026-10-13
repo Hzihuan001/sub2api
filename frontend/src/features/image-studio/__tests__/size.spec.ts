@@ -44,6 +44,15 @@ describe('image studio size helpers', () => {
     expect(normalizeImageStudioCustomSize('seedream-5.0-pro', 3072, 1536)).toBeNull()
   })
 
+  it.each(['gemini-3.1-flash-image', 'gemini-3-pro-image', 'custom-image-alias'])('uses native Gemini tiers for %s when selected by channel protocol', (model) => {
+    expect(resolveImageStudioRequestSize(model, '4K', '', true)).toBe('4K')
+    expect(resolveImageStudioRequestSize(model, '2K', '', true)).toBe('2K')
+    expect(resolveImageStudioRequestSize(model, IMAGE_STUDIO_CUSTOM_SIZE, '2048x1152', true)).toBe('')
+    expect(supportsImageStudioCustomSize(model, true)).toBe(false)
+    expect(supportsImageStudioCustomSize(model)).toBe(true)
+    expect(resolveImageStudioRequestSize(model, '4K')).toBe('3840x2160')
+  })
+
   it('accepts official-style custom dimensions and normalizes them', () => {
     expect(normalizeCustomImageSize(2048, 2048)).toBe('2048x2048')
     expect(normalizeCustomImageSize('2048', '1152')).toBe('2048x1152')

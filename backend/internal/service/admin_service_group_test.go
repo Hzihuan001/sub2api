@@ -961,6 +961,39 @@ func TestAdminService_UpdateGroup_UniformModeSynchronizesStoredRatios(t *testing
 	require.InDelta(t, 0.8, group.KiroCacheReadEmulationRatio, 1e-12)
 }
 
+func TestAdminService_UpdateGroup_SwitchToUniformSynchronizesStoredRatios(t *testing.T) {
+	existingGroup := &Group{
+		ID:                              1,
+		Name:                            "existing-kiro",
+		Platform:                        PlatformKiro,
+		Status:                          StatusActive,
+		KiroCacheEmulationEnabled:       true,
+		KiroCacheEmulationRatio:         0.5,
+		KiroCacheEmulationMode:          KiroCacheEmulationModeIndependent,
+		KiroCacheCreationEmulationRatio: 0.25,
+		KiroCacheReadEmulationRatio:     0.75,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	mode := KiroCacheEmulationModeUniform
+	ratio := 0.8
+	creationRatio := 0.1
+	readRatio := 0.9
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		KiroCacheEmulationMode:          &mode,
+		KiroCacheEmulationRatio:         &ratio,
+		KiroCacheCreationEmulationRatio: &creationRatio,
+		KiroCacheReadEmulationRatio:     &readRatio,
+	})
+	require.NoError(t, err)
+	require.Equal(t, KiroCacheEmulationModeUniform, group.KiroCacheEmulationMode)
+	require.InDelta(t, 0.8, group.KiroCacheCreationEmulationRatio, 1e-12)
+	require.InDelta(t, 0.8, group.KiroCacheReadEmulationRatio, 1e-12)
+	require.Equal(t, group.KiroCacheCreationEmulationRatio, repo.updated.KiroCacheCreationEmulationRatio)
+	require.Equal(t, group.KiroCacheReadEmulationRatio, repo.updated.KiroCacheReadEmulationRatio)
+}
+
 func TestAdminService_UpdateGroup_IndependentModePreservesExplicitZeroRatios(t *testing.T) {
 	existingGroup := &Group{
 		ID:                        1,
@@ -1016,15 +1049,18 @@ func TestAdminService_UpdateGroup_OldClientPreservesIndependentRatios(t *testing
 
 func TestAdminService_UpdateGroup_ClearsKiroRuntimeSettingsWhenPlatformChanges(t *testing.T) {
 	existingGroup := &Group{
-		ID:                          1,
-		Name:                        "existing-kiro",
-		Platform:                    PlatformKiro,
-		Status:                      StatusActive,
-		KiroCacheEmulationEnabled:   true,
-		KiroAutoStickyEnabled:       true,
-		KiroStickySessionTTLSeconds: 7200,
-		KiroCacheEmulationRatio:     0.5,
-		KiroEndpointMode:            KiroEndpointModeAuto,
+		ID:                              1,
+		Name:                            "existing-kiro",
+		Platform:                        PlatformKiro,
+		Status:                          StatusActive,
+		KiroCacheEmulationEnabled:       true,
+		KiroAutoStickyEnabled:           true,
+		KiroStickySessionTTLSeconds:     7200,
+		KiroCacheEmulationRatio:         0.5,
+		KiroCacheEmulationMode:          KiroCacheEmulationModeIndependent,
+		KiroCacheCreationEmulationRatio: 0.25,
+		KiroCacheReadEmulationRatio:     0.75,
+		KiroEndpointMode:                KiroEndpointModeAuto,
 	}
 	repo := &groupRepoStubForAdmin{getByID: existingGroup}
 	svc := &adminServiceImpl{groupRepo: repo}
@@ -1035,6 +1071,9 @@ func TestAdminService_UpdateGroup_ClearsKiroRuntimeSettingsWhenPlatformChanges(t
 	require.False(t, group.KiroAutoStickyEnabled)
 	require.Zero(t, group.KiroStickySessionTTLSeconds)
 	require.Zero(t, group.KiroCacheEmulationRatio)
+	require.Equal(t, KiroCacheEmulationModeUniform, group.KiroCacheEmulationMode)
+	require.Zero(t, group.KiroCacheCreationEmulationRatio)
+	require.Zero(t, group.KiroCacheReadEmulationRatio)
 	require.Empty(t, group.KiroEndpointMode)
 }
 

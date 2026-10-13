@@ -479,6 +479,53 @@ WHERE j.batch_id = $1`, batchID, service.BatchImageItemStatusSuccess, service.Ba
 	return err
 }
 
+// CompareAndSetBatchImageAsyncState preserves the original request while making
+// task submission and recovery mutually exclusive with cancellation and indexing.
+func (r *batchImageRepository) CompareAndSetBatchImageAsyncState(ctx context.Context, batchID, customID string, previous, next json.RawMessage) error {
+	if len(previous) == 0 {
+		previous = json.RawMessage("null")
+	}
+	res, err := r.sql.ExecContext(ctx, `
+WITH active_job AS (
+    SELECT batch_id FROM batch_image_jobs
+    WHERE batch_id = $1 AND status NOT IN ('completed', 'failed', 'cancelled', 'output_deleted')
+    FOR UPDATE
+)
+UPDATE batch_image_items AS i
+SET input_payload = jsonb_set(COALESCE(i.input_payload, '{}'::jsonb), '{managed_async}', $4::jsonb, true)
+FROM active_job AS j
+WHERE i.job_id = j.batch_id AND i.custom_id = $2
+  AND COALESCE(i.input_payload->'managed_async', 'null'::jsonb) = $3::jsonb
+  AND ($3::jsonb <> 'null'::jsonb OR
+       COALESCE(i.input_payload->'managed_async_cancel_requested', 'false'::jsonb) <> 'true'::jsonb)`,
+		batchID, customID, string(previous), string(next))
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrBatchImageIndexStateConflict
+	}
+	return nil
+}
+
+func (r *batchImageRepository) RequestBatchImageAsyncCancel(ctx context.Context, batchID string) error {
+	_, err := r.sql.ExecContext(ctx, `
+WITH active_job AS (
+    SELECT batch_id FROM batch_image_jobs
+    WHERE batch_id = $1 AND status NOT IN ('completed', 'failed', 'cancelled', 'output_deleted')
+    FOR UPDATE
+)
+UPDATE batch_image_items AS i
+SET input_payload = jsonb_set(COALESCE(i.input_payload, '{}'::jsonb), '{managed_async_cancel_requested}', 'true'::jsonb, true)
+FROM active_job AS j
+WHERE i.job_id = j.batch_id`, batchID)
+	return err
+}
+
 func (r *batchImageRepository) replaceBatchImageItemsForJobWithSQL(ctx context.Context, sqlq batchImageSQLExecutor, batchID string, items []service.CreateBatchImageItemParams, counts service.BatchImageCounts) error {
 	var id int64
 	var status string

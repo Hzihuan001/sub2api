@@ -317,6 +317,37 @@ func TestBatchImageProviderProcessor_StatusFlow(t *testing.T) {
 	})
 }
 
+func TestBatchImageProviderProcessor_AppManagedResumesIndexing(t *testing.T) {
+	repo := newFakeBatchImageRepository()
+	accountID := int64(10)
+	providerJob := "managed/job"
+	outputRef := "files/output"
+	job := &BatchImageJob{
+		BatchID: "imgbatch_resume_index", Status: BatchImageJobStatusIndexing,
+		Provider: BatchImageProviderAppManaged, AccountID: &accountID,
+		ProviderJobName: &providerJob, ProviderOutputRef: &outputRef,
+	}
+	repo.jobs[job.BatchID] = job
+	provider := &fakeAppManagedProcessorProvider{&fakeProcessorProvider{
+		result: `{"key":"ok","response":{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"` + batchImageTestData + `"}}]}}]}}` + "\n",
+	}}
+	processor := &BatchImageProviderProcessor{
+		Repo: repo, ProviderRegistry: NewBatchImageProviderRegistry(provider),
+		AccountResolver: &fakeBatchImageAccountResolver{account: &Account{}},
+	}
+	got, err := processor.Process(context.Background(), job.BatchID)
+	require.NoError(t, err)
+	require.False(t, got.Terminal)
+	require.False(t, provider.getCalled)
+	require.True(t, provider.openResultCalled)
+	require.Equal(t, []string{BatchImageJobStatusSettling}, repo.transitions[job.BatchID])
+	require.Equal(t, BatchImageJobStatusSettling, job.Status)
+}
+
+type fakeAppManagedProcessorProvider struct{ *fakeProcessorProvider }
+
+func (*fakeAppManagedProcessorProvider) Name() string { return BatchImageProviderAppManaged }
+
 func TestCanTransitionBatchImageJob_PR5DirectIndexing(t *testing.T) {
 	require.True(t, CanTransitionBatchImageJob(BatchImageJobStatusSubmitted, BatchImageJobStatusIndexing))
 	require.True(t, CanTransitionBatchImageJob(BatchImageJobStatusSubmitted, BatchImageJobStatusFailed))

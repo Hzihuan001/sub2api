@@ -82,8 +82,19 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
+
+function formSelect(label: string) {
+  return wrapper!.findAll('label').find((element) => element.text().includes(label))!.get('select')
+}
+
+async function attachReferences(files: File[]) {
+  const input = wrapper!.get<HTMLInputElement>('input[type="file"][multiple]')
+  Object.defineProperty(input.element, 'files', { configurable: true, value: files })
+  await input.trigger('change')
+}
 
 describe('Image Studio actual size visibility', () => {
   it('keeps actual dimensions internal without a mismatch toast after generation', async () => {
@@ -122,5 +133,98 @@ describe('Image Studio actual size visibility', () => {
     expect(wrapper.get('[data-test="preview"]').text()).toContain('imageStudio.requestedSize: 3840x2160')
     expect(wrapper.html()).not.toContain('1672x941')
     expect(wrapper.html()).not.toContain('imageStudio.actualSize')
+  })
+
+  it('keeps the batch entry and limits Seedream choices after switching from GPT Image', async () => {
+    mocks.listModels.mockResolvedValue([
+      { id: 'gpt-image-2.5-sunburst', name: 'GPT Image' },
+      { id: 'seedream-5.0-pro', name: 'Seedream' },
+    ])
+    wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.getComponent({ name: 'RouterLink' }).attributes('to')).toBe('/batch-image')
+    await wrapper.get('[data-test="image-studio-size"]').setValue('4K')
+    await formSelect('imageStudio.count').setValue('4')
+    await formSelect('imageStudio.quality').setValue('max')
+    await formSelect('imageStudio.outputFormat').setValue('webp')
+    await formSelect('imageStudio.background').setValue('transparent')
+    await attachReferences([new File(['image'], 'reference.png', { type: 'image/png' })])
+    expect(wrapper.text()).toContain('imageStudio.mask')
+
+    await wrapper.get('[data-test="image-studio-model"]').setValue('seedream-5.0-pro')
+    expect(wrapper.get<HTMLSelectElement>('[data-test="image-studio-size"]').element.value).toBe('2K')
+    expect(wrapper.get('[data-test="image-studio-size"]').findAll('option').map((option) => option.attributes('value'))).toEqual(['1K', '2K', 'custom'])
+    expect(formSelect('imageStudio.count').findAll('option').map((option) => option.attributes('value'))).toEqual(['1'])
+    expect(formSelect('imageStudio.outputFormat').findAll('option').map((option) => option.attributes('value'))).toEqual(['png', 'jpeg'])
+    expect(wrapper.text()).not.toContain('imageStudio.quality')
+    expect(wrapper.text()).not.toContain('imageStudio.background')
+    expect(wrapper.text()).not.toContain('imageStudio.mask')
+    expect(wrapper.text()).not.toContain('imageStudio.inputFidelity')
+
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('A mountain at dawn')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.generate).toHaveBeenCalledWith('test-key', expect.objectContaining({
+      model: 'seedream-5.0-pro', size: '2048x2048', count: 1,
+      outputFormat: 'png', quality: 'auto', background: 'auto', inputFidelity: 'auto', mask: null,
+      images: [expect.objectContaining({ name: 'reference.png' })],
+    }), expect.any(AbortSignal))
+  })
+
+  it.each(['gemini-nano-banana-2.1', 'gemini-3.1-flash-image', 'gemini-3-pro-image'])('offers native Gemini tiers for %s and keeps reference images and download MIME type', async (model) => {
+    mocks.listKeys.mockResolvedValue({
+      pages: 1,
+      items: [{ id: 1, key: 'gemini-key', name: 'Gemini key', status: 'active', group: { status: 'active', platform: 'gemini', allow_image_generation: true } }],
+    })
+    mocks.listModels.mockResolvedValue([{ id: model, name: 'Gemini Image' }])
+    mocks.generate.mockResolvedValue([{ b64Json: 'jpeg-image', mimeType: 'image/jpeg' }])
+    const downloads: Array<{ name: string; url: string }> = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push({ name: this.download, url: this.href })
+    })
+    wrapper = mountView()
+    await flushPromises()
+    expect(mocks.listModels).toHaveBeenCalledWith('gemini-key', expect.any(AbortSignal), { nativeGemini: true })
+    expect(wrapper.get('[data-test="image-studio-size"]').findAll('option').map((option) => option.attributes('value'))).toEqual(['1K', '2K', '4K'])
+    expect(wrapper.text()).not.toContain('imageStudio.outputFormat')
+    await attachReferences([new File(['image'], 'reference.png', { type: 'image/png' })])
+    expect(wrapper.text()).not.toContain('imageStudio.mask')
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('A cat by a window')
+    await wrapper.get('[data-test="image-studio-size"]').setValue('4K')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.generate).toHaveBeenCalledWith('gemini-key', expect.objectContaining({
+      model, size: '4K', nativeGemini: true,
+      images: [expect.objectContaining({ name: 'reference.png' })], mask: null,
+    }), expect.any(AbortSignal))
+    expect(mocks.decodeImage).toHaveBeenCalledWith('jpeg-image', 'jpeg')
+    await wrapper.get('article button[title="common.download"]').trigger('click')
+    expect(downloads).toEqual([{ name: expect.stringMatching(/^moshu-image-.*\.jpg$/), url: 'blob:studio-image' }])
+  })
+
+  it('clears unsupported custom size when switching keys without changing the model', async () => {
+    mocks.listKeys.mockResolvedValue({
+      pages: 1,
+      items: [
+        { id: 1, key: 'compatible-key', name: 'Compatible key', status: 'active', group: { status: 'active', platform: 'openai', allow_image_generation: true } },
+        { id: 2, key: 'native-key', name: 'Native key', status: 'active', group: { status: 'active', platform: 'gemini', allow_image_generation: true } },
+      ],
+    })
+    mocks.listModels.mockResolvedValue([{ id: 'gemini-3.1-flash-image', name: 'Gemini Image' }])
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="image-studio-size"]').setValue('custom')
+    await wrapper.get('[data-test="image-studio-key"]').setValue('2')
+    await flushPromises()
+
+    expect(wrapper.get<HTMLSelectElement>('[data-test="image-studio-model"]').element.value).toBe('gemini-3.1-flash-image')
+    expect(wrapper.get<HTMLSelectElement>('[data-test="image-studio-size"]').element.value).toBe('1K')
+    expect(wrapper.get('[data-test="image-studio-size"]').findAll('option').map((option) => option.attributes('value'))).toEqual(['1K', '2K', '4K'])
+    await wrapper.get('[data-test="image-studio-size"]').setValue('4K')
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('A quiet garden')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.generate).toHaveBeenCalledWith('native-key', expect.objectContaining({ model: 'gemini-3.1-flash-image', size: '4K', nativeGemini: true }), expect.any(AbortSignal))
   })
 })

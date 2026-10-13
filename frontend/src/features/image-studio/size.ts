@@ -1,7 +1,7 @@
 /**
  * Image Studio size helpers.
  *
- * The gateway accepts the OpenAI image-size syntax (`WIDTHxHEIGHT`).  Keep
+ * The gateway accepts OpenAI dimensions or native Gemini size tiers. Keep
  * validation in one small, dependency-free module so the form and tests use
  * exactly the same rules.
  */
@@ -33,8 +33,8 @@ export function isSeedreamImageModel(model: string | undefined | null): boolean 
   return normalized === 'seedream-5.0-pro' || normalized.startsWith('seedream-5.0-pro-') || normalized.includes('seedream-5-0-pro')
 }
 
-export function supportsImageStudioCustomSize(model: string | undefined | null): boolean {
-  return !isGeminiNanoBananaModel(model)
+export function supportsImageStudioCustomSize(model: string | undefined | null, nativeGemini = false): boolean {
+  return !nativeGemini && !isGeminiNanoBananaModel(model)
 }
 
 /** Seedream 5.0 Pro's published contract tops out at the 2K tier. */
@@ -57,9 +57,10 @@ export function resolveImageStudioRequestSize(
   model: string | undefined | null,
   value: string | undefined | null,
   customSize = '',
+  nativeGemini = false,
 ): string {
   const normalized = String(value || '').trim().toUpperCase()
-  if (isGeminiNanoBananaModel(model)) {
+  if (nativeGemini || isGeminiNanoBananaModel(model)) {
     return normalized in IMAGE_STUDIO_SIZE_PRESETS ? normalized : ''
   }
   return resolveImageStudioPresetSize(value, customSize)

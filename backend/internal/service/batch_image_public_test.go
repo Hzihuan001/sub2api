@@ -165,6 +165,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 
 	t.Run("uses the custom dimension billing tier for group image price", func(t *testing.T) {
 		svc, repo, _, _, _ := newTestBatchImagePublicService(true)
+		managed := configureTestAppManagedBatchService(svc)
 		groupID := int64(7)
 		imagePrice4K := 0.30
 		svc.GroupRepo = &publicBatchImageGroupRepo{groups: map[int64]*Group{
@@ -181,11 +182,13 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		}}
 
 		req := validBatchImageSubmitRequest()
+		req.Provider, req.Model = BatchImageProviderAppManaged, "gpt-image-1"
 		req.ImageSize = "3840x2160"
 		got, err := svc.Submit(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID}, req, "")
 		require.NoError(t, err)
 		require.InDelta(t, 0.30, got.EstimatedCost, 1e-12)
 		require.InDelta(t, 0.30, repo.jobs[got.ID].BaseUnitPrice, 1e-12)
+		require.Len(t, managed.submits, 1)
 	})
 
 	t.Run("pricing missing rejects before provider submit", func(t *testing.T) {
@@ -318,7 +321,7 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		}
 	})
 
-	t.Run("accepts 4K and valid custom dimensions", func(t *testing.T) {
+	t.Run("native Gemini accepts 4K tier but not custom dimensions", func(t *testing.T) {
 		for _, imageSize := range []string{"4K", "3840x2160"} {
 			t.Run(imageSize, func(t *testing.T) {
 				svc, _, _, gemini, _ := newTestBatchImagePublicService(true)
@@ -326,11 +329,27 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 				req.ImageSize = imageSize
 
 				_, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
+				if imageSize == "3840x2160" {
+					require.ErrorIs(t, err, ErrBatchImageInvalidItems)
+					require.Empty(t, gemini.submits)
+					return
+				}
 				require.NoError(t, err)
 				require.Len(t, gemini.submits, 1)
 				require.Equal(t, imageSize, gemini.submits[0].ImageSize)
 			})
 		}
+	})
+
+	t.Run("app managed OpenAI accepts custom dimensions", func(t *testing.T) {
+		svc, _, _, _, _ := newTestBatchImagePublicService(true)
+		managed := configureTestAppManagedBatchService(svc)
+		req := validBatchImageSubmitRequest()
+		req.Provider, req.Model, req.ImageSize = BatchImageProviderAppManaged, "gpt-image-1", "3840x2160"
+		_, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
+		require.NoError(t, err)
+		require.Len(t, managed.submits, 1)
+		require.Equal(t, req.ImageSize, managed.submits[0].ImageSize)
 	})
 
 	t.Run("rejects too many items", func(t *testing.T) {
@@ -828,6 +847,16 @@ func testBatchImageOwner() BatchImageOwner {
 	return BatchImageOwner{UserID: 11, APIKeyID: 22}
 }
 
+func configureTestAppManagedBatchService(svc *BatchImagePublicService) *publicBatchImageProvider {
+	provider := &publicBatchImageProvider{name: BatchImageProviderAppManaged}
+	account := testBatchImageAccount(101, AccountTypeAPIKey)
+	account.Platform = PlatformOpenAI
+	svc.AccountRepo = &publicBatchImageAccountRepo{accounts: []Account{account}}
+	svc.ProviderRegistry = NewBatchImageProviderRegistry(provider)
+	svc.Config.BatchImage.AppManagedEnabled = true
+	return provider
+}
+
 type fakeBatchImageAuthCacheInvalidator struct {
 	keys     []string
 	userIDs  []int64
@@ -926,6 +955,22 @@ func (r *publicBatchImageAccountRepo) ListSchedulableByPlatform(_ context.Contex
 
 func (r *publicBatchImageAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, _ int64, platform string) ([]Account, error) {
 	return r.ListSchedulableByPlatform(ctx, platform)
+}
+
+func (r *publicBatchImageAccountRepo) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
+	var accounts []Account
+	for _, platform := range platforms {
+		matches, err := r.ListSchedulableByPlatform(ctx, platform)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, matches...)
+	}
+	return accounts, nil
+}
+
+func (r *publicBatchImageAccountRepo) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, _ int64, platforms []string) ([]Account, error) {
+	return r.ListSchedulableByPlatforms(ctx, platforms)
 }
 
 type publicBatchImageQueue struct {
