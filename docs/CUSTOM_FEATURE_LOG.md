@@ -382,6 +382,21 @@
 - **回滚**：回退 `0a6493b49` 即可，无数据库恢复要求；生产镜像与运行数据未变更。
 - **备注**：实现依据 [BananaRouter 异步任务文档](https://bananarouter.com/docs/async-task) 和 [Gemini 图片模型文档](https://bananarouter.com/docs/gemini-3-pro-image-preview)。官方异步任务建议轮询间隔至少 5 秒；模型上线后需验证真实 `taskID`、`resultImages`、参考图、失败任务和计费结算。日志不记录任何密钥或真实请求凭据。
 
+### 2026-10-13 — 未发布 — image-studio 模型选择改为下拉
+
+- **需求**：模型不再允许用户手动填写，改为从当前 API Key 实际返回的可用模型中直接选择。
+- **Feature ID**：`image-studio`
+- **官方基线**：`v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1`；基于生产 `custom-0.2.13.9`，本地提交 `9a43bafdc`。
+- **实现边界**：`frontend/src/views/user/ImageStudioView.vue` 移除模型输入框和 `datalist`，改用共享 `Select` 组件；模型选项由已加载的 `/v1/models` 结果生成，加载中或无 API Key 时禁用；批量工作台原本已使用模型下拉，无需新增输入路径。同步更新尺寸显示回归测试。
+- **用户可见行为**：单张和批量生图工作台都只能选择当前密钥可用模型，不能提交任意手填模型 ID；切换密钥后模型列表仍会重新加载并自动选择首个可用项。
+- **数据库/迁移**：无新增迁移。
+- **测试**：`ImageStudioView.sizeDisplay.spec.ts` `2/2` 通过；`vue-tsc --noEmit`、定向 ESLint、`git diff --check` 通过。
+- **提交/PR**：`9a43bafdc`，仅本地，未推送、未创建 PR。
+- **发布镜像**：无；未构建、未打标签。
+- **部署站点**：未部署；OVH 生产保持 `custom-0.2.13.9`，Tencent staging 已退役。
+- **回滚**：回退 `9a43bafdc` 即可，无数据库恢复要求；生产镜像与运行数据未变更。
+- **备注**：此变更只收紧模型选择入口，不改变模型发现接口、模型映射或生图请求协议。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：

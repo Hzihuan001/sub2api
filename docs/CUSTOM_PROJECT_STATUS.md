@@ -16,7 +16,7 @@
 | 最近生产版本 | `0.2.13-custom.9` |
 | 最近生产标签 | `custom-0.2.13.9` / `f6fadd781d587a65cd3a4b4e0da7ef5e04535873` |
 | 生产镜像 digest | `ghcr.io/hzihuan001/sub2api@sha256:c33d5601a7a967474eb9281189df9e511b00a5af544c824d268a8b87bfc063d8` |
-| 当前工作分支 | `codex/image-studio-session-20261004`（image-studio 模型适配提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9`、`f6f008b14`、`1149f16c6`、`832e07ce8`、`8d92648db`、`0a6493b49`；父工作树未修改） |
+| 当前工作分支 | `codex/image-studio-session-20261004`（image-studio 模型适配提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9`、`f6f008b14`、`1149f16c6`、`832e07ce8`、`8d92648db`、`0a6493b49`、`9a43bafdc`；父工作树未修改） |
 | 协作父分支/工作树 | `codex/isolation-refactor-v0.2.13` / `07bf51ba0`；父工作树保持 clean，未被本会话修改 |
 | 同步框架 HEAD | `1fa5f4478`（本文档记录前；文档提交后的当前 HEAD 以 `git log` 为准） |
 | 长期集成基线 | `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071` |
@@ -37,6 +37,7 @@
 ### 当前会话摘要（2026-10-13）
 
 - **Feature ID**：`image-studio`；状态：`in-progress`（适配代码已完成，未上线；生产仍为 `.9`）。
+- **最近界面调整**：单张生图工作台的模型字段已改为只读下拉选择，只允许选择当前 API Key 加载到的模型；批量工作台继续使用同一模型下拉机制。
 - **实现边界**：提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9`、`f6f008b14`、`1149f16c6` 增加 `gemini-nano-banana-2.1` 原生 Gemini 单生图 `/v1beta` 请求转换与权限门禁，支持 `1K`/`2K`/`4K`、参考图和 `inlineData` 响应解析；Gemini 密钥模型发现改走 `/v1beta/models`；批量 Gemini/Vertex 保留上游尺寸档位、4K 明确传 `16:9` 并将公开别名映射为账号部署模型，使用官方 Batch API 的 JSONL 请求；`seedream-5.0-pro` 走 OpenAI-compatible API-key 转发，支持账号 `model_mapping` 部署 ID、动态参考图上限和自定义尺寸校验，批量任务由工作台拆分为多条 `n=1` 请求，不伪造上游组图能力。复合路由将 Seedream 公共 alias/部署 ID 识别为 OpenAI；单生图解析、单生图前端和批量提交均隐藏/拒绝 Seedream 4K，自定义尺寸限制为 921600–4624220 总像素；Seedream 单生图和批量工作台仅提供 PNG/JPEG，并隐藏不兼容的质量、WebP、蒙版和参考图保真度选项；原生 Gemini 批量固定 PNG；切换分组时请求层清除残留蒙版。提交 `832e07ce8` 让 app-managed 批量从 Base64/data URL 解码并按图片签名保留 JPEG/PNG/WebP MIME，提交 `8d92648db` 将工作台尺寸标签统一为 `1K`/`2K`/`4K`，并隐藏原生 Gemini 不适用的质量、格式、背景和批量格式控件；批量 502 显示为可操作的服务端配置提示。提交 `0a6493b49` 将 BananaRouter/兼容 Gemini 自定义端点转入同一 app-managed 批量队列：每个 item 调用 `/v1beta/models/{model}:asyncGenerateContent`，使用幂等键提交、按 `/v1/async-tasks/{taskID}` 轮询并将 `resultImages` 规范化为既有 JSONL；工作台通过 `managed_async` 模式识别该模型，继续使用 `1K`/`2K`/`4K` 档位和 Gemini 的 PNG 输出约束。
 - **数据与兼容**：没有后端数据库迁移；公开别名不写入新的表字段，批量任务继续复用既有 `input_payload`；原生 Gemini 不接受任意 `WIDTHxHEIGHT`，自定义尺寸仅适用于兼容图片接口。
 - **验证证据**：前端 image-studio/API 定向 Vitest `31` 个文件、`230/230` 测试通过；`vue-tsc --noEmit`、定向 ESLint 和 `git diff --check` 通过；后端已补充 BananaRouter 异步响应、端点版本拼接、批量模型模式和 app-managed MIME 回归测试，但本机无 Go 工具链，待 CI/可用 Go 环境补跑。线上冒烟扩展为：Nano 2.1 `2K/1:1` HTTP 200、实际 `2048x2048` JPEG；`4K/16:9` HTTP 200、实际 `5504x3072` JPEG。开启分组批量后模型列表 HTTP 200，但旧链路提交单条 1K 任务仍 HTTP 502 且未创建任务；直接调用公开网关 `batchGenerateContent` 返回 HTTP 404 `Unsupported action`。BananaRouter 官方异步接口已完成代码适配，尚未使用真实 BananaRouter 凭据完成端到端批量验证。
