@@ -1,6 +1,6 @@
 # v0.2.16 与生图工作台本地验收
 
-记录日期：2026-10-13。范围仅为源码合并、功能移植和本地验收；未推送、未创建发布标签、未部署生产。生产版本见 `CUSTOM_PROJECT_STATUS.md`，不能把本报告的本地镜像 ID 当作 GHCR 发布 digest。
+记录日期：2026-10-14。范围包括源码合并、功能移植、本地验收和已批准的生产发布。生产版本与备份证据见 `CUSTOM_PROJECT_STATUS.md`；本报告中的本地镜像 ID 不能当作 GHCR digest。
 
 ## 源码坐标
 
@@ -16,6 +16,8 @@
 | 运行代码修复 | `e42db1f11b3afe54ff0cd88da42f37b928ff3a5c` |
 | 测试与验收脚本 | `f17cae568` |
 | 候选版本 | `0.2.16-custom.1` |
+| 发布标签 | `custom-0.2.16.1` |
+| GHCR digest | `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17` |
 
 旧生图分支基于 v0.2.13，故仅选择功能提交，不合并整分支、不移植旧 VERSION。v0.2.15.2 已有的 IndexedDB 用户隔离、尺寸元数据及下载行为未重复移植。代理商运行时没有恢复。
 
@@ -83,4 +85,14 @@ docker compose -p sub2api-operator-test-v0216 -f deploy/docker-compose.operator-
 docker stop image-smoke-f4002e20f2
 ```
 
-下一阶段是推送候选分支、创建版本标签、构建 GHCR 发布镜像并验证同一 digest，再按确认的站点范围发布。部署前等待旧版异步在途任务完成：旧版内存 task ID 无法由新版恢复。提交结果未知超过 24 小时仍需人工核账，不得盲目重提或退款。
+## 生产发布记录（2026-10-14）
+
+- **推送与镜像**：分支 `codex/v0.2.16-image-studio` 和标签 `custom-0.2.16.1` 已推送 Fork。仓库 Actions API 返回 `Actions has been disabled`，无法创建本次自动运行；本地已通过质量门禁和隔离 Docker 验收后，使用 Buildx `linux/amd64` 直接发布同一源码提交的 GHCR 镜像。该例外已记录，后续应在 GitHub 设置中恢复 Actions 后再恢复自动门禁。
+- **发布提交**：镜像内版本 `0.2.16-custom.1`，commit `ece7cf2208332fccb9b031e04b4f35266302dbe3`，构建时间 `2026-10-13T15:59:56Z`。
+- **备份**：OVH 发布前备份为 `/opt/sub2api-backups/v0.2.16-custom.1-20261014T0010Z`。包含主站/L1/COS Compose、`.env`、数据归档、三套 PostgreSQL custom-format dump、旧镜像引用和 SHA256SUMS；主站 dump 已确认针对实际 `sub2api` 数据库，三个 dump 均可由容器内 `pg_restore -l` 读取。
+- **部署**：只修改三个 Compose 的 Sub2API 镜像引用，并分别执行 `up -d --no-deps`；未重建 PostgreSQL、Redis、卷、网络或 OpenResty。主站、L1、COS 均切换到上述 digest。
+- **快速验收**：三个应用容器 healthy、重启次数 0；三个 Moshu 域名 `/health` 均返回 200；主站/L1/COS 版本、commit、digest 一致；迁移计数为 322/331/331；Redis 认证连通；部署后应用日志无 panic/fatal、迁移失败或数据库/Redis 错误。
+- **清理**：删除未被容器使用的旧 Sub2API 镜像 `0.2.13-custom.6` 及两个无标签旧层，删除未使用 CPA `v8.0.23`、`v8.0.8`；清理可回收 Buildx 缓存约 244 MB。保留当前 digest、主站旧 digest、L1/COS 旧 digest、`rollback-0.2.13-custom.3`、数据库/Redis/卷和网络。清理后 Docker 镜像从 18 减至 13，未使用卷未动。
+- **回滚**：若需回滚，恢复发布前 Compose 中的旧 digest 并仅重建对应应用容器；本次官方迁移已在本地旧镜像兼容演练中验证，生产若发现不可逆迁移问题仍必须按备份恢复数据库，不能只切镜像。
+
+后续等待旧版异步在途任务完成并继续观察错误率；未知提交结果超过 24 小时仍需人工核账，不得盲目重提或退款。

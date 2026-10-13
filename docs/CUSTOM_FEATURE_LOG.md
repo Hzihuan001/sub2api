@@ -18,6 +18,16 @@
 - **镜像 / 部署**：只有 `sub2api:0.2.16-custom.1-local` 本地镜像；未推送、未创建标签、未发布 GHCR、未部署生产。主站仍为 `0.2.15-custom.2`，L1/COS 为 `0.2.15-custom.1`。
 - **后续**：发布前等待旧版异步在途任务排空，未知提交超过 24 小时需人工核账；推进长期集成基线前先核对所有会话提交，不能直接从仍落后的 `custom/integration` 开始。
 
+### 2026-10-14 — 已发布 — v0.2.16-custom.1 生产更新与旧镜像清理
+
+- **需求 / Feature ID**：发布已完成本地验收的官方 v0.2.16 合并和 `image-studio` 移植；`operator`、`prompt-audit`、`branding`、`usage-extras` 保持。
+- **来源**：分支 `codex/v0.2.16-image-studio`，标签 `custom-0.2.16.1`，提交 `ece7cf2208332fccb9b031e04b4f35266302dbe3`。
+- **镜像**：`ghcr.io/hzihuan001/sub2api:0.2.16-custom.1`，不可变 digest `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17`，linux/amd64。因仓库 Actions API 报 `Actions has been disabled`，本次完成本地门禁后由 Buildx 直接发布；后续应重新启用 Actions。
+- **部署**：OVH 主站、L1、COS 只替换 Sub2API 应用镜像并执行 `up -d --no-deps`；没有重建数据库、Redis、卷、网络或 OpenResty。备份标识 `/opt/sub2api-backups/v0.2.16-custom.1-20261014T0010Z`。
+- **验收**：三应用均 healthy、重启次数 0，`ai.moshu.cloud`、`api.moshu.cloud`、`cos.moshu.cloud` 的 `/health` 均 200；三站版本和 digest 一致，迁移计数 322/331/331，Redis 认证连通，日志无关键错误。
+- **清理**：删除未使用的旧 Sub2API 镜像、CPA `v8.0.23`/`v8.0.8` 及可回收 Buildx 缓存约 244 MB；保留当前和必要回滚镜像，不动卷、网络和其他运行服务。Docker 镜像数从 18 降至 13。
+- **回滚**：恢复备份中的旧应用 digest 后仅重建对应应用容器；若生产迁移出现不可逆问题，按 PostgreSQL 备份恢复，禁止只切旧镜像。
+
 ### 2026-10-12 — 运维记录同步 — 下游 Moshu 域名
 
 - 从根工作树保留的共享记录同步：L1/COS 新入口为 `api.moshu.cloud`、`cos.moshu.cloud`，指向 OVH，HTTPS SAN 证书与续期钩子已配置，两条 DNS 均为 Cloudflare `Proxied`。旧 tokenpulse 入口保留对照。

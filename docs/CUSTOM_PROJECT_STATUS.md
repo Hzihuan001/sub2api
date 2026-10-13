@@ -14,7 +14,7 @@
 | 记录日期 | 2026-10-13 |
 | 候选官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
 | 候选定制版本 | `0.2.16-custom.1`（仅本地，未发布） |
-| 最近生产版本 | 主站 `0.2.15-custom.2`；L1/COS `0.2.15-custom.1` |
+| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.1` |
 | 最新已提交基线 | `custom-0.2.15.3` / `0e5158d24`，公共文档更新未部署 |
 | 当前工作分支 | `codex/v0.2.16-image-studio` |
 | 升级工作树 | `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` |
@@ -25,7 +25,7 @@
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
 | 主站生产镜像 digest | `sha256:7b49d3d555c3427917fbfc9315497214a74df3ddb49c6a9c17ee5ecf13726eab` |
 | L1/COS 生产镜像 digest | `sha256:ec2e0efb603d8b364cdfccacb8dfa2449d8071116853487849abb9f540b4511e` |
-| 当前发布状态 | v0.2.16 和生图移植本地验收通过；仅本地提交，未推送/打标签/发布，生产未修改 |
+| 当前发布状态 | `custom-0.2.16.1` 已推送；GHCR digest 已发布并部署主站、L1、COS，生产快速验收通过 |
 
 生产健康检查最近确认通过的入口：
 
@@ -35,17 +35,19 @@
 
 2026-10-12 两个下游入口切换到 Moshu 子域名并开启 Cloudflare 代理；旧 `tokenpulse.top` 入口保留。OVH OpenResty 继续使用 HTTPS、10 小时读写超时和关闭响应缓冲。域名运维记录见功能日志。
 
-生产发布必须继续使用通过验收的同一镜像 digest，不在不同服务器重新构建。
+本次生产三站统一使用同一镜像 digest：`sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17`。发布前备份标识为 `/opt/sub2api-backups/v0.2.16-custom.1-20261014T0010Z`；后续回滚只切应用镜像，不重建数据库、Redis、卷和网络。
 
 ### 当前会话摘要（2026-10-13）
 
-- **Feature ID**：官方升级及 `image-studio`；状态：`locally-validated`，验收见 [`UPGRADE_V0_2_16_ACCEPTANCE.md`](UPGRADE_V0_2_16_ACCEPTANCE.md)，问题处理见 [`CUSTOM_UPGRADE_ISSUES.md`](CUSTOM_UPGRADE_ISSUES.md)。
+- **Feature ID**：官方升级及 `image-studio`；状态：`deployed`，本地验收见 [`UPGRADE_V0_2_16_ACCEPTANCE.md`](UPGRADE_V0_2_16_ACCEPTANCE.md)，问题处理见 [`CUSTOM_UPGRADE_ISSUES.md`](CUSTOM_UPGRADE_ISSUES.md)。
 - **移植来源**：`codex/image-studio-session-20261004` / `01124885d` 中 14 个功能提交；不整分支合并旧 v0.2.13，不移植旧 VERSION，不重复移植已发布的用户隔离画廊。
 - **生图行为**：Nano Banana/Gemini 原生模型发现与 IMAGE 路由；Seedream 5 部署别名、模型特定尺寸/参考图/格式约束；原生 Gemini 保留 1K/2K/4K 档位且不接受自定义像素；返回图片按真实 MIME 下载。仍隐藏实际像素文字、不本地放大、不改变输出优先计费。
 - **异步安全**：仅 BananaRouter 明确能力账号走异步协议；提交意图和 task ID 保存到现有 item JSONB，重启恢复轮询，取消后保留已成功图片并正常结算。未知提交结果超过 24 小时需要人工核账，不盲目重提或退款；部署前应等待旧版未持久化 task ID 的在途任务完成。
 - **数据与兼容**：本次没有定制数据库迁移；追加官方 242-245 迁移，历史迁移文件名/校验值不改。浏览器 IndexedDB v2 用户隔离保持。
 - **已有验证**：前端全量 401 文件/2998 项通过，最终窄修复另有 25 项回归、平台 5 项、lint、typecheck/生产构建通过；真实 PostgreSQL 批量任务/缓存/分组与异步 CAS 集成测试通过；Ent 临时目录完整生成比对无差异，Wire 生成通过。后端唯一失败的协议测试夹具修复后连续 50 次及相关回归通过。
-- **Docker 验收**：`sub2api-operator-test-v0216` / `http://127.0.0.1:18086`；权限、重启持久化、mock 生图/三张 fan-out/参考图/MIME/单张与 ZIP 下载、合成结算通过。四个官方新迁移完成（318 → 322），同数据库旧镜像回滚启动/登录/模型发现通过。候选已恢复；本地镜像不等于 GHCR 发布产物。
+- **Docker 验收**：`sub2api-operator-test-v0216` / `http://127.0.0.1:18086`；权限、重启持久化、mock 生图/三张 fan-out/参考图/MIME/单张与 ZIP 下载、合成结算通过。四个官方新迁移完成（318 → 322），同数据库旧镜像回滚启动/登录/模型发现通过。候选已恢复。
+- **生产验收**：主站、L1、COS 容器均 healthy，重启次数为 0；`https://ai.moshu.cloud/health`、`https://api.moshu.cloud/health`、`https://cos.moshu.cloud/health` 均返回 200。三站运行版本、commit 和 digest 一致，应用日志未见 panic/fatal/迁移失败/数据库或 Redis 错误。Redis 认证连通，未重建数据服务。
+- **清理**：保留当前 digest、主站旧 digest、L1/COS 旧 digest和 rollback 镜像；删除未使用的旧 Sub2API 镜像、CPA `v8.0.23`/`v8.0.8` 和可回收构建缓存。未删除卷、网络、当前 CPA、证书或数据库镜像。
 - **协作注意**：根目录 `D:/projects/sub2api-custom` 有其他会话的未提交公共文档/DNS记录；不要重置或覆盖。`custom/integration` 仍落后，升级必须先核对最新发布与功能会话提交，验收后再推进集成基线。
 
 ## 2. 当前定制功能边界
