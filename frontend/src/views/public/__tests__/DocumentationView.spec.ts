@@ -30,4 +30,16 @@ describe('DocumentationView', () => {
     expect(source).toContain('[model_providers.moshu]')
     expect(source).toContain('inferenceGatewayBaseUrl')
   })
+
+  it('includes the requested tool guides with the MoShu gateway address', () => {
+    expect(source).toContain('Trae 配置方法')
+    expect(source).toContain('Cherry Studio 配置方法')
+    expect(source).toContain('Claude CLI 配置方法')
+    expect(source).toContain('WorkBuddy 配置示例')
+    expect(source).toContain('https://ai.moshu.cloud/v1')
+    expect(source).toContain('https://ai.moshu.cloud')
+    expect(source).toContain('ANTHROPIC_BASE_URL')
+    expect(source).toContain('DocImagePlaceholder')
+    expect(source).not.toContain('api.bananarouter.com')
+  })
 })

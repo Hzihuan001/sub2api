@@ -115,7 +115,7 @@
           </template>
 
           <template v-else>
-            <DocHeading title="接入其他工具" description="本章包含 Codex、Claude Desktop、WorkBuddy、Zcode 和 OpenCode 的接入方法。" />
+            <DocHeading title="接入其他工具" description="本章包含 Codex、Trae、Cherry Studio、Claude Code、WorkBuddy、Claude Desktop、Zcode 和 OpenCode 的接入方法。" />
             <DocSection title="配置前准备">
               <p>开始前需要准备三个信息：</p>
               <ol class="doc-list list-decimal">
@@ -142,11 +142,47 @@
               <p class="mt-4">AI Agent 会自动拼接 <code class="inline-code">/chat/completions</code>。只填写 <code class="inline-code">https://ai.moshu.cloud</code> 在部分软件中可用，但兼容性较差。</p>
             </DocSection>
             <DocSection title="Codex 配置方法">
-              <p>在 <code class="inline-code">%USERPROFILE%\.codex\config.toml</code> 中添加：</p>
+              <p>先完全退出 Codex，并备份 <code class="inline-code">%USERPROFILE%\.codex\config.toml</code>。然后写入以下供应商配置：</p>
               <CodeBlock :code="codexConfig" />
-              <p class="mt-5">然后在 <code class="inline-code">auth.json</code> 中设置 API Key：</p>
-              <CodeBlock :code="codexAuth" />
-              <p class="mt-4">也可以打开 Codex，选择“使用其他方式登录”，输入生成的 API Key 完成登录。</p>
+              <p class="mt-5">Windows PowerShell 中设置 API Key：</p>
+              <CodeBlock :code="codexEnvWindows" />
+              <p class="mt-5">macOS 或 Linux 终端中设置 API Key：</p>
+              <CodeBlock :code="codexEnvUnix" />
+              <Callout title="重启客户端" tone="info">设置完成后重新打开 Codex 或新建终端，再运行 <code class="inline-code">codex</code>。模型名称必须替换为 <code class="inline-code">/v1/models</code> 返回的实际 <code class="inline-code">id</code>。</Callout>
+            </DocSection>
+            <DocSection title="Trae 配置方法">
+              <p>打开 Trae，进入底部的模型列表，选择“添加模型 → 自定义模型”。</p>
+              <DefinitionGrid :items="traeFields" />
+              <ol class="doc-list list-decimal mt-5">
+                <li>填写完成后点击“添加”，并启用刚创建的模型。</li>
+                <li>回到对话页面，在模型选择器中选择该模型。</li>
+                <li>如果接入 Claude 模型，将 API 格式切换为“Anthropic Messages API”，地址按页面提示使用根地址 <code class="inline-code">https://ai.moshu.cloud</code>。</li>
+              </ol>
+              <DocImagePlaceholder label="Trae 自定义模型配置截图（待补充）" />
+            </DocSection>
+            <DocSection title="Cherry Studio 配置方法">
+              <p>打开 Cherry Studio，依次进入“设置 → 模型服务 → 添加”。推荐选择 Anthropic 类型接入 Claude 模型：</p>
+              <DefinitionGrid :items="cherryFields" />
+              <ol class="doc-list list-decimal mt-5">
+                <li>保存供应商后点击“添加模型”。</li>
+                <li><strong>模型 ID</strong> 填写 <code class="inline-code">/v1/models</code> 返回的完整 ID，区分大小写。</li>
+                <li>模型名称和分组名可以按用途自定义，例如“Claude Sonnet”和“claude”。</li>
+                <li>回到会话窗口选择模型并发送一条短消息测试。</li>
+              </ol>
+              <Callout title="地址规则" tone="info">Anthropic 类型通常填写 <code class="inline-code">https://ai.moshu.cloud</code>；如果 Cherry Studio 的请求预览显示它会拼接 <code class="inline-code">/v1/messages</code>，请保持根地址，不要重复填写路径。</Callout>
+              <DocImagePlaceholder label="Cherry Studio 模型服务与模型配置截图（待补充）" />
+            </DocSection>
+            <DocSection title="Claude CLI 配置方法">
+              <p>先安装 Claude Code：</p>
+              <CodeBlock :code="claudeInstall" />
+              <p class="mt-5">Windows PowerShell 使用 <code class="inline-code">setx</code> 保存配置：</p>
+              <CodeBlock :code="claudeCliWindows" />
+              <p class="mt-5">macOS 或 Linux 将以下内容加入 <code class="inline-code">~/.zshrc</code> 或 <code class="inline-code">~/.bashrc</code>，然后执行 <code class="inline-code">source ~/.zshrc</code>（按实际文件调整）：</p>
+              <CodeBlock :code="claudeCliUnix" />
+              <Callout title="模型 ID 以接口返回为准" tone="warning">示例中的 Claude 模型只用于说明格式。请先查询 <code class="inline-code">/v1/models</code>，再替换 <code class="inline-code">ANTHROPIC_MODEL</code> 等变量，否则可能返回模型不存在。</Callout>
+              <p class="mt-5">重新打开终端，进入项目目录后运行：</p>
+              <CodeBlock code="claude" />
+              <DocImagePlaceholder label="Claude Code CLI 配置截图（待补充）" />
             </DocSection>
             <DocSection title="Claude Desktop 配置方法">
               <p>先在 PowerShell 中生成 UUID：</p>
@@ -160,6 +196,7 @@
               <p>依次进入“模型设置 → 添加模型 → 自定义”。</p>
               <DocImage :src="workbuddyAddModelImage" alt="WorkBuddy 添加自定义模型入口" />
               <DefinitionGrid :items="workbuddyFields" />
+              <p class="mt-5">在高级配置中，按客户端版本开启工具调用和图片输入；上下文长度可填写 <code class="inline-code">256K</code>，最大输出长度可填写 <code class="inline-code">64K</code>。如果版本没有这些选项，保持默认即可。</p>
               <DocImage :src="workbuddyConfigImage" alt="WorkBuddy 中填写 MoShu 配置" caption="确认模型 ID 来自 /v1/models 后保存。" />
             </DocSection>
             <DocSection title="Zcode 配置示例">
@@ -252,10 +289,33 @@ const codexConfig = [
   '',
   '[model_providers.moshu]',
   'name = "MoShu 模枢"',
+  'env_key = "OPENAI_API_KEY"',
   'wire_api = "responses"',
   'base_url = "https://ai.moshu.cloud/v1"'
 ].join('\n')
-const codexAuth = ['{', '  "OPENAI_API_KEY": "生成的apikey"', '}'].join('\n')
+const codexEnvWindows = 'setx OPENAI_API_KEY "sk-xxxxxxxxxxxxxxxx"\n# 关闭当前终端，重新打开后配置才会生效'
+const codexEnvUnix = 'export OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxx"\n# 持久保存可写入 ~/.zshrc 或 ~/.bashrc，然后执行 source ~/.zshrc'
+const claudeInstall = 'npm install -g @anthropic-ai/claude-code\nclaude --version'
+const claudeCliWindows = [
+  'setx ANTHROPIC_BASE_URL "https://ai.moshu.cloud"',
+  'setx ANTHROPIC_AUTH_TOKEN "sk-xxxxxxxxxxxxxxxx"',
+  'setx ANTHROPIC_MODEL "YOUR_CLAUDE_MODEL_ID"',
+  'setx ANTHROPIC_DEFAULT_OPUS_MODEL "YOUR_CLAUDE_MODEL_ID"',
+  'setx ANTHROPIC_DEFAULT_SONNET_MODEL "YOUR_CLAUDE_MODEL_ID"',
+  'setx ANTHROPIC_DEFAULT_HAIKU_MODEL "YOUR_CLAUDE_MODEL_ID"',
+  'setx CLAUDE_CODE_SUBAGENT_MODEL "YOUR_CLAUDE_MODEL_ID"'
+].join('\n')
+const claudeCliUnix = [
+  'export ANTHROPIC_BASE_URL="https://ai.moshu.cloud"',
+  'export ANTHROPIC_AUTH_TOKEN="sk-xxxxxxxxxxxxxxxx"',
+  'export ANTHROPIC_MODEL="YOUR_CLAUDE_MODEL_ID"',
+  'export ANTHROPIC_DEFAULT_OPUS_MODEL="YOUR_CLAUDE_MODEL_ID"',
+  'export ANTHROPIC_DEFAULT_SONNET_MODEL="YOUR_CLAUDE_MODEL_ID"',
+  'export ANTHROPIC_DEFAULT_HAIKU_MODEL="YOUR_CLAUDE_MODEL_ID"',
+  'export CLAUDE_CODE_SUBAGENT_MODEL="YOUR_CLAUDE_MODEL_ID"',
+  '',
+  'source ~/.zshrc  # 如果使用 bash，请改为 source ~/.bashrc'
+].join('\n')
 const claudeMeta = [
   '{',
   '  "appliedid": "生成的UUID",',
@@ -289,6 +349,20 @@ const workbuddyFields = [
   ['接口地址', 'https://ai.moshu.cloud/v1'],
   ['API Key', 'sk-xxxxxxxx'],
   ['模型名称', '例如 gpt-5.6-sol（以 /v1/models 返回为准）']
+]
+const traeFields = [
+  ['API 格式', 'OpenAI Chat Completions 格式'],
+  ['自定义请求地址', 'https://ai.moshu.cloud/v1'],
+  ['模型 ID', '例如 gpt-5.6-sol（以 /v1/models 返回为准）'],
+  ['展示名称', '可与模型 ID 相同'],
+  ['API 密钥', '控制台创建的 MoShu API Key']
+]
+const cherryFields = [
+  ['供应商名称', '例如 MoShu'],
+  ['类型', 'Anthropic（Claude 模型）'],
+  ['API Key', '控制台创建的 MoShu API Key'],
+  ['API 地址', 'https://ai.moshu.cloud'],
+  ['模型 ID', '完整模型 ID，区分大小写']
 ]
 const DocHeading = defineComponent({
   props: {
@@ -372,6 +446,15 @@ const DocImage = defineComponent({
         })
       ]),
       props.caption ? h('figcaption', { class: 'mt-2 text-center text-xs text-slate-500 dark:text-dark-400' }, props.caption) : null
+    ])
+  }
+})
+
+const DocImagePlaceholder = defineComponent({
+  props: { label: { type: String, required: true } },
+  setup(props) {
+    return () => h('figure', { class: 'mt-5' }, [
+      h('div', { class: 'flex min-h-40 items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-100 px-6 py-12 text-center text-sm text-slate-500 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-300' }, props.label)
     ])
   }
 })
