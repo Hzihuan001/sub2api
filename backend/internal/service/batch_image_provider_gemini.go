@@ -84,7 +84,8 @@ func (p *GeminiAPIBatchImageProvider) SupportsAccount(account *Account) bool {
 	return account != nil &&
 		account.Platform == PlatformGemini &&
 		account.Type == AccountTypeAPIKey &&
-		batchImageProviderAPIKey(account) != ""
+		batchImageProviderAPIKey(account) != "" &&
+		!isBananaRouterGeminiAccount(account)
 }
 
 func (p *GeminiAPIBatchImageProvider) Submit(ctx context.Context, job *BatchImageJob, account *Account, input BatchImageInput) (*BatchProviderJob, error) {

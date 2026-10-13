@@ -1284,9 +1284,17 @@ const estimatedOutputCount = computed(() =>
 
 const customImageSize = computed(() => normalizeImageStudioCustomSize(form.model, customImageWidth.value, customImageHeight.value))
 const selectedBatchModelInfo = computed(() => availableBatchImageModels.value.find(model => model.value === form.model))
+function isNativeGeminiImageModel(model: string) {
+  const normalized = String(model || '').trim().toLowerCase()
+  return isGeminiNanoBananaModel(normalized)
+    || (normalized.startsWith('gemini-') && (normalized.endsWith('-image') || normalized.includes('-image-')))
+}
 const nativeGeminiBatchModel = computed(() => {
-  const provider = String(selectedBatchModelInfo.value?.provider || selectedBatchModelInfo.value?.mode || '').toLowerCase()
+  const provider = String(selectedBatchModelInfo.value?.provider || '').toLowerCase()
+  const mode = String(selectedBatchModelInfo.value?.mode || '').toLowerCase()
   return provider === 'gemini_api' || provider === 'gemini_api_batch' || provider === 'vertex' || provider === 'vertex_ai'
+    || mode === 'managed_async'
+    || isNativeGeminiImageModel(form.model)
 })
 const requestImageSize = computed(() => {
   if (nativeGeminiBatchModel.value) return form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE ? '' : String(form.imageSize || '').toUpperCase()
@@ -1312,7 +1320,7 @@ const responseMimeTypeOptions = computed<SelectOption[]>(() => {
 })
 const normalizedResponseMimeType = computed(() => normalizeBatchResponseMimeType(
   form.model,
-  selectedBatchModelInfo.value?.provider || selectedBatchModelInfo.value?.mode || '',
+  selectedBatchModelInfo.value?.mode || selectedBatchModelInfo.value?.provider || '',
   form.responseMimeType,
 ))
 const imageSizeOptions = computed<SelectOption[]>(() => [
@@ -1367,6 +1375,8 @@ function normalizeBatchResponseMimeType(model: string, provider = '', requested 
     || normalizedProvider === 'gemini_api_batch'
     || normalizedProvider === 'vertex'
     || normalizedProvider === 'vertex_ai'
+    || normalizedProvider === 'managed_async'
+    || isNativeGeminiImageModel(model)
   if (isNativeGemini) return 'image/png'
   if (isSeedreamImageModel(model)) {
     return requested === 'image/jpeg' ? 'image/jpeg' : 'image/png'

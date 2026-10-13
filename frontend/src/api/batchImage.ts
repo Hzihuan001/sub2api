@@ -103,7 +103,7 @@ export interface BatchImageModel {
   provider: string
   /** Maximum reference images accepted for the selected account's mapped model. */
   reference_image_limit?: number
-  /** `app_managed`/`managed_fanout` for app-managed fan-out models. */
+  /** `managed_fanout` for OpenAI-compatible fan-out or `managed_async` for BananaRouter Gemini async fan-out. */
   mode?: string
   execution_mode?: string
 }

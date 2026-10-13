@@ -167,6 +167,9 @@ type BatchImagePublicModel struct {
 	ID                  string `json:"id"`
 	Object              string `json:"object"`
 	Provider            string `json:"provider"`
+	// Mode distinguishes app-managed protocol variants when one public model
+	// is available through more than one account platform.
+	Mode                string `json:"mode,omitempty"`
 	ReferenceImageLimit int    `json:"reference_image_limit,omitempty"`
 }
 
@@ -244,8 +247,11 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		return nil, err
 	}
 	// The provider can be selected after the provider-agnostic request
-	// validation when the caller omits `provider`; enforce Vertex's 1K-only
-	// contract against the actual selected provider as well.
+	// validation when the caller omits `provider`; enforce native Gemini/Vertex
+	// tier-only contracts against the actual selected provider as well.
+	if (provider.Name() == BatchImageProviderGeminiAPI || provider.Name() == BatchImageProviderVertex || (provider.Name() == BatchImageProviderAppManaged && account.IsGemini())) && strings.Contains(normalized.ImageSize, "x") {
+		return nil, ErrBatchImageInvalidItems
+	}
 	if provider.Name() == BatchImageProviderVertex && normalized.ImageSize != ImageBillingSize1K {
 		return nil, ErrBatchImageInvalidItems
 	}
@@ -321,7 +327,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		return nil, err
 	}
 	s.invalidateAuthCache(ctx, owner.UserID)
-	if err := s.createPendingItems(ctx, job.BatchID, requestHash, normalized.Items, normalized.ResponseMimeType, normalized.ImageSize); err != nil {
+	if err := s.createPendingItems(ctx, job.BatchID, requestHash, normalized.Items, normalized.ResponseMimeType, normalized.ImageSize, normalized.AspectRatio); err != nil {
 		if releaseErr := s.releaseFailedSubmitHold(ctx, job, requestHash); releaseErr != nil {
 			return nil, releaseErr
 		}
@@ -507,7 +513,7 @@ func (s *BatchImagePublicService) abortOrphanProviderJob(ctx context.Context, pr
 	}
 }
 
-func (s *BatchImagePublicService) createPendingItems(ctx context.Context, batchID, requestHash string, items []BatchImageSubmitItem, responseMimeType, imageSize string) error {
+func (s *BatchImagePublicService) createPendingItems(ctx context.Context, batchID, requestHash string, items []BatchImageSubmitItem, responseMimeType, imageSize, aspectRatio string) error {
 	if s == nil || s.Repo == nil || len(items) == 0 {
 		return nil
 	}
@@ -519,6 +525,7 @@ func (s *BatchImagePublicService) createPendingItems(ctx context.Context, batchI
 			Item:             item,
 			ResponseMimeType: responseMimeType,
 			ImageSize:        imageSize,
+			AspectRatio:      aspectRatio,
 		})
 		if marshalErr != nil {
 			return marshalErr
@@ -664,6 +671,7 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 	}
 
 	modelsByProvider := make(map[string]map[string]int)
+	managedModes := make(map[string]map[string]string)
 	for _, providerName := range batchImageProviderSelectionOrder("") {
 		provider, ok := s.ProviderRegistry.Get(providerName)
 		if !ok || provider == nil {
@@ -688,6 +696,14 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 				if modelsByProvider[providerName] == nil {
 					modelsByProvider[providerName] = make(map[string]int)
 				}
+				if managedModes[providerName] == nil {
+					managedModes[providerName] = make(map[string]string)
+				}
+				if providerName == BatchImageProviderAppManaged && account.IsGemini() {
+					managedModes[providerName][model] = "managed_async"
+				} else if providerName == BatchImageProviderAppManaged && managedModes[providerName][model] == "" {
+					managedModes[providerName][model] = "managed_fanout"
+				}
 				mappedModel := account.GetMappedModel(model)
 				limit := maxBatchImageReferenceImagesForModel(mappedModel)
 				if current, exists := modelsByProvider[providerName][model]; !exists || limit > current {
@@ -709,6 +725,7 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 				ID:                  model,
 				Object:              "image.batch.model",
 				Provider:            providerName,
+				Mode:                managedModes[providerName][model],
 				ReferenceImageLimit: modelsByProvider[providerName][model],
 			})
 		}
@@ -858,7 +875,7 @@ func (s *BatchImagePublicService) validateSubmitRequest(req BatchImageSubmitRequ
 		case BatchImageProviderGeminiAPI, BatchImageProviderVertex:
 			return req, ErrBatchImageInvalidItems
 		}
-		if req.Provider == "" && isGeminiCompatibleImageModel(req.Model) {
+		if isGeminiCompatibleImageModel(req.Model) {
 			return req, ErrBatchImageInvalidItems
 		}
 	}
@@ -1071,7 +1088,7 @@ func (s *BatchImagePublicService) listCandidateAccounts(ctx context.Context, gro
 			// candidates rather than failing native Gemini model discovery.
 			return []Account{}, nil
 		}
-		platforms := []string{PlatformOpenAI, PlatformDeepseek, PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformGrok}
+		platforms := []string{PlatformOpenAI, PlatformDeepseek, PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformGrok, PlatformGemini}
 		if groupID != nil && *groupID > 0 {
 			return multi.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
 		}

@@ -256,3 +256,26 @@ func TestAppManagedBatchImageProviderDetectsB64ImageMimeType(t *testing.T) {
 	require.NoError(t, json.Unmarshal(strings.TrimSpace(string(result)), &line))
 	require.Equal(t, "image/jpeg", line.Response.Candidates[0].Content.Parts[0].InlineData.MimeType)
 }
+
+func TestBananaRouterHelpersRecognizeCustomGeminiGateway(t *testing.T) {
+	banana := &Account{Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "test-key", "base_url": "https://api.bananarouter.com",
+	}}
+	official := &Account{Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "test-key", "base_url": "https://generativelanguage.googleapis.com",
+	}}
+	require.True(t, isBananaRouterGeminiAccount(banana))
+	require.False(t, isBananaRouterGeminiAccount(official))
+	require.Equal(t, "https://api.bananarouter.com/v1beta/models/demo:asyncGenerateContent", buildBananaRouterEndpointURL("https://api.bananarouter.com", "/v1beta/models/demo:asyncGenerateContent"))
+	require.Equal(t, "https://api.bananarouter.com/v1beta/models/demo:asyncGenerateContent", buildBananaRouterEndpointURL("https://api.bananarouter.com/v1beta", "/v1beta/models/demo:asyncGenerateContent"))
+	require.Equal(t, "https://api.bananarouter.com/v1/async-tasks/task-123", buildBananaRouterEndpointURL("https://api.bananarouter.com/v1beta", "/v1/async-tasks/task-123"))
+	require.Equal(t, "4K", bananaImageSize("4k"))
+}
+
+func TestBananaRouterAsyncResponseParsesTaskAndImages(t *testing.T) {
+	var response bananaRouterAsyncResponse
+	require.NoError(t, json.Unmarshal([]byte(`{"taskID":"task-123","status":"completed","resultImages":[{"url":"https://cdn.example/image.jpg","mimeType":"image/jpeg"}]}`), &response))
+	require.Equal(t, "task-123", response.TaskID)
+	require.Equal(t, "completed", response.Status)
+	require.Len(t, bananaRouterResponseImages(response.Raw), 1)
+}
