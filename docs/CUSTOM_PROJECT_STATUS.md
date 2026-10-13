@@ -41,7 +41,7 @@
 - **数据与兼容**：没有后端数据库迁移；公开别名不写入新的表字段，批量任务继续复用既有 `input_payload`；原生 Gemini 不接受任意 `WIDTHxHEIGHT`，自定义尺寸仅适用于兼容图片接口。
 - **验证证据**：前端定向 Vitest `14/14` 通过，`vue-tsc --noEmit`、`check:i18n` 和 ESLint 定向检查通过，`git diff --check` 通过；后端已补充批量模型候选、原生 Gemini JSONL、Seedream fan-out 和尺寸回归测试，但本机无 Go 工具链，待 CI/可用 Go 环境补跑。
 - **发布证据**：本次未构建镜像、未创建新标签、未部署；OVH 生产保持 `custom-0.2.13.9` 和既有 digest，Tencent staging 已退役。
-- **已知限制/下一步**：待用户上线两个上游模型后，用真实 Gemini legacy `generateContent`/Seedream OpenAI-compatible endpoint 验证模型映射、尺寸字段、参考图、批量计费和实际返回；Gemini 原生批量依赖账号映射、有效价格配置和批量权限，Seedream 批量依赖 app-managed fan-out，不能仅凭模型出现在下拉框判断上游已完成组图；若 Nano 上游仅开放 Interactions API，需要再增加对应适配；Seedream 仍需真实账号联调合法尺寸、PNG/JPEG 返回和交互编辑端点。两个已有 xlsx 高危审计例外仍按批准续期至 `2026-11-08`；继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
+- **已知限制/下一步**：2026-10-13 已通过 `ai.moshu.cloud` 做无代码变更的 Nano Banana 2.1 冒烟测试：模型列表可见，原生 `generateContent` 返回 HTTP 200，请求 `1K/1:1` 实际得到 `1024x1024` JPEG；未测试 4K、参考图和批量计费。后续仍需用正式模型账号验证 4K、批量 JSONL、模型映射、尺寸字段、参考图、计费和实际返回；Gemini 原生批量依赖账号映射、有效价格配置和批量权限，Seedream 批量依赖 app-managed fan-out，不能仅凭模型出现在下拉框判断上游已完成组图；若 Nano 上游仅开放 Interactions API，需要再增加对应适配；Seedream 仍需真实账号联调合法尺寸、PNG/JPEG 返回和交互编辑端点。两个已有 xlsx 高危审计例外仍按批准续期至 `2026-11-08`；继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
 
 ## 2. 当前定制功能边界
 

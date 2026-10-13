@@ -337,6 +337,21 @@
 - **回滚**：回退 `1149f16c6` 即可，无数据库恢复要求；生产镜像与运行数据未变更。
 - **备注**：Gemini 官方说明见 [Batch API](https://ai.google.dev/gemini-api/docs/batch-api) 与 [Nano Banana 2.1 模型页](https://ai.google.dev/gemini-api/docs/models/gemini-nano-banana-2.1)；Seedream 官方接口说明见 [图片生成 API](https://docs.volcengine.com/docs/ark/image-generation-api?lang=en)，其中明确当前不支持组图生成。模型上线后仍需用真实账号验证部署 ID、批量计费、参考图、合法尺寸和实际返回格式；工作台显示可选模型不等于上游已联通。
 
+### 2026-10-13 — 未发布 — image-studio Nano Banana 2.1 线上冒烟测试
+
+- **需求**：使用用户提供的 `ai.moshu.cloud` 访问凭据验证 `gemini-nano-banana-2.1` 是否已能实际生图。
+- **Feature ID**：`image-studio`
+- **官方基线**：`v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1`；代码未修改，仅验证当前本地适配。
+- **实现边界**：调用 `GET /v1beta/models` 和原生 `POST /v1beta/models/gemini-nano-banana-2.1:generateContent`；请求 `imageSize=1K`、`aspectRatio=1:1`、仅返回图片模态。凭据未写入文件、日志或 Git。
+- **用户可见行为**：模型列表返回 `gemini-nano-banana-2.1`；生图返回 HTTP 200，实际图片为 `1024x1024`、`image/jpeg`，说明当前原生 Gemini 路由和 1K 尺寸链路可用。
+- **数据库/迁移**：无。
+- **测试**：模型发现 HTTP 200；原生生图 HTTP 200；解码并检查本地临时图片尺寸为 `1024x1024`；未测试 4K、参考图、批量 JSONL、计费和 Seedream。
+- **提交/PR**：待本条文档记录提交；未推送、未创建 PR。
+- **发布镜像**：无；未构建、未打标签。
+- **部署站点**：未部署；OVH 生产保持 `custom-0.2.13.9`。
+- **回滚**：仅文档变更，无运行时或数据库回滚要求；临时测试图片未纳入仓库。
+- **备注**：本次只证明 1K 冒烟链路，不证明 4K 原生像素、批量任务或 Seedream 已联通；测试结束后建议轮换本次暴露过的访问凭据。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：
