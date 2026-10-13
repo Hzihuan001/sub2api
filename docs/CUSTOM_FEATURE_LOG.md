@@ -322,6 +322,21 @@
 - **回滚**：回退 `f6f008b14` 即可，无数据库恢复要求。
 - **备注**：模型实际上线后仍需验证 Gemini/Seedream 编辑端点是否接受参考图字段。
 
+### 2026-10-13 — 未发布 — image-studio 新模型批量生图能力对齐
+
+- **需求**：确认 `gemini-nano-banana-2.1` 与 `seedream-5.0-pro` 是否支持批量生图，并让工作台按各自真实能力提交批量任务。
+- **Feature ID**：`image-studio`
+- **官方基线**：`v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1`；基于生产 `custom-0.2.13.9`，本地提交 `1149f16c6`。
+- **实现边界**：Nano Banana 2.1 走原生 Gemini Batch API JSONL；工作台继续使用 `gemini_api`/Vertex provider、账号模型映射、批量权限和模型价格配置。Seedream 5.0 Pro 官方接口不支持组图或单请求 `n>1`，工作台批量任务改为 app-managed fan-out，每个提示词/输出拆成独立 `n=1` 请求；不把上游不支持的组图参数送出。批量模型候选、参考图上限、Seedream 自定义像素范围和 4K 禁用保持前序改造；批量格式选项按模型收紧为原生 Gemini 仅 PNG、Seedream 仅 PNG/JPEG。
+- **用户可见行为**：两个模型可在满足账号映射、价格和权限的批量工作台中选择；Nano Banana 可选 `1K`/`2K`/`4K`，Seedream 可选 `1K`/`2K`/合法自定义尺寸；批量输出数量由工作台拆分执行，不代表 Seedream 上游支持组图。
+- **数据库/迁移**：无新增迁移；复用既有批量任务、`input_payload`、模型价格和账号 `model_mapping`。
+- **测试**：前端定向 Vitest `14/14`、`vue-tsc --noEmit`、`check:i18n`、定向 ESLint 和 `git diff --check` 通过；后端批量候选、Gemini JSONL、Seedream fan-out/尺寸回归测试已补齐，本机无 Go 工具链，待 CI 或可用环境补跑。
+- **提交/PR**：`1149f16c6`，仅本地提交，未推送、未创建 PR。
+- **发布镜像**：无；未构建、未打标签。
+- **部署站点**：未部署；OVH 生产继续运行 `custom-0.2.13.9`，Tencent staging 已退役。
+- **回滚**：回退 `1149f16c6` 即可，无数据库恢复要求；生产镜像与运行数据未变更。
+- **备注**：Gemini 官方说明见 [Batch API](https://ai.google.dev/gemini-api/docs/batch-api) 与 [Nano Banana 2.1 模型页](https://ai.google.dev/gemini-api/docs/models/gemini-nano-banana-2.1)；Seedream 官方接口说明见 [图片生成 API](https://docs.volcengine.com/docs/ark/image-generation-api?lang=en)，其中明确当前不支持组图生成。模型上线后仍需用真实账号验证部署 ID、批量计费、参考图、合法尺寸和实际返回格式；工作台显示可选模型不等于上游已联通。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：
