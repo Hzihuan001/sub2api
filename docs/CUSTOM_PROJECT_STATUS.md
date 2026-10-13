@@ -11,35 +11,42 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 记录日期 | 2026-10-11 |
-| 官方基线 | `v0.2.15` / `f2669c8cf62555cd92389b3f55920e9e6e7c6ff2` |
-| 最近发布版本 | `0.2.15-custom.1` |
-| 最近发布标签 | `custom-0.2.15.1` / `24b8228af` |
-| 当前工作分支 | `codex/v0.2.15-image-studio-sync`（基于已发布 v0.2.15 候选） |
-| 协作父分支/工作树 | `codex/v0.2.15-merge-integration` / 已发布候选；生产未被本次补丁修改 |
-| 同步框架 HEAD | `1fa5f4478`（本文档记录前；文档提交后的当前 HEAD 以 `git log` 为准） |
+| 记录日期 | 2026-10-13 |
+| 候选官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
+| 候选定制版本 | `0.2.16-custom.1`（仅本地，未发布） |
+| 最近生产版本 | 主站 `0.2.15-custom.2`；L1/COS `0.2.15-custom.1` |
+| 最新已提交基线 | `custom-0.2.15.3` / `0e5158d24`，公共文档更新未部署 |
+| 当前工作分支 | `codex/v0.2.16-image-studio` |
+| 升级工作树 | `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` |
+| 官方合并 / 生图移植提交 | `d3b78cf8c` / `2c007ec6a`；运行代码修复 `e42db1f11`，验收脚本 `f17cae568` |
 | 长期集成基线 | `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071` |
 | 当前隔离改造 PR | 草稿 PR #1（如仍未合并）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 生产镜像 | `ghcr.io/hzihuan001/sub2api@sha256:ec2e0efb603d8b364cdfccacb8dfa2449d8071116853487849abb9f540b4511e` |
-| 当前发布状态 | v0.2.15-custom.1 已部署；image-studio 回补分支尚未发布 |
+| 主站生产镜像 digest | `sha256:7b49d3d555c3427917fbfc9315497214a74df3ddb49c6a9c17ee5ecf13726eab` |
+| L1/COS 生产镜像 digest | `sha256:ec2e0efb603d8b364cdfccacb8dfa2449d8071116853487849abb9f540b4511e` |
+| 当前发布状态 | v0.2.16 和生图移植本地验收通过；仅本地提交，未推送/打标签/发布，生产未修改 |
 
 生产健康检查最近确认通过的入口：
 
 - `https://ai.moshu.cloud/health`
-- `https://api.tokenpulse.top/health`
-- `https://cos.tokenpulse.top/health`
+- `https://api.moshu.cloud/health`
+- `https://cos.moshu.cloud/health`
+
+2026-10-12 两个下游入口切换到 Moshu 子域名并开启 Cloudflare 代理；旧 `tokenpulse.top` 入口保留。OVH OpenResty 继续使用 HTTPS、10 小时读写超时和关闭响应缓冲。域名运维记录见功能日志。
 
 生产发布必须继续使用通过验收的同一镜像 digest，不在不同服务器重新构建。
 
-### 当前会话摘要（2026-10-11）
+### 当前会话摘要（2026-10-13）
 
-- **Feature ID**：`image-studio`；状态：`in-progress`（已移植到 v0.2.15 候选，待 Docker 验收、提交和发布）。
-- **实现边界**：将浏览器端生图画廊改为按认证用户隔离的 IndexedDB v2 命名空间；账号切换时清理旧用户的内存结果、预览和进行中的生成，并对异步读取/保存做作用域校验；工作台透传 1K/2K/4K/自定义尺寸与扩展质量档位，内部测量并保存最终文件实际像素，但界面不展示实际尺寸、不弹出尺寸不匹配数字提示，也不做本地放大；Gemini 原生批量请求转发 `generationConfig.imageConfig.aspectRatio` 与 `imageSize`；API-key Images 非流式响应从 Base64/内联 data URL 回填实际尺寸元数据；批量 item 保存请求尺寸并在失败重试中复用。
-- **数据与兼容**：没有后端数据库迁移；旧的 v1 全局 IndexedDB 保留但不自动迁移/读取，以避免跨账号显示历史内容。
-- **验证证据**：image-studio/API/size/视图前端 4 个测试文件 `19/19`；`pnpm run typecheck`、定向 ESLint、生产构建、`scripts/check-custom-isolation.py --skip-generated --base-ref origin/custom/integration --upstream-ref v0.2.15`、Go 1.27.2 图片/Gemini 定向测试均通过。Docker 联合验收待本地构建完成后补记。
-- **已知限制/下一步**：工作台只在内部验证最终文件像素，不能证明模型内部原生生成；CPA/ChatGPT OAuth 上游仍可能忽略或改写 4K 请求，界面不显示实际尺寸，也不会伪造或自动放大。要保证原生 4K，仍需 CPA 适配器的出站/返回证据或直接使用支持该尺寸的官方 Images API-key 路径。通过 Docker 验收后再决定是否创建 `custom-0.2.15.2` 发布坐标；在独立补丁栈验收前继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
+- **Feature ID**：官方升级及 `image-studio`；状态：`locally-validated`，验收见 [`UPGRADE_V0_2_16_ACCEPTANCE.md`](UPGRADE_V0_2_16_ACCEPTANCE.md)，问题处理见 [`CUSTOM_UPGRADE_ISSUES.md`](CUSTOM_UPGRADE_ISSUES.md)。
+- **移植来源**：`codex/image-studio-session-20261004` / `01124885d` 中 14 个功能提交；不整分支合并旧 v0.2.13，不移植旧 VERSION，不重复移植已发布的用户隔离画廊。
+- **生图行为**：Nano Banana/Gemini 原生模型发现与 IMAGE 路由；Seedream 5 部署别名、模型特定尺寸/参考图/格式约束；原生 Gemini 保留 1K/2K/4K 档位且不接受自定义像素；返回图片按真实 MIME 下载。仍隐藏实际像素文字、不本地放大、不改变输出优先计费。
+- **异步安全**：仅 BananaRouter 明确能力账号走异步协议；提交意图和 task ID 保存到现有 item JSONB，重启恢复轮询，取消后保留已成功图片并正常结算。未知提交结果超过 24 小时需要人工核账，不盲目重提或退款；部署前应等待旧版未持久化 task ID 的在途任务完成。
+- **数据与兼容**：本次没有定制数据库迁移；追加官方 242-245 迁移，历史迁移文件名/校验值不改。浏览器 IndexedDB v2 用户隔离保持。
+- **已有验证**：前端全量 401 文件/2998 项通过，最终窄修复另有 25 项回归、平台 5 项、lint、typecheck/生产构建通过；真实 PostgreSQL 批量任务/缓存/分组与异步 CAS 集成测试通过；Ent 临时目录完整生成比对无差异，Wire 生成通过。后端唯一失败的协议测试夹具修复后连续 50 次及相关回归通过。
+- **Docker 验收**：`sub2api-operator-test-v0216` / `http://127.0.0.1:18086`；权限、重启持久化、mock 生图/三张 fan-out/参考图/MIME/单张与 ZIP 下载、合成结算通过。四个官方新迁移完成（318 → 322），同数据库旧镜像回滚启动/登录/模型发现通过。候选已恢复；本地镜像不等于 GHCR 发布产物。
+- **协作注意**：根目录 `D:/projects/sub2api-custom` 有其他会话的未提交公共文档/DNS记录；不要重置或覆盖。`custom/integration` 仍落后，升级必须先核对最新发布与功能会话提交，验收后再推进集成基线。
 
 ## 2. 当前定制功能边界
 
@@ -62,7 +69,7 @@
 
 是的，和过去直接在生产分支上叠加定制代码相比，下一次官方主线更新的合并难度会大幅降低，原因是：
 
-1. 官方代码、长期集成基线和临时升级分支已经分离。升级以 `custom/integration` 为唯一基线，不再继续使用历史的 `codex/v0.2.13-merge-gpt-reference` 作为新升级起点。
+1. 官方代码、长期集成基线和临时升级分支已经分离。升级前先确认 `custom/integration` 包含最近验收代码；如落后，明确选择最新已提交定制基线并记录遗漏提交，不能从过期分支开始或整合历史旧分支。
 2. `.github/workflows/upstream-sync.yml` 会定期或手动选择稳定 `vX.Y.Z` 标签，自动创建 `upgrade/upstream-vX.Y.Z` 分支和草稿 PR。
 3. 上游 merge 会先单独提交，再处理定制补丁；每个边界可用 `range-diff` 检查，冲突不会被悄悄吞掉。
 4. `scripts/check-custom-isolation.py` 会检查生成代码、迁移是否 append-only、feature manifest 是否同步，以及受保护路径是否仍存在。
@@ -179,7 +186,7 @@ pwsh -NoProfile -File scripts/sync-upstream.ps1 `
 
 ### 版本更新会话的职责
 
-版本更新会话只消费已登记且可验证的定制边界：以 `custom/integration` 为基线，通过自动升级 PR 合并官方版本，并按日志中的测试和发布证据复核功能。它不能把其他会话聊天内容当作已完成代码，也不能把旧历史分支或已移除代理商功能重新套回当前版本。
+版本更新会话只消费已登记且可验证的定制边界：先验证 `custom/integration` 与最新已验收提交一致，再通过自动升级 PR 合并官方版本，并按日志中的测试和发布证据复核功能。基线落后时必须记录真实起点与选择性回补提交。不能把聊天内容当作已完成代码，也不能把已移除代理商功能重新套回当前版本。
 
 如果某个定制会话尚未完成，版本更新会话必须将其标为阻塞或待复核，不得静默覆盖；如果官方升级和定制会话同时修改同一文件，应先暂停其中一个会话并记录冲突归属。
 

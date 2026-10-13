@@ -5,7 +5,7 @@
 标准顺序：
 
 1. 读取 [`CUSTOM_PROJECT_STATUS.md`](CUSTOM_PROJECT_STATUS.md)、[`CUSTOM_FEATURE_LOG.md`](CUSTOM_FEATURE_LOG.md) 和 `custom/manifest.yml`。
-2. 从 `custom/integration` 合并指定的官方 `vX.Y.Z` 标签，逐项恢复 `operator`、`prompt-audit`、`image-studio`、`branding` 和 `usage-extras`。
+2. 先确认 `custom/integration` 包含最新已验收定制提交和共享日志登记的功能提交；落后时明确选择最新已提交定制基线并记录差异，不从旧功能分支整分支合并。然后合并指定官方标签，复核 `operator`、`prompt-audit`、`image-studio`、`branding` 和 `usage-extras`。
 3. 只允许追加数据库迁移；生成代码按当前官方工具重新生成，不用旧分支覆盖。
 4. 运行受影响后端测试、前端 typecheck/lint/test/build、`scripts/check-custom-isolation.py` 和 Docker 验收。
 5. 验收通过后再创建 `custom-X.Y.Z.N` 标签、构建不可变镜像并按发布运行手册部署。
@@ -13,6 +13,8 @@
 `.github/workflows/upstream-sync.yml` 会以只读默认权限检查稳定 `v*` 标签，并在明确请求时创建 `upgrade/upstream-vX.Y.Z` 草稿 PR。冲突或测试失败必须保留在报告中；不能通过选择整文件 ours/theirs 来静默丢弃定制功能。`patch_branches` 只登记从 `custom/integration` 重新创建且已经独立验收的功能分支，历史发布分支不得直接复用。
 
 当前 `v0.2.15` 生图回补使用独立工作分支 `codex/v0.2.15-image-studio-sync`，来源提交仅选择 image-studio 代码和测试，没有带入旧版本文件、代理商历史代码或生产凭据。
+
+2026-10-13 的 `v0.2.16` 候选为 `codex/v0.2.16-image-studio`，起点 `custom-0.2.15.3` / `0e5158d24`；官方 merge `d3b78cf8c`，14 个生图功能提交止于 `2c007ec6a`。`origin/custom/integration` 仍在旧提交 `fd7c1b914`，最终候选验收通过前不要把它当作最新生产/功能基线。当前版本与验证记录以 `CUSTOM_PROJECT_STATUS.md` 为准。
 
 ## 操作命令
 
