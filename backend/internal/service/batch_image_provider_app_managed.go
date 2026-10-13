@@ -47,6 +47,7 @@ type managedBatchImageItemPayload struct {
 	Item             BatchImageSubmitItem `json:"item"`
 	ResponseMimeType string               `json:"response_mime_type,omitempty"`
 	ImageSize        string               `json:"image_size,omitempty"`
+	AspectRatio      string               `json:"aspect_ratio,omitempty"`
 }
 
 type AppManagedBatchImageProviderOptions struct {
@@ -99,6 +100,9 @@ func (p *appManagedBatchImageProvider) Name() string { return BatchImageProvider
 func (p *appManagedBatchImageProvider) SupportsAccount(account *Account) bool {
 	if account == nil || (account.Type != AccountTypeAPIKey && account.Type != AccountTypeUpstream) || managedAccountAPIKey(account) == "" {
 		return false
+	}
+	if account.IsGemini() {
+		return isBananaRouterGeminiAccount(account)
 	}
 	// OpenAI-compatible providers expose a base URL through this accessor. Grok
 	// keeps a separate URL helper, but its API-key transport is still compatible
@@ -179,7 +183,7 @@ func (p *appManagedBatchImageProvider) Get(ctx context.Context, job *BatchImageJ
 			}
 			defer func() { <-sem }()
 			var payload managedBatchImageItemPayload
-			imageSize, responseMimeType := "2K", "image/png"
+			imageSize, responseMimeType, aspectRatio := "2K", "image/png", ""
 			var in BatchImageSubmitItem
 			if len(item.InputPayload) > 0 && json.Unmarshal(item.InputPayload, &payload) == nil && strings.TrimSpace(payload.Item.Prompt) != "" {
 				in = payload.Item
@@ -189,6 +193,7 @@ func (p *appManagedBatchImageProvider) Get(ctx context.Context, job *BatchImageJ
 				if strings.TrimSpace(payload.ResponseMimeType) != "" {
 					responseMimeType = payload.ResponseMimeType
 				}
+				aspectRatio = strings.TrimSpace(payload.AspectRatio)
 			} else if len(item.InputPayload) > 0 && json.Unmarshal(item.InputPayload, &in) == nil {
 				// Legacy payloads stored the item directly.
 			} else {
@@ -197,7 +202,7 @@ func (p *appManagedBatchImageProvider) Get(ctx context.Context, job *BatchImageJ
 			if in.CustomID == "" {
 				in.CustomID = item.CustomID
 			}
-			line := p.generateOne(ctx, job, account, in, imageSize, responseMimeType)
+			line := p.generateOne(ctx, job, account, in, imageSize, aspectRatio, responseMimeType)
 			// Context cancellation is a worker timeout, not a final item result.
 			// Leave the item absent from the checkpoint so the next queue pass can
 			// retry it instead of permanently recording a timeout failure.
@@ -278,10 +283,13 @@ func (p *appManagedBatchImageProvider) persistManagedProgress(ctx context.Contex
 	return updater.RefreshBatchImageJobCounts(ctx, batchID)
 }
 
-func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *BatchImageJob, account *Account, item BatchImageSubmitItem, imageSize, responseMimeType string) []byte {
+func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *BatchImageJob, account *Account, item BatchImageSubmitItem, imageSize, aspectRatio, responseMimeType string) []byte {
 	model := account.GetMappedModel(job.Model)
 	if strings.TrimSpace(model) == "" {
 		model = job.Model
+	}
+	if isBananaRouterGeminiAccount(account) {
+		return p.generateOneBananaRouter(ctx, job, account, model, item, imageSize, aspectRatio)
 	}
 	imageSize = managedImageSize(imageSize)
 	// Keep the requested output format in the persisted payload for future
@@ -397,6 +405,338 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 	return line
 }
 
+// generateOneBananaRouter uses BananaRouter's asynchronous Gemini-compatible
+// endpoint for one item. The parent app-managed provider still supplies the
+// same bounded fan-out, checkpointing, cancellation, and settlement behavior
+// as GPT-image batches; only the per-item upstream protocol differs.
+func (p *appManagedBatchImageProvider) generateOneBananaRouter(ctx context.Context, job *BatchImageJob, account *Account, model string, item BatchImageSubmitItem, imageSize, aspectRatio string) []byte {
+	base := managedAccountBaseURL(account)
+	parts := make([]map[string]any, 0, 1+len(item.ReferenceImages))
+	parts = append(parts, map[string]any{"text": item.Prompt})
+	for _, ref := range item.ReferenceImages {
+		mimeType := normalizeBatchImageReferenceMimeType(ref.MimeType)
+		if mimeType == "" {
+			return managedErrorLine(item.CustomID, "REFERENCE_INVALID", "reference image mime_type is required")
+		}
+		switch {
+		case len(ref.Data) > 0 && strings.TrimSpace(ref.FileURI) == "":
+			parts = append(parts, map[string]any{"inlineData": map[string]any{
+				"mimeType": mimeType,
+				"data":     base64.StdEncoding.EncodeToString(ref.Data),
+			}})
+		case len(ref.Data) == 0 && strings.TrimSpace(ref.FileURI) != "":
+			parts = append(parts, map[string]any{"fileData": map[string]any{
+				"mimeType": mimeType,
+				"fileUri":  strings.TrimSpace(ref.FileURI),
+			}})
+		default:
+			return managedErrorLine(item.CustomID, "REFERENCE_INVALID", "reference image must contain exactly one of data or file_uri")
+		}
+	}
+	imageConfig := map[string]any{}
+	if v := strings.TrimSpace(aspectRatio); v != "" {
+		imageConfig["aspectRatio"] = v
+	}
+	if v := bananaImageSize(imageSize); v != "" {
+		imageConfig["imageSize"] = v
+	}
+	// Image batches should receive image-only candidates. Requesting TEXT as
+	// well can produce a mixed response that cannot be persisted as an image.
+	generationConfig := map[string]any{"responseModalities": []string{"IMAGE"}}
+	if len(imageConfig) > 0 {
+		generationConfig["imageConfig"] = imageConfig
+	}
+	body := map[string]any{
+		"contents": []any{map[string]any{"parts": parts}},
+		"generationConfig": generationConfig,
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return managedErrorLine(item.CustomID, "REQUEST_BUILD_FAILED", err.Error())
+	}
+	path := "/v1beta/models/" + url.PathEscape(strings.TrimSpace(model)) + ":asyncGenerateContent"
+	target := buildBananaRouterEndpointURL(base, path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(payload))
+	if err != nil {
+		return managedErrorLine(item.CustomID, "REQUEST_BUILD_FAILED", err.Error())
+	}
+	setBananaRouterHeaders(req, managedAccountAPIKey(account), managedItemIdempotencyKey(job, item.CustomID))
+	resp, err := p.doManagedRequest(req, account)
+	if err != nil {
+		return managedErrorLine(item.CustomID, "UPSTREAM_REQUEST_FAILED", err.Error())
+	}
+	var submit bananaRouterAsyncResponse
+	readErr := decodeManagedJSONResponse(resp, &submit)
+	if readErr != nil {
+		return managedErrorLine(item.CustomID, readErr.code, readErr.message)
+	}
+	if images := bananaRouterResponseImages(submit.Raw); len(images) > 0 {
+		return managedImageResultLine(ctx, item.CustomID, images)
+	}
+	taskID := strings.TrimSpace(submit.TaskID)
+	if taskID == "" {
+		return managedErrorLine(item.CustomID, "EMPTY_ASYNC_TASK", "BananaRouter did not return a task id")
+	}
+	for {
+		if err := waitManagedPoll(ctx, 5*time.Second); err != nil {
+			return managedErrorLine(item.CustomID, "UPSTREAM_REQUEST_FAILED", err.Error())
+		}
+		pollPath := "/v1/async-tasks/" + url.PathEscape(taskID)
+		pollReq, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, buildBananaRouterEndpointURL(base, pollPath), nil)
+		if reqErr != nil {
+			return managedErrorLine(item.CustomID, "REQUEST_BUILD_FAILED", reqErr.Error())
+		}
+		setBananaRouterHeaders(pollReq, managedAccountAPIKey(account), "")
+		pollResp, pollErr := p.doManagedRequest(pollReq, account)
+		if pollErr != nil {
+			return managedErrorLine(item.CustomID, "UPSTREAM_REQUEST_FAILED", pollErr.Error())
+		}
+		var status bananaRouterAsyncResponse
+		readErr = decodeManagedJSONResponse(pollResp, &status)
+		if readErr != nil {
+			return managedErrorLine(item.CustomID, readErr.code, readErr.message)
+		}
+		if images := bananaRouterResponseImages(status.Raw); len(images) > 0 {
+			return managedImageResultLine(ctx, item.CustomID, images)
+		}
+		state := strings.ToLower(strings.TrimSpace(status.Status))
+		if state == "failed" || state == "error" || state == "cancelled" || state == "canceled" || state == "expired" {
+			message := strings.TrimSpace(status.ErrorMessage)
+			if message == "" {
+				message = "BananaRouter asynchronous task failed"
+			}
+			return managedErrorLine(item.CustomID, "BANANA_ASYNC_FAILED", message)
+		}
+		if state == "completed" || state == "succeeded" || state == "success" || state == "done" {
+			return managedErrorLine(item.CustomID, "EMPTY_IMAGE_OUTPUT", "BananaRouter task completed without an image")
+		}
+	}
+}
+
+func (p *appManagedBatchImageProvider) doManagedRequest(req *http.Request, account *Account) (*http.Response, error) {
+	if p.httpUpstream != nil {
+		proxyURL := ""
+		if account != nil && account.Proxy != nil {
+			proxyURL = account.Proxy.URL()
+		}
+		accountID := int64(0)
+		concurrency := 0
+		if account != nil {
+			accountID = account.ID
+			concurrency = account.Concurrency
+		}
+		return p.httpUpstream.Do(req, proxyURL, accountID, concurrency)
+	}
+	return (&http.Client{Timeout: p.timeout}).Do(req)
+}
+
+type bananaRouterAsyncResponse struct {
+	TaskID      string
+	Status      string
+	ErrorMessage string
+	Raw         map[string]json.RawMessage
+}
+
+func (r *bananaRouterAsyncResponse) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	r.Raw = raw
+	for _, key := range []string{"taskID", "taskId", "task_id", "id"} {
+		if value, ok := raw[key]; ok {
+			_ = json.Unmarshal(value, &r.TaskID)
+			if strings.TrimSpace(r.TaskID) != "" {
+				break
+			}
+		}
+	}
+	for _, key := range []string{"status", "state"} {
+		if value, ok := raw[key]; ok {
+			_ = json.Unmarshal(value, &r.Status)
+			if strings.TrimSpace(r.Status) != "" {
+				break
+			}
+		}
+	}
+	for _, key := range []string{"error", "message", "errorMessage", "error_message"} {
+		if value, ok := raw[key]; ok {
+			var text string
+			if json.Unmarshal(value, &text) == nil {
+				r.ErrorMessage = text
+			} else {
+				var object struct{ Message string `json:"message"` }
+				_ = json.Unmarshal(value, &object)
+				r.ErrorMessage = object.Message
+			}
+			if strings.TrimSpace(r.ErrorMessage) != "" {
+				break
+			}
+		}
+	}
+	return nil
+}
+
+type managedHTTPReadError struct{ code, message string }
+
+func decodeManagedJSONResponse(resp *http.Response, out any) *managedHTTPReadError {
+	if resp == nil {
+		return &managedHTTPReadError{code: "UPSTREAM_REQUEST_FAILED", message: "empty upstream response"}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if err != nil {
+		return &managedHTTPReadError{code: "UPSTREAM_READ_FAILED", message: err.Error()}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return &managedHTTPReadError{code: strconv.Itoa(resp.StatusCode), message: strings.TrimSpace(string(body))}
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return &managedHTTPReadError{code: "INVALID_ASYNC_RESPONSE", message: err.Error()}
+	}
+	return nil
+}
+
+func bananaRouterResponseImages(raw map[string]json.RawMessage) []json.RawMessage {
+	for _, key := range []string{"resultImages", "result_images", "images"} {
+		if value, ok := raw[key]; ok {
+			var images []json.RawMessage
+			if json.Unmarshal(value, &images) == nil && len(images) > 0 {
+				return images
+			}
+		}
+	}
+	for _, key := range []string{"result", "data", "output"} {
+		if value, ok := raw[key]; ok {
+			var nested map[string]json.RawMessage
+			if json.Unmarshal(value, &nested) == nil {
+				if images := bananaRouterResponseImages(nested); len(images) > 0 {
+					return images
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func managedImageResultLine(ctx context.Context, customID string, images []json.RawMessage) []byte {
+	parts := make([]any, 0, len(images))
+	for _, raw := range images {
+		var text string
+		if json.Unmarshal(raw, &text) == nil {
+			data, mime, ok := decodeManagedImageData(text, "image/png")
+			if !ok {
+				data, mime = fetchManagedImage(ctx, text)
+			}
+			if data != "" {
+				parts = append(parts, map[string]any{"inlineData": map[string]any{"mimeType": mime, "data": data}})
+			}
+			continue
+		}
+		var object map[string]json.RawMessage
+		if json.Unmarshal(raw, &object) != nil {
+			continue
+		}
+		var value string
+		var mime string
+		for _, key := range []string{"base64", "data", "b64_json", "image"} {
+			if json.Unmarshal(object[key], &value) == nil && strings.TrimSpace(value) != "" {
+				break
+			}
+		}
+		for _, key := range []string{"mimeType", "mime_type", "contentType", "content_type"} {
+			if json.Unmarshal(object[key], &mime) == nil && strings.TrimSpace(mime) != "" {
+				break
+			}
+		}
+		if value == "" {
+			for _, key := range []string{"inlineData", "inline_data"} {
+				var inline map[string]json.RawMessage
+				if json.Unmarshal(object[key], &inline) != nil {
+					continue
+				}
+				for _, dataKey := range []string{"data", "base64", "b64_json"} {
+					if json.Unmarshal(inline[dataKey], &value) == nil && strings.TrimSpace(value) != "" {
+						break
+					}
+				}
+				for _, mimeKey := range []string{"mimeType", "mime_type"} {
+					if json.Unmarshal(inline[mimeKey], &mime) == nil && strings.TrimSpace(mime) != "" {
+						break
+					}
+				}
+				if value != "" {
+					break
+				}
+			}
+		}
+		if value == "" {
+			for _, key := range []string{"url", "imageUrl", "image_url", "downloadUrl", "download_url"} {
+				if json.Unmarshal(object[key], &value) == nil && strings.TrimSpace(value) != "" {
+					break
+				}
+			}
+		}
+		data, detected, ok := decodeManagedImageData(value, mime)
+		if !ok && value != "" {
+			data, detected = fetchManagedImage(ctx, value)
+		}
+		if data != "" {
+			if detected == "" {
+				detected = normalizeManagedImageMime(mime)
+			}
+			parts = append(parts, map[string]any{"inlineData": map[string]any{"mimeType": detected, "data": data}})
+		}
+	}
+	if len(parts) == 0 {
+		return managedErrorLine(customID, "EMPTY_IMAGE_OUTPUT", "BananaRouter returned no image")
+	}
+	line, _ := json.Marshal(map[string]any{"key": customID, "response": map[string]any{"candidates": []any{map[string]any{"content": map[string]any{"parts": parts}}}}})
+	return line
+}
+
+func waitManagedPoll(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func setBananaRouterHeaders(req *http.Request, apiKey, idempotencyKey string) {
+	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(apiKey) != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("x-goog-api-key", apiKey)
+	}
+	if strings.TrimSpace(idempotencyKey) != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
+}
+
+func buildBananaRouterEndpointURL(base, path string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	// Submit uses /v1beta while task polling uses /v1. Accept either a host
+	// root or a configured versioned base URL without producing /v1beta/v1.
+	if strings.HasPrefix(path, "/v1beta/") || strings.HasPrefix(path, "/v1/") {
+		base = strings.TrimSuffix(base, "/v1beta")
+		base = strings.TrimSuffix(base, "/v1")
+	}
+	return base + path
+}
+
+func bananaImageSize(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "1K", "2K", "4K":
+		return strings.ToUpper(strings.TrimSpace(value))
+	default:
+		return ""
+	}
+}
+
 func (p *appManagedBatchImageProvider) Cancel(_ context.Context, job *BatchImageJob, _ *Account) error {
 	if job != nil {
 		_ = os.Remove(p.resultPath(job.BatchID))
@@ -489,6 +829,9 @@ func managedAccountBaseURL(account *Account) string {
 	if account == nil {
 		return ""
 	}
+	if account.IsGemini() {
+		return strings.TrimRight(strings.TrimSpace(account.GetGeminiBaseURL("")), "/")
+	}
 	if base := strings.TrimSpace(account.GetOpenAIBaseURL()); base != "" {
 		return base
 	}
@@ -496,6 +839,28 @@ func managedAccountBaseURL(account *Account) string {
 		return strings.TrimSpace(account.GetGrokBaseURL())
 	}
 	return ""
+}
+
+// BananaRouter and compatible Gemini gateways expose the native Generate
+// Content API but not Google's file-upload Batch API. Treat a custom Gemini
+// base URL as an async managed-fanout account; official Google endpoints stay
+// on the existing native batch provider.
+func isBananaRouterGeminiAccount(account *Account) bool {
+	if account == nil || !account.IsGemini() || account.Type != AccountTypeAPIKey || managedAccountAPIKey(account) == "" {
+		return false
+	}
+	base := strings.TrimSpace(account.GetCredential("base_url"))
+	if base == "" {
+		return false
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Hostname() == "" {
+		return true
+	}
+	host := strings.ToLower(u.Hostname())
+	return host != "generativelanguage.googleapis.com" &&
+		host != "aiplatform.googleapis.com" &&
+		!strings.HasSuffix(host, ".googleapis.com")
 }
 
 func managedErrorLine(customID, code, message string) []byte {
