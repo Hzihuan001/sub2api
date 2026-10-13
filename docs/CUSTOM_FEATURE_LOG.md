@@ -367,6 +367,21 @@
 - **回滚**：回退上述两个提交即可，无数据库恢复要求；临时 2K/4K 测试图片未纳入仓库。
 - **备注**：当前批量阻塞点不在工作台模型发现，而在上游/提供商批量提交链路：公开网关没有 `batchGenerateContent`，内部账号需配置可用的官方 Gemini Batch API，或后续增加原生 `generateContent` fan-out。测试凭据未写入文件、日志或 Git，建议轮换本次在聊天中暴露过的访问凭据。
 
+### 2026-10-13 — 未发布 — image-studio BananaRouter 批量异步 fan-out 适配
+
+- **需求**：按现有 GPT-image 批量生图逻辑，为 BananaRouter 上游的 Gemini 图片模型增加批量生图支持；保持工作台的统一队列、并发、断点、轮询、失败记录和结算行为。
+- **Feature ID**：`image-studio`
+- **官方基线**：`v0.2.13` / `3040209f205472038c1ba745a1bedd2edd9053b1`；基于生产 `custom-0.2.13.9`，本地提交 `0a6493b49`。
+- **实现边界**：`backend/internal/service/batch_image_provider_app_managed.go` 为自定义 Gemini `base_url` 增加 BananaRouter 异步协议：`POST /v1beta/models/{model}:asyncGenerateContent`、幂等键、`GET /v1/async-tasks/{taskID}` 轮询、`resultImages`/URL/Base64 结果归一化和既有 JSONL 落库；`batch_image_provider_gemini.go` 排除自定义 Gemini 端点，避免误走 Google 文件 Batch API；`batch_image_public.go` 保留现有 `app_managed` provider，新增 `managed_async` 模式、Banana 账号模型发现和原生 Gemini 自定义尺寸拒绝；`BatchImageGuideView.vue` 按模式隐藏自定义尺寸和非 PNG 选项，继续提供 `1K`/`2K`/`4K` 档位。
+- **用户可见行为**：BananaRouter 模型在批量工作台中与 GPT-image 使用同一任务入口；多个 prompt 会拆成多个异步上游任务并汇总为一个批量任务，输出数量仍通过现有 item 展开逻辑处理。该能力是工作台 fan-out，不宣称 BananaRouter 提供原生多 prompt Batch API。
+- **数据库/迁移**：无新增迁移；继续复用既有批量任务、`input_payload`、模型价格、账号 `model_mapping` 和结果 JSONL。
+- **测试**：前端定向 Vitest `31` 个文件、`230/230` 测试通过；`vue-tsc --noEmit`、定向 ESLint、`git diff --check` 通过；后端新增自定义 Gemini 网关识别、异步响应解析和 `/v1beta`/`/v1` 端点拼接测试，本机无 Go 工具链，后端测试待 CI/可用环境补跑。真实 BananaRouter 端到端批量尚未执行。
+- **提交/PR**：`0a6493b49`，仅本地，未推送、未创建 PR。
+- **发布镜像**：无；未构建、未打标签。
+- **部署站点**：未部署；OVH 生产保持 `custom-0.2.13.9`，Tencent staging 已退役。
+- **回滚**：回退 `0a6493b49` 即可，无数据库恢复要求；生产镜像与运行数据未变更。
+- **备注**：实现依据 [BananaRouter 异步任务文档](https://bananarouter.com/docs/async-task) 和 [Gemini 图片模型文档](https://bananarouter.com/docs/gemini-3-pro-image-preview)。官方异步任务建议轮询间隔至少 5 秒；模型上线后需验证真实 `taskID`、`resultImages`、参考图、失败任务和计费结算。日志不记录任何密钥或真实请求凭据。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：
