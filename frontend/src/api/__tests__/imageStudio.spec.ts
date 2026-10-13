@@ -46,6 +46,22 @@ describe('imageStudio API', () => {
     })
   })
 
+  it('preserves the native Gemini response MIME type for downloaded files', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/jpeg', data: 'aW1hZ2U=' } }] } }] }),
+    } as Response)
+
+    await expect(generateImageStudioImages('sk-gemini', {
+      model: 'gemini-nano-banana-2.1',
+      prompt: 'a cat by a window',
+      count: 1,
+      size: '2K',
+      outputFormat: 'png',
+      nativeGemini: true,
+    })).resolves.toEqual([{ b64Json: 'aW1hZ2U=', mimeType: 'image/jpeg' }])
+  })
+
   it('loads, filters, and deduplicates models through the selected API key', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
