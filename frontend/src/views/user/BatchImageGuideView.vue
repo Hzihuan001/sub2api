@@ -948,6 +948,7 @@ import type { Column } from '@/components/common/types'
 import {
   IMAGE_STUDIO_CUSTOM_SIZE,
   isGeminiNanoBananaModel,
+  isSeedreamImageModel,
   normalizeCustomImageSize,
   normalizeImageStudioCustomSize,
   parseImageDimensions,
@@ -1192,12 +1193,6 @@ const modelPlaceholder = computed(() => {
   return batchImageText('selectModel')
 })
 
-const responseMimeTypeOptions: SelectOption[] = [
-  { value: 'image/png', label: 'PNG' },
-  { value: 'image/jpeg', label: 'JPEG' },
-  { value: 'image/webp', label: 'WebP' },
-]
-
 const filteredApiKeys = computed(() => {
   const selectedFilterID = Number(filters.apiKeyId || 0)
   if (!selectedFilterID) return geminiApiKeys.value
@@ -1301,6 +1296,25 @@ const nativeGeminiBatchAspectRatio = computed(() => {
   if (!nativeGeminiBatchModel.value) return ''
   return form.imageSize === '4K' ? '16:9' : '1:1'
 })
+const responseMimeTypeOptions = computed<SelectOption[]>(() => {
+  if (nativeGeminiBatchModel.value) return [{ value: 'image/png', label: 'PNG' }]
+  if (isSeedreamImageModel(form.model)) {
+    return [
+      { value: 'image/png', label: 'PNG' },
+      { value: 'image/jpeg', label: 'JPEG' },
+    ]
+  }
+  return [
+    { value: 'image/png', label: 'PNG' },
+    { value: 'image/jpeg', label: 'JPEG' },
+    { value: 'image/webp', label: 'WebP' },
+  ]
+})
+const normalizedResponseMimeType = computed(() => normalizeBatchResponseMimeType(
+  form.model,
+  selectedBatchModelInfo.value?.provider || selectedBatchModelInfo.value?.mode || '',
+  form.responseMimeType,
+))
 const imageSizeOptions = computed<SelectOption[]>(() => [
   { value: '1K', label: t('batchImage.create.imageSize1k') },
   { value: '2K', label: t('batchImage.create.imageSize2k') },
@@ -1345,6 +1359,19 @@ function referenceImageLimitForModel(model: string) {
   if (normalized.includes('pro-image')) return 14
   if (normalized.includes('flash-image')) return 3
   return 0
+}
+
+function normalizeBatchResponseMimeType(model: string, provider = '', requested = 'image/png') {
+  const normalizedProvider = String(provider || '').trim().toLowerCase()
+  const isNativeGemini = normalizedProvider === 'gemini_api'
+    || normalizedProvider === 'gemini_api_batch'
+    || normalizedProvider === 'vertex'
+    || normalizedProvider === 'vertex_ai'
+  if (isNativeGemini) return 'image/png'
+  if (isSeedreamImageModel(model)) {
+    return requested === 'image/jpeg' ? 'image/jpeg' : 'image/png'
+  }
+  return requested || 'image/png'
 }
 
 const selectedModelReferenceLimit = computed(() => {
@@ -2010,7 +2037,7 @@ async function submitJob() {
         ...(executionProvider ? { provider: executionProvider } : {}),
         image_size: requestedImageSize,
         ...(nativeGeminiBatchAspectRatio.value ? { aspect_ratio: nativeGeminiBatchAspectRatio.value } : {}),
-        response_mime_type: form.responseMimeType,
+        response_mime_type: normalizedResponseMimeType.value,
         items: requestItems.value,
       },
       `moshu-ui-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -2212,7 +2239,7 @@ async function retryFailedJob(job: BatchImageJobRow | BatchImageJob) {
         parent_batch_id: rootBatchIdForRetry(job),
         provider: job.provider,
         image_size: batchImageSizeForJob(job, failedSourceItems.find(item => String(item.image_size || '').trim())?.image_size || ''),
-        response_mime_type: form.responseMimeType,
+        response_mime_type: normalizeBatchResponseMimeType(job.model, job.provider, form.responseMimeType),
         items: failedItems,
       },
       `moshu-ui-retry-${job.id}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -3086,6 +3113,9 @@ watch(
     if (!supportsImageStudioCustomSize(form.model) && form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE) form.imageSize = '1K'
     if (!supportsImageStudio4K(form.model) && form.imageSize === '4K') form.imageSize = '2K'
     if (nativeGeminiBatchModel.value && form.imageSize === IMAGE_STUDIO_CUSTOM_SIZE) form.imageSize = '2K'
+    if (!responseMimeTypeOptions.value.some(option => option.value === form.responseMimeType)) {
+      form.responseMimeType = responseMimeTypeOptions.value[0]?.value as string || 'image/png'
+    }
     const limit = selectedModelReferenceLimit.value
     if (limit <= 0) {
       referenceImageDrafts.value = []
