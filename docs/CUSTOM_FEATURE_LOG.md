@@ -360,7 +360,7 @@
 - **实现边界**：前端工作台将尺寸标签统一为 `1K`、`2K`、`4K`，不再显示对所有模型都不成立的固定像素；原生 Gemini 单生图隐藏不适用的质量、输出格式和背景控件，原生 Gemini 批量隐藏输出格式控件；批量提交遇到 HTTP 502 时给出服务端/提供商配置提示。app-managed 批量输出从 Base64/data URL 解码并按图片签名保留 JPEG、PNG 或 WebP MIME，避免把 JPEG 错标为 PNG。涉及 `frontend/src/views/user`、`frontend/src/i18n/locales`、`frontend/src/api/__tests__` 和 `backend/internal/service/batch_image_provider_app_managed.go`。
 - **用户可见行为**：Nano 2.1 的尺寸选择表达为模型档位，不承诺固定像素；不支持的控件不再显示。批量 502 不再只显示原始网关错误，而是提示管理员检查上游批量配置。
 - **数据库/迁移**：无新增迁移。
-- **测试**：`ai.moshu.cloud` 原生单生图 `2K/1:1` HTTP 200，实际 `2048x2048`、`image/jpeg`；`4K/16:9` HTTP 200，实际 `5504x3072`、`image/jpeg`。开启分组批量后 `/v1/images/batches/models` HTTP 200 并返回 Nano 模型，但提交一条 `1K/1:1` 任务 HTTP 502，未创建批量任务；直接调用公开网关 `batchGenerateContent` HTTP 404（`Unsupported action`）。前端定向 Vitest `17/17`、`check:i18n`、定向 ESLint、`git diff --check` 通过；本机无 Go 工具链，后端测试待 CI/可用环境补跑。
+- **测试**：`ai.moshu.cloud` 原生单生图 `2K/1:1` HTTP 200，实际 `2048x2048`、`image/jpeg`；`4K/16:9` HTTP 200，实际 `5504x3072`、`image/jpeg`。开启分组批量后 `/v1/images/batches/models` HTTP 200 并返回 Nano 模型，但提交一条 `1K/1:1` 任务 HTTP 502，未创建批量任务；直接调用公开网关 `batchGenerateContent` HTTP 404（`Unsupported action`）。前端定向 Vitest `17/17`、`vue-tsc --noEmit`、`check:i18n`、定向 ESLint、`git diff --check` 通过；本机无 Go 工具链，后端测试待 CI/可用环境补跑。
 - **提交/PR**：`832e07ce8`、`8d92648db`，仅本地，未推送、未创建 PR。
 - **发布镜像**：无；未构建、未打标签。
 - **部署站点**：未部署；OVH 生产保持 `custom-0.2.13.9`，Tencent staging 已退役。
