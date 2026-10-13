@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -30,6 +31,7 @@ type appManagedTestUpstream struct {
 	lastURL         string
 	lastContentType string
 	lastBody        []byte
+	responseBody    string
 }
 
 func (u *appManagedTestUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
@@ -41,8 +43,12 @@ func (u *appManagedTestUpstream) Do(req *http.Request, _ string, _ int64, _ int)
 	u.lastContentType = req.Header.Get("Content-Type")
 	u.lastBody = body
 	u.mu.Unlock()
+	responseBody := u.responseBody
+	if responseBody == "" {
+		responseBody = `{"data":[{"b64_json":"aGVsbG8="}]}`
+	}
 	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(
-		strings.NewReader(`{"data":[{"b64_json":"aGVsbG8="}]}`)), Request: req}, nil
+		strings.NewReader(responseBody)), Request: req}, nil
 }
 
 func TestAppManagedBatchImageProviderSendsGPTImageReferenceAsEdit(t *testing.T) {
@@ -176,4 +182,77 @@ func TestManagedImageSizeSupportsTiersAndCustomDimensions(t *testing.T) {
 			require.Equal(t, tt.want, managedImageSize(tt.input))
 		})
 	}
+}
+
+func TestDecodeManagedImageDataDetectsImageMimeType(t *testing.T) {
+	tests := []struct {
+		name       string
+		bytes      []byte
+		dataURL    bool
+		wantMime   string
+		wantBase64 string
+	}{
+		{
+			name:       "jpeg plain base64",
+			bytes:      []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01},
+			wantMime:   "image/jpeg",
+			wantBase64: "/9j/4AAQSkZJRgAB",
+		},
+		{
+			name:       "png data URL",
+			bytes:      []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'},
+			dataURL:    true,
+			wantMime:   "image/png",
+			wantBase64: "iVBORw0KGgo=",
+		},
+		{
+			name:       "webp plain base64",
+			bytes:      []byte{'R', 'I', 'F', 'F', 0x04, 0x00, 0x00, 0x00, 'W', 'E', 'B', 'P'},
+			wantMime:   "image/webp",
+			wantBase64: "UklGRgQAAABXRUJQ",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := base64.StdEncoding.EncodeToString(tt.bytes)
+			if tt.dataURL {
+				input = "data:image/jpeg;base64," + input
+			}
+			got, mime, ok := decodeManagedImageData(input, "image/png")
+			require.True(t, ok)
+			require.Equal(t, tt.wantMime, mime)
+			require.Equal(t, tt.wantBase64, got)
+		})
+	}
+}
+
+func TestAppManagedBatchImageProviderDetectsB64ImageMimeType(t *testing.T) {
+	dir := t.TempDir()
+	jpeg := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01}
+	upstream := &appManagedTestUpstream{responseBody: `{"data":[{"b64_json":"` + base64.StdEncoding.EncodeToString(jpeg) + `"}]}`}
+	jobID := "imgbatch_app_managed_jpeg"
+	repo := &appManagedTestRepo{items: map[string][]*BatchImageItem{jobID: {{CustomID: "one", InputPayload: []byte(`{"custom_id":"one","prompt":"draw a cat"}`)}}}}
+	provider := NewAppManagedBatchImageProvider(AppManagedBatchImageProviderOptions{HTTPUpstream: upstream, ItemRepo: repo, ResultDir: dir})
+	account := &Account{ID: 7, Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{"api_key": "test-key", "base_url": "https://upstream.invalid"}}
+	job := &BatchImageJob{BatchID: jobID, Model: "gpt-image-1", ItemCount: 1}
+	status, err := provider.Get(context.Background(), job, account)
+	require.NoError(t, err)
+	require.Equal(t, BatchProviderStateSucceeded, status.InternalState)
+	result, err := os.ReadFile(filepath.Join(dir, jobID+".jsonl"))
+	require.NoError(t, err)
+	var line struct {
+		Response struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						InlineData struct {
+							MimeType string `json:"mimeType"`
+						} `json:"inlineData"`
+					} `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+		} `json:"response"`
+	}
+	require.NoError(t, json.Unmarshal(strings.TrimSpace(string(result)), &line))
+	require.Equal(t, "image/jpeg", line.Response.Candidates[0].Content.Parts[0].InlineData.MimeType)
 }

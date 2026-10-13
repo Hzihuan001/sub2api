@@ -288,7 +288,6 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 	// providers, but do not send a non-standard response_format field to an
 	// OpenAI-compatible endpoint: the API accepts b64_json/url there, while
 	// PNG/JPEG/WebP is an output encoding choice made by the upstream.
-	_ = responseMimeType
 	body := map[string]any{"model": model, "prompt": item.Prompt, "n": 1, "size": imageSize}
 	if item.OutputCount > 1 {
 		// One upstream call per output is intentional: this avoids providers
@@ -378,10 +377,13 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 	}
 	parts := make([]any, 0, len(out.Data))
 	for _, img := range out.Data {
-		data := strings.TrimSpace(img.B64)
-		mime := "image/png"
-		if data == "" && strings.TrimSpace(img.URL) != "" {
-			data, mime = fetchManagedImage(ctx, img.URL)
+		data, mime, ok := decodeManagedImageData(img.B64, responseMimeType)
+		if !ok && strings.TrimSpace(img.URL) != "" {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(img.URL)), "data:") {
+				data, mime, _ = decodeManagedImageData(img.URL, responseMimeType)
+			} else {
+				data, mime = fetchManagedImage(ctx, img.URL)
+			}
 		}
 		if data == "" {
 			continue
@@ -499,6 +501,55 @@ func managedAccountBaseURL(account *Account) string {
 func managedErrorLine(customID, code, message string) []byte {
 	b, _ := json.Marshal(map[string]any{"key": customID, "error": map[string]string{"code": code, "message": message}})
 	return b
+}
+
+// decodeManagedImageData accepts either a provider's plain base64 payload or a
+// data URL, then derives the MIME type from the decoded bytes. Some upstreams
+// (notably native Gemini image generation) return JPEG/WebP even when the
+// requested output format defaults to PNG, so the response must not be tagged
+// with a hard-coded MIME type.
+func decodeManagedImageData(value, fallbackMime string) (string, string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", "", false
+	}
+	if strings.HasPrefix(strings.ToLower(value), "data:") {
+		comma := strings.IndexByte(value, ',')
+		if comma < 0 || !strings.Contains(strings.ToLower(value[:comma]), ";base64") {
+			return "", "", false
+		}
+		value = strings.TrimSpace(value[comma+1:])
+	}
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		decoded, err = base64.RawStdEncoding.DecodeString(value)
+	}
+	if err != nil || len(decoded) == 0 {
+		return "", "", false
+	}
+
+	mime := strings.TrimSpace(strings.SplitN(http.DetectContentType(decoded), ";", 2)[0])
+	switch mime {
+	case "image/jpeg", "image/png", "image/webp":
+		// Keep the signature-derived MIME type even when the provider's
+		// requested format or data URL declaration disagrees with it.
+	default:
+		mime = normalizeManagedImageMime(fallbackMime)
+		if mime == "" {
+			mime = "image/png"
+		}
+	}
+	return base64.StdEncoding.EncodeToString(decoded), mime, true
+}
+
+func normalizeManagedImageMime(value string) string {
+	mime := strings.ToLower(strings.TrimSpace(strings.SplitN(value, ";", 2)[0]))
+	switch mime {
+	case "image/jpeg", "image/png", "image/webp":
+		return mime
+	default:
+		return ""
+	}
 }
 
 func loadManagedLines(path string) map[string][]byte {
