@@ -89,8 +89,9 @@ describe('Image Studio actual size visibility', () => {
   it('keeps actual dimensions internal without a mismatch toast after generation', async () => {
     wrapper = mountView()
     await flushPromises()
+    expect(wrapper.get('[data-test="image-studio-model"]').element.tagName).toBe('SELECT')
     await wrapper.get('[data-test="image-studio-prompt"]').setValue('A cat by a window')
-    await wrapper.findAll('select')[1].setValue('4K')
+    await wrapper.get('[data-test="image-studio-size"]').setValue('4K')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
 
