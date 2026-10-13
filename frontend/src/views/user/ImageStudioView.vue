@@ -94,15 +94,15 @@
                 <span class="input-label">{{ t('imageStudio.count') }}</span>
                 <Select v-model="form.count" :options="countOptions" :disabled="generating" class="mt-1 w-full" />
               </label>
-              <label class="block">
+              <label v-if="qualityOptions.length > 1" class="block">
                 <span class="input-label">{{ t('imageStudio.quality') }}</span>
                 <Select v-model="form.quality" :options="qualityOptions" :disabled="generating" class="mt-1 w-full" />
               </label>
-              <label class="block">
+              <label v-if="!nativeGeminiModel" class="block">
                 <span class="input-label">{{ t('imageStudio.outputFormat') }}</span>
                 <Select v-model="form.outputFormat" :options="formatOptions" :disabled="generating" class="mt-1 w-full" />
               </label>
-              <label class="block">
+              <label v-if="backgroundOptions.length > 1" class="block">
                 <span class="input-label">{{ t('imageStudio.background') }}</span>
                 <Select v-model="form.background" :options="backgroundOptions" :disabled="generating" class="mt-1 w-full" />
               </label>
@@ -374,7 +374,7 @@ const formatOptions = computed(() => nativeGeminiModel.value
     : [{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }, { value: 'webp', label: 'WebP' }])
 const backgroundOptions = computed(() => [
   { value: 'auto', label: t('imageStudio.auto') },
-  ...(!nativeGeminiModel.value ? [{ value: 'opaque', label: t('imageStudio.backgroundOpaque') }] : []),
+  ...(!nativeGeminiModel.value && !seedreamImageModel.value ? [{ value: 'opaque', label: t('imageStudio.backgroundOpaque') }] : []),
   ...(!nativeGeminiModel.value && !seedreamImageModel.value ? [{ value: 'transparent', label: t('imageStudio.backgroundTransparent') }] : []),
 ])
 const fidelityOptions = computed(() => [

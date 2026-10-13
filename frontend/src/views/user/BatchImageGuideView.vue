@@ -649,7 +649,7 @@
             <p class="input-hint mt-1">{{ t('batchImage.create.customSizeHint') }}</p>
           </div>
 
-          <div>
+          <div v-if="!nativeGeminiBatchModel">
             <label class="input-label">{{ t('batchImage.create.outputFormat') }}</label>
             <Select
               v-model="form.responseMimeType"
@@ -2995,6 +2995,9 @@ function batchImageErrorMessage(error: any, fallback: string) {
     code === 'BATCH_IMAGE_PROVIDER_MISSING_SERVICE_ACCOUNT' ||
     code === 'BATCH_IMAGE_PROVIDER_UNSUPPORTED_ACCOUNT'
   ) {
+    return batchImageAdminError(batchImageText('providerSubmitFailed'), error)
+  }
+  if (code === '502' || status === '502') {
     return batchImageAdminError(batchImageText('providerSubmitFailed'), error)
   }
   if (code === 'BATCH_IMAGE_QUEUE_FAILED' || code === 'BATCH_IMAGE_QUEUE_NOT_CONFIGURED') {
