@@ -16,7 +16,7 @@
 | 最近生产版本 | `0.2.15-custom.2`（2026-10-13 OVH 只读实测） |
 | 最近生产标签 | `custom-0.2.15.2` / `eb509b8efa5cbf6059866be3fd9b58b8ed69dada` |
 | 生产镜像 digest | `ghcr.io/hzihuan001/sub2api@sha256:7b49d3d555c3427917fbfc9315497214a74df3ddb49c6a9c17ee5ecf13726eab` |
-| 当前工作分支 | `codex/image-studio-session-20261004`（image-studio 模型适配提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9`、`f6f008b14`、`1149f16c6`、`832e07ce8`、`8d92648db`、`0a6493b49`、`9a43bafdc`；父工作树未修改） |
+| 当前工作分支 | `codex/image-studio-session-20261004`（image-studio 模型适配提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9`、`f6f008b14`、`1149f16c6`、`832e07ce8`、`8d92648db`、`0a6493b49`、`9a43bafdc`；当前交接文档提交 `e3248975e`；父工作树未修改） |
 | 协作父分支/工作树 | `codex/isolation-refactor-v0.2.13` / `07bf51ba0`；父工作树保持 clean，未被本会话修改 |
 | 同步框架 HEAD | `1fa5f4478`（本文档记录前；文档提交后的当前 HEAD 以 `git log` 为准） |
 | 长期集成基线 | `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071` |
@@ -36,13 +36,14 @@
 
 ### 当前会话摘要（2026-10-13）
 
-- **Feature ID**：`image-studio`；状态：`blocked`（适配代码已完成并推送，但未上线；生产实为 `0.2.15-custom.2`，不能用本分支降级覆盖）。
+- **Feature ID**：`image-studio`；状态：`in-progress`（适配代码已完成并推送，等待在 v0.2.15 更新过程中移植；当前未上线）。
 - **最近界面调整**：单张生图工作台的模型字段已改为只读下拉选择，只允许选择当前 API Key 加载到的模型；批量工作台继续使用同一模型下拉机制。
 - **实现边界**：提交 `76ab4779d`、`e3bbcf841`、`97a9b8d7c`、`f920a400d`、`55950c128`、`badcec5a3`、`1c9ab9db6`、`064fa42d9`、`f6f008b14`、`1149f16c6` 增加 `gemini-nano-banana-2.1` 原生 Gemini 单生图 `/v1beta` 请求转换与权限门禁，支持 `1K`/`2K`/`4K`、参考图和 `inlineData` 响应解析；Gemini 密钥模型发现改走 `/v1beta/models`；批量 Gemini/Vertex 保留上游尺寸档位、4K 明确传 `16:9` 并将公开别名映射为账号部署模型，使用官方 Batch API 的 JSONL 请求；`seedream-5.0-pro` 走 OpenAI-compatible API-key 转发，支持账号 `model_mapping` 部署 ID、动态参考图上限和自定义尺寸校验，批量任务由工作台拆分为多条 `n=1` 请求，不伪造上游组图能力。复合路由将 Seedream 公共 alias/部署 ID 识别为 OpenAI；单生图解析、单生图前端和批量提交均隐藏/拒绝 Seedream 4K，自定义尺寸限制为 921600–4624220 总像素；Seedream 单生图和批量工作台仅提供 PNG/JPEG，并隐藏不兼容的质量、WebP、蒙版和参考图保真度选项；原生 Gemini 批量固定 PNG；切换分组时请求层清除残留蒙版。提交 `832e07ce8` 让 app-managed 批量从 Base64/data URL 解码并按图片签名保留 JPEG/PNG/WebP MIME，提交 `8d92648db` 将工作台尺寸标签统一为 `1K`/`2K`/`4K`，并隐藏原生 Gemini 不适用的质量、格式、背景和批量格式控件；批量 502 显示为可操作的服务端配置提示。提交 `0a6493b49` 将 BananaRouter/兼容 Gemini 自定义端点转入同一 app-managed 批量队列：每个 item 调用 `/v1beta/models/{model}:asyncGenerateContent`，使用幂等键提交、按 `/v1/async-tasks/{taskID}` 轮询并将 `resultImages` 规范化为既有 JSONL；工作台通过 `managed_async` 模式识别该模型，继续使用 `1K`/`2K`/`4K` 档位和 Gemini 的 PNG 输出约束。
 - **数据与兼容**：没有后端数据库迁移；公开别名不写入新的表字段，批量任务继续复用既有 `input_payload`；原生 Gemini 不接受任意 `WIDTHxHEIGHT`，自定义尺寸仅适用于兼容图片接口。
 - **验证证据**：前端 image-studio/API 定向 Vitest `31` 个文件、`230/230` 测试通过；`vue-tsc --noEmit`、定向 ESLint 和 `git diff --check` 通过；后端已补充 BananaRouter 异步响应、端点版本拼接、批量模型模式和 app-managed MIME 回归测试，但本机无 Go 工具链，待 CI/可用 Go 环境补跑。线上冒烟扩展为：Nano 2.1 `2K/1:1` HTTP 200、实际 `2048x2048` JPEG；`4K/16:9` HTTP 200、实际 `5504x3072` JPEG。开启分组批量后模型列表 HTTP 200，但旧链路提交单条 1K 任务仍 HTTP 502 且未创建任务；直接调用公开网关 `batchGenerateContent` 返回 HTTP 404 `Unsupported action`。BananaRouter 官方异步接口已完成代码适配，尚未使用真实 BananaRouter 凭据完成端到端批量验证。
 - **发布证据**：发布准备提交 `8db80f328` 已推送到当前功能分支，源码标签 `custom-0.2.13.10` 已推送；本地 `linux/amd64` 镜像 `0.2.13-custom.10` 构建成功（前端生产构建、i18n 检查和后端编译通过），未推送 GHCR、未部署。GitHub Actions 手动触发返回 HTTP 422 `Actions has been disabled for this repository`，本地构建不等价于完整 CI，后端测试和不可变镜像联合验收尚未完成。随后 OVH 只读版本核验发现生产已是 `0.2.15-custom.2`，立即停止发布；容器仍为原 digest、`running/healthy`，`ai.moshu.cloud/health` 返回 `{"status":"ok"}`。
 - **阻塞与协作边界**：生产升级提交位于其他工作树的 `codex/v0.2.15-image-studio-sync`；另有已打标签的 `codex/release-custom-0.2.15.3` 文档发布候选。本会话未修改这些分支/工作树，也未部署该候选。生产源码含当前分支没有的 `backend/migrations/242_drop_platform_check_constraints.sql` 及对应 schema 变化，不可仅修改版本号后发布旧代码。需先确认基于哪个 v0.2.15 发布基线移植本次 image-studio 变更，补齐质量门禁后才能发布；禁止将 `custom-0.2.13.10` 直接用于现有生产环境。
+- **交接安排**：用户将在官方版本更新时，以当前生产 v0.2.15 基线为起点移植本次 image-studio 工作台改动；本分支仅作为实现与测试参考，不直接合并覆盖新版，也不再单独部署。移植后需重新执行后端 unit/integration/lint、前端完整检查、Compose/Docker 不可变镜像验收和真实 BananaRouter 批量联调，再创建新的 `.15` custom 发布坐标。
 - **已知限制/下一步**：`ai.moshu.cloud` 原生单生图已验证 `1K`、`2K`、`4K` 档位，但 Nano 的 `4K` 实际像素为 `5504x3072`，不是固定 `3840x2160`；工作台因此只展示尺寸档位，不再把 GPT 的固定像素标签套给所有模型。BananaRouter 没有原生多提示词 Batch API，当前实现是工作台复用 GPT-image 的并发/断点/结算逻辑，对每个 item 创建一个异步任务；轮询间隔按官方要求为至少 5 秒，真实端到端仍待模型上线后验证 `taskID`、`resultImages`、参考图和失败结算。Seedream 仍需真实账号联调合法尺寸、PNG/JPEG 返回和编辑端点。两个已有 xlsx 高危审计例外仍按批准续期至 `2026-11-08`；继续保持 `.github/upstream-sync-manifest.yml` 的 `patch_branches: []`。
 
 ## 2. 当前定制功能边界

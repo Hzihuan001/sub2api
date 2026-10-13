@@ -408,6 +408,16 @@
 - **生产影响/回滚**：无生产写入、未替换容器、未操作数据库/Redis/持久化卷/代理，也未创建生产备份；无需回滚。保留已推送源码标签用于审计，但该标签不可直接用于当前生产部署。
 - **下一步**：确认新版发布基线和协作归属，再移植本次 image-studio 提交。已发现其他工作树维护 `codex/v0.2.15-image-studio-sync` 和 `codex/release-custom-0.2.15.3`；本会话未修改它们，未将 `.3` 候选视为已上线。补齐完整质量门禁、同一不可变镜像验收与生产备份后再部署。
 
+### 2026-10-13 — 交接待移植 — image-studio 随 v0.2.15 更新迁移
+
+- **需求**：用户确认将在官方版本更新时同步移植生图工作台，不在当前旧基线上单独部署。
+- **Feature ID**：`image-studio`；状态 `in-progress`。
+- **当前参考**：`codex/image-studio-session-20261004` / `e3248975e`；包含 Nano Banana 2.1、Seedream 5.0 Pro、BananaRouter 异步 fan-out、1K/2K/4K 尺寸和模型下拉选择等适配。该分支基于 `v0.2.13`，仅作为实现与测试参考。
+- **交接边界**：后续升级会话应从当前生产 `v0.2.15` 基线移植相关 image-studio 提交，保留 v0.2.15 的迁移、schema、运行时修复和发布文档；不得整分支覆盖、直接将 `custom-0.2.13.10` 部署到生产，或仅修改版本号绕过基线差异。
+- **发布/部署**：无新镜像、无新部署；OVH 继续运行 `0.2.15-custom.2`，健康状态不变；Tencent staging 已退役。
+- **移植后门禁**：完整后端 unit/integration/lint、前端 lint/typecheck/Vitest/build、custom isolation、Compose 校验、同一 immutable GHCR 镜像 Docker 验收，以及真实 BananaRouter 单生/批量和 Seedream 联调。通过后再创建新的 v0.2.15 custom 标签并按 OVH 备份/回滚流程发布。
+- **备注**：本次仅更新共享交接文档，不修改其他工作树、生产服务器或数据库；真实 BananaRouter 批量任务仍未完成端到端验证。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：
