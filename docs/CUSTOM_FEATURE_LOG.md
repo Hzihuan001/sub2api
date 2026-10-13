@@ -397,6 +397,17 @@
 - **回滚**：回退 `9a43bafdc` 即可，无数据库恢复要求；生产镜像与运行数据未变更。
 - **备注**：此变更只收紧模型选择入口，不改变模型发现接口、模型映射或生图请求协议。
 
+### 2026-10-13 — 部署阻塞 — image-studio 发布预检发现生产基线已升级
+
+- **需求**：按用户要求部署 BananaRouter 批量适配及模型下拉等 image-studio 改动。
+- **Feature ID**：`image-studio`；状态 `blocked`。
+- **分支/提交**：`codex/image-studio-session-20261004` / `8db80f3283205471802b99190de23ea70fe0b97e`，基于 `v0.2.13`；已推送功能分支与源码标签 `custom-0.2.13.10`。
+- **构建与检查**：本地 `linux/amd64` 镜像 `ghcr.io/hzihuan001/sub2api:0.2.13-custom.10` 构建成功，包含前端生产构建、i18n 检查和后端编译；未推送 GHCR。GitHub Actions 手动触发返回 HTTP 422 `Actions has been disabled for this repository`。本地构建不替代完整后端单元/集成测试、lint 和不可变镜像联合验收，未将这些门禁记为通过。
+- **预检证据**：2026-10-13 09:26–09:28 UTC / 17:26–17:28 中国时间，只读 SSH 确认 OVH 应用实际为 `0.2.15-custom.2`，commit `eb509b8efa5cbf6059866be3fd9b58b8ed69dada`，原镜像 `ghcr.io/hzihuan001/sub2api@sha256:7b49d3d555c3427917fbfc9315497214a74df3ddb49c6a9c17ee5ecf13726eab`；容器 `running/healthy`，`https://ai.moshu.cloud/health` 返回 `{"status":"ok"}`。
+- **发布决定**：停止部署，防止将生产从 v0.2.15 降级到 v0.2.13；生产源码含本分支没有的 `242_drop_platform_check_constraints.sql` 迁移及对应 schema 变化，不能只改版本号绕过。此前本工作树文档的 `.9` 生产记录已过时，已修正当前状态快照，历史条目保留。
+- **生产影响/回滚**：无生产写入、未替换容器、未操作数据库/Redis/持久化卷/代理，也未创建生产备份；无需回滚。保留已推送源码标签用于审计，但该标签不可直接用于当前生产部署。
+- **下一步**：确认新版发布基线和协作归属，再移植本次 image-studio 提交。已发现其他工作树维护 `codex/v0.2.15-image-studio-sync` 和 `codex/release-custom-0.2.15.3`；本会话未修改它们，未将 `.3` 候选视为已上线。补齐完整质量门禁、同一不可变镜像验收与生产备份后再部署。
+
 ## 每次新定制必须追加的记录模板
 
 复制下面模板追加到本文件顶部（不要修改历史条目）：
