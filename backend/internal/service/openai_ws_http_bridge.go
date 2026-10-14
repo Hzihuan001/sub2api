@@ -642,7 +642,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	bareErrorPending := false
 	var bareErrorPayload []byte
 	bareErrorMessage := ""
-	failureAccountSideEffectsApplied := false
+	var failureAttempt openAIFailureAttemptEffects
 	mappedModel := actualModel
 	needModelReplace := false
 	var mappedModelBytes []byte
@@ -705,8 +705,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if !bareErrorPending {
 			return nil
 		}
-		if !failureAccountSideEffectsApplied {
-			failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, resp.Header, bareErrorPayload)
+		if failureAttempt.shouldObserve() {
+			failureAttempt.record(s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, resp.Header, bareErrorPayload))
 		}
 		upstreamTerminalEvent = "response.failed"
 		if clientDisconnected {
@@ -844,9 +844,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				}
 				return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, true, resp.Header.Get("x-request-id"), upstreamMessage, errMessage, mappedModel, resp.Header)
 			}
-			if account.Platform != PlatformGrok && !failureAccountSideEffectsApplied {
+			if account.Platform != PlatformGrok && failureAttempt.shouldObserve() {
 				if eventType == "response.failed" || (!officialOpenAIResponses && shouldFailover && !requestScopedCapacity) {
-					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, resp.Header, upstreamMessage)
+					failureAttempt.record(s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, resp.Header, upstreamMessage))
 				}
 			}
 			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {

@@ -1008,7 +1008,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		clientDisconnected := false
 		// One upstream attempt can emit repeated error frames and response.failed.
 		// Count its account/model transition once, resetting on the next send.
-		failureAccountSideEffectsApplied := false
+		var failureAttempt openAIFailureAttemptEffects
 		mappedModel := ""
 		var mappedModelBytes []byte
 		if originalModel != "" {
@@ -1054,8 +1054,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				markOpenAICyberPolicyEvent(c, upstreamMessage, http.StatusOK, &usage)
 			}
 			if eventType == "error" {
-				if !failureAccountSideEffectsApplied {
-					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				if failureAttempt.shouldObserve() {
+					failureAttempt.record(s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage))
 				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
 				statusCode := openAIWSRejectedFieldRetryHTTPStatus(upstreamMessage)
@@ -1082,8 +1082,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						}
 					}
 				}
-				if !failureAccountSideEffectsApplied {
-					failureAccountSideEffectsApplied = s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw, mappedModel)
+				if failureAttempt.shouldObserve() {
+					failureAttempt.record(s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw, mappedModel))
 				}
 				fallbackReason, _ := classifyOpenAIWSErrorEventFromRaw(errCodeRaw, errTypeRaw, errMsgRaw)
 				if fallbackReason == openAIWSFallbackReasonInvalidEncryptedContent {
@@ -1226,7 +1226,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if isTerminalEvent {
 				terminalEvent := normalizeOpenAIWSTerminalEvent(eventType)
-				if !failureAccountSideEffectsApplied {
+				if failureAttempt.shouldObserve() {
 					terminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
 				}
 				// 客户端已断连时，上游连接的 session 状态不可信，标记 broken 避免回池复用。

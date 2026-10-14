@@ -70,7 +70,7 @@ func TestGatewayFailureAttemptEffectsObserveOneFailurePerAttempt(t *testing.T) {
 	require.False(t, effects.shouldObserve(), "paired error and response.failed observe once")
 	effects.record(false)
 	require.False(t, effects.shouldObserve(), "a later non-account frame cannot erase observation")
-	effects.reset()
+	effects = openAIFailureAttemptEffects{}
 	require.True(t, effects.shouldObserve(), "the next actual attempt must be counted")
 	effects.record(true)
 	var otherAttempt openAIFailureAttemptEffects

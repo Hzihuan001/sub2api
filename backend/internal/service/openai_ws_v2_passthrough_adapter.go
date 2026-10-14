@@ -1173,7 +1173,10 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if hooks != nil {
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 	}
-	failureAccountSideEffectsApplied := false
+	// Preserve the published passthrough boundary: response.created starts a
+	// new observed turn. Missing acknowledgements and cross-turn late frames
+	// need protocol identity handling, not a reset from the concurrent writer.
+	var failureAttempt openAIFailureAttemptEffects
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
@@ -1288,15 +1291,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
 				if eventType == "response.created" {
-					failureAccountSideEffectsApplied = false
+					failureAttempt = openAIFailureAttemptEffects{}
 				}
 				if (eventType == "error" || eventType == "response.failed") && markOpenAIWSV2PassthroughCyberPolicy(c, payload) {
 					return nil
 				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
 				isPreOutputRateLimit := eventType == "error" && !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
-				if (eventType == "error" || eventType == "response.failed") && !failureAccountSideEffectsApplied && !isPreOutputRateLimit {
-					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, capturedSessionModel, handshakeHeaders, payload)
+				if (eventType == "error" || eventType == "response.failed") && failureAttempt.shouldObserve() && !isPreOutputRateLimit {
+					failureAttempt.record(s.handleOpenAIWSFailureAccountSideEffects(ctx, account, capturedSessionModel, handshakeHeaders, payload))
 				}
 				if eventType != "error" {
 					return nil

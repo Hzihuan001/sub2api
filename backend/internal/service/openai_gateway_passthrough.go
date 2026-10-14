@@ -1361,77 +1361,11 @@ var openAIStreamErrorStatusPaths = []string{
 }
 
 func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
-	switch classifyOpenAIGatewayFailure(0, payload, message) {
-	case openAIGatewayFailureRequest:
-		for _, signal := range openAIGatewayFailureSignals(payload) {
-			switch signal {
-			case "permission_error", "permission_denied", "forbidden", "access_denied":
-				return http.StatusForbidden
-			}
-		}
-		return http.StatusBadRequest
-	case openAIGatewayFailureQuota:
-		return http.StatusPaymentRequired
-	case openAIGatewayFailureCredential:
-		if isOpenAIUpstreamAccessStateError(message, payload) {
-			return http.StatusForbidden
-		}
-		return http.StatusUnauthorized
-	case openAIGatewayFailureModelUnavailable:
-		return http.StatusNotFound
-	}
-
-	code := openAIStreamFailedEventErrorCode(payload)
-	errType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.type").String()))
-	if errType == "" {
-		errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
-	}
-	combined := strings.TrimSpace(errType + " " + code + " " + strings.ToLower(strings.TrimSpace(message)))
-	// OpenAI-compatible providers are inconsistent about the spelling of the
-	// semantic status field.  Accept both status_code and status (including
-	// nested response/error forms) so an in-stream auth/rate-limit event keeps
-	// the same failover semantics as a regular HTTP response.
-	for _, path := range openAIStreamErrorStatusPaths {
-		if status := int(gjson.GetBytes(payload, path).Int()); status == http.StatusUnauthorized ||
-			status == http.StatusPaymentRequired || status == http.StatusForbidden || status == http.StatusTooManyRequests || (status >= 500 && status <= 599) {
-			return status
-		}
-	}
-	switch {
-	case strings.Contains(combined, "rate_limit"):
-		return http.StatusTooManyRequests
-	case strings.Contains(errType, "invalid_request"):
-		return http.StatusBadRequest
-	case strings.Contains(combined, "authentication") || strings.Contains(combined, "unauthorized") || strings.Contains(combined, "invalid_api_key"):
-		return http.StatusUnauthorized
-	case strings.Contains(combined, "permission") || strings.Contains(combined, "forbidden") || strings.Contains(combined, "access denied"):
-		return http.StatusForbidden
-	case isOpenAIUpstreamAccessStateError(message, payload):
-		return http.StatusForbidden
-	case isOpenAIUpstreamCapacityShedEvent(payload):
-		return http.StatusServiceUnavailable
-	default:
-		return http.StatusBadGateway
-	}
+	return openAIStreamSemanticStatusForClass(payload, message, classifyOpenAIGatewayFailure(0, payload, message))
 }
 
 func openAIStreamFailureStatus(payload []byte, message string) int {
-	if len(bytes.TrimSpace(payload)) == 0 || !gjson.ValidBytes(payload) {
-		return http.StatusBadGateway
-	}
-	semanticStatus := openAIStreamFailedEventSemanticStatus(payload, message)
-	switch semanticStatus {
-	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusTooManyRequests, http.StatusNotFound, 529:
-		return semanticStatus
-	case http.StatusServiceUnavailable:
-		if isOpenAIUpstreamCapacityShedEvent(payload) {
-			return semanticStatus
-		}
-	}
-	if semanticStatus >= 500 && semanticStatus <= 599 {
-		return semanticStatus
-	}
-	return http.StatusBadGateway
+	return openAIStreamFailureStatusForClass(payload, message, classifyOpenAIGatewayFailure(0, payload, message))
 }
 
 // openAIStreamCredentialAuthFailure distinguishes credential failures from

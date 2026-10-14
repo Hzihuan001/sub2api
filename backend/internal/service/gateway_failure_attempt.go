@@ -81,9 +81,12 @@ func decideOpenAIFailureReplay(facts openAIFailureReplayFacts, state openAIFailu
 	return decision
 }
 
-// openAIFailureAttemptEffects belongs to one real upstream send/read loop. An
-// error frame followed by response.failed must observe account state only once,
-// while the next real attempt must start with a new/reset value. Observed is
+// openAIFailureAttemptEffects belongs to a transport-owned observation scope.
+// The pooled WS and HTTP bridge scope is one real upstream send/read loop;
+// passthrough retains its existing response.created scope until response-ID
+// correlation can safely distinguish missing acknowledgements and late frames.
+// An error frame followed by response.failed observes account state only once
+// within that scope; the next scope starts with a new value. Observed is
 // deliberately different from "account disabled": the first overload below
 // its threshold is already counted even though it did not disable the account.
 //
@@ -93,10 +96,8 @@ type openAIFailureAttemptEffects struct {
 	observed bool
 }
 
-func (s *openAIFailureAttemptEffects) shouldObserve() bool { return !s.observed }
+func (s *openAIFailureAttemptEffects) shouldObserve() bool { return s != nil && !s.observed }
 
 func (s *openAIFailureAttemptEffects) record(observed bool) {
 	s.observed = s.observed || observed
 }
-
-func (s *openAIFailureAttemptEffects) reset() { s.observed = false }
