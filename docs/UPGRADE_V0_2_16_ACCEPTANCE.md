@@ -82,6 +82,32 @@
 - 合成旧折扣配置被 API 规范为 1、冻结倍率至少 1；展开三张估算/实际 $0.03。任务 `imgbatch_f1630a2934e6546c60d25c42c1a1c77e`，最大并发 3，3 张图片，4 次上游请求包含模拟故障恢复；单张、ZIP、参考图和 MIME 验证通过。数据库使用记录图片数 3、total/actual 均 0.03、rate 1。
 - 无生产付费图片调用；临时 mock/合成身份清理，验收数据库保留。发布时重新构建嵌入正式 commit/version 的最终镜像并验证，不把 local-uncommitted 镜像当正式产物。
 
+## `.4` 正式产物与生产验收（2026-10-14）
+
+- 运行提交 `c9f6829730c8f74bbf171e03b7e384e93e2f9ea2`、标签 `custom-0.2.16.4`；镜像 `ghcr.io/hzihuan001/sub2api@sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e`。本地回拉 digest 一致，正式产物三图实际 $0.03、并发/参考图/下载验证通过。
+- 主站/L1/COS 健康、重启 0、内嵌版本与 commit、Compose 引用、公网健康和工作台入口均通过；启动日志无 panic/fatal、迁移失败及数据库/Redis 错误。各站新迁移 1 条，分组 36/12/12 个全部 discount=1、hold>=1。主站 17 个发布前任务的价格快照与历史结算不变，两个分站无旧任务。
+- 完整备份 `/opt/sub2api-backups/v0.2.16-custom.4-20261014T074350Z`：三份 pg_restore 目录、tar 可读，SHA256SUMS 通过。PowerShell 传脚本末尾产生 CR 空行错误时备份本体已完成；随后独立重新校验成功，部署脚本入口增加 CR 归一化。没有因此重复重建或修改生产数据。
+- 发布采用本地验证产物直发 GHCR，非 GitHub CI 成功记录；旧镜像保留，无额外镜像/数据清理。后续升级必须至少包含 `.4`。
+
+### `.4` 应用回滚命令
+
+仅在需要回滚时，由运维逐站执行。先按站点选择 Compose 和服务，镜像替换只针对本次已知 digest；不执行数据库降级或恢复旧备份。
+
+```bash
+# 主站；L1 使用 /opt/api-L1/docker-compose.yml、service=api；
+# COS 使用 /opt/api-COS/docker-compose.yml、service=api。
+compose=/opt/1panel/apps/sub2api/sub2api/docker-compose.yml
+service=sub2api
+old=ghcr.io/hzihuan001/sub2api@sha256:a96e2a5a52e0d7a83a9829371715359b2afcc0a02168fe8bded77b55dcfdeec3
+current=ghcr.io/hzihuan001/sub2api@sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e
+docker pull "$old"
+test "$(grep -Fc "$current" "$compose")" = 1 || exit 1
+sed -i "s|$current|$old|" "$compose"
+docker compose -f "$compose" config --quiet && docker compose -f "$compose" up -d --no-deps "$service"
+```
+
+回滚后现有分组已规范的倍率 1 保留，旧任务价格不变；旧程序再次编辑分组可能恢复旧折扣选项，因此回滚不是重新启用五折的操作方案。
+
 ## 留存与下一步
 
 验收环境保留。合成测试登录资料仅在本地验收脚本中，不是生产账号。
