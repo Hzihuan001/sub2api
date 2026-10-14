@@ -9,6 +9,24 @@
 
 ## 1. 当前快照
 
+### 2026-10-14 — 网关故障切换统一（`.5` 发布准备中）
+
+- **授权**：用户已要求按错误分类改造、推送、部署三站并更新日志；生产目前仍为 `.4`，以下不是部署成功记录。
+- **范围**：保留既有 overload 5 分钟 3 次冷却；在 OpenAI-compatible HTTP/透传/SSE/WS 共用错误语义，明确安全/参数/上下文拒绝不重试，凭据/硬额度/模型不可用直接换号。原生其它提供商继续原有协议，不重写所有网关。
+- **策略**：OAuth 普通瞬时 429 同账号恢复窗口从 2 分钟缩至 8 秒；尊重 Retry-After，较长等待直接换号；硬额度无 reset 使用至少 10 分钟可恢复冷却。普通 5xx 复用账号×模型 10/45 秒冷却，pool 不再忽略；520–524 首错 90 秒，504/52x 不原账号反复等待。WS 同次尝试配对错误去重。
+- **不变**：分组/模型权限、原调度优先级/评分、真实输出后不自动重放、插件已经提交不盲目重提、计费与数据结构。无新迁移。保留 `.4` 镜像供 app-only 回滚。
+- **验证**：相关单测正在完成整合复核；新增 `deploy/tests/gateway-failover-smoke.ps1` 通过隔离容器模拟主备故障及不应重试情景。尚未记录 Docker/生产通过；完成后在下方追加验收记录。
+
+### 2026-10-14 — 本地待发布：跨请求 overload 冷却
+
+- **状态**：`verified`（仅相关本地代码测试）；基于 `custom-0.2.16.4`，改动保留在本工作树 `codex/v0.2.16-image-studio`。没有提交、推送、打标签、构建发布镜像或部署；三站生产继续运行 `.4`。
+- **需求**：用户选择同一账号短时间跨请求累计 3 次 overload 后暂时避开。实现为 OpenAI 网关已识别的容量错误在滚动 5 分钟内累计 3 次，冷却复用现有 `overload_cooldown_settings` 开关/时长（未配置默认启用、10 分钟）。首次及第二次保留原请求级重试；第三次不再原账号重试，按既有健康、权限、模型及优先级调度备用。成功请求不清零窗口；一次上游尝试的配对错误帧只能计一次。
+- **边界**：HTTP 错误和 HTTP 200 内的流式失败都累计；已输出内容不自动重放，但仍计数以保护后续请求。修正排队心跳被算作输出的独立缺陷，不放宽未知上游数据帧的重放规则。没有承诺已经输出一半的流可无缝续写。
+- **保存及恢复**：Redis 原子滚动计数，现有 `accounts.overload_until` 持久化，正常请求不新增 Redis/数据库查询；冷却不因在途错误续期，到期自动恢复。人工恢复同步清本实例计数和 Redis；缓存故障使用有界进程内备用状态。
+- **兼容**：新增 `gateway-resilience` 定制登记及升级保护路径；无数据库迁移、生成代码变化、计费或模型权限改动。其它平台原有 529 策略保持。
+- **限制**：DB 写入失败时本实例仍暂避账号，持久化补偿由后续 overload 触发，未加后台任务。若以后同一站扩展多应用实例，人工清除没有跨实例本地缓存广播，其它实例可能继续冷却到原截止；当前每站单实例。不要把本地验证写成已部署。
+- **验证完成**：服务/handler 相关 overload、重试、SSE 心跳和 runtime-block 回归通过（29.164s/6.994s）；Redis 原子计数、滚动窗口、租约补偿等 9 组通过。管理员恢复与并发清除、WS 三类配对错误回归通过。最终组合 `go test -tags=unit ./internal/custom ./internal/service ./internal/handler ./internal/repository -run 'TestAccountOverload|TestOpenAIRepeatedOverload|TestOpenAIQueueHeartbeat|TestProxyResponsesWebSocketFromClient_CountsOverloadOncePerUpstreamTurn|TestAdminService_ClearAccountError|TestRateLimitService_Clear|TestBuiltInFeatureManifests|TestSameAccount'` 全部通过；四包 `go vet` 通过。迁移/manifest/保护路径检查通过；未改生成文件，完整生成检查因工作树未提交要求 clean 未通过，未声称全量 CI 通过。完整发布门禁、Docker 和生产验收尚未执行。
+
 > **最新进度（2026-10-14）**：`0.2.16-custom.4` 已推送并部署主站、L1、COS，三站快速验收通过。所有提供商新批量任务固定额外倍率 1，不再五折；普通倍率保留。三站现有分组已规范为 1，旧任务快照及历史账目不改，超额返回图片不自动追加收费。详细证据见最新功能日志和验收文档。
 
 > **最近运维（2026-10-14）**：清理本地 15 个、OVH 2 个无引用旧镜像，当前版本和回滚镜像保留；没有删除容器、数据库、卷或缓存，三站仍 healthy、重启 0。详见功能日志的“运维清理”记录，生产版本不变。
@@ -91,6 +109,7 @@
 | `image-studio` | 生图工作台、批量任务、应用层拆分、参考图、单张/ZIP 下载 | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、用户生图视图 | 保留并受测试保护 |
 | `branding` | 对客品牌和公共文案统一为 Moshu，隐藏不应出现在对客界面的上游项目名称 | `frontend/src/i18n`、公共页面和品牌处理逻辑 | 保留；每次升级需做文案扫描 |
 | `usage-extras` | 管理员使用记录增强，例如缓存命中率、分页和 API Key 管理辅助能力 | 管理员使用记录 handler/view 及对应测试 | 保留；管理员侧可见，用户侧按权限隐藏 |
+| `gateway-resilience` | OpenAI 跨请求 overload 冷却及安全重试边界 | `overload_failure_breaker`、Redis 扩展、OpenAI 网关窄接入点及回归 | 本地 verified，未推送/部署 |
 
 历史代理商/分站运行时功能已从当前定制层移除，不应在后续官方升级时被旧分支或旧 PR 自动带回。历史代理商阶段只在
 [`CUSTOM_FEATURE_LOG.md`](CUSTOM_FEATURE_LOG.md) 中留作变更记录。

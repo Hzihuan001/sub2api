@@ -318,10 +318,10 @@ func (s *OpenAIGatewayService) handleOpenAIWSTerminalTransientFailure(ctx contex
 	return terminalEvent
 }
 
-func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) {
+func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) bool {
 	eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
-	if eventType != "error" {
-		return
+	if eventType != "error" || isOpenAIRequestScopedFailure(payload, extractOpenAISSEErrorMessage(payload)) {
+		return false
 	}
 	status := openAIWSPayloadTransientStatus(payload)
 	if status != 0 {
@@ -329,7 +329,9 @@ func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx cont
 			headers = openAIWSSemantic429Headers(account, canonicalModel, headers)
 		}
 		s.handleOpenAIAccountUpstreamError(ctx, account, status, headers, payload, canonicalModel)
+		return true
 	}
+	return false
 }
 
 // handleOpenAIWSFailureAccountSideEffects applies both structured credential
@@ -337,15 +339,33 @@ func (s *OpenAIGatewayService) handleOpenAIWSErrorEventTransientFailure(ctx cont
 // applying the same transition twice for an error/response.failed pair.
 func (s *OpenAIGatewayService) handleOpenAIWSFailureAccountSideEffects(ctx context.Context, account *Account, canonicalModel string, headers http.Header, payload []byte) bool {
 	message := extractOpenAISSEErrorMessage(payload)
+	if s == nil || account == nil || isOpenAIRequestScopedFailure(payload, message) {
+		return false
+	}
 	status := openAIStreamFailureStatus(payload, message)
 	switch status {
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusTooManyRequests, 529:
+		if status == http.StatusPaymentRequired {
+			// A terminal quota error belongs to this turn, not the successful
+			// connection handshake's old account-wide usage snapshot.
+			headers = openAIWSSemantic429Headers(account, canonicalModel, headers)
+		}
+		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers, canonicalModel)
+		return true
+	case http.StatusNotFound:
+		if classifyOpenAIGatewayFailure(0, payload, message) != openAIGatewayFailureModelUnavailable {
+			return false
+		}
 		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers, canonicalModel)
 		return true
 	case http.StatusForbidden:
 		if !openAIStream403AccountFailure(payload, message) {
 			return false
 		}
+		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers, canonicalModel)
+		return true
+	}
+	if isOpenAIRequestScopedCapacityShed(message, payload) {
 		s.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, message, headers, canonicalModel)
 		return true
 	}
@@ -687,12 +707,12 @@ func isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw string) bool {
 	return false
 }
 
-func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Context, account *Account, headers http.Header, responseBody []byte, codeRaw, errTypeRaw, msgRaw string, canonicalModel ...string) {
+func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Context, account *Account, headers http.Header, responseBody []byte, codeRaw, errTypeRaw, msgRaw string, canonicalModel ...string) bool {
 	if s == nil || s.rateLimitService == nil || account == nil || account.Platform != PlatformOpenAI {
-		return
+		return false
 	}
-	if !isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw) {
-		return
+	if isOpenAIRequestScopedFailure(responseBody, msgRaw) || !isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw) {
+		return false
 	}
 	model := firstNonEmpty(canonicalModel...)
 	if model == "" {
@@ -705,6 +725,7 @@ func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Contex
 		headers = openAIWSSemantic429Headers(account, model, headers)
 	}
 	s.handleOpenAIAccountUpstreamError(ctx, account, http.StatusTooManyRequests, headers, responseBody, model)
+	return true
 }
 
 func openAIWSSemantic429Headers(account *Account, model string, headers http.Header) http.Header {

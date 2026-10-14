@@ -35,7 +35,37 @@ func (r *accountRepoStubForClearAccountError) ClearRateLimit(ctx context.Context
 	r.clearRateLimitCalls++
 	r.account.RateLimitedAt = nil
 	r.account.RateLimitResetAt = nil
+	r.account.OverloadUntil = nil
 	return nil
+}
+
+type overloadAdminRecoveryRepo struct {
+	accountRepoStubForClearAccountError
+}
+
+func (r *overloadAdminRecoveryRepo) SetOverloaded(_ context.Context, _ int64, until time.Time) error {
+	r.account.OverloadUntil = &until
+	return nil
+}
+
+func TestAdminService_ClearAccountErrorAlsoClearsRepeatedOverload(t *testing.T) {
+	repo := &overloadAdminRecoveryRepo{accountRepoStubForClearAccountError: accountRepoStubForClearAccountError{
+		account: &Account{ID: 49, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true},
+	}}
+	limiter := NewRateLimitService(repo, nil, nil, nil, nil)
+	gateway := &OpenAIGatewayService{rateLimitService: limiter}
+	limiter.SetAccountRuntimeBlocker(gateway)
+	for i := 0; i < 3; i++ {
+		limiter.RecordAccountOverload(context.Background(), repo.account)
+	}
+	require.True(t, gateway.isOpenAIAccountRequestRuntimeBlocked(repo.account, "gpt-test"))
+	admin := &adminServiceImpl{accountRepo: repo, runtimeBlocker: gateway}
+	updated, err := admin.ClearAccountError(context.Background(), repo.account.ID)
+	require.NoError(t, err)
+	require.Nil(t, updated.OverloadUntil)
+	require.False(t, limiter.IsAccountOverloadCooling(updated.ID, time.Now()))
+	require.False(t, gateway.isOpenAIAccountRequestRuntimeBlocked(updated, "gpt-test"))
+	require.True(t, limiter.RecordAccountOverload(context.Background(), updated).IsZero(), "explicit recovery starts a fresh count")
 }
 
 func (r *accountRepoStubForClearAccountError) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {

@@ -126,6 +126,7 @@ func TestBuiltInFeatureManifestsAreStableAndValid(t *testing.T) {
 	}
 	want := []FeatureID{
 		FeatureBranding,
+		FeatureGatewayResilience,
 		FeatureImageStudio,
 		FeatureOperator,
 		FeaturePromptAudit,

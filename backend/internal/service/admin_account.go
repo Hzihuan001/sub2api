@@ -1340,6 +1340,13 @@ func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Ac
 	if err := s.accountRepo.ClearRateLimit(ctx, id); err != nil {
 		return nil, err
 	}
+	if resetter, ok := s.runtimeBlocker.(interface {
+		ClearAccountOverload(context.Context, int64) error
+	}); ok {
+		if err := resetter.ClearAccountOverload(ctx, id); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.accountRepo.ClearAntigravityQuotaScopes(ctx, id); err != nil {
 		return nil, err
 	}

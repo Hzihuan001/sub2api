@@ -10,6 +10,10 @@
       "settingsNamespace": "custom.image-studio"
     },
     {
+      "id": "gateway-resilience",
+      "settingsNamespace": "custom.gateway-resilience"
+    },
+    {
       "id": "operator",
       "settingsNamespace": "custom.operator"
     },

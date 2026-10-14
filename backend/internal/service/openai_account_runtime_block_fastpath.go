@@ -12,9 +12,8 @@ import (
 const (
 	openAIAccountStateUpdateTimeout       = 5 * time.Second
 	openAIOAuth429FallbackCooldown        = 5 * time.Second
-	openAIOAuth429RetryWindow             = 2 * time.Minute
+	openAIOAuth429RetryWindow             = 8 * time.Second
 	openAIOAuth429RetryDelay              = 500 * time.Millisecond
-	openAIOAuth429MaxRetryDelay           = 8 * time.Second
 	openAIOAuth429MaxAccountAttempts      = 3
 	openAIStopSchedulingBridgeCooldown    = 2 * time.Minute
 	openAIOAuth429StormWindow             = 10 * time.Second
@@ -35,10 +34,11 @@ const (
 	openAIOAuth429Quota5h
 	openAIOAuth429Quota7d
 	openAIOAuth429QuotaReset
+	openAIOAuth429QuotaExhausted
 )
 
 // classifyOpenAIOAuth429 区分账号配额耗尽信号与普通瞬时 429。只有窗口达到
-// 100% 或响应体明确给出 reset 时间时，才视为配额限流信号。
+// 100%、响应体明确给出 reset 时间或结构化额度耗尽码时，视为配额限流信号。
 func classifyOpenAIOAuth429(headers http.Header, responseBody []byte) (openAIOAuth429Disposition, *time.Time) {
 	if snapshot := ParseCodexRateLimitHeaders(headers); snapshot != nil {
 		if normalized := snapshot.Normalize(); normalized != nil {
@@ -67,6 +67,9 @@ func classifyOpenAIOAuth429(headers http.Header, responseBody []byte) (openAIOAu
 		resetAt := time.Unix(*resetUnix, 0)
 		return openAIOAuth429QuotaReset, &resetAt
 	}
+	if classifyOpenAIGatewayFailure(http.StatusTooManyRequests, responseBody, "") == openAIGatewayFailureQuota {
+		return openAIOAuth429QuotaExhausted, nil
+	}
 	return openAIOAuth429Transient, nil
 }
 
@@ -93,6 +96,11 @@ func isOpenAIAccount(account *Account) bool {
 // handleOpenAIAccountUpstreamError expects canonicalModel to be the model used
 // for scheduling after applying account mapping exactly once.
 func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) bool {
+	if account != nil && account.IsOpenAICompatible() &&
+		classifyOpenAIGatewayFailure(statusCode, responseBody, "") == openAIGatewayFailureRequest &&
+		!(isOpenAIImagesSelfBuiltRequest(ctx) && isOpenAIImageCapabilityLossError(statusCode, responseBody)) {
+		return false
+	}
 	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
@@ -101,9 +109,16 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 		scheduleOpenCodeGoUsageActivity(s.deferredService, account)
 	}
-	// Capacity shedding describes this request, not account health. Keep the
-	// account schedulable while the request-local retry budget handles recovery.
+	// A single capacity shed remains request-local. Repeated explicit overloads
+	// across requests temporarily remove this account from scheduling, including
+	// pool accounts and failures received after downstream output has started.
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
+		if s != nil && s.rateLimitService != nil {
+			if until := s.rateLimitService.RecordAccountOverload(ctx, account); !until.IsZero() {
+				s.BlockAccountScheduling(account, until, "repeated_overload")
+				return true
+			}
+		}
 		return false
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
@@ -167,6 +182,19 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		s.rateLimitService.HandleOpenAICodexSparkRateLimit(stateCtx, account, canonicalModel[0], statusCode, headers, responseBody) {
 		return false
 	}
+	// Explicit quota/balance exhaustion cannot recover by repeating this request,
+	// even when no reset timestamp was returned or pool mode normally skips state.
+	// Keep this recoverable: use the existing rate-limit cooldown, never SetError.
+	if account.IsOpenAICompatible() && !account.IsShadow() &&
+		classifyOpenAIGatewayFailure(statusCode, responseBody, "") == openAIGatewayFailureQuota {
+		s.openaiOAuth429RetryStartedAt.Delete(account.ID)
+		if s.rateLimitService != nil {
+			s.rateLimitService.handleOpenAIQuotaExhaustion(stateCtx, account, statusCode, headers, responseBody)
+		} else {
+			s.BlockAccountScheduling(account, time.Now().Add(openAIHardQuotaFallbackCooldown), "quota_exhausted")
+		}
+		return true
+	}
 	if statusCode == http.StatusTooManyRequests {
 		s.markOpenAIOAuth429RateLimited(stateCtx, account, headers, responseBody)
 	}
@@ -180,10 +208,8 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if shouldDisable && !modelTempMatched {
 		s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
 	}
-	// Pool-mode retryable upstream errors are already bounded by the request-local
-	// same-account retry budget. Recording the generic account+model transient
-	// cooldown here would block the next approved retry before that budget is used.
-	poolModeRetryable := account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
+	// Pool mode keeps one short retry for an ordinary transient failure, but must
+	// still contribute to the same model-scoped breaker across requests.
 	// OpenAI-compatible API-key providers (DeepSeek/Kimi/Zhipu/MiniMax/OpenCodeGo)
 	// use the same gateway and scheduler as OpenAI.  A transient 5xx/52x from
 	// one provider endpoint must therefore enter the existing account+model
@@ -192,7 +218,7 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// to API-key accounts and the existing transient-status predicate: no
 	// permanent account disable or credential penalty is introduced here.
 	if !shouldDisable && account.IsOpenAICompatible() && account.Type == AccountTypeAPIKey &&
-		shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) && !poolModeRetryable {
+		shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) {
 		model := ""
 		if len(canonicalModel) > 0 {
 			model = canonicalModel[0]
@@ -214,6 +240,14 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 				"cooldown_ms", decision.Cooldown.Milliseconds(),
 				"block_scope", "account_model",
 			)
+		}
+		if account.IsPoolMode() && decision.BlockUntil.After(time.Now()) {
+			return true
+		}
+	}
+	if statusCode == http.StatusTooManyRequests && account.IsOpenAICompatible() && account.Platform != PlatformGrok && !account.IsShadow() {
+		if account.IsPoolMode() || !openAIOAuth429RetryAfterFits(headers, time.Now().Add(openAIOAuth429RetryWindow)) {
+			return true
 		}
 	}
 	return shouldDisable
@@ -245,7 +279,7 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 	}
 	s.recordOpenAIOAuth429()
 	disposition, resetAt := classifyOpenAIOAuth429(headers, responseBody)
-	if disposition == openAIOAuth429Transient && s.openAIOAuth429RetryWindowActive(account) {
+	if disposition == openAIOAuth429Transient && s.ShouldRetryOpenAIOAuth429(account, headers, responseBody) {
 		return
 	}
 
@@ -253,6 +287,8 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 	cooldownUntil := now.Add(openAIOAuth429FallbackCooldown)
 	if resetAt != nil && resetAt.After(now) {
 		cooldownUntil = *resetAt
+	} else if retryAfter := parseRetryAfterResetTime(headers, now); retryAfter != nil && retryAfter.After(now) {
+		cooldownUntil = *retryAfter
 	} else if s.rateLimitService != nil {
 		cooldown, ok := s.rateLimitService.get429FallbackCooldown(ctx, account)
 		if !ok || cooldown <= 0 {
@@ -260,6 +296,9 @@ func (s *OpenAIGatewayService) markOpenAIOAuth429RateLimited(ctx context.Context
 			return
 		}
 		cooldownUntil = now.Add(cooldown)
+	}
+	if retryAfter := parseRetryAfterResetTime(headers, now); retryAfter != nil && retryAfter.After(cooldownUntil) {
+		cooldownUntil = *retryAfter
 	}
 	s.BlockAccountScheduling(account, cooldownUntil, "429")
 	s.openaiOAuth429RetryStartedAt.Delete(account.ID)
@@ -282,7 +321,7 @@ func (s *OpenAIGatewayService) shouldRetryOpenAIOAuth429OnSameAccountWithRespons
 	if s.isOpenAIAccountRuntimeBlocked(account) {
 		return false
 	}
-	return s.openAIOAuth429RetryWindowActive(account)
+	return s.openAIOAuth429RetryWindowActive(account) && openAIOAuth429RetryAfterFits(headers, s.openAIOAuth429RetryDeadline(account))
 }
 
 // ShouldRetryOpenAIOAuth429 lets RateLimitService defer persistent account
@@ -295,7 +334,15 @@ func (s *OpenAIGatewayService) ShouldRetryOpenAIOAuth429(account *Account, heade
 	if disposition != openAIOAuth429Transient {
 		return false
 	}
-	return s.openAIOAuth429RetryWindowActive(account)
+	return s.openAIOAuth429RetryWindowActive(account) && openAIOAuth429RetryAfterFits(headers, s.openAIOAuth429RetryDeadline(account))
+}
+
+// A server-mandated wait beyond the short recovery window should switch
+// accounts, not truncate Retry-After and send another request too early.
+func openAIOAuth429RetryAfterFits(headers http.Header, deadline time.Time) bool {
+	now := time.Now()
+	resetAt := parseRetryAfterResetTime(headers, now)
+	return resetAt == nil || !resetAt.After(now) || deadline.IsZero() || resetAt.Before(deadline)
 }
 
 func (s *OpenAIGatewayService) openAIOAuth429RetryWindowActive(account *Account) bool {
@@ -329,15 +376,18 @@ func (s *OpenAIGatewayService) openAIOAuth429RetryDeadline(account *Account) tim
 
 func openAIOAuth429SameAccountRetryDelay(headers http.Header, deadline time.Time) time.Duration {
 	delay := openAIOAuth429RetryDelay
+	hasRetryAfter := false
 	now := time.Now()
 	if resetAt := parseRetryAfterResetTime(headers, now); resetAt != nil && resetAt.After(now) {
 		delay = resetAt.Sub(now)
+		hasRetryAfter = true
 	}
-	if delay > openAIOAuth429MaxRetryDelay {
-		delay = openAIOAuth429MaxRetryDelay
-	}
-	if remaining := time.Until(deadline); !deadline.IsZero() && delay > remaining {
-		delay = remaining
+	// The retry eligibility check rejects waits beyond the deadline. Do not cap
+	// a valid Retry-After here: doing so would violate the upstream's minimum.
+	if !hasRetryAfter {
+		if remaining := time.Until(deadline); !deadline.IsZero() && delay > remaining {
+			delay = remaining
+		}
 	}
 	if delay < 0 {
 		return 0
@@ -410,6 +460,15 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
 	s.openaiOAuth429RetryStartedAt.Delete(accountID)
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+}
+
+// ClearAccountOverload is the optional explicit-recovery hook used by admin
+// operations. Normal token refreshes must not reset the overload counter.
+func (s *OpenAIGatewayService) ClearAccountOverload(ctx context.Context, accountID int64) error {
+	if s == nil || s.rateLimitService == nil {
+		return nil
+	}
+	return s.rateLimitService.ClearAccountOverload(ctx, accountID)
 }
 
 func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) bool {
@@ -577,6 +636,12 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string) bool {
 	if s == nil {
 		return false
+	}
+	// A newly tripped overload breaker must survive an older scheduler snapshot
+	// (or a failed state write). This is a local lookup, never a request-time
+	// Redis/database round trip, and expires at the original cooldown deadline.
+	if account != nil && s.rateLimitService != nil && s.rateLimitService.IsAccountOverloadCooling(account.ID, time.Now()) {
+		return true
 	}
 	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
 	if snapshot.blocked {

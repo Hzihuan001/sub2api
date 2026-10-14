@@ -1317,9 +1317,8 @@ func TestOpenAIGatewayService_APIKeyPassthrough_RebuildsUpstreamErrors(t *testin
 			wantStatus:   http.StatusBadGateway,
 			wantMessage:  "Upstream authentication failed",
 		},
-		// 瞬时 5xx（500/502/503/504/520-524）对 API-key 账号已改走多账号
-		// failover（见 APIKeyPassthrough_Transient5xxTriggersFailover），此处
-		// 改用非瞬时 5xx 状态码，继续覆盖净化重建路径。
+		// These statuses now fail over before any response is written. The test
+		// also exercises the sanitized terminal envelope after attempts exhaust.
 		{
 			name:         "html 5xx",
 			statusCode:   530,
@@ -1400,6 +1399,13 @@ func TestOpenAIGatewayService_APIKeyPassthrough_RebuildsUpstreamErrors(t *testin
 			_, err := svc.Forward(context.Background(), c, account, requestBody)
 
 			require.Error(t, err)
+			if shouldFailoverOpenAIPassthroughResponse(account, tt.statusCode, []byte(tt.responseBody)) {
+				var failover *UpstreamFailoverError
+				require.ErrorAs(t, err, &failover)
+				require.Equal(t, tt.statusCode, failover.StatusCode)
+				require.False(t, c.Writer.Written(), "allow the handler to select a backup first")
+				writeSanitizedOpenAIPassthroughError(c, failover.StatusCode, failover.ResponseHeaders)
+			}
 			require.Equal(t, tt.wantStatus, rec.Code)
 			opsValue, ok := c.Get(OpsUpstreamErrorsKey)
 			require.True(t, ok)

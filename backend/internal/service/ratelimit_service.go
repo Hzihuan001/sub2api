@@ -31,6 +31,7 @@ type RateLimitService struct {
 	settingService        *SettingService
 	tokenCacheInvalidator TokenCacheInvalidator
 	runtimeBlocker        AccountRuntimeBlocker
+	overloadFailures      accountOverloadLocalState
 	// ollamaCloudUsageProbe is the optional Ollama Cloud usage probe scheduler
 	// injected via SetOllamaCloudUsageProbeScheduler. See
 	// ratelimit_service_ollama_429.go for how real-Ollama 429s schedule an async
@@ -75,6 +76,7 @@ const geminiPrecheckCacheTTL = time.Minute
 const (
 	defaultRateLimit429CooldownSeconds = 5
 	maxRateLimit429CooldownSeconds     = 7200
+	openAIHardQuotaFallbackCooldown    = 10 * time.Minute
 )
 
 const (
@@ -332,17 +334,42 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
+	failureClass := openAIGatewayFailureUnknown
+	if account.IsOpenAICompatible() {
+		failureClass = classifyOpenAIGatewayFailure(statusCode, responseBody, "")
+		if failureClass == openAIGatewayFailureRequest {
+			return false
+		}
+		if failureClass == openAIGatewayFailureCredential &&
+			!isOpenAIHTTPUpstreamAccessStateError(statusCode, "", responseBody) {
+			// Some compatible endpoints put invalid_api_key in a 400/402 body.
+			// Reuse credential-owner/token-refresh handling instead of treating
+			// this deterministic credential rejection as a generic request error.
+			statusCode = http.StatusUnauthorized
+		}
+	}
 	// Team 联动熔断必须先于池模式/自定义错误码/临时不可调度的各类早退；
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
+	// A structured quota exhaustion is recoverable after reset/top-up, but not
+	// by retrying the same account now. Pool mode must not suppress this signal.
+	if account.IsOpenAICompatible() && !account.IsShadow() && failureClass == openAIGatewayFailureQuota {
+		return s.handleOpenAIQuotaExhaustion(ctx, account, statusCode, headers, responseBody)
+	}
 
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
 	// 401 只在非凭据级且命中显式模型级规则时由规则处理，其余保留池模式现有的认证处理。
-	if account.IsPoolMode() && !customErrorCodesEnabled {
+	if account.IsPoolMode() && !customErrorCodesEnabled && failureClass != openAIGatewayFailureCredential {
 		if tempUnschedRulesApply(account, statusCode, responseBody, tempUnschedulableModel(ctx, nil)) &&
 			s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
 			return true
+		}
+		if account.IsOpenAICompatible() && account.Platform != PlatformGrok && statusCode == http.StatusTooManyRequests {
+			// The new pool cooldown must retain model/wallet-specific provider
+			// limits instead of turning every 429 into an account-wide pause.
+			s.handleOpenAIQuotaExhaustion(ctx, account, statusCode, headers, responseBody)
+			return false
 		}
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
@@ -1183,6 +1210,29 @@ func (s *RateLimitService) handleCustomErrorCode(ctx context.Context, account *A
 	slog.Warn("account_disabled_custom_error", "account_id", account.ID, "status_code", statusCode, "error", errorMsg)
 }
 
+// handleOpenAIQuotaExhaustion retains provider-specific wallet/balance scopes
+// before applying the generic recoverable cooldown. The gateway separately
+// stops same-account retries without turning a model/wallet pause global.
+func (s *RateLimitService) handleOpenAIQuotaExhaustion(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) bool {
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	if account.IsCommandCode() {
+		if handled, disable := s.handleCommandCodeUsageError(ctx, account, statusCode, responseBody, message); handled {
+			return disable
+		}
+	}
+	if account.IsCline() {
+		if s.handleClineError(ctx, account, statusCode, responseBody, message) || statusCode == http.StatusPaymentRequired {
+			return false
+		}
+	}
+	if statusCode == http.StatusPaymentRequired && (account.IsCNProvider() || account.IsOpenCodeZen() || account.IsCommandCode()) {
+		s.handleCNProviderInsufficientBalance(ctx, account, message)
+		return true
+	}
+	s.handle429(ctx, account, headers, responseBody)
+	return true
+}
+
 // handle429 处理429限流错误
 // 解析响应头获取重置时间，标记账号为限流状态
 func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
@@ -1222,12 +1272,24 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 			return
 		}
 	}
+	// Compatible providers may use the same explicit reset/Retry-After signals.
+	// Keep their specialized balance/window recovery above, but never fall back
+	// to a shorter local delay when the provider supplied a valid minimum wait.
+	if account.IsOpenAICompatible() && account.Platform != PlatformOpenAI && account.Platform != PlatformGrok {
+		if resetAt := openAI429CooldownResetTime(headers, responseBody, time.Now()); resetAt != nil {
+			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
+				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+			}
+			return
+		}
+	}
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
 		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
 		notifyOpenAIAutoReset(account.ID)
-		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
+		if resetAt := openAI429CooldownResetTime(headers, responseBody, time.Now()); resetAt != nil {
 			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
@@ -1267,17 +1329,8 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	if resetTimestamp == "" {
 		switch account.Platform {
 		case PlatformOpenAI:
-			// 尝试解析 OpenAI 的 usage_limit_reached 错误
-			if resetAt := parseOpenAIRateLimitResetTime(responseBody); resetAt != nil {
-				resetTime := time.Unix(*resetAt, 0)
-				s.notifyAccountSchedulingBlocked(account, resetTime, "429")
-				if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
-					slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
-					return
-				}
-				slog.Info("account_rate_limited", "account_id", account.ID, "platform", account.Platform, "reset_at", resetTime, "reset_in", time.Until(resetTime).Truncate(time.Second))
-				return
-			}
+			// Future OpenAI body resets were handled above together with headers.
+			// An expired/invalid reset must fall through to the cooldown fallback.
 		case PlatformGemini, PlatformAntigravity:
 			// 尝试解析 Gemini 格式（用于其他平台）
 			if resetAt := ParseGeminiRateLimitResetTime(responseBody); resetAt != nil {
@@ -1306,6 +1359,21 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		}
 
 		// 其他平台：没有重置时间，使用可配置的秒级默认回避，避免误伤长时间不可调度。
+		if account.IsOpenAICompatible() && classifyOpenAIGatewayFailure(http.StatusTooManyRequests, responseBody, "") == openAIGatewayFailureQuota {
+			// A hard quota is not a transient 429. Allow reset/probe/admin recovery
+			// without probing the same exhausted account every few seconds. The
+			// ordinary 429 fallback toggle does not disable this explicit signal.
+			cooldown := openAIHardQuotaFallbackCooldown
+			if configured, enabled := s.get429FallbackCooldown(ctx, account); enabled && configured > cooldown {
+				cooldown = configured
+			}
+			resetAt := time.Now().Add(cooldown)
+			s.notifyAccountSchedulingBlocked(account, resetAt, "quota_exhausted")
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
+				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+			}
+			return
+		}
 		s.apply429FallbackRateLimit(ctx, account, "no_reset_time")
 		return
 	}
@@ -1350,6 +1418,26 @@ func (s *RateLimitService) apply429FallbackRateLimit(ctx context.Context, accoun
 	if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
 		slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 	}
+}
+
+// Explicit reset/Retry-After signals take precedence over the configurable
+// fallback. Pick the latest valid signal so neither a quota window nor a
+// server-mandated minimum wait can be shortened by another header.
+func openAI429CooldownResetTime(headers http.Header, body []byte, now time.Time) *time.Time {
+	var latest *time.Time
+	consider := func(candidate *time.Time) {
+		if candidate != nil && candidate.After(now) && (latest == nil || candidate.After(*latest)) {
+			value := *candidate
+			latest = &value
+		}
+	}
+	consider(calculateOpenAI429ResetTime(headers))
+	if resetUnix := parseOpenAIRateLimitResetTime(body); resetUnix != nil {
+		resetAt := time.Unix(*resetUnix, 0)
+		consider(&resetAt)
+	}
+	consider(parseRetryAfterResetTime(headers, now))
+	return latest
 }
 
 func (s *RateLimitService) get429FallbackCooldown(ctx context.Context, account *Account) (time.Duration, bool) {
@@ -1806,12 +1894,19 @@ func parseOpenAIRateLimitResetTime(body []byte) *int64 {
 
 	errObj, ok := parsed["error"].(map[string]any)
 	if !ok {
-		return nil
+		if response, nested := parsed["response"].(map[string]any); nested {
+			errObj, ok = response["error"].(map[string]any)
+		}
+		if !ok {
+			return nil
+		}
 	}
 
 	// 检查是否为已知的账号用量限制类型。
 	errType, _ := errObj["type"].(string)
-	if errType != "usage_limit_reached" && errType != "rate_limit_exceeded" && errType != "GoUsageLimitError" {
+	errCode, _ := errObj["code"].(string)
+	if errType != "usage_limit_reached" && errType != "rate_limit_exceeded" && errType != "GoUsageLimitError" &&
+		!isOpenAIHardQuotaFailureSignal(strings.ToLower(errType)) && !isOpenAIHardQuotaFailureSignal(strings.ToLower(errCode)) {
 		return nil
 	}
 
@@ -2129,7 +2224,7 @@ func (s *RateLimitService) samplePassiveUsageFromHeaders(ctx context.Context, ac
 
 // ClearRateLimit 清除账号的限流状态
 func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) error {
-	if err := s.accountRepo.ClearRateLimit(ctx, accountID); err != nil {
+	if err := s.ClearAccountOverload(ctx, accountID); err != nil {
 		return err
 	}
 	if err := s.accountRepo.ClearAntigravityQuotaScopes(ctx, accountID); err != nil {
@@ -2523,6 +2618,9 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFound401Reason
 	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
 		cooldown, reason = upstreamCodexPlanGatedModelCooldown, upstreamCodexPlanGatedModelReason
+	case account.IsOpenAICompatible() && classifyOpenAIGatewayFailure(statusCode, responseBody, "") == openAIGatewayFailureModelUnavailable &&
+		!(!isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody)):
+		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
 	default:
 		return false
 	}

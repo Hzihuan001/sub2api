@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -242,6 +243,10 @@ func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {
 }
 
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
+	return shouldFailoverUpstreamError(statusCode)
+}
+
+func shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
 	case 401, 402, 403, 405, 429, 529:
 		return true
@@ -251,16 +256,11 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 }
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Account, statusCode int, upstreamMsg string, upstreamBody []byte) bool {
-	// cyber_policy is request-scoped even when an intermediary wraps the
-	// provider response in a retryable 5xx status. Never punish or rotate the
-	// selected credential for it.
-	if hit, _, _ := detectOpenAICyberPolicy(upstreamBody); hit {
+	failureClass := classifyOpenAIGatewayFailure(statusCode, upstreamBody, upstreamMsg)
+	switch failureClass {
+	case openAIGatewayFailureRequest:
 		return false
-	}
-	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
-		return false
-	}
-	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, upstreamBody) {
+	case openAIGatewayFailureCredential, openAIGatewayFailureQuota:
 		return true
 	}
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, upstreamBody) {
@@ -269,14 +269,15 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Acc
 	// A missing model is account/provider availability, not a malformed client
 	// request. Keep this unconditional exception inside the OpenAI-compatible
 	// gateway and require an eligible account so Anthropic/Gemini paths retain
-	// their existing opt-in 400 behavior.
+	// their existing opt-in 400/404 behavior.
 	// A bare forwarding service has no account-selection owner to consume a
 	// failover sentinel. In that mode (used by direct/single-account callers),
-	// preserve the deterministic upstream 400 instead of returning an unwritten
+	// preserve the deterministic upstream 400/404 instead of returning an unwritten
 	// retry signal. Managed gateway instances always have an account repository;
 	// their handler can exclude this account and actually select another one.
-	if s != nil && s.accountRepo != nil && account != nil && account.IsOpenAICompatible() && statusCode == http.StatusBadRequest &&
-		isOpenAICompatibleModelNotFound400(upstreamBody) {
+	if s != nil && s.accountRepo != nil && account != nil && account.IsOpenAICompatible() &&
+		(statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound) &&
+		failureClass == openAIGatewayFailureModelUnavailable {
 		return true
 	}
 	if s.shouldFailoverUpstreamError(statusCode) {
@@ -329,12 +330,30 @@ func newOpenAIUpstreamFailoverError(
 	retryableOnSameAccount bool,
 ) *UpstreamFailoverError {
 	requestScopedCapacity := isOpenAIRequestScopedCapacityShed(upstreamMsg, responseBody)
+	failureClass := classifyOpenAIGatewayFailure(statusCode, responseBody, upstreamMsg)
 	failoverErr := &UpstreamFailoverError{
 		StatusCode:             statusCode,
 		ResponseBody:           responseBody,
 		ResponseHeaders:        responseHeaders.Clone(),
 		RetryableOnSameAccount: retryableOnSameAccount || requestScopedCapacity,
 		RequestScopedTransient: requestScopedCapacity,
+	}
+	if failureClass == openAIGatewayFailureCredential || failureClass == openAIGatewayFailureQuota ||
+		failureClass == openAIGatewayFailureModelUnavailable || statusCode == http.StatusGatewayTimeout ||
+		(statusCode >= 520 && statusCode <= 524) {
+		// Replaying a rejected credential/model or exhausted balance cannot
+		// recover on this account. Gateway/edge timeouts already consumed one
+		// long upstream attempt; switch instead of multiplying that latency.
+		failoverErr.RetryableOnSameAccount = false
+		failoverErr.RequestScopedTransient = false
+		failoverErr.NextAccountAction = NextAccountRetry
+	}
+	if failureClass == openAIGatewayFailureCredential {
+		failoverErr.Stage = GatewayFailureStageAccountAuth
+		failoverErr.Scope = GatewayFailureScopeAccount
+		failoverErr.Reason = GatewayFailureReason("openai_upstream_credential")
+		failoverErr.ClientStatusCode = http.StatusBadGateway
+		failoverErr.ClientMessage = openAIUpstreamAccessUnavailableClientMessage
 	}
 	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, responseBody) {
 		failoverErr.RetryableOnSameAccount = false
@@ -396,6 +415,14 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 	if oauth429Retry {
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
+	}
+	if shouldDisable || !failoverErr.RetryableOnSameAccount {
+		// A blocked account must leave the retry loop regardless of the original
+		// HTTP/pool policy. Do not retain a deadline or delay that could cause a
+		// disabled account to be replayed before selecting another candidate.
+		failoverErr.RetryableOnSameAccount = false
+		failoverErr.SameAccountRetryDeadline = time.Time{}
+		failoverErr.SameAccountRetryDelay = 0
 	}
 	return failoverErr
 }

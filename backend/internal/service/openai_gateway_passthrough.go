@@ -774,11 +774,13 @@ func stripOpenAILegacyResponsesBeta(headers http.Header) {
 }
 
 func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, responseBody []byte) bool {
-	if hit, _, _ := detectOpenAICyberPolicy(responseBody); hit {
+	switch classifyOpenAIGatewayFailure(statusCode, responseBody, "") {
+	case openAIGatewayFailureRequest:
 		return false
-	}
-	if isOpenAIContextWindowError("", responseBody) {
-		return false
+	case openAIGatewayFailureCredential, openAIGatewayFailureQuota:
+		return true
+	case openAIGatewayFailureModelUnavailable:
+		return account != nil && account.IsOpenAICompatible()
 	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, "", responseBody) {
 		return true
@@ -789,23 +791,9 @@ func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, r
 	if account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode) {
 		return true
 	}
-	switch statusCode {
-	case http.StatusTooManyRequests, 529:
-		return true
-	}
-	if account == nil || account.Type != AccountTypeAPIKey {
-		return false
-	}
-	switch statusCode {
-	case http.StatusInternalServerError,
-		http.StatusBadGateway,
-		http.StatusServiceUnavailable,
-		http.StatusGatewayTimeout,
-		520, 521, 522, 523, 524:
-		return true
-	default:
-		return false
-	}
+	// Credentials and transport mode do not change whether an upstream failure
+	// is recoverable. Keep OAuth/API-key passthrough aligned with normal HTTP.
+	return shouldFailoverUpstreamError(statusCode) || isOpenAITransientProcessingError(statusCode, "", responseBody)
 }
 
 func writeOpenAIPassthroughErrorHeaders(dst, src http.Header) {
@@ -1386,8 +1374,24 @@ var openAIStreamErrorStatusPaths = []string{
 }
 
 func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
-	if isOpenAIContextWindowError(message, payload) {
+	switch classifyOpenAIGatewayFailure(0, payload, message) {
+	case openAIGatewayFailureRequest:
+		for _, signal := range openAIGatewayFailureSignals(payload) {
+			switch signal {
+			case "permission_error", "permission_denied", "forbidden", "access_denied":
+				return http.StatusForbidden
+			}
+		}
 		return http.StatusBadRequest
+	case openAIGatewayFailureQuota:
+		return http.StatusPaymentRequired
+	case openAIGatewayFailureCredential:
+		if isOpenAIUpstreamAccessStateError(message, payload) {
+			return http.StatusForbidden
+		}
+		return http.StatusUnauthorized
+	case openAIGatewayFailureModelUnavailable:
+		return http.StatusNotFound
 	}
 
 	code := openAIStreamFailedEventErrorCode(payload)
@@ -1402,7 +1406,7 @@ func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	// the same failover semantics as a regular HTTP response.
 	for _, path := range openAIStreamErrorStatusPaths {
 		if status := int(gjson.GetBytes(payload, path).Int()); status == http.StatusUnauthorized ||
-			status == http.StatusForbidden || status == http.StatusTooManyRequests || status == 529 {
+			status == http.StatusPaymentRequired || status == http.StatusForbidden || status == http.StatusTooManyRequests || (status >= 500 && status <= 599) {
 			return status
 		}
 	}
@@ -1430,12 +1434,15 @@ func openAIStreamFailureStatus(payload []byte, message string) int {
 	}
 	semanticStatus := openAIStreamFailedEventSemanticStatus(payload, message)
 	switch semanticStatus {
-	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusTooManyRequests, http.StatusNotFound, 529:
 		return semanticStatus
 	case http.StatusServiceUnavailable:
 		if isOpenAIUpstreamCapacityShedEvent(payload) {
 			return semanticStatus
 		}
+	}
+	if semanticStatus >= 500 && semanticStatus <= 599 {
+		return semanticStatus
 	}
 	return http.StatusBadGateway
 }
@@ -1547,11 +1554,11 @@ func applyOpenAIStreamFailedErrorPassthroughRule(
 }
 
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
-	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
+	switch classifyOpenAIGatewayFailure(0, payload, message) {
+	case openAIGatewayFailureRequest:
 		return false
-	}
-	if isOpenAIContextWindowError(message, payload) {
-		return false
+	case openAIGatewayFailureCredential, openAIGatewayFailureQuota, openAIGatewayFailureModelUnavailable:
+		return true
 	}
 	if isOpenAIUpstreamAccessStateError(message, payload) {
 		return true
@@ -1599,11 +1606,11 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 }
 
 func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
-	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
+	switch classifyOpenAIGatewayFailure(0, payload, message) {
+	case openAIGatewayFailureRequest:
 		return false
-	}
-	if isOpenAIContextWindowError(message, payload) {
-		return false
+	case openAIGatewayFailureCredential, openAIGatewayFailureQuota, openAIGatewayFailureModelUnavailable:
+		return true
 	}
 	if isOpenAIUpstreamAccessStateError(message, payload) {
 		return true
@@ -1611,8 +1618,19 @@ func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
 	switch openAIStreamFailedEventSemanticStatus(payload, message) {
 	case http.StatusForbidden:
 		return openAIStream403AccountFailure(payload, message)
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusTooManyRequests, 529:
 		return true
+	}
+	for _, path := range openAIStreamErrorStatusPaths {
+		if status := int(gjson.GetBytes(payload, path).Int()); status >= 500 && status <= 599 {
+			return true
+		}
+	}
+	for _, signal := range openAIGatewayFailureSignals(payload) {
+		switch signal {
+		case "server_error", "internal_error", "internal_server_error", "upstream_error":
+			return true
+		}
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return true
@@ -1634,13 +1652,26 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	canonicalModel ...string,
 ) (int, bool) {
 	statusCode := openAIStreamFailureStatus(payload, message)
+	if isOpenAIRequestScopedFailure(payload, message) {
+		return statusCode, false
+	}
+	// HTTP 200 can carry a terminal overload (normally semantic 503). Observe
+	// it on both sides of the output guard; an unsafe-to-replay current stream
+	// must still protect subsequent requests from the same overloaded account.
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed(message, payload) {
+		ctx := context.Background()
+		if c != nil && c.Request != nil {
+			ctx = c.Request.Context()
+		}
+		return statusCode, s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, headers, payload, canonicalModel...)
+	}
 	switch statusCode {
 	case http.StatusForbidden:
 		if !openAIStream403AccountFailure(payload, message) {
 			return statusCode, false
 		}
 		fallthrough
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
+	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusNotFound, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, 520, 521, 522, 523, 524, 529:
 		ctx := context.Background()
 		if c != nil && c.Request != nil {
 			ctx = c.Request.Context()
@@ -1663,6 +1694,13 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 
 func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []byte, message string) bool {
 	if account == nil {
+		return false
+	}
+	if classifyOpenAIGatewayFailure(0, payload, message) != openAIGatewayFailureUnknown {
+		return false
+	}
+	status := openAIStreamFailedEventSemanticStatus(payload, message)
+	if status == http.StatusGatewayTimeout || isOpenAI52xUpstreamStatus(status) {
 		return false
 	}
 	// 容量降载是请求级信号，不是账号级故障：上游只是让本次请求稍后再试。

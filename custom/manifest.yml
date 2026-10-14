@@ -8,6 +8,17 @@ upstream:
 # The feature list is intentionally declarative.  The sync workflow uses it to
 # apply and test custom patch stacks in a stable order.
 features:
+  - id: gateway-resilience
+    owner: custom/gateway-resilience
+    description: Shared failure classification, recoverable cooldown and safe pre-output failover.
+    tests:
+      - backend/internal/service/overload_failure_breaker_test.go
+      - backend/internal/service/openai_overload_failover_test.go
+      - backend/internal/service/openai_ws_ingress_overload_test.go
+      - backend/internal/repository/overload_failure_cache_test.go
+      - backend/internal/service/gateway_failure_policy_test.go
+      - backend/internal/service/gateway_failure_policy_stream_test.go
+      - deploy/tests/gateway-failover-smoke.ps1
   - id: operator
     owner: custom/operator
     description: Operator role permissions and management-menu policy.

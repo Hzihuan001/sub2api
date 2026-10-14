@@ -218,10 +218,15 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 // Coding Plan）与配额耗尽 403 共用。仅在冷却成功持久化后返回非 nil；
 // 无快照或写库失败时返回 nil，由调用方落入各自的兜底逻辑（避免写库失败
 // 时账号完全失去持久冷却）。
-func (s *RateLimitService) cooldownCNProviderToQuotaSnapshotReset(ctx context.Context, account *Account, reason, logEvent string) *time.Time {
-	until := cnProviderQuotaSnapshotReset(account, time.Now())
+func (s *RateLimitService) cooldownCNProviderToQuotaSnapshotReset(ctx context.Context, account *Account, reason, logEvent string, headers ...http.Header) *time.Time {
+	now := time.Now()
+	until := cnProviderQuotaSnapshotReset(account, now)
 	if until == nil {
 		return nil
+	}
+	if len(headers) > 0 {
+		resetAt := cnProviderWindowRetryAfterFloor(*until, headers[0], now)
+		until = &resetAt
 	}
 	s.notifyAccountSchedulingBlocked(account, *until, reason)
 	if err := s.accountRepo.SetRateLimited(ctx, account.ID, *until); err != nil {
@@ -234,6 +239,15 @@ func (s *RateLimitService) cooldownCNProviderToQuotaSnapshotReset(ctx context.Co
 		"reset_at", until.UTC(),
 	)
 	return until
+}
+
+// Keep the provider's window scope and reset selection, but never retry before
+// an explicit Retry-After. Missing, invalid, or past headers cannot shorten it.
+func cnProviderWindowRetryAfterFloor(resetAt time.Time, headers http.Header, now time.Time) time.Time {
+	if retryAt := parseRetryAfterResetTime(headers, now); retryAt != nil && retryAt.After(now) && retryAt.After(resetAt) {
+		return *retryAt
+	}
+	return resetAt
 }
 
 // setCNProviderTempUnschedulable 写临时停调（含调度层通知与日志），供 CN 403
@@ -261,11 +275,15 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	responseBody []byte,
 ) bool {
 	if account.IsOpenCodeGo() {
-		if s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "opencode_go_rate_limited") != nil {
+		if s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "opencode_go_rate_limited", headers) != nil {
 			return true
 		}
 		if resetAt := parseOpenAIRateLimitResetTime(responseBody); resetAt != nil {
-			resetTime := time.Unix(*resetAt, 0)
+			now := time.Now()
+			resetTime := cnProviderWindowRetryAfterFloor(time.Unix(*resetAt, 0), headers, now)
+			if !resetTime.After(now) {
+				return false
+			}
 			s.notifyAccountSchedulingBlocked(account, resetTime, "429")
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
@@ -291,7 +309,7 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	// 2) Coding Plan 窗口耗尽：冷却到快照中最早的窗口重置点（见
 	// cnProviderQuotaSnapshotReset：429 多由 5h 窗口触发，取较早点避免过度停调）。
 	if account.IsCodingPlan() &&
-		s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "cn_coding_plan_rate_limited") != nil {
+		s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "cn_coding_plan_rate_limited", headers) != nil {
 		return true
 	}
 	return false

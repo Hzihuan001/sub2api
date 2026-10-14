@@ -18,6 +18,11 @@ patch_branches: []
 # Paths that must remain present in every generated upgrade branch. This is a
 # guardrail, not an instruction to auto-resolve conflicts in these files.
 protected_paths:
+  - backend/internal/service/gateway_failure_policy.go
+  - deploy/tests/gateway-failover-smoke.ps1
+  - backend/internal/service/overload_failure_breaker.go
+  - backend/internal/service/openai_overload_failover_test.go
+  - backend/internal/repository/overload_failure_cache.go
   - backend/internal/authz
   - backend/internal/securityaudit
   - frontend/src/authz

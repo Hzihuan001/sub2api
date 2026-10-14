@@ -12,11 +12,12 @@ import (
 type FeatureID string
 
 const (
-	FeatureOperator    FeatureID = "operator"
-	FeaturePromptAudit FeatureID = "prompt-audit"
-	FeatureImageStudio FeatureID = "image-studio"
-	FeatureBranding    FeatureID = "branding"
-	FeatureUsageExtras FeatureID = "usage-extras"
+	FeatureGatewayResilience FeatureID = "gateway-resilience"
+	FeatureOperator          FeatureID = "operator"
+	FeaturePromptAudit       FeatureID = "prompt-audit"
+	FeatureImageStudio       FeatureID = "image-studio"
+	FeatureBranding          FeatureID = "branding"
+	FeatureUsageExtras       FeatureID = "usage-extras"
 )
 
 // FeatureManifest describes the stable identity and settings namespace of a
@@ -33,6 +34,7 @@ type FeatureManifest struct {
 // cannot mutate the package-level list.
 func BuiltInFeatureManifests() []FeatureManifest {
 	manifests := []FeatureManifest{
+		{ID: FeatureGatewayResilience, SettingsNamespace: SettingNamespace(FeatureGatewayResilience)},
 		{ID: FeatureOperator, SettingsNamespace: SettingNamespace(FeatureOperator)},
 		{ID: FeaturePromptAudit, SettingsNamespace: SettingNamespace(FeaturePromptAudit)},
 		{ID: FeatureImageStudio, SettingsNamespace: SettingNamespace(FeatureImageStudio)},
