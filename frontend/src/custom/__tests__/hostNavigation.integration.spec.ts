@@ -189,6 +189,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   mounted.splice(0).forEach((wrapper) => wrapper.unmount())
+  vi.restoreAllMocks()
   registry.unregister(featureID)
   // Never clear the singleton: the host's shipped features must remain intact.
   expect(registry.has('image-studio')).toBe(true)
@@ -245,6 +246,39 @@ describe('custom feature real host navigation', () => {
     expect(usage.element.nextElementSibling).toBe(auditLogs.element)
     expect(roles.element.parentElement).toBe(adminSection.element)
     expect(usage.element.parentElement).toBe(adminSection.element)
+  })
+
+  it('keeps shipped contributions on their anchors when the official menu is reordered', async () => {
+    setRole('admin')
+    const customHost = await import('@/custom')
+    const place = customHost.placeCustomMenuItems
+    let officialPaths: string[] = []
+    // Inject an upstream ordering change at the actual host boundary. Keep the
+    // real base entries, feature registry, placement algorithm and Sidebar DOM.
+    const placement = vi.spyOn(customHost, 'placeCustomMenuItems').mockImplementation((base, contributions) => {
+      officialPaths = base.map((item) => item.path)
+      return place([...base].reverse(), contributions)
+    })
+    const wrapper = await mountSidebar()
+    expect(placement).toHaveBeenCalled()
+    const adminSection = wrapper.get('nav .sidebar-section')
+    const users = adminSection.get('a[href="/admin/users"]')
+    const roles = adminSection.get('a[href="/admin/roles"]')
+    const usage = adminSection.get('a[href="/admin/usage"]')
+    const auditLogs = adminSection.get('a[href="/admin/audit-logs"]')
+    expect(officialPaths.indexOf('/admin/users')).toBeLessThan(officialPaths.indexOf('/admin/audit-logs'))
+    expect(Array.from(adminSection.element.children).indexOf(auditLogs.element)).toBeLessThan(
+      Array.from(adminSection.element.children).indexOf(users.element),
+    )
+    expect(roles.element.previousElementSibling).toBe(users.element)
+    expect(usage.element.nextElementSibling).toBe(auditLogs.element)
+    expect(adminSection.findAll('a[href="/admin/roles"]')).toHaveLength(1)
+    expect(adminSection.findAll('a[href="/admin/usage"]')).toHaveLength(1)
+    const securityGroup = adminSection.findAll('button').find((button) => button.text() === 'translated:nav.securityAudit')!
+    await securityGroup.trigger('click')
+    const promptAudit = adminSection.get('a[href="/admin/prompt-audit"]')
+    expect(promptAudit.element.parentElement).toBe(securityGroup.element.nextElementSibling)
+    expect(adminSection.findAll('a[href="/admin/prompt-audit"]')).toHaveLength(1)
   })
 
   it('renders prompt audit only inside the expandable security audit group', async () => {

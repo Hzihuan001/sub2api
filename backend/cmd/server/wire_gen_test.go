@@ -87,22 +87,22 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		openAIOAuthSvc,
 		geminiOAuthSvc,
 		antigravityOAuthSvc,
-		nil, // kiroOAuth
-		nil, // grokOAuth
-		nil, // openAIGateway
-		nil, // scheduledTestRunner
-		nil, // backupSvc
-		nil, // paymentOrderExpiry
-		nil, // channelMonitorRunner
-		nil, // channelMonitorV2Aggregator
-		nil, // quotaFlusher
-		nil, // upstreamBillingProbe
-		nil, // ollamaCloudUsage
-		nil, // opencodeGoUsage
-		nil, // auditLog
-		nil, // openAIAutoReset
-		nil, // promptAudit
-		nil, // pluginManager
+		nil,                 // kiroOAuth
+		nil,                 // grokOAuth
+		nil,                 // openAIGateway
+		nil,                 // scheduledTestRunner
+		nil,                 // backupSvc
+		nil,                 // paymentOrderExpiry
+		nil,                 // channelMonitorRunner
+		nil,                 // channelMonitorV2Aggregator
+		nil,                 // quotaFlusher
+		nil,                 // upstreamBillingProbe
+		nil,                 // ollamaCloudUsage
+		nil,                 // opencodeGoUsage
+		nil,                 // auditLog
+		nil,                 // openAIAutoReset
+		nil,                 // promptAudit
+		nil,                 // pluginManager
 		custom.NewHost(nil), // customHost
 	)
 

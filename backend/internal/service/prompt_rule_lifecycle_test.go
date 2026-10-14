@@ -256,8 +256,8 @@ func TestPromptRuleLifecycleCancellationAndInvalidInputs(t *testing.T) {
 	svc := NewPromptRuleService(&lifecyclePromptRuleRepo{}, nil)
 	require.NoError(t, svc.Start(context.Background()), "nil cache is a valid configuration")
 	require.NoError(t, svc.Shutdown(context.Background()))
-	require.Error(t, svc.Start(nil))
-	require.Error(t, svc.Shutdown(nil))
+	require.Error(t, svc.Start(nil))    //nolint:staticcheck // Deliberately verify the public lifecycle rejects a nil context.
+	require.Error(t, svc.Shutdown(nil)) //nolint:staticcheck // Deliberately verify the public lifecycle rejects a nil context.
 
 	cache := &lifecyclePromptRuleCache{}
 	svc = NewPromptRuleService(&lifecyclePromptRuleRepo{}, cache)

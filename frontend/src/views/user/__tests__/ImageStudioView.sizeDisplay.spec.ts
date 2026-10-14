@@ -228,6 +228,50 @@ describe('Image Studio actual size visibility', () => {
     expect(mocks.generate).toHaveBeenCalledWith('native-key', expect.objectContaining({ model: 'gemini-3.1-flash-image', size: '4K', nativeGemini: true }), expect.any(AbortSignal))
   })
 
+  it('drops removed model capabilities when the same key reloads its upstream model list', async () => {
+    mocks.listModels.mockResolvedValueOnce([{ id: 'gemini-nano-banana-2.1', name: 'Nano Banana' }])
+      .mockResolvedValueOnce([{ id: 'seedream-5.0-pro', name: 'Seedream' }])
+    vi.mocked(URL.createObjectURL).mockImplementation((blob) => `blob:reference-${(blob as File).name}`)
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="image-studio-size"]').setValue('4K')
+    await formSelect('imageStudio.count').setValue('4')
+    await formSelect('imageStudio.outputFormat').setValue('webp')
+    const references = Array.from({ length: 14 }, (_, index) => new File(['image'], `reference-${index}.png`, { type: 'image/png' }))
+    await attachReferences(references)
+    expect(wrapper.findAll('form img')).toHaveLength(14)
+    const maskInput = wrapper.get<HTMLInputElement>('input[type="file"]:not([multiple])')
+    Object.defineProperty(maskInput.element, 'files', { configurable: true, value: [new File(['mask'], 'mask.png', { type: 'image/png' })] })
+    await maskInput.trigger('change')
+    expect(wrapper.text()).toContain('mask.png')
+
+    // Studio has no capability metadata API or refresh button. Invoke its real
+    // model loader directly, preserving the selected key and all form state.
+    await (wrapper.vm as unknown as { loadModels: () => Promise<void> }).loadModels()
+    await flushPromises()
+    expect(wrapper.get<HTMLSelectElement>('[data-test="image-studio-key"]').element.value).toBe('1')
+    expect(mocks.listModels).toHaveBeenCalledTimes(2)
+    for (const call of mocks.listModels.mock.calls) expect(call).toEqual(['test-key', expect.any(AbortSignal), { nativeGemini: false }])
+    expect(wrapper.get('[data-test="image-studio-model"]').findAll('option').map((option) => option.attributes('value'))).toEqual(['seedream-5.0-pro'])
+    expect(wrapper.get<HTMLSelectElement>('[data-test="image-studio-size"]').element.value).toBe('2K')
+    expect(wrapper.get('[data-test="image-studio-size"]').findAll('option').map((option) => option.attributes('value'))).not.toContain('4K')
+    expect(wrapper.findAll('form img').map((image) => image.attributes('alt'))).toEqual(references.slice(0, 10).map((file) => file.name))
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(4)
+    for (const file of references.slice(10)) expect(URL.revokeObjectURL).toHaveBeenCalledWith(`blob:reference-${file.name}`)
+    expect(wrapper.text()).not.toContain('imageStudio.mask')
+    expect(wrapper.text()).not.toContain('mask.png')
+    expect(wrapper.text()).not.toContain('imageStudio.inputFidelity')
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('A mountain at dawn')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.generate).toHaveBeenCalledOnce()
+    expect(mocks.generate).toHaveBeenCalledWith('test-key', expect.objectContaining({
+      model: 'seedream-5.0-pro', size: '2048x2048', count: 1,
+      outputFormat: 'png', quality: 'auto', background: 'auto', inputFidelity: 'auto',
+      mask: null, images: references.slice(0, 10), nativeGemini: false,
+    }), expect.any(AbortSignal))
+  })
+
   it('keeps compatible Gemini options and edits without selecting native protocol from the model name', async () => {
     mocks.listModels.mockResolvedValue([{ id: 'gemini-nano-banana-2.1', name: 'Compatible Gemini' }])
     wrapper = mountView()

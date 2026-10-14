@@ -4,6 +4,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { listPlatformIds } from "@/constants/platformCatalog";
 import { defaultOperatorRolePolicy, hasOperatorPermission, type OperatorPermission } from "@/authz/permissions";
 import { customFeatureRegistry, type CustomSettingsTab } from "@/custom";
+import * as customHost from "@/custom";
 
 import enCommon from "@/i18n/locales/en/common";
 import enSettings from "@/i18n/locales/en/admin/settings";
@@ -812,6 +813,33 @@ describe("admin SettingsView payment visible method controls", () => {
       expect(writeProbe).toHaveBeenCalledOnce();
       await wrapper.get("form").trigger("submit");
       expect(updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("keeps the registered panel mounted when an upstream setting adds a reserved tab id", async () => {
+      registerProbe();
+      const getTabs = customHost.getHostCustomSettingsTabs;
+      // Exercise the actual SettingsView call with an expanded official ID
+      // inventory; do not invent a replacement Settings host or business panel.
+      const tabs = vi.spyOn(customHost, "getHostCustomSettingsTabs").mockImplementation((registry, reservedIds = []) => {
+        expect(reservedIds).toContain("general");
+        return getTabs(registry, [...reservedIds, "upstream-future-setting"]);
+      });
+      try {
+        wrapper = mountView();
+        await flushPromises();
+        expect(tabs).toHaveBeenCalled();
+        assertSettingsContribution(wrapper);
+        expect(wrapper.find("#settings-tab-general").exists()).toBe(true);
+        expect(wrapper.find("#settings-tab-security").exists()).toBe(true);
+        expect(readProbe).toHaveBeenCalledOnce();
+        await wrapper.get(`#settings-tab-${tabId}`).trigger("click");
+        await wrapper.get('[data-testid="custom-settings-save"]').trigger("click");
+        expect(writeProbe).toHaveBeenCalledOnce();
+        await wrapper.get("form").trigger("submit");
+        expect(updateSettings).not.toHaveBeenCalled();
+      } finally {
+        tabs.mockRestore();
+      }
     });
 
     it("passes readOnly and disables custom inputs for a read-only operator", async () => {
