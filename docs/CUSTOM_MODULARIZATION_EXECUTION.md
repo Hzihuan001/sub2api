@@ -5,7 +5,7 @@
 - 2026-10-14 用户明确“执行”；授权 P0–P6 本地重构、阶段提交、测试及 Docker 验收，**不推送、不部署**。
 - 工作树复用本会话已附加的 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`；已切新分支 `codex/custom-modularization-v0.2.16`，原发布分支未移动。
 - 起点 `989594099c1bd10db911c737449d15d2bb6149ed`，包含运行提交 `00e8f24a4` / `custom-0.2.16.5`。生产没有操作，继续 `.5`。
-- P0、P1、P2 完成；P3–P6 尚未完成。分阶段成功不等于最终重构或生产验收。
+- 2026-10-15 完成度复核：P1–P3 和 P4 窄接口完成；P5 三条 WS scope 已实际接入并保持 .5 语义。普通兼容批量“部分成功后取消”在候选与原基线均复现漏结算，触发停止条件，P4/P6 不能整体验收。WS 跨轮身份、完整门禁、性能和真实恢复也仍有缺口。详见 [复核及停止项](CUSTOM_MODULARIZATION_REVIEW_20261015.md)；未推送、未部署。
 
 ## P0：基线证据
 
@@ -124,9 +124,22 @@ P1 起按阶段追加实际文件、提交、测试、负向验证与指标，�
 
 ## P6：本地 Docker 联合验收（2026-10-15）
 
+> 完成复核：本节记录已经通过的局部证据，不代表 P6 全部完成。首次报告遗漏 WS attempt 真实接线和完整质量/性能验收，现按原方案继续补齐；没有追加生产授权。
+
 - 静态门禁：`custom_contracts.py`、12 个架构负例、迁移 append-only、manifest/isolation 全部通过；独立干净工作树执行 `--run-go-generate` 后 generated sources clean。
 - 后端门禁：宿主/权限/生命周期、审计、批量、故障策略定向 Go 测试通过；真实 PostgreSQL 18 + Redis 8 integration tests 通过（25.084s）。
 - 前端门禁：`vue-tsc`、定向 ESLint、41 个 Vitest 文件/442 个测试通过；生产构建 1138 modules 通过。仅保留既有 Browserslist、动态导入和 chunk 大小提示。
 - Docker 候选镜像：`sub2api:operator-modular-local`，linux/amd64，image ID `sha256:253c6aaa8bd54ebeacc64d829e4500773677e182cea8851eb4dd2d74b6b4935f`，版本构建参数 `0.2.16-custom.modular`、提交 `57ed1ca2d`。隔离项目 `sub2api-operator-test-v0216` 端口 `18086` 健康、重启 0；容器日志无 panic/fatal/migration/database/redis 错误。
 - Docker 烟测：生图单图/批量/参考图/PNG/ZIP/重试幂等/完整计费 3 张实际成本 `0.03` 通过；网关 overload（同账号三次冷却）、quota、model、server、timeout、auth、rate、stream 及安全/参数/部分输出不重放共 11 场景通过。另以全新隔离项目 `sub2api-operator-test-modular` 端口 `18089` 完成角色、API Key、审计和重启验收并保留供人工检查。
-- 本地验收通过后仍未推送、未建标签、未构建 GHCR、未改主站/L1/COS。生产继续运行 `.5`。
+- 上述局部本地验收通过；完整候选验收未通过。未推送、未建标签、未构建 GHCR、未改主站/L1/COS。生产继续运行 `.5`。
+
+## 2026-10-15 最终复核补充（停止收尾）
+
+- 本地阶段提交：`31545ff8a`（WS 接线）、`d596bae70`（边界测试/门禁）、`fa677d301`（保留失败的旧账务复现）。未推送，本分支不得作为已通过候选发布。
+- 三条 WS 生产路径使用 attempt scope；passthrough 保持 `response.created` 的原轮次语义，未采用会误归属迟到帧的发送时重置方案。真实 relay/HTTP bridge/旧 ctx_pool 定向测试通过；无 created 新轮及跨轮迟到身份仍需独立修复。
+- 前端三组真实边界演练新增至 3 文件 / 80 tests，类型与定向 lint 通过。Settings 用例只验证扩展 reserved-ID 接入，不冒称实现新官方面板。
+- contracts 的 batch 门禁补入 BananaAsync，audit 补 SecurityAudit/CaptureOnly，resilience 包含真实 attempt adapter 测试，避免测试名不匹配而漏跑。
+- 完整 Go unit 24,100 个测试/子测试 pass，14 个顶层测试失败；在 4cbcaafef 全部同样失败，47 条错误签名一致。三条 PgDumper 在子进程 PATH 补 sh 后通过；未削弱断言、修改历史迁移或称全量通过。
+- 新增取消账务复现在候选及 989594099 均失败：已成功图片没有结算，整笔 hold 释放、无 usage。仅保留失败回归测试，未修改账务运行代码；按方案停止条件等待独立修复范围确认。
+- 不再重建候选或继续性能/恢复验收来绕过停止项；现有 Docker 镜像仍是 57ed1ca2d 的局部验收产物，不是最终候选。详细证据和后续顺序见复核报告。
+- 收尾差异 lint `golangci-lint run --timeout 10m --new-from-rev 989594099` 0 issues；架构清单、12 个负向测试、diff check 通过。未把差异 lint 当全量静态或账务门禁通过。

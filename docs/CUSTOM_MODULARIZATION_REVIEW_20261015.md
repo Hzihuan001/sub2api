@@ -1,0 +1,87 @@
+# 模块化完成度复核与停止项（2026-10-15）
+
+## 结论
+
+**本轮尚未全部验收完成，不能发布。** `2ed6a3617` 中“P0–P6 完成”的结论过早，本报告及共享状态纠正该结论。
+
+授权范围仍为本地 P0–P6；没有推送、标签、远程设置变更或生产操作。生产最后发布坐标仍为 `0.2.16-custom.5` / `00e8f24a4`。本地工作分支 `codex/custom-modularization-v0.2.16`，基线 `989594099`。
+
+本次收尾本地提交：`31545ff8a`（WS scope 真实接线、保持旧策略）、`d596bae70`（升级边界测试和门禁选择）、`fa677d301`（明确失败的旧取消账务复现）。最后一项刻意保留回归断言；本分支不是可发布的全绿候选。
+
+接口重构已取得实际进展，但恢复/账务验收发现了基线已有缺陷，触发原方案第 7 节停止条件。不得通过跳过失败断言、补扣历史账目或把局部 Docker 成功写成全面通过来关闭问题。
+
+## 已实现的依赖收敛
+
+| 边界 | 改造前 | 当前实现及收益 |
+| --- | --- | --- |
+| 批量审计 | BatchImageHandler 依赖完整 OpenAIGatewayHandler | Check-only SecurityAuditGate；原 coordinator、审计顺序与错误格式继续复用 |
+| 后端装配 | 路由、权限、PromptRule 接线分散 | customapp composition root 注册 16 条原路由；宿主具名挂载，保持认证链与顺序 |
+| worker | 订阅在构造期间隐式运行 | 构造加载与 Start/Shutdown 分开；一次启动、取消、等待与失败状态可测试 |
+| 导航 | Sidebar 对角色/用量/审计路径特判 | 声明菜单锚点与路由元数据；官方菜单重排仍能实际挂载 |
+| 设置 | 贡献缺独立读写契约 | read/write 分开，Settings 真实加载/保存；不复制官方设置页 |
+| 品牌 | 多处默认值与全局语言替换 | 明确展示字段适配与逐键语言覆盖，技术 ID/URL 不泛化替换 |
+| 生图规则 | 工作台、批量页、API 多处重复 | 共享 MIME/尺寸/参考图纯策略，保留供应商差异及原账务 |
+| 网关错误 | HTTP/SSE 多处分类与状态解释 | 集中纯决策，协议循环及副作用执行保留；WS 的已知跨轮限制见下文 |
+
+这不是“所有主线文件不再修改”或“合并一定零冲突”。显式宿主接入点仍须维护；不能用新增接口数量当成降低冲突百分比的证明。
+
+## 停止项 A：普通兼容批量取消漏结算
+
+新增回归复现：`backend/internal/service/batch_image_cancel_accounting_repro_test.go`，测试名 `TestAppManagedBatchImageCancelAfterPartialSuccessMustSettleCompletedImages`。
+
+使用真实 Provider → Processor → Settlement，模拟上游及仓储/账务替身；不访问生产，不产生真实模型费用。第一张已成功写入 `.partial`，第二张在途时取消，随后模拟迟到成功。
+
+| 观测 | 候选 | 原基线 989594099 |
+| --- | ---: | ---: |
+| 上游成功图片 | 2 | 2 |
+| 取消前持久化成功项 | 1 | 1 |
+| 捕获扣款次数 | 0 | 0 |
+| 释放冻结金额 | 全额 0.50 | 全额 0.50 |
+| 使用记录 | 0 | 0 |
+| 最终状态 | cancelled | cancelled |
+
+两边同一测试均 FAIL。基线导出到 `D:/projects/go-tmp/cancel-accounting-baseline-989594099-46dd295b`；三个相关运行文件相对基线没有本轮差异。
+
+原因：普通 `appManaged.Cancel` 删除结果并写取消标记；查询优先读取该标记并返回 cancelled；processor 走整笔释放分支，没有结算已经成功的图片。Banana 异步适配的 drain/settle 不能证明普通兼容路径也正确。
+
+这是合成复现证明的程序缺陷，**不是已查实生产发生了多少漏账**；本轮不访问或修改生产账目，不补扣历史费用。修复需明确取消时已完成/已受理项的处理边界，并增加真实 PG/Redis 对账验收，作为独立业务修复提交。
+
+复现命令（候选或导出的同基线，加入同一测试文件）：
+
+```text
+go test -tags=unit ./internal/service -run '^TestAppManagedBatchImageCancelAfterPartialSuccessMustSettleCompletedImages$' -count=1 -v
+```
+
+## 停止项 B：WS 跨轮身份边界仍有限制
+
+ctx_pool 与 HTTP bridge 可在单次真实发送作用域持有独立副作用对象。passthrough 的现有逻辑以 `response.created` 切换轮次；若下一次真实发送立即失败且没有 created，既有状态可能压制下一轮计数。
+
+复核过“发送 response.create 时替换全局 attempt”的方案：它又可能把上一轮迟到失败归到新一轮；仅 atomic pointer 或持有旧对象的单测不能证明正确事件归属。当前不引入未经审批的 WS 协议改写或 ID 缓存，只保留 `.5` 原切换语义进行结构抽取。
+
+因此不能声称已完全满足“所有真实尝试恰好计一次、跨轮迟到帧隔离”。后续需单独验证 response ID 关联、缺 ID 的保守边界和真实 relay 乱序场景，再决定修复；不改变重放规则或把已输出内容重新提交。
+
+## 质量证据与限制
+
+| 检查 | 实际结果 |
+| --- | --- |
+| 完整 Go unit（新增取消复现前） | 24,100 个测试/子测试 pass；14 个顶层测试失败，4 个包失败，不是全绿 |
+| 失败集合对照 P4 基线 4cbcaafef | 同 14 个顶层失败全部复现，失败集合及 47 条错误签名一致；仅证明相对该基线不是新增失败 |
+| Windows PgDumper 3 例 | 测试进程补 `G:/PC/Git/bin` 后 3/3 pass；原环境找不到 sh |
+| migration 245 | 旧测试要求 242 之后不能恢复 CHECK，与既有 245 SQL 冲突；未改历史迁移或关闭校验 |
+| 全量 lint / 差异 lint | 首轮全量 15 项未全绿；本轮格式、测试关闭返回值已修，故意 nil-context 拒绝测试保留断言并逐行注明例外。最终 `--new-from-rev 989594099` 为 0 issues，仅证明本轮新增差异无 lint 问题，不等同全量通过 |
+| 前端边界演练 | 真实 Sidebar 官方菜单反序、Settings 扩展 reserved-ID、同 Key 模型列表刷新后能力收敛：3 文件 80 tests、类型、定向 lint 通过 |
+| 前序局部验收 | 41 文件/442 前端测试、生产构建、真实 PG/Redis 定向、Docker 11 故障及正常批量下载/计费通过；见执行记录，不能覆盖取消失败 |
+| 干净生成 | 独立工作树 57ed1ca2d 的 Wire/Ent 生成比对通过；不能外推为后续未提交代码已生成验收 |
+
+失败日志：`D:/projects/go-tmp/modular-full-unit-20261015.jsonl`、`modular-baseline-failures-20261015.jsonl`、`modular-baseline-pgdumper-with-sh-20261015.jsonl`；差异 lint：`modular-final-new-lint-20261015.log`。最终架构清单、12 项负向测试及 diff check 通过。工具链 Go 1.27.2 Windows、golangci-lint 2.14.0、pnpm 9.15.9、Docker Linux 29.8.2。
+
+## 后续顺序（待明确修复范围后继续）
+
+1. 独立修复批量取消账务；不追改历史快照/金额，保留已成功项及迟到成功的幂等结算，拒绝盲目重提结果未知任务。
+2. 明确 WS attempt 身份修复范围；先真实 relay 用例，再小接口实现，不扩展重试预算。
+3. 补实际进程恢复、真实 PG/Redis 重投/结算重放，核对余额、冻结、usage 恰好一次。
+4. 收敛基线失败：测试契约错误与真实功能缺陷分别处理，不以“大部分通过”放行。
+5. 完成同负载性能/资源对比，再构建最终本地镜像、复核生成/完整门禁和 Docker；目前未完成这些最终项。
+6. 更新准确提交与验收坐标后向用户汇报。远程 Actions 执行限制、集成基线推进、推送/发布仍需单独处理和授权。
+
+现有本地环境 `18086`、`18089` 运行的是 `57ed1ca2d` 阶段镜像，不含本次最后的 WS 收尾与停止项修复，不能作为最终候选。需要停止时仅对精确项目执行 `docker compose -p <项目名> -f deploy/docker-compose.operator-test.yml stop`；不要加 `-v` 或 prune。生产保持不动。
