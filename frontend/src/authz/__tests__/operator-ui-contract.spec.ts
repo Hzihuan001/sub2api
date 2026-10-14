@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { usageExtrasFeature } from '@/custom/features/usageExtras'
 
 function read(relativePath: string): string {
   return readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8')
@@ -35,8 +36,12 @@ describe('operator UI contract', () => {
     expect(sidebar).toContain('function applyOperatorPermissions(items: NavItem[]): NavItem[]')
     expect(sidebar).toContain('if (item.permission && !authStore.can(item.permission)) return out')
     expect(sidebar).toContain('registryAdminMenuItems')
-    expect(sidebar).toContain('registryUsageMenuItem')
+    expect(sidebar).toContain('placeCustomMenuItems(baseItems, registryAdminMenuItems.value)')
     expect(sidebar).toContain('getHostCustomMenuItems')
+    expect(usageExtrasFeature.menuItems?.find(item => item.id === 'admin-usage')).toMatchObject({
+      path: '/admin/usage', permission: 'usage', beforePath: '/admin/audit-logs',
+    })
+    expect(usageExtrasFeature.routes?.find(route => route.name === 'AdminUsage')?.meta?.requiredPermission).toBe('usage')
   })
 
   it('guards privileged user actions and role controls', () => {

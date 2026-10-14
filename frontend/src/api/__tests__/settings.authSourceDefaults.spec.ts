@@ -12,7 +12,7 @@ import { listPlatformIds } from "@/constants/platformCatalog";
 
 /** 与后端 AllowedQuotaPlatforms 一致的全部具体平台（平台清单）。 */
 const quotaPlatforms = [
-  "anthropic", "openai", "gemini", "antigravity", "grok",
+  "anthropic", "openai", "gemini", "antigravity", "kiro", "grok",
   "kimi", "zhipu", "deepseek", "minimax", "opencode_go", "typesafe", "command_code", "cline",
 ];
 
@@ -240,6 +240,7 @@ describe("normalizePlatformQuotasMap", () => {
     expect(result.openai).toEqual({ daily: null, weekly: null, monthly: null });
     expect(result.gemini).toEqual({ daily: null, weekly: null, monthly: null });
     expect(result.antigravity).toEqual({ daily: null, weekly: null, monthly: null });
+    expect(result.kiro).toEqual({ daily: null, weekly: null, monthly: null });
     expect(result.grok).toEqual({ daily: null, weekly: null, monthly: null });
     expect(result.kimi).toEqual({ daily: null, weekly: null, monthly: null });
     expect(result.opencode_go).toEqual({ daily: null, weekly: null, monthly: null });
@@ -263,6 +264,13 @@ describe("normalizePlatformQuotasMap", () => {
 });
 
 describe("sanitizePlatformQuotasMap", () => {
+  it("保留 Kiro 三个窗口并逐字段填充其他平台，不丢失合法零值", () => {
+    const input = { kiro: { daily: 0, weekly: 12.5, monthly: 50 } };
+    const expected = { ...allNullQuotas, kiro: { daily: 0, weekly: 12.5, monthly: 50 } };
+    expect(normalizePlatformQuotasMap(input)).toEqual(expected);
+    expect(sanitizePlatformQuotasMap(input)).toEqual(expected);
+  });
+
   it("保留合法的正数和零值", () => {
     const result = sanitizePlatformQuotasMap({
       anthropic: { daily: 10.5, weekly: 0, monthly: null },
