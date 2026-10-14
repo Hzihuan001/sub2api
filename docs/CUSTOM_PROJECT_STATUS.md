@@ -11,11 +11,11 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 记录日期 | 2026-10-13 |
+| 记录日期 | 2026-10-14 |
 | 候选官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
-| 候选定制版本 | `0.2.16-custom.1`（仅本地，未发布） |
+| 候选定制版本 | `0.2.16-custom.2`（Nano Banana 模型目录兼容修复，发布中） |
 | 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.1` |
-| 最新已提交基线 | `custom-0.2.15.3` / `0e5158d24`，公共文档更新未部署 |
+| 最新已发布基线 | `custom-0.2.16.1` / `ece7cf220`；文档提交 `2bc8f1379` |
 | 当前工作分支 | `codex/v0.2.16-image-studio` |
 | 升级工作树 | `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` |
 | 官方合并 / 生图移植提交 | `d3b78cf8c` / `2c007ec6a`；运行代码修复 `e42db1f11`，验收脚本 `f17cae568` |
@@ -23,9 +23,9 @@
 | 当前隔离改造 PR | 草稿 PR #1（如仍未合并）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 主站生产镜像 digest | `sha256:7b49d3d555c3427917fbfc9315497214a74df3ddb49c6a9c17ee5ecf13726eab` |
-| L1/COS 生产镜像 digest | `sha256:ec2e0efb603d8b364cdfccacb8dfa2449d8071116853487849abb9f540b4511e` |
-| 当前发布状态 | `custom-0.2.16.1` 已推送；GHCR digest 已发布并部署主站、L1、COS，生产快速验收通过 |
+| 主站生产镜像 digest | `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17` |
+| L1/COS 生产镜像 digest | `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17` |
+| 当前发布状态 | `.1` 已部署；`.2` 兼容修复测试通过，尚未部署；用户批准三站统一发布 |
 
 生产健康检查最近确认通过的入口：
 
@@ -37,7 +37,15 @@
 
 本次生产三站统一使用同一镜像 digest：`sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17`。发布前备份标识为 `/opt/sub2api-backups/v0.2.16-custom.1-20261014T0010Z`；后续回滚只切应用镜像，不重建数据库、Redis、卷和网络。
 
-### 当前会话摘要（2026-10-13）
+### Nano Banana 热修复（2026-10-14，in-progress）
+
+- **根因**：第三方 Gemini 上游在 `/v1beta/models` 返回 OpenAI `data[].id` 信封，原工作台只读取 `models[].name`；模型真实存在，不是账号停用或白名单拒绝。
+- **边界**：`gemini_models_endpoints.go` 将成功的兼容目录转为 Gemini 格式后再经过原有分组白名单；前端兼容两种信封，原生空列表保持空，不能从备用字段重新填充被权限过滤的模型。
+- **不变**：生成路径、调度、计费、尺寸、参考图和下载；不额外查询停用/限流账号，不注入静态假模型，无数据库迁移。
+- **验证**：受影响 service/handler 单测通过；前端 API/视图 25 项、typecheck、定向 lint 通过。镜像及生产验收待完成。
+- **下一步**：推送 `custom-0.2.16.2`，发布同一 GHCR digest 到主站/L1/COS，备份配置与数据后仅重建应用，确认 Nano Banana 目录和三站健康，再登记发布坐标。
+
+### 当前会话摘要（2026-10-14）
 
 - **Feature ID**：官方升级及 `image-studio`；状态：`deployed`，本地验收见 [`UPGRADE_V0_2_16_ACCEPTANCE.md`](UPGRADE_V0_2_16_ACCEPTANCE.md)，问题处理见 [`CUSTOM_UPGRADE_ISSUES.md`](CUSTOM_UPGRADE_ISSUES.md)。
 - **移植来源**：`codex/image-studio-session-20261004` / `01124885d` 中 14 个功能提交；不整分支合并旧 v0.2.13，不移植旧 VERSION，不重复移植已发布的用户隔离画廊。

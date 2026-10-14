@@ -30,14 +30,15 @@ interface GatewayModelItem {
   id?: string
   name?: string
   display_name?: string
+  displayName?: string
 }
 
 interface GatewayModelsResponse {
-  data?: GatewayModelItem[]
+  data?: unknown
 }
 
 interface GeminiModelsResponse {
-  models?: GatewayModelItem[]
+  models?: unknown
 }
 
 interface GatewayImageItem {
@@ -92,7 +93,15 @@ export interface ImageStudioModelListOptions {
 }
 
 function normalizeModelID(value: unknown): string {
-  return String(value || '').trim().replace(/^models\//i, '')
+  return typeof value === 'string' ? value.trim().replace(/^models\//i, '') : ''
+}
+
+function modelItems(value: unknown): GatewayModelItem[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is GatewayModelItem =>
+    item !== null && typeof item === 'object' && !Array.isArray(item)
+    && (normalizeModelID(item.id) !== '' || normalizeModelID(item.name) !== ''),
+  )
 }
 
 export async function listImageStudioModels(
@@ -106,13 +115,15 @@ export async function listImageStudioModels(
     signal,
   })
   if (!response.ok) throw await parseGatewayError(response)
-  const payload = await response.json() as GatewayModelsResponse & GeminiModelsResponse
-  const items = nativeGemini ? (payload.models || []) : (payload.data || [])
+  const payload = await response.json() as (GatewayModelsResponse & GeminiModelsResponse) | null
+  // An empty native list may be the result of server-side permission filtering.
+  const useNativeItems = nativeGemini && Array.isArray(payload?.models)
+  const items = useNativeItems ? modelItems(payload?.models) : modelItems(payload?.data)
   const seen = new Set<string>()
   return items
     .map((item) => ({
-      id: normalizeModelID(item.id || item.name),
-      name: String(item.display_name || item.name || item.id || '').trim(),
+      id: normalizeModelID(useNativeItems ? item.name || item.id : item.id || item.name),
+      name: String(item.displayName || item.display_name || item.name || item.id || '').trim(),
     }))
     .filter((item) => item.id && isLikelyImageModel(item.id))
     .filter((item) => {

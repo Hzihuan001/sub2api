@@ -134,3 +134,38 @@ func TestGeminiNativeModelsMergesNativeUpstream(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiNativeModelsCompatibleEnvelopeHonorsAllowlist(t *testing.T) {
+	for _, allowed := range []bool{true, false} {
+		t.Run(map[bool]string{true: "allowed", false: "denied"}[allowed], func(t *testing.T) {
+			id := int64(47)
+			repo := &geminiAllowlistAccountRepoStub{gatewayModelsAccountRepoStub: gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{id: {
+				{ID: 1, Platform: service.PlatformGemini, Type: service.AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test"}},
+			}}}}
+			upstream := &geminiMixedModelsUpstream{status: http.StatusOK, body: `{"data":[{"id":"gemini-nano-banana-2.1"},{"id":"gemini-2.5-flash"}],"object":"list"}`}
+			h := &GatewayHandler{geminiCompatService: service.NewGeminiMessagesCompatService(repo, nil, nil, nil, nil, nil, upstream, nil, &config.Config{})}
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodGet, "/v1beta/models", nil)
+			models := []string{"not-authorized"}
+			if allowed {
+				models = []string{"gemini-nano-banana-2.1"}
+			}
+			c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{GroupID: &id, Group: &service.Group{ID: id, Platform: service.PlatformGemini,
+				ModelAllowlist: service.GroupModelAllowlist{Enabled: true, Models: models},
+			}})
+			h.GeminiV1BetaListModels(c)
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			require.Equal(t, "native-id", rec.Header().Get("X-Request-Id"))
+			require.NotContains(t, rec.Body.String(), `"data"`)
+			var got gemini.ModelsListResponse
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+			if allowed {
+				require.Len(t, got.Models, 1)
+				require.Equal(t, "models/gemini-nano-banana-2.1", got.Models[0].Name)
+			} else {
+				require.Empty(t, got.Models)
+			}
+		})
+	}
+}

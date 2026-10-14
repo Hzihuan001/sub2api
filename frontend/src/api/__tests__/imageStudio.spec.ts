@@ -90,7 +90,7 @@ describe('imageStudio API', () => {
       ok: true,
       json: async () => ({
         models: [
-          { name: 'models/gemini-nano-banana-2.1', display_name: 'Nano Banana 2.1' },
+          { name: 'models/gemini-nano-banana-2.1', displayName: 'Nano Banana 2.1' },
           { name: 'models/gemini-2.5-flash', display_name: 'Chat' },
           { name: 'models/gemini-nano-banana-2.1', display_name: 'Duplicate' },
         ],
@@ -105,6 +105,83 @@ describe('imageStudio API', () => {
       expect.objectContaining({ headers: { Authorization: 'Bearer sk-gemini' } }),
     )
   })
+
+  it('accepts an OpenAI-compatible model envelope from the native Gemini route', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        object: 'list',
+        data: [
+          { id: 'gemini-nano-banana-2.1' },
+          { id: 'models/gemini-nano-banana-2.1', name: 'Duplicate' },
+          { id: 'gemini-2.5-flash' },
+        ],
+      }),
+    } as Response)
+
+    await expect(listImageStudioModels('sk-gemini', undefined, { nativeGemini: true })).resolves.toEqual([
+      { id: 'gemini-nano-banana-2.1', name: 'gemini-nano-banana-2.1' },
+    ])
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/v1beta\/models$/),
+      expect.objectContaining({ headers: { Authorization: 'Bearer sk-gemini' } }),
+    )
+  })
+
+  it('prefers a populated native Gemini list over a compatible data list', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        models: [{ name: 'models/gemini-nano-banana-2.1', display_name: 'Native Nano Banana' }],
+        data: [{ id: 'gpt-image-1' }],
+      }),
+    } as Response)
+
+    await expect(listImageStudioModels('sk-gemini', undefined, { nativeGemini: true })).resolves.toEqual([
+      { id: 'gemini-nano-banana-2.1', name: 'Native Nano Banana' },
+    ])
+  })
+
+  it('does not repopulate an empty allowlisted native list from compatible data', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ models: [], data: [{ id: 'gemini-nano-banana-2.1' }] }),
+    } as Response)
+
+    await expect(listImageStudioModels('sk-gemini', undefined, { nativeGemini: true })).resolves.toEqual([])
+  })
+
+  it.each([undefined, {}])(
+    'falls back to compatible data when the native model list is unusable: %j',
+    async (models) => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ models, data: [null, { id: 'gemini-nano-banana-2.1' }] }),
+      } as Response)
+
+      await expect(listImageStudioModels('sk-gemini', undefined, { nativeGemini: true })).resolves.toEqual([
+        { id: 'gemini-nano-banana-2.1', name: 'gemini-nano-banana-2.1' },
+      ])
+    },
+  )
+
+  it('ignores malformed native entries without falling back to another list', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ models: [null, 'invalid', { name: 123 }], data: [{ id: 'gemini-nano-banana-2.1' }] }),
+    } as Response)
+
+    await expect(listImageStudioModels('sk-gemini', undefined, { nativeGemini: true })).resolves.toEqual([])
+  })
+
+  it.each([null, {}, { models: 'invalid', data: {} }])(
+    'handles malformed model list payloads without crashing: %j',
+    async (payload) => {
+      vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => payload } as Response)
+
+      await expect(listImageStudioModels('sk-gemini', undefined, { nativeGemini: true })).resolves.toEqual([])
+    },
+  )
 
   it('uses the JSON generations endpoint for text-to-image requests', async () => {
     vi.mocked(fetch).mockResolvedValue({

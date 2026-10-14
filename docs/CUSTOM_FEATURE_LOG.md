@@ -64,6 +64,16 @@
 
 ## 版本与功能时间线
 
+### 2026-10-14 — `0.2.16-custom.2` — Nano Banana 模型目录兼容（verified，未部署）
+
+- **需求 / Feature ID**：修复 Nano Banana 分组密钥在生图工作台无法发现 `gemini-nano-banana-2.1`；`image-studio`。
+- **基线**：官方 `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306`，定制 `custom-0.2.16.1` / `ece7cf220`，分支 `codex/v0.2.16-image-studio`。
+- **根因与边界**：上游原生模型路径返回 OpenAI `data[].id`。`backend/internal/service/gemini_models_endpoints.go` 仅归一化 HTTP 200 兼容目录，保留原生信封、错误和额外信封字段；删除转换源 `data`，让分组白名单统一作用于 `models`。`frontend/src/api/imageStudio.ts` 兼容信封、去重并读取原生 `displayName`，不回填服务端过滤后为空的原生目录。
+- **不变 / 迁移**：生图请求、路由、密钥、调度、计费、尺寸、参考图和下载不变；没有数据库迁移，不添加静态假模型或发现请求。
+- **测试**：service/handler 的兼容信封、去重、空值/非法载荷、原生保留、白名单允许/拒绝及响应头回归通过；前端 API/工作台 25 项、typecheck、定向 ESLint 通过。
+- **提交 / 镜像 / 部署**：发布中；待补充最终 commit、tag、digest 与三站验收，不把本条验证误认为已部署。
+- **回滚**：上一版三站共同 digest `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17`；只回退应用镜像，无需改库。
+
 ### 2026-10-04 — 同步隔离和升级自动化加固
 
 - **需求/目的**：让官方下一次发布可以自动生成升级分支、冲突报告和测试结果，避免再次从历史大合并提交中人工猜测定制内容。

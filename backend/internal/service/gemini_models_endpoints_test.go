@@ -142,6 +142,41 @@ func TestForwardListModels_APIKeyForwardsToBaseURL(t *testing.T) {
 	require.Equal(t, "sk-pool", upstream.lastReq.Header.Get("x-goog-api-key"))
 }
 
+func TestForwardListModels_APIKeyNormalizesCompatibleEnvelope(t *testing.T) {
+	upstream := &httpUpstreamRecorder{resp: vertexModelsJSONResponse(http.StatusOK, `{"data":[{"id":"gemini-nano-banana-2.1","display_name":"Nano Banana 2.1"}],"object":"list","nextPageToken":"next"}`)}
+	svc := newGeminiModelsEndpointsTestService(nil, upstream)
+	account := &Account{ID: 261, Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk-pool", "base_url": "https://relay.example.com"}}
+
+	res, err := svc.ForwardListModels(context.Background(), account)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, []string{"models/gemini-nano-banana-2.1"}, decodeGeminiModelNames(t, res.Body))
+	require.Contains(t, string(res.Body), `"displayName":"Nano Banana 2.1"`)
+	require.Contains(t, string(res.Body), `"nextPageToken":"next"`)
+	require.NotContains(t, string(res.Body), `"data"`)
+	require.Len(t, upstream.requests, 1)
+}
+
+func TestNormalizeGeminiModelsListBody(t *testing.T) {
+	t.Run("deduplicates and skips empty IDs", func(t *testing.T) {
+		body := []byte(`{"data":[{"id":"models/gemini-nano-banana-2.1"},{"id":"gemini-nano-banana-2.1"},{"name":"gemini-2.5-flash-image"},{"id":" "}],"custom":42}`)
+		got := normalizeGeminiModelsListBody(body)
+		require.Equal(t, []string{"models/gemini-nano-banana-2.1", "models/gemini-2.5-flash-image"}, decodeGeminiModelNames(t, got))
+		require.Contains(t, string(got), `"custom":42`)
+	})
+	t.Run("empty compatible list stays empty", func(t *testing.T) {
+		require.JSONEq(t, `{"models":[],"object":"list"}`, string(normalizeGeminiModelsListBody([]byte(`{"data":[],"object":"list"}`))))
+	})
+	for _, body := range []string{
+		`{"models":[{"name":"models/gemini-native","custom":42}],"data":[{"id":"ignored"}]}`,
+		`{"error":{"message":"upstream error"}}`, `null`, `not-json`, `{"data":{}}`, `{"data":null}`, `{"data":[{"id":123}]}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			require.Equal(t, []byte(body), normalizeGeminiModelsListBody([]byte(body)))
+		})
+	}
+}
+
 func TestForwardGetModel_VertexServiceAccountLooksUpModelList(t *testing.T) {
 	listBody := `{"publisherModels":[{"name":"publishers/google/models/gemini-3.8-flash"}]}`
 

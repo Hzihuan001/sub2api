@@ -125,7 +125,11 @@ func (s *GeminiMessagesCompatService) ForwardListModels(ctx context.Context, acc
 		return nil, errors.New("account is nil")
 	}
 	if !account.IsVertexServiceAccount() {
-		return s.forwardGeminiModelsGET(ctx, account, "/v1beta/models")
+		res, err := s.forwardGeminiModelsGET(ctx, account, "/v1beta/models")
+		if err == nil && res != nil && res.StatusCode == http.StatusOK {
+			res.Body = normalizeGeminiModelsListBody(res.Body)
+		}
+		return res, err
 	}
 	if account.IsVertexAPIKey() {
 		return geminiModelsJSONResult(http.StatusOK, gemini.FallbackModelsList())
@@ -143,6 +147,57 @@ func (s *GeminiMessagesCompatService) ForwardListModels(ctx context.Context, acc
 		models = append(models, gemini.FallbackModel(modelID))
 	}
 	return geminiModelsJSONResult(http.StatusOK, gemini.ModelsListResponse{Models: models})
+}
+
+// Some Gemini-compatible relays return an OpenAI model envelope even on the
+// native endpoint. Normalize it before the handler applies group allowlists.
+func normalizeGeminiModelsListBody(body []byte) []byte {
+	var envelope map[string]json.RawMessage
+	if json.Unmarshal(body, &envelope) != nil || envelope == nil {
+		return body
+	}
+	if _, native := envelope["models"]; native {
+		return body
+	}
+	raw, compatible := envelope["data"]
+	if !compatible || string(raw) == "null" {
+		return body
+	}
+	var items []struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		DisplayName string `json:"display_name"`
+	}
+	if json.Unmarshal(raw, &items) != nil {
+		return body
+	}
+	models := make([]gemini.Model, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			id = strings.TrimSpace(item.Name)
+		}
+		id = strings.TrimPrefix(id, "models/")
+		if id == "" || seen[id] {
+			continue
+		}
+		model := gemini.FallbackModel(id)
+		model.DisplayName = item.DisplayName
+		models = append(models, model)
+		seen[id] = true
+	}
+	encoded, err := json.Marshal(models)
+	if err != nil {
+		return body
+	}
+	envelope["models"] = encoded
+	delete(envelope, "data")
+	converted, err := json.Marshal(envelope)
+	if err != nil {
+		return body
+	}
+	return converted
 }
 
 // ForwardGetModel 读取账号上游的单个模型信息，返回 AI Studio 格式的响应（GET /v1beta/models/{model}）。
