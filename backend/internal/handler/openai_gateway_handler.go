@@ -3919,6 +3919,13 @@ func openAIFirstOutputFailoverExhausted(failoverErr *service.UpstreamFailoverErr
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
+	writeOpenAIErrorResponse(c, status, errType, message)
+}
+
+// writeOpenAIErrorResponse is the stateless OpenAI error writer shared by
+// narrow handlers. Keep compact SSE handling here so extracting a handler's
+// audit dependency cannot change the response protocol.
+func writeOpenAIErrorResponse(c *gin.Context, status int, errType, message string) {
 	// body-signal compact 心跳可能已把响应头提交为 200：JSON 错误体会与已
 	// 提交的 SSE 流交错，必须降级为 response.failed 终止事件（#3887）。
 	if service.StopOpenAICompactSSEKeepaliveCommitted(c) {

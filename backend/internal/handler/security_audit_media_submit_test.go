@@ -143,8 +143,8 @@ func TestAsyncImageSuccessfulPrecheckIsNotRepeatedByDetachedExecution(t *testing
 func TestBatchImagePromptGuardRunsBeforePersistenceOrBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := blockingHandlerPromptEngine()
-	openAI := &OpenAIGatewayHandler{securityAuditCoordinator: securityaudit.NewCoordinator(nil, engine)}
-	h := &BatchImageHandler{openAI: openAI}
+	auditGate := NewSecurityAuditGate(securityaudit.NewCoordinator(nil, engine), nil)
+	h := &BatchImageHandler{auditGate: auditGate}
 	router := gin.New()
 	router.Use(securityAuditMediaTestMiddleware)
 	router.POST("/v1/images/batches", h.Submit)

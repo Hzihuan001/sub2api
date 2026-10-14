@@ -15,11 +15,17 @@ import (
 )
 
 func (h *OpenAIGatewayHandler) openAISecurityAuditError(c *gin.Context, decision *securityaudit.Decision) {
+	writeOpenAISecurityAuditError(c, decision)
+}
+
+// writeOpenAISecurityAuditError shares the existing response format without
+// coupling media submit handlers to the full OpenAI gateway.
+func writeOpenAISecurityAuditError(c *gin.Context, decision *securityaudit.Decision) {
 	if decision == nil {
 		return
 	}
 	if decision.Legacy != nil && decision.Legacy.Blocked {
-		h.errorResponse(c, securityAuditStatus(decision), securityAuditErrorCode(decision), securityAuditMessage(decision))
+		writeOpenAIErrorResponse(c, securityAuditStatus(decision), securityAuditErrorCode(decision), securityAuditMessage(decision))
 		return
 	}
 	errType := "api_error"

@@ -157,11 +157,11 @@ func ProvideBatchImageHandler(
 	batchService *service.BatchImagePublicService,
 	download *service.BatchImageDownloadService,
 	cleanup *service.BatchImageCleanupService,
-	openAI *OpenAIGatewayHandler,
+	coordinator *securityaudit.Coordinator,
+	contentModerationService *service.ContentModerationService,
 ) *BatchImageHandler {
-	h := NewBatchImageHandler(batchService, download, cleanup)
-	h.openAI = openAI
-	return h
+	return NewBatchImageHandler(batchService, download, cleanup,
+		NewSecurityAuditGate(coordinator, contentModerationService))
 }
 
 // ProvideSystemHandler creates admin.SystemHandler with UpdateService

@@ -18,14 +18,18 @@ import (
 )
 
 type BatchImageHandler struct {
-	service  *service.BatchImagePublicService
-	download *service.BatchImageDownloadService
-	cleanup  *service.BatchImageCleanupService
-	openAI   *OpenAIGatewayHandler
+	service   *service.BatchImagePublicService
+	download  *service.BatchImageDownloadService
+	cleanup   *service.BatchImageCleanupService
+	auditGate SecurityAuditGate
 }
 
-func NewBatchImageHandler(service *service.BatchImagePublicService, download *service.BatchImageDownloadService, cleanup *service.BatchImageCleanupService) *BatchImageHandler {
-	return &BatchImageHandler{service: service, download: download, cleanup: cleanup}
+func NewBatchImageHandler(service *service.BatchImagePublicService, download *service.BatchImageDownloadService, cleanup *service.BatchImageCleanupService, auditGates ...SecurityAuditGate) *BatchImageHandler {
+	var auditGate SecurityAuditGate
+	if len(auditGates) > 0 {
+		auditGate = auditGates[0]
+	}
+	return &BatchImageHandler{service: service, download: download, cleanup: cleanup, auditGate: auditGate}
 }
 
 func (h *BatchImageHandler) Submit(c *gin.Context) {
@@ -54,8 +58,12 @@ func (h *BatchImageHandler) Submit(c *gin.Context) {
 }
 
 func (h *BatchImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, req *service.BatchImageSubmitRequest) bool {
-	if h == nil || h.openAI == nil || req == nil {
+	if h == nil || req == nil {
 		return true
+	}
+	if h.auditGate == nil {
+		batchImageError(c, errMissingSecurityAuditGate)
+		return false
 	}
 	apiKey, ok := middleware.GetAPIKeyFromContext(c)
 	if !ok || apiKey == nil {
@@ -83,9 +91,9 @@ func (h *BatchImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, req *
 	}
 	reqLog := requestLogger(c, "handler.batch_image.security_audit",
 		zap.Int64("user_id", subject.UserID), zap.Int64("api_key_id", apiKey.ID), zap.String("model", req.Model))
-	decision := h.openAI.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, req.Model, body)
+	decision := h.auditGate.Check(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, req.Model, body)
 	if decision != nil && !decision.AllowNextStage {
-		h.openAI.openAISecurityAuditError(c, decision)
+		writeOpenAISecurityAuditError(c, decision)
 		return false
 	}
 	return true
