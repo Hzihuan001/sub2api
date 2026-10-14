@@ -167,9 +167,15 @@ func TestNormalizeGeminiModelsListBody(t *testing.T) {
 	t.Run("empty compatible list stays empty", func(t *testing.T) {
 		require.JSONEq(t, `{"models":[],"object":"list"}`, string(normalizeGeminiModelsListBody([]byte(`{"data":[],"object":"list"}`))))
 	})
+	t.Run("malformed entries do not prevent permission filtering", func(t *testing.T) {
+		body := []byte(`{"models":{},"data":[{"id":123},null,"invalid",{"id":"gemini-nano-banana-2.1"}]}`)
+		got := normalizeGeminiModelsListBody(body)
+		require.Equal(t, []string{"models/gemini-nano-banana-2.1"}, decodeGeminiModelNames(t, got))
+		require.NotContains(t, string(got), `"data"`)
+	})
 	for _, body := range []string{
 		`{"models":[{"name":"models/gemini-native","custom":42}],"data":[{"id":"ignored"}]}`,
-		`{"error":{"message":"upstream error"}}`, `null`, `not-json`, `{"data":{}}`, `{"data":null}`, `{"data":[{"id":123}]}`,
+		`{"error":{"message":"upstream error"}}`, `null`, `not-json`, `{"data":{}}`, `{"data":null}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			require.Equal(t, []byte(body), normalizeGeminiModelsListBody([]byte(body)))

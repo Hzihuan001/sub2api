@@ -156,24 +156,31 @@ func normalizeGeminiModelsListBody(body []byte) []byte {
 	if json.Unmarshal(body, &envelope) != nil || envelope == nil {
 		return body
 	}
-	if _, native := envelope["models"]; native {
-		return body
+	if native, exists := envelope["models"]; exists {
+		var models []json.RawMessage
+		if len(native) > 0 && native[0] == '[' && json.Unmarshal(native, &models) == nil {
+			return body
+		}
 	}
 	raw, compatible := envelope["data"]
 	if !compatible || string(raw) == "null" {
 		return body
 	}
-	var items []struct {
-		ID          string `json:"id"`
-		Name        string `json:"name"`
-		DisplayName string `json:"display_name"`
-	}
+	var items []json.RawMessage
 	if json.Unmarshal(raw, &items) != nil {
 		return body
 	}
 	models := make([]gemini.Model, 0, len(items))
 	seen := make(map[string]bool, len(items))
-	for _, item := range items {
+	for _, rawItem := range items {
+		var item struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			DisplayName string `json:"display_name"`
+		}
+		if json.Unmarshal(rawItem, &item) != nil {
+			continue
+		}
 		id := strings.TrimSpace(item.ID)
 		if id == "" {
 			id = strings.TrimSpace(item.Name)

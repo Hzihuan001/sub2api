@@ -142,7 +142,7 @@ func TestGeminiNativeModelsCompatibleEnvelopeHonorsAllowlist(t *testing.T) {
 			repo := &geminiAllowlistAccountRepoStub{gatewayModelsAccountRepoStub: gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{id: {
 				{ID: 1, Platform: service.PlatformGemini, Type: service.AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test"}},
 			}}}}
-			upstream := &geminiMixedModelsUpstream{status: http.StatusOK, body: `{"data":[{"id":"gemini-nano-banana-2.1"},{"id":"gemini-2.5-flash"}],"object":"list"}`}
+			upstream := &geminiMixedModelsUpstream{status: http.StatusOK, body: `{"models":{},"data":[{"id":123},{"id":"gemini-nano-banana-2.1"},{"id":"gemini-2.5-flash"}],"object":"list"}`}
 			h := &GatewayHandler{geminiCompatService: service.NewGeminiMessagesCompatService(repo, nil, nil, nil, nil, nil, upstream, nil, &config.Config{})}
 			rec := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(rec)
