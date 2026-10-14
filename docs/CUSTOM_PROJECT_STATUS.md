@@ -9,6 +9,15 @@
 
 ## 1. 当前快照
 
+### 2026-10-14 — `.5` 三站发布完成（最新）
+
+- **完成**：`gateway-resilience` 统一可恢复故障切换已发布；运行提交 `00e8f24a40eba481d1e61cfebb5f4ab3f9401a2b`，标签 `custom-0.2.16.5` 已推送。本页下方“准备中 / 未发布”是此前阶段记录，不是当前状态。
+- **行为**：同账号 5 分钟累计 3 次明确 overload，默认冷却 10 分钟；额度/凭据/模型不可用及可恢复上游故障按类别限次并换号。参数/安全拒绝、已输出流不自动重放。保留原调度权重、分组权限和计费，不保证无健康备用账号时仍可成功。
+- **验证**：相关 Go 单测及 vet、隔离检查、生产构建通过；Docker 11 类合成故障验证通过，无真实模型费用；正式 GHCR 产物回拉与验收 image ID 一致。Actions 仍 disabled，使用本地验收产物直发，不声称 CI 通过。
+- **生产**：20:32–20:33（Asia/Shanghai）主站/L1/COS 顺序更新同一 digest；20:34 复核三站 healthy、重启 0，健康与静态入口 HTTP 200、关键启动错误 0。仅重建应用，无新迁移，数据库/Redis/反代保持。
+- **备份 / 回滚**：`/opt/sub2api-backups/v0.2.16-custom.5-20261014T120809Z` 已验证。回退 `.4` digest `sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e`，只回退应用，不恢复旧库。
+- **完整交接**：[验收及回滚说明](GATEWAY_RESILIENCE_V0_2_16_5_ACCEPTANCE.md)。下一轮从包含 `.5` 的本分支继续，不从落后的集成分支或根目录旧源码发布。
+
 ### 2026-10-14 — 网关故障切换统一（`.5` 发布准备中）
 
 - **授权**：用户已要求按错误分类改造、推送、部署三站并更新日志；生产目前仍为 `.4`，以下不是部署成功记录。
@@ -27,7 +36,7 @@
 - **限制**：DB 写入失败时本实例仍暂避账号，持久化补偿由后续 overload 触发，未加后台任务。若以后同一站扩展多应用实例，人工清除没有跨实例本地缓存广播，其它实例可能继续冷却到原截止；当前每站单实例。不要把本地验证写成已部署。
 - **验证完成**：服务/handler 相关 overload、重试、SSE 心跳和 runtime-block 回归通过（29.164s/6.994s）；Redis 原子计数、滚动窗口、租约补偿等 9 组通过。管理员恢复与并发清除、WS 三类配对错误回归通过。最终组合 `go test -tags=unit ./internal/custom ./internal/service ./internal/handler ./internal/repository -run 'TestAccountOverload|TestOpenAIRepeatedOverload|TestOpenAIQueueHeartbeat|TestProxyResponsesWebSocketFromClient_CountsOverloadOncePerUpstreamTurn|TestAdminService_ClearAccountError|TestRateLimitService_Clear|TestBuiltInFeatureManifests|TestSameAccount'` 全部通过；四包 `go vet` 通过。迁移/manifest/保护路径检查通过；未改生成文件，完整生成检查因工作树未提交要求 clean 未通过，未声称全量 CI 通过。完整发布门禁、Docker 和生产验收尚未执行。
 
-> **最新进度（2026-10-14）**：`0.2.16-custom.4` 已推送并部署主站、L1、COS，三站快速验收通过。所有提供商新批量任务固定额外倍率 1，不再五折；普通倍率保留。三站现有分组已规范为 1，旧任务快照及历史账目不改，超额返回图片不自动追加收费。详细证据见最新功能日志和验收文档。
+> **最新进度（2026-10-14）**：`0.2.16-custom.5` 已推送并部署主站、L1、COS，统一故障切换验收通过；包含 `.4` 批量不额外打折和 `.3` Nano Banana 修复。原计费及历史账目不改。详细证据见最新功能日志和验收文档。
 
 > **最近运维（2026-10-14）**：清理本地 15 个、OVH 2 个无引用旧镜像，当前版本和回滚镜像保留；没有删除容器、数据库、卷或缓存，三站仍 healthy、重启 0。详见功能日志的“运维清理”记录，生产版本不变。
 
@@ -42,9 +51,9 @@
 | --- | --- |
 | 记录日期 | 2026-10-14 |
 | 官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
-| 当前定制版本 | `0.2.16-custom.4`（取消批量额外折扣；包含 `.3` Nano Banana 修复） |
-| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.4` |
-| 最新已发布基线 | `custom-0.2.16.4` / `c9f6829730c8f74bbf171e03b7e384e93e2f9ea2` |
+| 当前定制版本 | `0.2.16-custom.5`（统一故障切换；包含 `.4` / `.3` 修复） |
+| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.5` |
+| 最新已发布基线 | `custom-0.2.16.5` / `00e8f24a40eba481d1e61cfebb5f4ab3f9401a2b` |
 | 当前工作分支 | `codex/v0.2.16-image-studio` |
 | 升级工作树 | `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` |
 | 官方合并 / 生图移植提交 | `d3b78cf8c` / `2c007ec6a`；运行代码修复 `e42db1f11`，验收脚本 `f17cae568` |
@@ -52,9 +61,9 @@
 | 当前隔离改造 PR | 草稿 PR #1（如仍未合并）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 主站生产镜像 digest | `sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e` |
-| L1/COS 生产镜像 digest | `sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e` |
-| 当前发布状态 | `.4` 已发布并部署三站，快速验收通过；旧 `.2` 仍仅保留源码标签 |
+| 主站生产镜像 digest | `sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b` |
+| L1/COS 生产镜像 digest | `sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b` |
+| 当前发布状态 | `.5` 已发布并部署三站，快速验收通过；旧 `.2` 仍仅保留源码标签 |
 
 生产健康检查最近确认通过的入口：
 
@@ -64,7 +73,7 @@
 
 2026-10-12 两个下游入口切换到 Moshu 子域名并开启 Cloudflare 代理；旧 `tokenpulse.top` 入口保留。OVH OpenResty 继续使用 HTTPS、10 小时读写超时和关闭响应缓冲。域名运维记录见功能日志。
 
-本次生产三站统一使用同一镜像 digest：`sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e`。发布前完整备份 `/opt/sub2api-backups/v0.2.16-custom.4-20261014T074350Z` 包含三份 PostgreSQL custom-format dump、Compose/环境配置、数据和 OpenResty 配置归档；目录、tar 及校验和均验证。切换前另有 `.4-config-*` 各站快照。回滚到 `.3` digest `sha256:a96e2a5a52e0d7a83a9829371715359b2afcc0a02168fe8bded77b55dcfdeec3`，仅恢复应用镜像，不还原旧库覆盖新业务；新增迁移保留兼容字段，规范后的分组倍率 1 保留，旧任务快照未改。
+本次生产三站统一使用同一镜像 digest：`sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b`。`.5` 备份和回退 `.4` 的命令见本页最新验收文档；此前 `.4` 备份 `/opt/sub2api-backups/v0.2.16-custom.4-20261014T074350Z` 继续保留。所有历史批量任务与价格快照不改，不还原旧库覆盖新业务。
 
 ### 批量无额外折扣（2026-10-14，deployed）
 

@@ -4,9 +4,9 @@
 
 - 官方基线：v0.2.16；上一生产版本：0.2.16-custom.4。
 - 运行代码：`00e8f24a40eba481d1e61cfebb5f4ab3f9401a2b`。
-- 计划源码标签：`custom-0.2.16.5`，指向上述运行提交；后续验收脚本和文档提交不改变运行产物。
+- 源码标签：`custom-0.2.16.5`，已推送，指向上述运行提交；后续验收脚本和文档提交不改变运行产物。
 - 工作分支：`codex/v0.2.16-image-studio`。
-- 本条记录时本地验收通过，尚未推送镜像或部署生产；发布结果在本文末尾追加。
+- 当前状态：已推送并部署三站，最终结果见本文末尾。
 
 ## 行为与边界
 
@@ -58,3 +58,36 @@ Linux/amd64 正式版本 Docker 构建通过；镜像内版本及 commit 与上�
 - 持久化失败时本实例仍暂避，DB 补偿依靠后续 overload 信号，未增加后台扫描。
 - 当前三站各单应用实例；未来多副本运行时，手动清理不会广播其它进程的本地冷却，它们可能保持到原截止。
 - 新账号变更通过已有 outbox 异步进入调度快照；此次没有扩大为调度缓存重构。
+
+## 正式发布与生产验收（2026-10-14，deployed）
+
+- 镜像：`ghcr.io/hzihuan001/sub2api:0.2.16-custom.5`，linux/amd64。
+- 不可变 digest：`sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b`。
+- 构建时间：`2026-10-14T12:15:52Z`，镜像内版本、commit 及 OCI 标签一致。正式 GHCR 镜像拉回后与本地 11 场景验收容器的 image ID 完全一致。
+- 代码、标签、验收脚本均已推送；脚本修正 `3fed247fa`，本地验收文档 `42e456012`。GitHub Actions dispatch 仍返回 HTTP 422 `Actions has been disabled for this repository`，没有 CI 新运行；使用本地已通过门禁的同一产物直接发 GHCR，不能记成全量 CI 通过。
+- 三站于 20:32–20:33（Asia/Shanghai）依次 app-only 更新；20:34 复核完成。
+
+| 站点 | 应用容器 | 结果 |
+| --- | --- | --- |
+| ai.moshu.cloud | 1Panel-sub2api-bjGj | healthy，重启 0 |
+| api.moshu.cloud | api-L1 | healthy，重启 0 |
+| cos.moshu.cloud | api-COS | healthy，重启 0 |
+
+三站运行版本/commit/digest/Compose 一致；内网及公网健康检查通过，公网 `/health`、`/login`、`/image-studio` 均 HTTP 200。启动后关键 panic/fatal/迁移失败/数据库或 Redis 连接失败匹配数均 0。生图入口仅作 HTTP 可达性检查，未发起付费图片/模型请求；故障注入只在本地隔离容器执行，不声称覆盖所有实际供应商故障或登录后完整 UI。
+
+数据库、Redis、卷、网络、反代、现有数据均未重建或变更；没有新迁移和生产费率修改。旧 `.4` 镜像保留，前述备份已验证可读。生产日志证据保存在本地 `D:/projects/go-tmp/gateway-resilience-production-deploy.log` 和 `gateway-resilience-production-verify.log`。
+
+回滚时先选择失败站点，确认当前 Compose 仍为本次新 digest，再仅替换镜像并重建该应用。例如主站（在 OVH 执行）：
+
+```bash
+compose=/opt/1panel/apps/sub2api/sub2api/docker-compose.yml
+new=ghcr.io/hzihuan001/sub2api@sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b
+old=ghcr.io/hzihuan001/sub2api@sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e
+test "$(grep -Fc "$new" "$compose")" = 1 &&
+  cp -p "$compose" "$compose.before-rollback-$(date -u +%Y%m%dT%H%M%SZ)" &&
+  sed -i "s|$new|$old|" "$compose" &&
+  docker compose -f "$compose" config --quiet &&
+  docker compose -f "$compose" up -d --no-deps sub2api
+```
+
+L1/COS 分别使用 `/opt/api-L1/docker-compose.yml`、`/opt/api-COS/docker-compose.yml`，服务名为 `api`。不要恢复旧数据库覆盖上线后的业务数据；回滚后重新验证版本和健康。

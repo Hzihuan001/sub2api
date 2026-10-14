@@ -1,5 +1,15 @@
 # 定制功能日志
 
+### 2026-10-14 — 已部署三站 — `0.2.16-custom.5` 网关故障切换
+
+- **Feature ID / 坐标**：`gateway-resilience`，运行提交 `00e8f24a40eba481d1e61cfebb5f4ab3f9401a2b`、标签 `custom-0.2.16.5`；分支 `codex/v0.2.16-image-studio` 已推送，验收脚本 `3fed247fa`、本地报告 `42e456012`。后续文档提交不改变镜像 commit。
+- **生效规则**：同账号 5 分钟累计 3 次明确 overload，默认冷却 10 分钟；额度/凭据/模型不可用与暂时性 429/5xx 按类别冷却或有界重试，继续用原调度选择备用。不重放参数/安全拒绝、已输出流、已取消/已提交请求。具体超时、计数及恢复边界见验收文档；不是所有供应商原生协议重写。
+- **测试**：相关 Go 单测/vet、隔离保护、生产构建通过。Docker 11 场景全部通过：overload=3 次后备用成功且下一请求跳过原账号；quota/model/server/timeout/auth/rate/首内容前 SSE 均转备用；safety/parameter/partial 各仅一次且备用 0。没有真实模型费用；测试夹具等待新账号进入原调度快照，没有因此修改生产调度逻辑。
+- **镜像**：`ghcr.io/hzihuan001/sub2api:0.2.16-custom.5` / `sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b`，linux/amd64；GHCR 回拉与验收镜像一致。Actions dispatch 仍 HTTP 422 disabled，沿用本地门禁直发，不称为全量 CI 通过。
+- **上线**：20:32–20:33（Asia/Shanghai）依次主站 ai.moshu.cloud、L1 api.moshu.cloud、COS cos.moshu.cloud；20:34 复核全为 healthy、重启 0、版本/commit/digest/Compose 一致，内外健康和公网静态入口 200，关键启动错误 0。只重建应用；无新迁移、计费/数据库/Redis/反代改动，未做生产故障注入或付费调用。
+- **备份 / 回滚**：`/opt/sub2api-backups/v0.2.16-custom.5-20261014T120809Z` 三份 PG dump、数据与部署配置可读且 SHA 校验通过；保留 `.4` digest `sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e`，仅 app-only 回退、不恢复旧库。
+- **共享 / 后续**：根工作区共享文档同步，其他会话旧源码改动保留；详细报告 [GATEWAY_RESILIENCE_V0_2_16_5_ACCEPTANCE.md](GATEWAY_RESILIENCE_V0_2_16_5_ACCEPTANCE.md)。Actions 恢复和落后集成分支仍待后续处理；已输出的流无法保证无缝续写，无健康备用时仍可能失败。
+
 ### 2026-10-14 — 实现中 — 统一可恢复故障切换 `0.2.16-custom.5`
 
 - 用户批准把 overload、额度/限流、凭据、上游错误和模型不可用按统一规则处理并三站部署；此条仅记录开发，正式发布坐标在完成后追加。
