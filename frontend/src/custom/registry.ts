@@ -1,6 +1,12 @@
 import type { Component } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
 
+export type CustomLocale = 'en' | 'zh'
+export type CustomLocaleMessages = { [key: string]: string | CustomLocaleMessages }
+/** Flat, exact message keys keep additions and approved overrides auditable. */
+export type CustomMessageMap = Readonly<Record<string, string>>
+export type CustomMessageLoader = (hostMessages: Readonly<CustomLocaleMessages>) => Promise<CustomMessageMap>
+
 /**
  * A menu item supplied by a custom feature.
  *
@@ -14,6 +20,9 @@ export interface CustomMenuItem {
   labelKey: string
   /** Optional host menu path that should receive this item as a child. */
   parentPath?: string
+  /** Stable sibling anchors in the host menu; use at most one. */
+  beforePath?: string
+  afterPath?: string
   icon?: unknown
   iconSvg?: string
   permission?: string
@@ -52,6 +61,9 @@ export interface CustomFeatureManifest {
   settingsTabs?: readonly CustomSettingsTab[]
   permissions?: readonly string[]
   i18nNamespace?: string
+  messages?: Partial<Record<CustomLocale, CustomMessageLoader>>
+  /** Exact existing host keys this feature may override; no wildcard or prefix overrides. */
+  messageOverrides?: readonly string[]
 }
 
 /**
@@ -95,6 +107,7 @@ function ensureManifest(manifest: CustomFeatureManifest): CustomFeatureManifest 
     routes: manifest.routes ? [...manifest.routes] : [],
     menuItems: manifest.menuItems ? [...manifest.menuItems] : [],
     settingsTabs: manifest.settingsTabs ? [...manifest.settingsTabs] : [],
+    messageOverrides: manifest.messageOverrides ? [...manifest.messageOverrides] : [],
     permissions: manifest.permissions ? [...manifest.permissions] : []
   }
 }
@@ -158,6 +171,7 @@ function assertContributionResources(features: readonly CustomFeatureManifest[])
       claim(menuIds, item.id, 'menu id')
       claim(menuPaths, item.path.replace(/\/$/, '') || '/', 'menu path')
       requiredResourceKey(item.labelKey, 'menu labelKey')
+      if (item.beforePath && item.afterPath) throw new Error(`Custom menu has conflicting placement anchors: ${item.id}`)
       if (item.children) visitMenus(item.children)
     }
   }

@@ -39,6 +39,7 @@ export const usageExtrasFeature: CustomFeatureManifest = {
       id: 'admin-usage',
       path: '/admin/usage',
       labelKey: 'nav.usage',
+      beforePath: '/admin/audit-logs',
       icon: UsageIcon,
       permission: 'usage'
     }

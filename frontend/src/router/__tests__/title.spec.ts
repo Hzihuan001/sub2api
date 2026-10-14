@@ -32,6 +32,11 @@ describe('resolveDocumentTitle', () => {
     expect(before).toBe('Admin Dashboard - Alpha')
     expect(after).toBe('Admin Dashboard - Beta')
   })
+
+  it('preserves an explicitly configured name and technical route text without global replacement', () => {
+    expect(resolveDocumentTitle('https://Sub2API.example/sub2api', '  Sub2API Customer  '))
+      .toBe('https://Sub2API.example/sub2api - Sub2API Customer')
+  })
 })
 
 describe('resolveRouteDocumentTitle', () => {

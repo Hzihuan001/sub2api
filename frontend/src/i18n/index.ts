@@ -1,8 +1,9 @@
 import { createI18n } from 'vue-i18n'
+import { loadCustomLocaleMessages, type CustomLocaleMessages } from '@/custom'
 
 type LocaleCode = 'en' | 'zh'
 
-type LocaleMessages = Record<string, any>
+type LocaleMessages = CustomLocaleMessages
 
 const LOCALE_KEY = 'sub2api_locale'
 const DEFAULT_LOCALE: LocaleCode = 'en'
@@ -35,15 +36,6 @@ export const i18n = createI18n({
   locale: getDefaultLocale(),
   fallbackLocale: DEFAULT_LOCALE,
   messages: {},
-  // Keep the public product name independent from the upstream project name.
-  // Technical identifiers remain unchanged in code; only rendered public copy is branded.
-  postTranslation: (translated: any) =>
-    typeof translated === 'string'
-      ? translated
-          .replace(/Sub2API/g, 'Moshu')
-          .replace(/(?<![\\/._-])sub2api\b/g, 'moshu')
-          .replace(/SUB2API_API_KEY/g, 'MOSHU_API_KEY')
-      : translated,
   // 禁用 HTML 消息警告 - 引导步骤使用富文本内容（driver.js 支持 HTML）
   // 这些内容是内部定义的，不存在 XSS 风险
   warnHtmlMessage: false
@@ -58,7 +50,8 @@ export async function loadLocaleMessages(locale: LocaleCode): Promise<void> {
 
   const loader = localeLoaders[locale]
   const module = await loader()
-  i18n.global.setLocaleMessage(locale, module.default)
+  const messages = await loadCustomLocaleMessages(locale, module.default)
+  i18n.global.setLocaleMessage(locale, messages)
   loadedLocales.add(locale)
 }
 

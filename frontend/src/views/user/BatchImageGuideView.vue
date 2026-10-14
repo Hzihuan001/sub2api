@@ -945,10 +945,10 @@ import {
 } from '@/api/batchImage'
 import type { ApiKey } from '@/types'
 import type { Column } from '@/components/common/types'
+import { getImageOutputFormats, normalizeImageOutputFormat } from '@/utils/imageGenerationPolicy'
 import {
   IMAGE_STUDIO_CUSTOM_SIZE,
   isGeminiNanoBananaModel,
-  isSeedreamImageModel,
   normalizeCustomImageSize,
   normalizeImageStudioCustomSize,
   parseImageDimensions,
@@ -1305,18 +1305,8 @@ const nativeGeminiBatchAspectRatio = computed(() => {
   return form.imageSize === '4K' ? '16:9' : '1:1'
 })
 const responseMimeTypeOptions = computed<SelectOption[]>(() => {
-  if (nativeGeminiBatchModel.value) return [{ value: 'image/png', label: 'PNG' }]
-  if (isSeedreamImageModel(form.model)) {
-    return [
-      { value: 'image/png', label: 'PNG' },
-      { value: 'image/jpeg', label: 'JPEG' },
-    ]
-  }
-  return [
-    { value: 'image/png', label: 'PNG' },
-    { value: 'image/jpeg', label: 'JPEG' },
-    { value: 'image/webp', label: 'WebP' },
-  ]
+  return getImageOutputFormats(form.model, nativeGeminiBatchModel.value)
+    .map(format => ({ value: `image/${format}`, label: format === 'webp' ? 'WebP' : format.toUpperCase() }))
 })
 const normalizedResponseMimeType = computed(() => normalizeBatchResponseMimeType(
   form.model,
@@ -1377,11 +1367,7 @@ function normalizeBatchResponseMimeType(model: string, provider = '', requested 
     || normalizedProvider === 'vertex_ai'
     || normalizedProvider === 'managed_async'
     || isNativeGeminiImageModel(model)
-  if (isNativeGemini) return 'image/png'
-  if (isSeedreamImageModel(model)) {
-    return requested === 'image/jpeg' ? 'image/jpeg' : 'image/png'
-  }
-  return requested || 'image/png'
+  return normalizeImageOutputFormat(model, isNativeGemini, requested, 'mime') || 'image/png'
 }
 
 const selectedModelReferenceLimit = computed(() => {

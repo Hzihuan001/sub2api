@@ -199,7 +199,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import type { ManagementPermission } from '@/authz/permissions'
-import { getHostCustomMenuItems } from '@/custom'
+import { getHostCustomMenuItems, placeCustomMenuItems } from '@/custom'
 import type { HostCustomNavItem } from '@/custom'
 
 interface NavItem {
@@ -224,6 +224,8 @@ interface NavItem {
   featureFlag?: () => boolean | undefined
   permission?: ManagementPermission
   adminOnly?: boolean
+  beforePath?: string
+  afterPath?: string
 }
 
 function toNavItem(item: HostCustomNavItem): NavItem {
@@ -233,6 +235,8 @@ function toNavItem(item: HostCustomNavItem): NavItem {
     icon: item.icon,
     iconSvg: item.iconSvg,
     parentPath: item.parentPath,
+    beforePath: item.beforePath,
+    afterPath: item.afterPath,
     featureFlag: item.featureFlag,
     permission: item.permission as ManagementPermission | undefined,
     adminOnly: item.adminOnly,
@@ -783,6 +787,7 @@ function finalizeNav(items: NavItem[]): NavItem[] {
 function applyOperatorPermissions(items: NavItem[]): NavItem[] {
   if (authStore.isAdmin) return items
   return items.reduce<NavItem[]>((out, item) => {
+    if (item.adminOnly) return out
     if (!item.permission && !item.children) return out
     if (item.permission && !authStore.can(item.permission)) return out
     const children = item.children ? applyOperatorPermissions(item.children) : undefined
@@ -827,12 +832,6 @@ const registryUserMenuItems = computed(() =>
 const registryAdminMenuItems = computed(() =>
   registryMenuItems.value.filter((item) => Boolean(item.permission) || item.adminOnly)
 )
-const registryRoleMenuItem = computed(() =>
-  authStore.isAdmin ? registryAdminMenuItems.value.find((item) => item.path === '/admin/roles') : undefined
-)
-const registryUsageMenuItem = computed(() =>
-  registryAdminMenuItems.value.find((item) => item.path === '/admin/usage')
-)
 
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
@@ -840,7 +839,6 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, permission: 'dashboard' },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring, permission: 'ops' },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true, permission: 'users' },
-    ...(registryRoleMenuItem.value ? [{ ...registryRoleMenuItem.value, icon: ShieldIcon }] : []),
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, permission: 'groups' },
     {
       path: '/admin/channels',
@@ -868,9 +866,6 @@ const adminNavItems = computed((): NavItem[] => {
       expandOnly: true,
       children: [
         { path: '/admin/risk-control', label: t('nav.contentModeration'), icon: ShieldIcon, featureFlag: flagRiskControl, permission: 'riskControl' },
-        ...registryAdminMenuItems.value
-          .filter(item => item.parentPath === '/admin/security-audit')
-          .map(item => ({ ...item, icon: item.icon ?? ShieldIcon })),
       ],
     },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, permission: 'redeemCodes' },
@@ -903,24 +898,13 @@ const adminNavItems = computed((): NavItem[] => {
         { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon, permission: 'orders' },
       ],
     },
-    ...(registryUsageMenuItem.value ? [{ ...registryUsageMenuItem.value, icon: ChartIcon }] : []),
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true, permission: 'auditLogs' }
   ]
 
-  const featureVisible = applyFeatureFlags(baseItems)
+  const featureVisible = applyFeatureFlags(placeCustomMenuItems(baseItems, registryAdminMenuItems.value))
   const visible = authStore.isAdmin
     ? featureVisible
     : applyOperatorPermissions(featureVisible)
-  const registryVisible = applyFeatureFlags(
-    registryAdminMenuItems.value.filter(
-      item => !item.parentPath && item.path !== '/admin/roles' && item.path !== '/admin/usage'
-    )
-  )
-  visible.push(
-    ...(authStore.isAdmin
-      ? registryVisible
-      : applyOperatorPermissions(registryVisible))
-  )
 
   // 简单模式下，在系统设置前插入 API密钥
   if (authStore.isSimpleMode && authStore.isAdmin) {

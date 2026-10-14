@@ -282,4 +282,29 @@ describe('imageStudio API', () => {
       count: 1,
     })).rejects.toMatchObject({ message: 'model is not enabled', code: 'model_disabled', status: 400 })
   })
+
+  it.each(['generations', 'edits', 'native Gemini'] as const)('keeps count normalization on the %s request path', async (transport) => {
+    for (const [count, expected] of [[0, 1], [2.9, 2], [9, 4]]) {
+      vi.mocked(fetch).mockReset().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [{ b64_json: 'aW1hZ2U=' }],
+          candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'aW1hZ2U=' } }] } }],
+        }),
+      } as Response)
+      await generateImageStudioImages('sk-image', {
+        model: 'custom-image', prompt: 'a lighthouse', count,
+        nativeGemini: transport === 'native Gemini',
+        images: transport === 'edits' ? [new File(['image'], 'reference.png', { type: 'image/png' })] : undefined,
+      })
+
+      if (transport === 'native Gemini') {
+        expect(fetch).toHaveBeenCalledTimes(expected)
+      } else {
+        expect(fetch).toHaveBeenCalledOnce()
+        const body = vi.mocked(fetch).mock.calls[0][1]?.body
+        expect(transport === 'edits' ? Number((body as FormData).get('n')) : JSON.parse(String(body)).n).toBe(expected)
+      }
+    }
+  })
 })

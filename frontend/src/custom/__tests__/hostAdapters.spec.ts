@@ -7,6 +7,7 @@ import {
   mapCustomMenuItems,
   mergeCustomRoutes,
   operatorRoleFeature,
+  placeCustomMenuItems,
   promptAuditFeature,
   usageExtrasFeature
 } from '../index'
@@ -114,5 +115,24 @@ describe('custom host adapters', () => {
     const registry = createCustomFeatureRegistry()
     registry.register({ id: 'conflict', settingsTabs: [{ id, labelKey: 'test', component: {} }] })
     expect(() => getHostCustomSettingsTabs(registry, ['general'])).toThrow('conflicts with host:')
+  })
+
+  it('places menu declarations by stable sibling and parent metadata without changing native nodes', () => {
+    const base = [{ path: '/first' }, { path: '/parent', children: [{ path: '/native-child' }] }, { path: '/last' }]
+    const result = placeCustomMenuItems(base, [
+      { path: '/after-one', afterPath: '/first' },
+      { path: '/after-two', afterPath: '/first' },
+      { path: '/before', beforePath: '/last' },
+      { path: '/child', parentPath: '/parent' }
+    ])
+    expect(result.map((item) => item.path)).toEqual(['/first', '/after-one', '/after-two', '/parent', '/before', '/last'])
+    expect(result.find((item) => item.path === '/parent')?.children?.map((item) => item.path)).toEqual(['/native-child', '/child'])
+    expect(base[1].children).toEqual([{ path: '/native-child' }])
+  })
+
+  it('fails rather than silently dropping a menu whose host anchor disappeared', () => {
+    expect(() => placeCustomMenuItems([{ path: '/native' }], [{ path: '/probe', beforePath: '/missing' }])).toThrow('anchor not found')
+    expect(() => placeCustomMenuItems([{ path: '/native' }], [{ path: '/probe', parentPath: '/missing' }])).toThrow('parent not found')
+    expect(() => placeCustomMenuItems([{ path: '/native' }], [{ path: '/native' }])).toThrow('conflicts with host')
   })
 })

@@ -875,6 +875,30 @@ describe("admin SettingsView payment visible method controls", () => {
     });
   });
 
+  it("loads and saves the extracted auth-context field through the original menu payload", async () => {
+    const menuItems = [
+      { id: "external", label: "External", url: "https://example.com", icon_svg: "", visibility: "user", sort_order: 0, pass_auth_context: false },
+      { id: "legacy", label: "Legacy", url: "https://legacy.example.com", icon_svg: "", visibility: "user", sort_order: 1 },
+      { id: "markdown", label: "Markdown", url: "md:# Documentation", icon_svg: "", visibility: "user", sort_order: 2, pass_auth_context: false },
+    ];
+    getSettings.mockResolvedValue({ ...baseSettingsResponse, custom_menu_items: menuItems });
+    const wrapper = mountView();
+    await flushPromises();
+    const toggles = wrapper.findAll<HTMLInputElement>('[data-testid="custom-menu-pass-auth-context"]');
+    expect(toggles.map((toggle) => toggle.element.checked)).toEqual([false, true]);
+    await toggles[0].setValue(true);
+    await toggles[1].setValue(false);
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledOnce();
+    expect(updateSettings.mock.calls[0][0].custom_menu_items).toEqual([
+      { ...menuItems[0], pass_auth_context: true },
+      { ...menuItems[1], pass_auth_context: false },
+      menuItems[2],
+    ]);
+    wrapper.unmount();
+  });
+
   it("loads and saves the open button visibility for each custom menu", async () => {
     const menuItems = [
       { id: "docs", label: "Docs", url: "https://example.com/docs", icon_svg: "", visibility: "user", sort_order: 0 },

@@ -118,7 +118,7 @@ function registerProbe(): void {
     menuItems: [
       { id: 'host-probe-user', path: userPath, labelKey: 'hostProbe.user', icon: probeIcon, hideInSimpleMode: true },
       { id: 'host-probe-permission', path: permissionPath, labelKey: 'hostProbe.permission', icon: probeIcon, permission: 'users' },
-      { id: 'host-probe-admin', path: adminPath, labelKey: 'hostProbe.admin', icon: probeIcon, adminOnly: true },
+      { id: 'host-probe-admin', path: adminPath, labelKey: 'hostProbe.admin', icon: probeIcon, adminOnly: true, permission: 'users' },
     ],
   })
 }
@@ -213,7 +213,7 @@ describe('custom feature real host navigation', () => {
     expect(wrapper.find('a[href="/keys"]').exists()).toBe(true)
   })
 
-  it.each([false, true])('honors operator menu permission granted=%s and keeps admin-only entries hidden', async (granted) => {
+  it.each([false, true])('honors operator permission granted=%s without overriding adminOnly on the same menu entry', async (granted) => {
     registerProbe()
     setRole('operator', granted ? ['users'] : [])
     const wrapper = await mountSidebar()
@@ -233,6 +233,37 @@ describe('custom feature real host navigation', () => {
     expect(wrapper.get('a[href="/admin/roles"]').text()).toBe('translated:nav.rolePermissions')
   })
 
+  it('keeps roles directly after users and usage directly before audit logs in the real admin menu', async () => {
+    setRole('admin')
+    const wrapper = await mountSidebar()
+    const adminSection = wrapper.get('nav .sidebar-section')
+    const users = adminSection.get('a[href="/admin/users"]')
+    const roles = adminSection.get('a[href="/admin/roles"]')
+    const usage = adminSection.get('a[href="/admin/usage"]')
+    const auditLogs = adminSection.get('a[href="/admin/audit-logs"]')
+    expect(roles.element.previousElementSibling).toBe(users.element)
+    expect(usage.element.nextElementSibling).toBe(auditLogs.element)
+    expect(roles.element.parentElement).toBe(adminSection.element)
+    expect(usage.element.parentElement).toBe(adminSection.element)
+  })
+
+  it('renders prompt audit only inside the expandable security audit group', async () => {
+    setRole('admin')
+    const wrapper = await mountSidebar()
+    const adminSection = wrapper.get('nav .sidebar-section')
+    const securityGroup = adminSection.findAll('button').find((button) => button.text() === 'translated:nav.securityAudit')
+    if (!securityGroup) throw new Error('The real security audit group is missing')
+    expect(wrapper.find('a[href="/admin/prompt-audit"]').exists()).toBe(false)
+    await securityGroup.trigger('click')
+    const promptAudit = adminSection.get('a[href="/admin/prompt-audit"]')
+    expect(promptAudit.text()).toBe('translated:nav.promptAudit')
+    expect(promptAudit.element.parentElement).toBe(securityGroup.element.nextElementSibling)
+    expect(promptAudit.element.parentElement).not.toBe(adminSection.element)
+    expect(wrapper.findAll('a[href="/admin/prompt-audit"]')).toHaveLength(1)
+    await securityGroup.trigger('click')
+    expect(wrapper.find('a[href="/admin/prompt-audit"]').exists()).toBe(false)
+  })
+
   it('registers custom routes in the actual application router before catch-all matching', async () => {
     registerProbe()
     const { default: router } = await import('@/router')
@@ -243,6 +274,9 @@ describe('custom feature real host navigation', () => {
     expect(router.getRoutes().filter((route) => route.path === userPath)).toHaveLength(1)
     expect(router.resolve('/image-studio').name).toBe('ImageStudio')
     expect(router.resolve('/admin/roles').meta.requiresAdmin).toBe(true)
+    expect(router.resolve('/admin/roles').name).toBe('AdminRolePermissions')
+    expect(router.getRoutes().filter((route) => route.path === '/admin/roles')).toHaveLength(1)
+    expect(router.getRoutes().filter((route) => route.name === 'AdminRolePermissions')).toHaveLength(1)
   })
 
   it('redirects an unauthenticated direct probe URL to login with the intended destination', async () => {

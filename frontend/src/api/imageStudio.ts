@@ -1,4 +1,5 @@
 import { buildGatewayUrl } from './client'
+import { normalizeImageGenerationCount } from '@/utils/imageGenerationPolicy'
 
 export interface ImageStudioModel {
   id: string
@@ -141,7 +142,7 @@ function buildJSONBody(request: ImageStudioGenerateRequest): Record<string, unkn
   const body: Record<string, unknown> = {
     model: request.model,
     prompt: request.prompt,
-    n: Math.min(4, Math.max(1, Math.trunc(request.count || 1))),
+    n: normalizeImageGenerationCount(request.count),
     response_format: 'b64_json',
   }
   if (request.size && request.size !== 'auto') body.size = request.size
@@ -155,7 +156,7 @@ function buildEditForm(request: ImageStudioGenerateRequest): FormData {
   const form = new FormData()
   form.append('model', request.model)
   form.append('prompt', request.prompt)
-  form.append('n', String(Math.min(4, Math.max(1, Math.trunc(request.count || 1)))))
+  form.append('n', String(normalizeImageGenerationCount(request.count)))
   form.append('response_format', 'b64_json')
   appendOptionalFormField(form, 'size', request.size)
   appendOptionalFormField(form, 'quality', request.quality)
@@ -230,7 +231,7 @@ async function generateNativeGeminiImageStudioImages(
   const mask = request.mask
     ? [{ inlineData: { mimeType: request.mask.type || 'image/png', data: await fileAsBase64(request.mask) } }]
     : []
-  const count = Math.min(4, Math.max(1, Math.trunc(request.count || 1)))
+  const count = normalizeImageGenerationCount(request.count)
   const outputs: ImageStudioOutput[] = []
   for (let index = 0; index < count; index += 1) {
     const size = String(request.size || '2K').trim().toUpperCase()

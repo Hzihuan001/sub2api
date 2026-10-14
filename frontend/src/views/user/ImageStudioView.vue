@@ -75,7 +75,7 @@
               </div>
             </div>
 
-            <div v-if="inputImages.length && !nativeGeminiModel && !seedreamImageModel" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <div v-if="inputImages.length && imagePolicy.supportsAdvancedOptions" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
               <label class="block">
                 <span class="input-label">{{ t('imageStudio.mask') }}</span>
                 <div class="mt-1 flex items-center gap-2">
@@ -110,7 +110,7 @@
                 <span class="input-label">{{ t('imageStudio.background') }}</span>
                 <Select v-model="form.background" :options="backgroundOptions" :disabled="generating" class="mt-1 w-full" />
               </label>
-              <label v-if="inputImages.length && !nativeGeminiModel && !seedreamImageModel" class="block">
+              <label v-if="inputImages.length && imagePolicy.supportsAdvancedOptions" class="block">
                 <span class="input-label">{{ t('imageStudio.inputFidelity') }}</span>
                 <Select v-model="form.inputFidelity" :options="fidelityOptions" :disabled="generating" class="mt-1 w-full" />
               </label>
@@ -250,6 +250,7 @@ import { generateImageStudioImages, listImageStudioModels, type ImageStudioModel
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
+import { getImageStudioModelPolicy, normalizeImageOutputFormat } from '@/utils/imageGenerationPolicy'
 import {
   base64ImageToBlob,
   clearStoredStudioImages,
@@ -262,8 +263,6 @@ import {
   IMAGE_STUDIO_CUSTOM_SIZE,
   detectImageDimensions,
   imageStudioPresetForDimensions,
-  isGeminiNanoBananaModel,
-  isSeedreamImageModel,
   normalizeImageStudioCustomSize,
   parseImageDimensions,
   resolveImageStudioRequestSize,
@@ -347,15 +346,11 @@ const modelOptions = computed(() => models.value.map((model) => ({
 })))
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
 const nativeGeminiModel = computed(() => selectedKey.value?.group?.platform === 'gemini')
-const seedreamImageModel = computed(() => isSeedreamImageModel(form.model))
+const imagePolicy = computed(() => getImageStudioModelPolicy(form.model, nativeGeminiModel.value))
 const customSizeSupported = computed(() => supportsImageStudioCustomSize(form.model, nativeGeminiModel.value))
 const customSize = computed(() => normalizeImageStudioCustomSize(form.model, customWidth.value, customHeight.value))
 const requestSize = computed(() => resolveImageStudioRequestSize(form.model, form.size, customSize.value || '', nativeGeminiModel.value))
-const referenceImageLimit = computed(() => {
-  if (nativeGeminiModel.value || isGeminiNanoBananaModel(form.model)) return 14
-  if (isSeedreamImageModel(form.model)) return 10
-  return 4
-})
+const referenceImageLimit = computed(() => imagePolicy.value.referenceImageLimit)
 const canGenerate = computed(() => !!selectedKey.value && !!form.model.trim() && !!form.prompt.trim() && !!requestSize.value && !generating.value)
 const sizeOptions = computed(() => [
   { value: '1K', label: t('imageStudio.size1k') },
@@ -363,12 +358,10 @@ const sizeOptions = computed(() => [
   ...(supportsImageStudio4K(form.model) ? [{ value: '4K', label: t('imageStudio.size4k') }] : []),
   ...(customSizeSupported.value ? [{ value: IMAGE_STUDIO_CUSTOM_SIZE, label: t('imageStudio.customSize') }] : []),
 ])
-const countOptions = computed(() => (seedreamImageModel.value
-  ? [{ value: '1', label: '1' }]
-  : [1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))))
+const countOptions = computed(() => imagePolicy.value.countOptions.map((value) => ({ value: String(value), label: String(value) })))
 const qualityOptions = computed(() => [
   { value: 'auto', label: t('imageStudio.auto') },
-  ...(!seedreamImageModel.value && !nativeGeminiModel.value ? [
+  ...(imagePolicy.value.supportsAdvancedOptions ? [
     { value: 'low', label: t('imageStudio.qualityLow') },
     { value: 'medium', label: t('imageStudio.qualityMedium') },
     { value: 'high', label: t('imageStudio.qualityHigh') },
@@ -376,15 +369,11 @@ const qualityOptions = computed(() => [
     { value: 'max', label: t('imageStudio.qualityMax') },
   ] : []),
 ])
-const formatOptions = computed(() => nativeGeminiModel.value
-  ? [{ value: 'png', label: 'PNG' }]
-  : seedreamImageModel.value
-    ? [{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }]
-    : [{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }, { value: 'webp', label: 'WebP' }])
+const formatOptions = computed(() => imagePolicy.value.outputFormats.map((value) => ({ value, label: value === 'webp' ? 'WebP' : value.toUpperCase() })))
 const backgroundOptions = computed(() => [
   { value: 'auto', label: t('imageStudio.auto') },
-  ...(!nativeGeminiModel.value && !seedreamImageModel.value ? [{ value: 'opaque', label: t('imageStudio.backgroundOpaque') }] : []),
-  ...(!nativeGeminiModel.value && !seedreamImageModel.value ? [{ value: 'transparent', label: t('imageStudio.backgroundTransparent') }] : []),
+  ...(imagePolicy.value.supportsAdvancedOptions ? [{ value: 'opaque', label: t('imageStudio.backgroundOpaque') }] : []),
+  ...(imagePolicy.value.supportsAdvancedOptions ? [{ value: 'transparent', label: t('imageStudio.backgroundTransparent') }] : []),
 ])
 const fidelityOptions = computed(() => [
   { value: 'auto', label: t('imageStudio.auto') },
@@ -561,14 +550,14 @@ async function generate(): Promise<void> {
   const isCurrentGeneration = () => !controller.signal.aborted && libraryScope.value === scopeAtStart
   try {
     const outputs = await generateImageStudioImages(key.key, {
-      model: form.model.trim(), prompt: form.prompt.trim(), count: seedreamImageModel.value ? 1 : Number(form.count) || 1,
+      model: form.model.trim(), prompt: form.prompt.trim(), count: imagePolicy.value.forceSingleOutput ? 1 : Number(form.count) || 1,
       size: requestSize.value,
-      quality: seedreamImageModel.value || nativeGeminiModel.value ? 'auto' : form.quality,
-      outputFormat: nativeGeminiModel.value ? 'png' : seedreamImageModel.value && !['png', 'jpeg'].includes(form.outputFormat) ? 'png' : form.outputFormat,
-      background: seedreamImageModel.value || nativeGeminiModel.value ? 'auto' : form.background,
-      inputFidelity: seedreamImageModel.value || nativeGeminiModel.value ? 'auto' : form.inputFidelity,
+      quality: imagePolicy.value.supportsAdvancedOptions ? form.quality : 'auto',
+      outputFormat: normalizeImageOutputFormat(form.model, nativeGeminiModel.value, form.outputFormat),
+      background: imagePolicy.value.supportsAdvancedOptions ? form.background : 'auto',
+      inputFidelity: imagePolicy.value.supportsAdvancedOptions ? form.inputFidelity : 'auto',
       images: inputImages.value.map((item) => item.file),
-      mask: nativeGeminiModel.value || seedreamImageModel.value ? null : maskFile.value,
+      mask: imagePolicy.value.supportsAdvancedOptions ? maskFile.value : null,
       nativeGemini: nativeGeminiModel.value,
     }, controller.signal)
     if (!isCurrentGeneration()) return
@@ -751,20 +740,19 @@ watch(() => form.apiKeyId, () => { void loadModels() })
 watch([() => form.model, nativeGeminiModel], ([model]) => {
   if (!customSizeSupported.value && form.size === IMAGE_STUDIO_CUSTOM_SIZE) form.size = '1K'
   if (!supportsImageStudio4K(model) && form.size === '4K') form.size = '2K'
-  if (seedreamImageModel.value || nativeGeminiModel.value) {
+  if (!imagePolicy.value.supportsAdvancedOptions) {
     form.count = '1'
     form.quality = 'auto'
     form.inputFidelity = 'auto'
-    if (nativeGeminiModel.value) form.outputFormat = 'png'
-    if (seedreamImageModel.value && !['png', 'jpeg'].includes(form.outputFormat)) form.outputFormat = 'png'
-    if (nativeGeminiModel.value || seedreamImageModel.value) form.background = 'auto'
+    form.outputFormat = normalizeImageOutputFormat(model, nativeGeminiModel.value, form.outputFormat)
+    form.background = 'auto'
   }
   if (inputImages.value.length > referenceImageLimit.value) {
     const removed = inputImages.value.splice(referenceImageLimit.value)
     removed.forEach((item) => URL.revokeObjectURL(item.url))
     if (inputImages.value.length === 0) clearMask()
   }
-  if ((nativeGeminiModel.value || seedreamImageModel.value) && maskFile.value) clearMask()
+  if (!imagePolicy.value.supportsAdvancedOptions && maskFile.value) clearMask()
 })
 watch(libraryScope, (scope, previousScope) => {
   if (scope === previousScope) return

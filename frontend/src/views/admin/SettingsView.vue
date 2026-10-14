@@ -6899,24 +6899,11 @@
                     />
                   </div>
 
-                  <!-- Authentication context forwarding -->
-                  <div
-                    v-if="!item.url?.startsWith('md:')"
-                    class="flex items-start justify-between gap-4 rounded-lg bg-gray-50 px-3 py-2.5 sm:col-span-2 dark:bg-dark-700/50"
-                  >
-                    <div>
-                      <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {{ t("admin.settings.customMenu.passAuthContext") }}
-                      </p>
-                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t("admin.settings.customMenu.passAuthContextHint") }}
-                      </p>
-                    </div>
-                    <Toggle
-                      :model-value="item.pass_auth_context !== false"
-                      @update:model-value="(value: boolean) => (item.pass_auth_context = value)"
-                    />
-                  </div>
+                  <CustomMenuAuthContextField
+                    v-model="item.pass_auth_context"
+                    :url="item.url"
+                    :read-only="settingsTabReadOnly('general')"
+                  />
 
                   <div class="flex items-start justify-between gap-4 rounded-lg bg-gray-50 px-3 py-2.5 sm:col-span-2 dark:bg-dark-700/50">
                     <div>
@@ -9077,6 +9064,8 @@ import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiErro
 import { useAppStore, useAuthStore } from "@/stores";
 import { getCustomSettingsAccess, getHostCustomSettingsTabs } from "@/custom";
 import type { CustomSettingsTab } from "@/custom";
+import CustomMenuAuthContextField from "@/custom/settings/CustomMenuAuthContextField.vue";
+import { normalizeCustomMenuAuthContext } from "@/custom/settings/customMenuAuthContext";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
 import {
@@ -9200,13 +9189,14 @@ function customSettingsReadOnly(tab: CustomSettingsTab): boolean {
   return getCustomSettingsAccess(tab, authStore).readOnly;
 }
 
-const settingsReadOnly = computed(() => {
-  if (!isBuiltInSettingsTab(activeTab.value)) {
-    const custom = customSettingsTab(activeTab.value);
+function settingsTabReadOnly(tab: SettingsTab): boolean {
+  if (!isBuiltInSettingsTab(tab)) {
+    const custom = customSettingsTab(tab);
     return !custom || customSettingsReadOnly(custom);
   }
-  return authStore.isOperator && !authStore.canOperator("settings.write") && !authStore.canOperator(settingsTabWritePermission[activeTab.value]);
-});
+  return authStore.isOperator && !authStore.canOperator("settings.write") && !authStore.canOperator(settingsTabWritePermission[tab]);
+}
+const settingsReadOnly = computed(() => settingsTabReadOnly(activeTab.value));
 watch(settingsTabs, (tabs) => {
   if (tabs.length > 0 && !settingsTabVisible(activeTab.value)) {
     activeTab.value = tabs[0].key;
@@ -11166,7 +11156,7 @@ async function loadSettings() {
     form.custom_menu_items = form.custom_menu_items.map((item) => ({
       ...item,
       // Existing entries historically forwarded auth; keep that behavior until changed.
-      pass_auth_context: item.pass_auth_context !== false,
+      pass_auth_context: normalizeCustomMenuAuthContext(item.pass_auth_context),
     }));
     syncCaptchaProviderSelection();
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {

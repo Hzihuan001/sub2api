@@ -227,4 +227,42 @@ describe('Image Studio actual size visibility', () => {
     await flushPromises()
     expect(mocks.generate).toHaveBeenCalledWith('native-key', expect.objectContaining({ model: 'gemini-3.1-flash-image', size: '4K', nativeGemini: true }), expect.any(AbortSignal))
   })
+
+  it('keeps compatible Gemini options and edits without selecting native protocol from the model name', async () => {
+    mocks.listModels.mockResolvedValue([{ id: 'gemini-nano-banana-2.1', name: 'Compatible Gemini' }])
+    wrapper = mountView()
+    await flushPromises()
+    await formSelect('imageStudio.outputFormat').setValue('webp')
+    await formSelect('imageStudio.quality').setValue('max')
+    await formSelect('imageStudio.count').setValue('3')
+    await attachReferences([new File(['image'], 'reference.png', { type: 'image/png' })])
+    expect(wrapper.text()).toContain('imageStudio.mask')
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('A quiet garden')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.generate).toHaveBeenCalledWith('test-key', expect.objectContaining({
+      model: 'gemini-nano-banana-2.1', nativeGemini: false,
+      outputFormat: 'webp', quality: 'max', count: 3,
+    }), expect.any(AbortSignal))
+  })
+
+  it('still allows native Gemini multi-output selection after its initial model-change reset', async () => {
+    mocks.listKeys.mockResolvedValue({
+      pages: 1,
+      items: [{ id: 1, key: 'gemini-key', name: 'Gemini key', status: 'active', group: { status: 'active', platform: 'gemini', allow_image_generation: true } }],
+    })
+    mocks.listModels.mockResolvedValue([{ id: 'custom-image-alias', name: 'Native Gemini' }])
+    wrapper = mountView()
+    await flushPromises()
+    expect(formSelect('imageStudio.count').findAll('option').map((option) => option.attributes('value'))).toEqual(['1', '2', '3', '4'])
+    await formSelect('imageStudio.count').setValue('4')
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('A quiet garden')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(mocks.generate).toHaveBeenCalledWith('gemini-key', expect.objectContaining({
+      count: 4, nativeGemini: true, outputFormat: 'png', quality: 'auto', background: 'auto', inputFidelity: 'auto', mask: null,
+    }), expect.any(AbortSignal))
+  })
 })

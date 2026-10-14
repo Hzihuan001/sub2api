@@ -1,5 +1,11 @@
 # 定制功能日志
 
+### 2026-10-14 — 本地未发布 — 模块化 P2 前端收敛
+
+- 定制菜单位置/角色路由声明化，Settings 仅隔离原 pass_auth_context 字段；实际 messages loader 使用显式 namespace/逐键覆盖，39 个旧品牌展示键保持等价，runtime site_name/title 通过窄适配器处理。
+- 图片工作台/批量页共享纯策略，限额/协议/格式差异保持。400 定向场景、类型、定向 lint 和生产构建通过；详情及唯一测试期望修正原因见 `CUSTOM_MODULARIZATION_EXECUTION.md`。
+- 更新可执行清单与 `custom/README.md`。未推送、未部署，生产 `.5` 保持，P3–P6 继续执行。
+
 ### 2026-10-14 — 本地未发布 — 模块化 P1 接入门禁
 
 - 架构清单变为可执行检查与 7 组测试命令；真实路由/Sidebar/Settings 接入、重复注册和设置独立读写契约完成，静态负向夹具 12 项通过。

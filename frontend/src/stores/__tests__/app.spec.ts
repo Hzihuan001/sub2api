@@ -92,6 +92,24 @@ describe('useAppStore', () => {
 
   // --- Toast 消息管理 ---
 
+  it('brands only site_name while keeping configured technical settings and injected source unchanged', async () => {
+    const settings = createPublicSettings({
+      site_name: '  Sub2API Customer  ',
+      api_base_url: 'https://Sub2API.example/sub2api/v1',
+      doc_url: 'https://docs.example/sub2api',
+      home_content: 'export SUB2API_API_KEY=example',
+    })
+    vi.mocked(getPublicSettings).mockResolvedValue(settings)
+    const store = useAppStore()
+    await store.fetchPublicSettings()
+    expect(store.siteName).toBe('  Moshu Customer  ')
+    expect(store.apiBaseUrl).toBe(settings.api_base_url)
+    expect(store.docUrl).toBe(settings.doc_url)
+    expect(store.cachedPublicSettings?.home_content).toBe(settings.home_content)
+    expect(settings.site_name).toBe('  Sub2API Customer  ')
+    expect(window.__APP_CONFIG__?.site_name).toBe(settings.site_name)
+  })
+
   describe('Toast 消息管理', () => {
     it('showSuccess 创建 success 类型 toast', () => {
       const store = useAppStore()

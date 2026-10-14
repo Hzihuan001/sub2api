@@ -5,7 +5,7 @@
 - 2026-10-14 用户明确“执行”；授权 P0–P6 本地重构、阶段提交、测试及 Docker 验收，**不推送、不部署**。
 - 工作树复用本会话已附加的 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`；已切新分支 `codex/custom-modularization-v0.2.16`，原发布分支未移动。
 - 起点 `989594099c1bd10db911c737449d15d2bb6149ed`，包含运行提交 `00e8f24a4` / `custom-0.2.16.5`。生产没有操作，继续 `.5`。
-- P0、P1 完成；P2–P6 尚未完成。分阶段成功不等于最终重构或生产验收。
+- P0、P1、P2 完成；P3–P6 尚未完成。分阶段成功不等于最终重构或生产验收。
 
 ## P0：基线证据
 
@@ -86,3 +86,14 @@ P1 起按阶段追加实际文件、提交、测试、负向验证与指标，�
 - 验证：Go custom/server/routes 全部 unit 通过；前端相关 10 suites 182 项通过，最后增补一例后 adapters 11 项全过（总计 183）；vue-tsc、相关 ESLint、12 个 Python 架构测试、隔离/迁移/manifest 和 diff 检查通过。
 - 范围：仍保留现有 worker Start 测试；完整关闭/等待契约在 P3 实际装配时补充。messages 的真实 loader 接入随 P2 落地，不把尚未实现的部分记为通过。生成代码无改动，最终独立 generate 验证在 P3/P6。
 - P1 不改变公开路由、数据库、已有业务权限或生产版本；仅本地阶段提交。后续 P2 开始前确认本阶段 commit。
+
+## P2：前端声明、品牌与图片策略
+
+- P1 提交 `fc16d0875`。P2 由 `operatorRole` 声明原角色路由；菜单通过 parent/before/after 元数据放置，移除 Sidebar 内 roles/usage/audit 三类定制路径特判。原 URL、顺序、图标与读写权限保持，缺锚点或宿主重名会显式失败。
+- 只抽取官方自定义菜单行中的 `pass_auth_context` 定制字段为小组件/归一化函数；仅读不 emit 更新、不更改保存 API。没有复制整个 SettingsView 或发明新标签页；其余官方字段省略/false 的原 payload 行为保持。
+- `messages` loader 真正被 `i18n/index.ts` 调用。新增键必须在声明 namespace 内，覆盖须逐键批准；重复、未知覆盖、父子覆盖和原型键拒绝，失败不发布半个 locale。真实 i18n loader 测试通过，不以 mock loader 代替。
+- 品牌明确覆盖 39 键（30 展示、3 历史示例兼容、6 已生成 MOSHU_API_KEY 配置说明）；两种 locale 所有现存 leaf 与旧展示输出逐项对照相同。新/未知 URL、变量、存储键及插值不再被全局正则改写。app site_name 与 router title 共用窄展示适配器，保留两者既有空白/名称优先级差异。
+- 工作台、原批量页和 API 三种生成方式共用 MIME/格式/参考图/张数纯策略；保留 Seedream、原生 Gemini 和兼容模型的不同限额，不重新封装 HTTP，不改任务/账务。尺寸显示、取消、迟到响应丢弃与 Blob 清理回归保留。
+- 门禁：31 个定向文件共 400 场景通过（首轮 399 通过，新增 Settings 测试错误期待省略字段为 false；按旧 payload 修正测试后整个 Settings 51 项通过）；图片子组 77 项通过。vue-tsc、定向 ESLint 和生产构建通过（1138 modules / 45.32s）。构建仅已有 browserslist、静态/动态 import、chunk 大小提示。
+- 静态架构检查通过；前端显式宿主入口由 3 个增为 6 个（补登记实际 i18n/app/title），不是掩盖新增接入点。收益是取消分散品牌替换、菜单特判和重复图片规则，不以目录/文件数量减少宣称性能或冲突百分比。
+- 新增 `custom/README.md` 维护指引。未推送、未部署，P3 后端阶段随后开始。
