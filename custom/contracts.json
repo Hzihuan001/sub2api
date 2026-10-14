@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "modules": [
+    {"id":"operator","owner":"custom/operator","entries":["backend/internal/authz","frontend/src/authz","frontend/src/custom/features/operatorRole.ts"],"dependencies":[],"tests":["backend-host","frontend-host"]},
+    {"id":"prompt-audit","owner":"custom/prompt-audit","entries":["backend/internal/securityaudit","frontend/src/features/prompt-audit"],"dependencies":[],"tests":["backend-audit","frontend-features"]},
+    {"id":"image-studio","owner":"custom/image-studio","entries":["frontend/src/features/image-studio","backend/internal/handler/batch_image_handler.go"],"dependencies":[],"tests":["backend-batch","frontend-features"]},
+    {"id":"branding","owner":"custom/branding","entries":["frontend/src/i18n"],"dependencies":[],"tests":["frontend-host"]},
+    {"id":"usage-extras","owner":"custom/usage-extras","entries":["frontend/src/custom/features/usageExtras.ts"],"dependencies":["operator"],"tests":["frontend-host"]},
+    {"id":"gateway-resilience","owner":"custom/gateway-resilience","entries":["backend/internal/service/gateway_failure_policy.go","backend/internal/service/overload_failure_breaker.go"],"dependencies":[],"tests":["backend-resilience"]}
+  ],
+  "dependency_rules": [
+    {"id":"neutral-contracts","source_prefixes":["backend/internal/custom/"],"forbidden_import_prefixes":["github.com/Wei-Shaw/sub2api/internal/"]},
+    {"id":"feature-does-not-own-host","source_prefixes":["backend/internal/authz/","backend/internal/securityaudit/"],"forbidden_import_prefixes":["github.com/Wei-Shaw/sub2api/internal/server","github.com/Wei-Shaw/sub2api/internal/handler"]},
+    {"id":"frontend-feature-does-not-own-host","source_prefixes":["frontend/src/features/image-studio/","frontend/src/features/prompt-audit/"],"forbidden_import_prefixes":["@/router","@/views/admin/SettingsView","@/components/layout/AppSidebar"]}
+  ],
+  "exceptions": [
+    {"file":"backend/internal/securityaudit/prompt_handler.go","import":"github.com/Wei-Shaw/sub2api/internal/server/middleware","reason":"Existing HTTP auth-subject adapter only; preserve authentication semantics, do not permit feature-wide server dependencies."}
+  ],
+  "host_entries": [
+    {"id":"backend-custom-host","host_prefixes":["backend/internal/server/","backend/cmd/"],"import_prefixes":["github.com/Wei-Shaw/sub2api/internal/custom"],"files":["backend/internal/server/custom_bootstrap.go","backend/internal/server/router.go","backend/internal/server/routes/admin.go","backend/internal/server/routes/gateway.go","backend/internal/server/routes/custom.go"]},
+    {"id":"frontend-custom-host","host_prefixes":["frontend/src/router/","frontend/src/components/","frontend/src/views/"],"import_prefixes":["@/custom"],"files":["frontend/src/router/index.ts","frontend/src/components/layout/AppSidebar.vue","frontend/src/views/admin/SettingsView.vue"]}
+  ],
+  "tests": {
+    "architecture-negative":{"cwd":"scripts","argv":["python","-m","unittest","test_custom_contracts"]},
+    "backend-host":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/custom","./internal/authz","./internal/server","./internal/server/routes","-run","Custom|Operator","-count=1"]},
+    "backend-audit":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/securityaudit","./internal/handler","./internal/service","-run","PromptAudit|PromptCapture|AuditGate","-count=1"]},
+    "backend-batch":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/handler","./internal/service","-run","BatchImage","-count=1"]},
+    "backend-resilience":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/service","./internal/repository","-run","GatewayFailurePolicy|OpenAIRecoverableFailover|AccountOverload|OpenAIRepeatedOverload|CountsOverloadOnce|SameAccount|ClearAccountError|RateLimitService_Clear","-count=1"]},
+    "frontend-host":{"cwd":"frontend","argv":["pnpm","exec","vitest","run","src/custom","src/authz","src/router/__tests__","src/components/layout/__tests__","src/views/admin/__tests__/SettingsView.spec.ts","src/i18n/__tests__"]},
+    "frontend-features":{"cwd":"frontend","argv":["pnpm","exec","vitest","run","src/features/image-studio","src/features/prompt-audit","src/views/user/__tests__/ImageStudioView.sizeDisplay.spec.ts"]}
+  }
+}

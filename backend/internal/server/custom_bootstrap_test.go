@@ -55,3 +55,24 @@ func TestInstallBuiltinCustomProvidersIsIdempotent(t *testing.T) {
 	require.Len(t, second.Permissions(), 1)
 	require.Equal(t, first.Permissions()[0].ID(), second.Permissions()[0].ID())
 }
+
+type bootstrapConflictingPermissionProvider struct{ name string }
+
+func (bootstrapConflictingPermissionProvider) ID() string { return "conflicting-fixture" }
+func (p bootstrapConflictingPermissionProvider) Permissions() []custom.Permission {
+	return []custom.Permission{{Name: p.name}}
+}
+
+func TestInstallBuiltinCustomProvidersRejectsPermissionKeyCollision(t *testing.T) {
+	previous := custom.DefaultHost().Providers()
+	t.Cleanup(func() { custom.ConfigureProviderSet(previous) })
+	permissions := authz.NewOperatorPolicyProvider().Permissions()
+	require.NotEmpty(t, permissions)
+	set, err := custom.NewCustomProviderSet(customBootstrapHooks{
+		permissions: []custom.PermissionProvider{bootstrapConflictingPermissionProvider{permissions[0].Name}},
+	})
+	require.NoError(t, err)
+	custom.ConfigureProviderSet(set)
+	require.ErrorIs(t, installBuiltinCustomProviders(), custom.ErrDuplicatePermission)
+	require.Same(t, set, custom.DefaultHost().Providers(), "failed bootstrap must not partially publish providers")
+}

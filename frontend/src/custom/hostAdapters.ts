@@ -1,6 +1,7 @@
 import type { RouteRecordRaw } from 'vue-router'
 
 import {
+  assertCustomRouteResources,
   customFeatureRegistry,
   getCustomMenuItems,
   getCustomRoutes,
@@ -34,6 +35,7 @@ export function mergeCustomRoutes(
 ): readonly RouteRecordRaw[] {
   const customRoutes = getCustomRoutes(registry)
   if (customRoutes.length === 0) return baseRoutes
+  assertCustomRouteResources(customRoutes, baseRoutes)
 
   const catchAllIndex = baseRoutes.findIndex(
     (route) => route.name === 'NotFound' || route.path === '/:pathMatch(.*)*'
@@ -90,9 +92,14 @@ export function getHostCustomMenuItems(
  * host may filter or sort it without mutating feature manifests.
  */
 export function getHostCustomSettingsTabs(
-  registry: CustomFeatureRegistry = customFeatureRegistry
+  registry: CustomFeatureRegistry = customFeatureRegistry,
+  reservedIds: readonly string[] = []
 ): CustomSettingsTab[] {
-  return [...getCustomSettingsTabs(registry)].sort((left, right) => {
+  const tabs = [...getCustomSettingsTabs(registry)]
+  for (const tab of tabs) {
+    if (reservedIds.includes(tab.id.trim())) throw new Error(`Custom settings tab conflicts with host: ${tab.id}`)
+  }
+  return tabs.sort((left, right) => {
     const orderDiff = (left.order ?? Number.POSITIVE_INFINITY) - (right.order ?? Number.POSITIVE_INFINITY)
     return orderDiff || left.id.localeCompare(right.id)
   })

@@ -5,7 +5,7 @@
 - 2026-10-14 用户明确“执行”；授权 P0–P6 本地重构、阶段提交、测试及 Docker 验收，**不推送、不部署**。
 - 工作树复用本会话已附加的 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`；已切新分支 `codex/custom-modularization-v0.2.16`，原发布分支未移动。
 - 起点 `989594099c1bd10db911c737449d15d2bb6149ed`，包含运行提交 `00e8f24a4` / `custom-0.2.16.5`。生产没有操作，继续 `.5`。
-- P0 完成；P1–P6 尚未完成。这里的成功检查只证明基线，不是重构验收。
+- P0、P1 完成；P2–P6 尚未完成。分阶段成功不等于最终重构或生产验收。
 
 ## P0：基线证据
 
@@ -74,3 +74,15 @@
 ## 后续阶段
 
 P1 起按阶段追加实际文件、提交、测试、负向验证与指标，不提前填入“通过”。如发现新的官方边界，记录证据后保持本方案范围，不扩大为整套官方组件重写。
+
+## P1：架构与真实接入门禁
+
+- `custom/manifest.yml` 引用可执行 `custom/contracts.json`：6 个功能所有者、入口、依赖、7 组 argv 测试；`custom_contracts.py` 实际读取并校验。升级 CI 和本地同步脚本均接入真实 contract tests，前端不再只有安装/类型检查；本轮未触发远程 workflow。
+- 架构规则约束中立 Go 契约包、审计/权限模块和前端功能的反向依赖，核对 5 个后端、3 个前端接入文件；跨 feature 相对路径与 alias 同样检查。旧 `securityaudit/prompt_handler.go → server/middleware` 仅登记单文件单 import 例外（读取认证主体），不放开整个目录。
+- 12 个独立负向夹具通过：缺入口、文件存在但断开导入、未登记接入点、反向依赖、重复模块、空测试门禁、过期例外、路径逃逸、相对路径隐式功能依赖等。静态检查不替代行为测试。
+- 后端 provider ID、permission、setting key 冲突及 typed-nil 拒绝；真实 `RegisterAdminRoutes`/`RegisterGatewayRoutes` 验证鉴权/审计中间件、operator 未知路由默认拒绝、请求体限制和重复路由。可选空 Host 仍保留官方 10 条批量和审计基础路由；漏注册探针返回 404。
+- 前端 registry 对 routes/alias/name、菜单和 settings ID 原子校验；Settings 使用贡献 labelKey，显式独立 read/write 和 readOnly。未知/缺失权限不放行，沿用已有 settings 全局权限继承；自定义表单不能误调用官方全表保存。未复制官方设置页或新增虚构业务 tab。
+- 真实 Sidebar/router/Settings 挂载探针验证已接入与未注册两种状态；权限包含仅读、仅写、读写和全局授权。后端依旧是最终授权边界，组件必须遵守 readOnly 保存契约。
+- 验证：Go custom/server/routes 全部 unit 通过；前端相关 10 suites 182 项通过，最后增补一例后 adapters 11 项全过（总计 183）；vue-tsc、相关 ESLint、12 个 Python 架构测试、隔离/迁移/manifest 和 diff 检查通过。
+- 范围：仍保留现有 worker Start 测试；完整关闭/等待契约在 P3 实际装配时补充。messages 的真实 loader 接入随 P2 落地，不把尚未实现的部分记为通过。生成代码无改动，最终独立 generate 验证在 P3/P6。
+- P1 不改变公开路由、数据库、已有业务权限或生产版本；仅本地阶段提交。后续 P2 开始前确认本阶段 commit。

@@ -1,12 +1,13 @@
 version: 1
 name: sub2api-custom-layer
+contracts: custom/contracts.json
 upstream:
   remote: upstream
   mirror_branch: upstream/main
   base_ref_pattern: v*
 
-# The feature list is intentionally declarative.  The sync workflow uses it to
-# apply and test custom patch stacks in a stable order.
+# contracts.json is consumed by scripts/custom_contracts.py and sync checks.
+# Tests below document coverage; executable argv and dependency rules live there.
 features:
   - id: gateway-resilience
     owner: custom/gateway-resilience

@@ -11,7 +11,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -102,8 +104,10 @@ type CustomProviderSet struct {
 
 // NewCustomProviderSet validates and normalizes a hook collection.  Providers
 // are sorted by stable ID and duplicate IDs within a provider category are
-// rejected.  The input slices are copied, so callers may safely reuse or
-// mutate their own slices after construction.
+// rejected. Permission names and setting keys must also be unique within
+// their respective categories, including within one provider. The input
+// slices are copied, so callers may safely reuse or mutate their own slices
+// after construction.
 func NewCustomProviderSet(hooks CustomHooks) (*CustomProviderSet, error) {
 	if hooks == nil {
 		return &CustomProviderSet{}, nil
@@ -131,6 +135,22 @@ func NewCustomProviderSet(hooks CustomHooks) (*CustomProviderSet, error) {
 	}
 	if err := validateAndSort("usage enricher", set.enrichers, func(p UsageEnricher) string { return p.ID() }); err != nil {
 		return nil, err
+	}
+	permissionNames := make(map[string]string)
+	for _, p := range set.permissions {
+		for _, permission := range p.Permissions() {
+			if err := validateContributionKey("permission", permission.Name, p.ID(), permissionNames, ErrDuplicatePermission); err != nil {
+				return nil, err
+			}
+		}
+	}
+	settingKeys := make(map[string]string)
+	for _, p := range set.settings {
+		for _, setting := range p.Settings() {
+			if err := validateContributionKey("setting", setting.Key, p.ID(), settingKeys, ErrDuplicateSettingKey); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return set, nil
 }
@@ -181,19 +201,47 @@ var (
 	ErrDuplicateProviderID = errors.New("duplicate custom provider id")
 	// ErrInvalidProvider indicates a nil provider or an empty provider ID.
 	ErrInvalidProvider = errors.New("invalid custom provider")
+	// Contribution keys are unique across their category, not just per provider.
+	ErrDuplicatePermission = errors.New("duplicate custom permission")
+	ErrDuplicateSettingKey = errors.New("duplicate custom setting key")
+	ErrInvalidContribution = errors.New("invalid custom contribution key")
 )
 
 type provider interface{ ID() string }
 
+func validateContributionKey(kind, key, owner string, seen map[string]string, duplicate error) error {
+	if key == "" || strings.TrimSpace(key) != key {
+		return fmt.Errorf("%w: %s %q from provider %q", ErrInvalidContribution, kind, key, owner)
+	}
+	if previous, exists := seen[key]; exists {
+		return fmt.Errorf("%w: %q from providers %q and %q", duplicate, key, previous, owner)
+	}
+	seen[key] = owner
+	return nil
+}
+
+func isNilProvider(value any) bool {
+	if value == nil {
+		return true
+	}
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
 func validateAndSort[T provider](kind string, providers []T, idOf func(T) string) error {
 	seen := make(map[string]struct{}, len(providers))
 	for _, p := range providers {
-		if any(p) == nil {
+		if isNilProvider(p) {
 			return fmt.Errorf("%w: nil %s provider", ErrInvalidProvider, kind)
 		}
 		id := idOf(p)
-		if id == "" {
-			return fmt.Errorf("%w: %s provider has empty id", ErrInvalidProvider, kind)
+		if id == "" || strings.TrimSpace(id) != id {
+			return fmt.Errorf("%w: %s provider has invalid id %q", ErrInvalidProvider, kind, id)
 		}
 		if _, exists := seen[id]; exists {
 			return fmt.Errorf("%w: %s %q", ErrDuplicateProviderID, kind, id)

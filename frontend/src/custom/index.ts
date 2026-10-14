@@ -17,3 +17,5 @@ export type {
   CustomSettingsTab
 } from './registry'
 export type { HostCustomNavItem } from './hostAdapters'
+export { getCustomSettingsAccess } from './settingsAccess'
+export type { CustomSettingsAuthz } from './settingsAccess'

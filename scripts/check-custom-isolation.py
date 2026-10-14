@@ -32,6 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
+from custom_contracts import check as check_contracts, ContractError
 
 
 FEATURE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$")
@@ -386,9 +387,11 @@ def main() -> int:
         check_migrations(root, base_ref, upstream_ref)
         check_feature_manifests(root)
         check_custom_manifest(root)
+        check_contracts(root)
+        print("custom architecture contracts: PASS")
         print("custom isolation checks: PASS")
         return 0
-    except CheckFailure as exc:
+    except (CheckFailure, ContractError, OSError, ValueError, KeyError) as exc:
         print(f"custom isolation checks: FAIL\n{exc}", file=sys.stderr)
         return 1
 

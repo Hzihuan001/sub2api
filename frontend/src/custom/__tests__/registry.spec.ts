@@ -102,4 +102,49 @@ describe('custom feature registry', () => {
     registry.clear()
     expect(registry.features()).toEqual([])
   })
+
+  it.each([
+    ['route path', { routes: [{ path: '/same', component: {} }] }, { routes: [{ path: '/same/', component: {} }] }],
+    ['route name', { routes: [{ path: '/one', name: 'Same', component: {} }] }, { routes: [{ path: '/two', name: 'Same', component: {} }] }],
+    ['menu id', { menuItems: [{ id: 'same', path: '/one', labelKey: 'one' }] }, { menuItems: [{ id: 'same', path: '/two', labelKey: 'two' }] }],
+    ['menu path', { menuItems: [{ id: 'one', path: '/same', labelKey: 'one' }] }, { menuItems: [{ id: 'two', path: '/same', labelKey: 'two' }] }],
+    ['settings tab id', { settingsTabs: [{ id: 'same', labelKey: 'one', component: {} }] }, { settingsTabs: [{ id: 'same', labelKey: 'two', component: {} }] }],
+  ] satisfies [string, Partial<CustomFeatureManifest>, Partial<CustomFeatureManifest>][])(
+    'rejects duplicate %s atomically across features and batches', (kind, first, conflicting) => {
+      const registry = createCustomFeatureRegistry()
+      registry.register(feature('existing', first))
+      expect(() => registry.register(feature('conflict', conflicting))).toThrow(`Duplicate custom ${kind}`)
+      expect(() => registry.registerMany([feature('unrelated'), feature('conflict', conflicting)])).toThrow(`Duplicate custom ${kind}`)
+      expect(registry.features().map((item) => item.id)).toEqual(['existing'])
+      const fresh = createCustomFeatureRegistry()
+      expect(() => fresh.registerMany([feature('one', first), feature('two', conflicting)])).toThrow(`Duplicate custom ${kind}`)
+      expect(fresh.features()).toEqual([])
+    }
+  )
+
+  it('checks nested route names, resolved paths and aliases', () => {
+    const registry = createCustomFeatureRegistry()
+    registry.register(feature('parent', { routes: [{
+      path: '/parent', component: {}, children: [
+        { path: '', name: 'ParentIndex', component: {} },
+        { path: 'child', name: 'NestedName', alias: '/alternate', component: {} }
+      ]
+    }] }))
+    for (const route of [
+      { path: '/parent/child', component: {} },
+      { path: '/alternate', component: {} },
+      { path: '/other', name: 'NestedName', component: {} }
+    ]) expect(() => registry.register(feature('conflict', { routes: [route] }))).toThrow('Duplicate custom route')
+    expect(registry.has('conflict')).toBe(false)
+  })
+
+  it('checks nested menu resources and rejects empty contribution keys', () => {
+    const registry = createCustomFeatureRegistry()
+    registry.register(feature('parent', { menuItems: [{
+      id: 'parent', path: '/parent', labelKey: 'parent', children: [{ id: 'child', path: '/child', labelKey: 'child' }]
+    }] }))
+    expect(() => registry.register(feature('conflict', { menuItems: [{ id: 'child', path: '/other', labelKey: 'other' }] }))).toThrow('Duplicate custom menu id')
+    expect(() => registry.register(feature('blank', { settingsTabs: [{ id: ' ', labelKey: 'test', component: {} }] }))).toThrow('must not be empty')
+    expect(() => registry.register(feature('blank', { menuItems: [{ id: 'test', path: '/test', labelKey: ' ' }] }))).toThrow('must not be empty')
+  })
 })

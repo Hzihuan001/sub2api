@@ -97,4 +97,22 @@ describe('custom host adapters', () => {
       expect.objectContaining({ path: '/admin/usage', permission: 'usage' })
     )
   })
+
+  it.each([
+    { path: '/host', component: {} },
+    { path: '/custom', name: 'HostRoute', component: {} },
+    { path: '/alias', component: {} }
+  ])('rejects custom routes that shadow official host resources: $path', (route) => {
+    const registry = createCustomFeatureRegistry()
+    registry.register({ id: 'conflict', routes: [route] })
+    const base = [{ path: '/host', name: 'HostRoute', alias: '/alias', component: {} }]
+    expect(() => mergeCustomRoutes(base, registry)).toThrow('Duplicate custom route')
+    expect(base).toHaveLength(1)
+  })
+
+  it.each(['general', ' general '])('fails on reserved settings id %s instead of silently hiding a contribution', (id) => {
+    const registry = createCustomFeatureRegistry()
+    registry.register({ id: 'conflict', settingsTabs: [{ id, labelKey: 'test', component: {} }] })
+    expect(() => getHostCustomSettingsTabs(registry, ['general'])).toThrow('conflicts with host:')
+  })
 })

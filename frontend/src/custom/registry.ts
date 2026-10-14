@@ -30,8 +30,12 @@ export interface CustomMenuItem {
 export interface CustomSettingsTab {
   id: string
   labelKey: string
+  /** Receives readOnly; panel-owned save handlers must honor it. Server authorization remains required. */
   component: Component
+  /** @deprecated Read-only compatibility alias; never grants write access. */
   permission?: string
+  readPermission?: string
+  writePermission?: string
   order?: number
 }
 
@@ -99,6 +103,73 @@ function sortedFeatures(features: Iterable<CustomFeatureManifest>): CustomFeatur
   return [...features].sort((left, right) => left.id.localeCompare(right.id))
 }
 
+function requiredResourceKey(value: string, kind: string): string {
+  const key = value.trim()
+  if (!key) throw new Error(`Custom ${kind} must not be empty`)
+  return key
+}
+
+function routePath(path: string, parent: string): string {
+  const resolved = path.startsWith('/') ? path : `${parent}/${path}`
+  return resolved.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/'
+}
+
+/** Check incoming routes against host resources without changing existing host routes. */
+export function assertCustomRouteResources(
+  routes: readonly RouteRecordRaw[],
+  hostRoutes: readonly RouteRecordRaw[] = []
+): void {
+  const paths = new Set<string>()
+  const names = new Set<string | symbol>()
+  const visit = (records: readonly RouteRecordRaw[], parent: string, validate: boolean): void => {
+    for (const route of records) {
+      const path = routePath(route.path, parent)
+      // A default child intentionally shares its parent's path in Vue Router.
+      const claimedPaths = route.path === '' && parent ? [] : [path]
+      const aliases = typeof route.alias === 'string' ? [route.alias] : route.alias ?? []
+      claimedPaths.push(...aliases.map((alias) => routePath(alias, parent)))
+      for (const resource of claimedPaths) {
+        if (validate && paths.has(resource)) throw new Error(`Duplicate custom route path: ${resource}`)
+        paths.add(resource)
+      }
+      if (route.name !== undefined) {
+        if (validate && names.has(route.name)) throw new Error(`Duplicate custom route name: ${String(route.name)}`)
+        names.add(route.name)
+      }
+      if (route.children) visit(route.children, path, validate)
+    }
+  }
+  visit(hostRoutes, '', false)
+  visit(routes, '', true)
+}
+
+function assertContributionResources(features: readonly CustomFeatureManifest[]): void {
+  assertCustomRouteResources(features.flatMap((feature) => feature.routes ?? []))
+  const menuIds = new Set<string>()
+  const menuPaths = new Set<string>()
+  const tabIds = new Set<string>()
+  const claim = (keys: Set<string>, value: string, kind: string): void => {
+    const key = requiredResourceKey(value, kind)
+    if (keys.has(key)) throw new Error(`Duplicate custom ${kind}: ${key}`)
+    keys.add(key)
+  }
+  const visitMenus = (items: readonly CustomMenuItem[]): void => {
+    for (const item of items) {
+      claim(menuIds, item.id, 'menu id')
+      claim(menuPaths, item.path.replace(/\/$/, '') || '/', 'menu path')
+      requiredResourceKey(item.labelKey, 'menu labelKey')
+      if (item.children) visitMenus(item.children)
+    }
+  }
+  for (const feature of features) {
+    visitMenus(feature.menuItems ?? [])
+    for (const tab of feature.settingsTabs ?? []) {
+      claim(tabIds, tab.id, 'settings tab id')
+      requiredResourceKey(tab.labelKey, 'settings tab labelKey')
+    }
+  }
+}
+
 /**
  * Create an isolated registry.  Tests and embedders can create their own
  * instance; the default singleton below is used by the application.
@@ -114,6 +185,7 @@ export function createCustomFeatureRegistry(): CustomFeatureRegistry {
       if (entries.has(normalized.id)) {
         throw new Error(`Custom feature already registered: ${normalized.id}`)
       }
+      assertContributionResources([...entries.values(), normalized])
       entries.set(normalized.id, normalized)
     },
 
@@ -128,6 +200,7 @@ export function createCustomFeatureRegistry(): CustomFeatureRegistry {
         }
         batchIds.add(feature.id)
       }
+      assertContributionResources([...entries.values(), ...normalized])
       for (const feature of normalized) entries.set(feature.id, feature)
     },
 

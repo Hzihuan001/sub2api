@@ -37,7 +37,7 @@
                   <Icon :name="tab.icon" size="sm" />
                 </span>
                 <span class="settings-tab-label">{{
-                  t(`admin.settings.tabs.${tab.key}`)
+                  t(tab.custom?.labelKey ?? `admin.settings.tabs.${tab.key}`)
                 }}</span>
               </button>
             </div>
@@ -8917,7 +8917,9 @@
         <!-- Custom settings tabs are mounted only when contributed by a registered feature. -->
         <template v-for="tab in customSettingsTabs" :key="tab.key">
           <div v-if="tab.custom && settingsTabVisible(tab.key)" v-show="activeTab === tab.key">
-            <component :is="tab.custom.component" />
+            <fieldset :disabled="customSettingsReadOnly(tab.custom)" class="contents">
+              <component :is="tab.custom.component" :read-only="customSettingsReadOnly(tab.custom)" />
+            </fieldset>
           </div>
         </template>
 
@@ -9073,7 +9075,7 @@ import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { useAppStore, useAuthStore } from "@/stores";
-import { getHostCustomSettingsTabs } from "@/custom";
+import { getCustomSettingsAccess, getHostCustomSettingsTabs } from "@/custom";
 import type { CustomSettingsTab } from "@/custom";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
@@ -9172,15 +9174,11 @@ const allSettingsTabs: readonly SettingsTabEntry[] = [
 ];
 
 const customSettingsTabs = computed<SettingsTabEntry[]>(() => {
-  const builtInKeys = new Set(allSettingsTabs.map((tab) => tab.key));
-  return getHostCustomSettingsTabs()
-    .filter((tab) => tab.id.trim() && !builtInKeys.has(tab.id))
+  return getHostCustomSettingsTabs(undefined, allSettingsTabs.map((tab) => tab.key))
     .map((tab) => ({ key: tab.id, icon: "bolt" as const, custom: tab }));
 });
 const allSettingsTabEntries = computed(() => [...allSettingsTabs, ...customSettingsTabs.value]);
-const settingsTabs = computed(() => authStore.isAdmin
-  ? allSettingsTabEntries.value
-  : allSettingsTabEntries.value.filter((tab) => settingsTabVisible(tab.key)));
+const settingsTabs = computed(() => allSettingsTabEntries.value.filter((tab) => settingsTabVisible(tab.key)));
 
 function isBuiltInSettingsTab(tab: SettingsTab): tab is BuiltInSettingsTab {
   return Object.prototype.hasOwnProperty.call(settingsTabPermission, tab);
@@ -9195,11 +9193,18 @@ function settingsTabVisible(tab: SettingsTab): boolean {
     return authStore.isAdmin || authStore.canOperator("settings.read") || authStore.canOperator(settingsTabPermission[tab]);
   }
   const custom = customSettingsTab(tab);
-  return !!custom && (authStore.isAdmin || authStore.canOperator("settings.read") || (!!custom.permission && authStore.canOperator(custom.permission as Parameters<typeof authStore.canOperator>[0])));
+  return !!custom && getCustomSettingsAccess(custom, authStore).canRead;
+}
+
+function customSettingsReadOnly(tab: CustomSettingsTab): boolean {
+  return getCustomSettingsAccess(tab, authStore).readOnly;
 }
 
 const settingsReadOnly = computed(() => {
-  if (!isBuiltInSettingsTab(activeTab.value)) return false;
+  if (!isBuiltInSettingsTab(activeTab.value)) {
+    const custom = customSettingsTab(activeTab.value);
+    return !custom || customSettingsReadOnly(custom);
+  }
   return authStore.isOperator && !authStore.canOperator("settings.write") && !authStore.canOperator(settingsTabWritePermission[activeTab.value]);
 });
 watch(settingsTabs, (tabs) => {
@@ -11421,6 +11426,8 @@ const siteBillingModeHint = computed(() =>
 );
 
 async function saveSettings() {
+  // Custom panels own their save contract; nested submit must not save host settings.
+  if (!isBuiltInSettingsTab(activeTab.value) || settingsReadOnly.value) return;
   saving.value = true;
   try {
     const normalizedTableDefaultPageSize = Math.floor(

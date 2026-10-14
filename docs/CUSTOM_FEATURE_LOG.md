@@ -1,5 +1,11 @@
 # 定制功能日志
 
+### 2026-10-14 — 本地未发布 — 模块化 P1 接入门禁
+
+- 架构清单变为可执行检查与 7 组测试命令；真实路由/Sidebar/Settings 接入、重复注册和设置独立读写契约完成，静态负向夹具 12 项通过。
+- Go custom/server/routes、前端 183 项相关测试、类型/定向 lint、隔离与迁移检查通过。详细证据见 `CUSTOM_MODULARIZATION_EXECUTION.md`；messages loader 和 worker 关闭分别随 P2/P3 完成，不提前算通过。
+- 本地分支 `codex/custom-modularization-v0.2.16`；未推送、未部署，生产仍 `.5`。公开 API、数据、既有角色权限保持。
+
 ### 2026-10-14 — 本地 P0 完成 — 模块化实施基线
 
 - 用户明确执行，范围为 P0–P6 本地重构/提交/验收，不推送部署。新分支 `codex/custom-modularization-v0.2.16` 起于 `989594099`；原发布分支及三站 `.5` 保持。

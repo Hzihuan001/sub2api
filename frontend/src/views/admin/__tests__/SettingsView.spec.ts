@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent, h } from "vue";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defineComponent, h, onMounted } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { listPlatformIds } from "@/constants/platformCatalog";
+import { defaultOperatorRolePolicy, hasOperatorPermission, type OperatorPermission } from "@/authz/permissions";
+import { customFeatureRegistry, type CustomSettingsTab } from "@/custom";
 
 import enCommon from "@/i18n/locales/en/common";
 import enSettings from "@/i18n/locales/en/admin/settings";
@@ -81,6 +83,17 @@ const {
 }));
 
 const localeRef = vi.hoisted(() => ({ value: "zh-CN" }));
+const settingsAuth = vi.hoisted(() => ({
+  isAdmin: true,
+  isOperator: false,
+  canOperator: vi.fn<(permission: OperatorPermission) => boolean>().mockReturnValue(true),
+}));
+
+beforeEach(() => {
+  settingsAuth.isAdmin = true;
+  settingsAuth.isOperator = false;
+  settingsAuth.canOperator.mockReset().mockReturnValue(true);
+});
 
 vi.mock("@/api", () => ({
   adminAPI: {
@@ -128,11 +141,7 @@ vi.mock("@/stores", () => ({
     showInfo: vi.fn(),
     fetchPublicSettings,
   }),
-  useAuthStore: () => ({
-    isAdmin: true,
-    isOperator: false,
-    canOperator: () => true,
-  }),
+  useAuthStore: () => settingsAuth,
 }));
 
 vi.mock("@/stores/adminSettings", () => ({
@@ -725,6 +734,145 @@ describe("admin SettingsView payment visible method controls", () => {
     });
     fetchPublicSettings.mockResolvedValue(undefined);
     adminSettingsFetch.mockResolvedValue(undefined);
+  });
+
+  describe("registered custom settings host contract", () => {
+    const featureId = "settings-host-contract-probe";
+    const tabId = "host-contract-probe";
+    const readProbe = vi.fn();
+    const writeProbe = vi.fn();
+    let wrapper: ReturnType<typeof mountView> | undefined;
+    const Probe = defineComponent({
+      props: { readOnly: { type: Boolean, default: true } },
+      setup(props) {
+        onMounted(readProbe);
+        return () => h("section", { "data-testid": "custom-settings-probe" }, [
+          h("input", { "data-testid": "custom-settings-input" }),
+          h("output", { "data-testid": "custom-settings-readonly" }, String(props.readOnly)),
+          h("button", {
+            type: "button",
+            "data-testid": "custom-settings-save",
+            onClick: () => { if (!props.readOnly) writeProbe(); },
+          }, "Save probe"),
+        ]);
+      },
+    });
+
+    function registerProbe(overrides: Partial<CustomSettingsTab> = {}) {
+      customFeatureRegistry.register({
+        id: featureId,
+        settingsTabs: [{
+          id: tabId,
+          labelKey: "custom.contract.actualLabel",
+          component: Probe,
+          readPermission: "settings.general.read",
+          writePermission: "settings.general.write",
+          ...overrides,
+        }],
+      });
+    }
+
+    function operatorPermissions(...permissions: OperatorPermission[]) {
+      const policy = defaultOperatorRolePolicy();
+      for (const key of Object.keys(policy.permissions) as OperatorPermission[]) policy.permissions[key] = false;
+      for (const permission of permissions) policy.permissions[permission] = true;
+      settingsAuth.isAdmin = false;
+      settingsAuth.isOperator = true;
+      settingsAuth.canOperator.mockImplementation((permission) => hasOperatorPermission("operator", permission, policy));
+    }
+
+    function assertSettingsContribution(view: ReturnType<typeof mountView>) {
+      const tab = view.find(`#settings-tab-${tabId}`);
+      if (!tab.exists() || tab.text() !== "custom.contract.actualLabel" || !view.find('[data-testid="custom-settings-probe"]').exists()) {
+        throw new Error("Settings host did not render the registered component and labelKey");
+      }
+    }
+
+    beforeEach(() => {
+      readProbe.mockClear();
+      writeProbe.mockClear();
+    });
+    afterEach(() => {
+      wrapper?.unmount();
+      wrapper = undefined;
+      customFeatureRegistry.unregister(featureId);
+      expect(customFeatureRegistry.has("image-studio")).toBe(true);
+    });
+
+    it("mounts the actual registry component and label without replacing official settings", async () => {
+      registerProbe();
+      wrapper = mountView();
+      await flushPromises();
+      assertSettingsContribution(wrapper);
+      expect(wrapper.find("#settings-tab-general").exists()).toBe(true);
+      expect(readProbe).toHaveBeenCalledOnce();
+      await wrapper.get(`#settings-tab-${tabId}`).trigger("click");
+      expect(wrapper.get('[data-testid="custom-settings-readonly"]').text()).toBe("false");
+      await wrapper.get('[data-testid="custom-settings-save"]').trigger("click");
+      expect(writeProbe).toHaveBeenCalledOnce();
+      await wrapper.get("form").trigger("submit");
+      expect(updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("passes readOnly and disables custom inputs for a read-only operator", async () => {
+      registerProbe();
+      operatorPermissions("settings.general.read");
+      wrapper = mountView();
+      await flushPromises();
+      assertSettingsContribution(wrapper);
+      await wrapper.get(`#settings-tab-${tabId}`).trigger("click");
+      expect(wrapper.get('[data-testid="custom-settings-readonly"]').text()).toBe("true");
+      expect(wrapper.get('[data-testid="custom-settings-input"]').element.matches(":disabled")).toBe(true);
+      await wrapper.get('[data-testid="custom-settings-save"]').trigger("click");
+      await wrapper.get("form").trigger("submit");
+      expect(writeProbe).not.toHaveBeenCalled();
+      expect(updateSettings).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["scoped", ["settings.general.read", "settings.general.write"]],
+      ["global", ["settings.read", "settings.write"]],
+    ] as const)("inherits %s read/write grants for explicitly declared operations", async (_label, permissions) => {
+      registerProbe();
+      operatorPermissions(...permissions);
+      wrapper = mountView();
+      await flushPromises();
+      assertSettingsContribution(wrapper);
+      await wrapper.get(`#settings-tab-${tabId}`).trigger("click");
+      expect(wrapper.get('[data-testid="custom-settings-readonly"]').text()).toBe("false");
+      expect(wrapper.get('[data-testid="custom-settings-input"]').element.matches(":disabled")).toBe(false);
+      await wrapper.get('[data-testid="custom-settings-save"]').trigger("click");
+      expect(writeProbe).toHaveBeenCalledOnce();
+    });
+
+    it.each([undefined, "settings.nonexistent.read"])("does not mount or read with missing/unknown read metadata: %s", async (readPermission) => {
+      registerProbe({ readPermission });
+      operatorPermissions("settings.read", "settings.write");
+      wrapper = mountView();
+      await flushPromises();
+      expect(wrapper.find(`#settings-tab-${tabId}`).exists()).toBe(false);
+      expect(wrapper.find('[data-testid="custom-settings-probe"]').exists()).toBe(false);
+      expect(readProbe).not.toHaveBeenCalled();
+    });
+
+    it("keeps legacy read metadata read-only even with a global write grant", async () => {
+      registerProbe({ readPermission: undefined, permission: "settings.general.read", writePermission: undefined });
+      operatorPermissions("settings.read", "settings.write");
+      wrapper = mountView();
+      await flushPromises();
+      assertSettingsContribution(wrapper);
+      await wrapper.get(`#settings-tab-${tabId}`).trigger("click");
+      expect(wrapper.get('[data-testid="custom-settings-readonly"]').text()).toBe("true");
+      await wrapper.get('[data-testid="custom-settings-save"]').trigger("click");
+      expect(writeProbe).not.toHaveBeenCalled();
+    });
+
+    it("detects a missing feature registration with the same real-host assertion", async () => {
+      wrapper = mountView();
+      await flushPromises();
+      expect(() => assertSettingsContribution(wrapper!)).toThrow("Settings host did not render");
+      expect(readProbe).not.toHaveBeenCalled();
+    });
   });
 
   it("loads and saves the open button visibility for each custom menu", async () => {

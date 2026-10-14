@@ -173,7 +173,12 @@ if ($RunChecks) {
     }
     if (Test-Path -LiteralPath "frontend/package.json") {
         Push-Location frontend
-        try { & pnpm install --frozen-lockfile; if ($LASTEXITCODE -ne 0) { throw "frontend install failed" } }
+        try {
+            & pnpm install --frozen-lockfile
+            if ($LASTEXITCODE -ne 0) { throw "frontend install failed" }
+            & pnpm run typecheck
+            if ($LASTEXITCODE -ne 0) { throw "frontend typecheck failed" }
+        }
         finally { Pop-Location }
     }
     $isolationCheck = Join-Path $repoRoot "scripts/check-custom-isolation.py"
@@ -183,6 +188,8 @@ if ($RunChecks) {
         if ($null -eq $pythonCommand) { throw "Python is required for custom isolation checks" }
         & $pythonCommand.Source $isolationCheck --run-go-generate --base-ref $baseSha --upstream-ref $tagCommitRef
         if ($LASTEXITCODE -ne 0) { throw "custom isolation checks failed" }
+        & $pythonCommand.Source (Join-Path $repoRoot "scripts/custom_contracts.py") --run-tests
+        if ($LASTEXITCODE -ne 0) { throw "custom host contracts failed" }
     }
     $report.Add("Checks completed successfully.")
 }
