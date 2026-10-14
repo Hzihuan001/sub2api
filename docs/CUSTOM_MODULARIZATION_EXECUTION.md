@@ -97,3 +97,36 @@ P1 起按阶段追加实际文件、提交、测试、负向验证与指标，�
 - 门禁：31 个定向文件共 400 场景通过（首轮 399 通过，新增 Settings 测试错误期待省略字段为 false；按旧 payload 修正测试后整个 Settings 51 项通过）；图片子组 77 项通过。vue-tsc、定向 ESLint 和生产构建通过（1138 modules / 45.32s）。构建仅已有 browserslist、静态/动态 import、chunk 大小提示。
 - 静态架构检查通过；前端显式宿主入口由 3 个增为 6 个（补登记实际 i18n/app/title），不是掩盖新增接入点。收益是取消分散品牌替换、菜单特判和重复图片规则，不以目录/文件数量减少宣称性能或冲突百分比。
 - 新增 `custom/README.md` 维护指引。未推送、未部署，P3 后端阶段随后开始。
+
+## P3：后端装配与生命周期（2026-10-14）
+
+- 提交：`1e5c18ec6`（未推送、未部署）。
+- `internal/customapp/composition.go` 成为定制 composition root：显式组合 16 条现有定制管理路由、operator 权限提供者和 PromptRule 订阅；不引入 service locator、整套 Handler 或第二个官方 worker。
+- `AdminMount` 将原有定制路由安装到原 admin 子路由的具名位置，`routes/admin.go` 保持 admin 认证、审计、限流与注册顺序；空 Host 仍保留官方基础路由。可选扩展仍可使用原始注册接口。
+- `PromptRuleService` 初始数据库/缓存加载仍在构造阶段同步完成；Redis 订阅改为 `Start(ctx)` 持有、`Shutdown(ctx)` 取消并等待回调/连接退出。`custom.Host` 对 worker 统一提供一次启动、逆序关闭、超时保留运行状态，防止重复订阅或半退出后重启。
+- Wire 由锁定 Go 工具生成 `cmd/server/wire_gen.go`，未手改生成文件；应用把同一个 Host 注入 router、启动和 cleanup。`wire_gen_test` 的最小 cleanup 夹具同步传入空 Host。
+- 定向证据：`go generate ./cmd/server` 通过；`go test -tags=unit ./internal/custom ./internal/customapp ./internal/server ./internal/server/routes ./cmd/server -run 'Custom|Operator|PromptRule|Application|Route|Host|Cleanup' -count=1` 通过；PromptRule service/repository 定向测试通过；`python scripts/custom_contracts.py` 与 `git diff --check` 通过。
+- 本阶段没有数据库迁移、公开路由/字段/设置键、账务、官方批量/审计 worker 或生产配置变化。前端 3 个已有平台清单契约测试另以 `ad24ff36a` 固化，属于门禁基线修复，不改变运行代码。
+
+## P4：生图与审计接口（2026-10-14）
+
+- 提交：`4cbcaafef`（本地，未推送/未部署）。`BatchImageHandler` 由完整 `OpenAIGatewayHandler` 改为 `SecurityAuditGate` 窄接口；生产 Wire 使用现有 coordinator 与内容审核服务组装 gate，未复制网关或改变账务/队列。
+- 审计顺序、HTTP 去重、`capture_only` 的 fail-open、阻断模式 fail-closed、错误 JSON/SSE 格式和缺依赖拒绝均保留。批量入口审计失败不会绕过原请求边界。
+- `go test -tags=unit ./internal/handler ./internal/securityaudit -run 'BatchImageAudit|BatchImagePromptGuard|SecurityAuditShared|PromptAuditGatePrecedes|PromptGuard|SecurityAudit|CaptureOnly' -count=1` 通过；`cmd/server` 与 handler 编译通过。
+- 全量 handler 宽回归仅有基线已有的 AstraPro 两例失败（预期 2 次账号尝试、实际 1 次），与 P4 差异无关。
+
+## P5：网关故障策略（2026-10-14）
+
+- 提交：`57ed1ca2d`（本地，未推送/未部署）。新增无状态故障分类、重放元数据和单次真实尝试效果对象；HTTP、普通透传、`response.failed` 和 error event 适配器改为薄委托。WS 适配器保留现有共享副作用路径，避免重复计数/改变协议语义。
+- 没有改变重试预算、账号冷却、模型选择、账务、响应体或请求级远程查询；纯策略与旧实现交叉矩阵验证通过。
+- `go test ./internal/service -run '^TestGatewayFailure(Decision|Replay|Attempt)' -count=1` 通过；相关 resilience manifest 定向测试通过。
+- 宽回归发现的 5 个失败在 P4 提交前基线已复现：两个流式 403 credential 状态测试、三个 OAuth 透传 502/503/504 旧期待；本轮未改对应语义，不能把它们列为新回归。
+
+## P6：本地 Docker 联合验收（2026-10-15）
+
+- 静态门禁：`custom_contracts.py`、12 个架构负例、迁移 append-only、manifest/isolation 全部通过；独立干净工作树执行 `--run-go-generate` 后 generated sources clean。
+- 后端门禁：宿主/权限/生命周期、审计、批量、故障策略定向 Go 测试通过；真实 PostgreSQL 18 + Redis 8 integration tests 通过（25.084s）。
+- 前端门禁：`vue-tsc`、定向 ESLint、41 个 Vitest 文件/442 个测试通过；生产构建 1138 modules 通过。仅保留既有 Browserslist、动态导入和 chunk 大小提示。
+- Docker 候选镜像：`sub2api:operator-modular-local`，linux/amd64，image ID `sha256:253c6aaa8bd54ebeacc64d829e4500773677e182cea8851eb4dd2d74b6b4935f`，版本构建参数 `0.2.16-custom.modular`、提交 `57ed1ca2d`。隔离项目 `sub2api-operator-test-v0216` 端口 `18086` 健康、重启 0；容器日志无 panic/fatal/migration/database/redis 错误。
+- Docker 烟测：生图单图/批量/参考图/PNG/ZIP/重试幂等/完整计费 3 张实际成本 `0.03` 通过；网关 overload（同账号三次冷却）、quota、model、server、timeout、auth、rate、stream 及安全/参数/部分输出不重放共 11 场景通过。另以全新隔离项目 `sub2api-operator-test-modular` 端口 `18089` 完成角色、API Key、审计和重启验收并保留供人工检查。
+- 本地验收通过后仍未推送、未建标签、未构建 GHCR、未改主站/L1/COS。生产继续运行 `.5`。
