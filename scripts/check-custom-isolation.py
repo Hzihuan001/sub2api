@@ -158,6 +158,10 @@ def changed_migrations(root: Path, base_ref: str | None) -> list[tuple[str, str]
         if not line.strip():
             continue
         status, path = line.split("\t", 1)
+        # Only embedded SQL files are executable migrations. Go tests and
+        # package support files in this directory follow normal source rules.
+        if Path(path).suffix != ".sql":
+            continue
         changes.append((status, path))
     return changes
 
