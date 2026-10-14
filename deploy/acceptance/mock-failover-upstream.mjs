@@ -13,6 +13,12 @@ http.createServer(async (req, res) => {
   for await (const chunk of req) raw += chunk
   let body
   try { body = JSON.parse(raw) } catch { return json(res, 400, { error: { code: 'invalid_json' } }) }
+  // Account creation performs a separate capability probe. Acknowledge it,
+  // without counting it as an attempted user request or injecting a fault.
+  if (body.tools?.some(tool => tool.name === 'probe_ping')) {
+    return json(res, 200, { id: 'resp_probe', object: 'response', status: 'completed', model: body.model,
+      output: [{ type: 'function_call', name: 'probe_ping', call_id: 'call_probe', arguments: '{"ok":true}', status: 'completed' }] })
+  }
   const key = (req.headers.authorization || '').replace('Bearer ', '')
   const [scenario, slot] = key.split(':')
   requests.push({ scenario, slot, path: req.url, stream: body.stream })

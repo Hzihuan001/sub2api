@@ -27,7 +27,12 @@ try {
   & docker run --detach --name $container --label "moshu.acceptance.project=$Project" --network $network --publish "127.0.0.1:${MockPort}:8080" --mount "type=bind,source=$mock,target=/fixture/server.mjs,readonly" node:24-alpine node /fixture/server.mjs | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Mock startup failed' }
   $started = $true
-  $null = Invoke-RestMethod "$fixtureBase/health" -TimeoutSec 5
+  $ready = $false
+  for ($i=0; $i -lt 30; $i++) {
+    try { $health = Invoke-RestMethod "$fixtureBase/health" -TimeoutSec 2; if ($health.status -eq 'ok') { $ready=$true; break } } catch { }
+    Start-Sleep -Milliseconds 300
+  }
+  if (-not $ready) { throw 'Mock did not become ready' }
   $admin = Api POST '/api/v1/auth/login' '' @{ email='admin@operator-test.local'; password='Operator-Test-Admin-Password-2026!' }
   $adminToken = $admin.data.access_token
   $c = Api GET '/api/v1/admin/compliance' $adminToken
@@ -43,13 +48,17 @@ try {
       $a = Api POST '/api/v1/admin/accounts' $adminToken @{
         name="failover-$suffix-$scenario-$slot"; platform='openai'; type='apikey'; concurrency=5
         priority=$(if ($slot -eq 'primary') {0} else {100}); rate_multiplier=1; group_ids=@($g.data.id)
-        extra=@{ openai_passthrough=$true }
+        extra=@{ openai_passthrough=$true; openai_responses_mode='force_responses' }
         credentials=@{ api_key="${scenario}:$slot"; base_url="http://${container}:8080/v1"; model_mapping=@{'gpt-4o-mini'='gpt-4o-mini'}; pool_mode=$true; pool_mode_retry_count=2 }
       }
       $resources.Add(@('accounts', $a.data.id))
       if ($slot -eq 'primary') { $primaryId = $a.data.id }
     }
     $k = Api POST '/api/v1/keys' $login.data.access_token @{ name="failover-$scenario"; group_id=$g.data.id; quota=1 }
+    # Fixture creation is asynchronous with the scheduler's one-second outbox
+    # poll. Allow both account bindings to reach its snapshot before injecting
+    # a failure; otherwise this tests account-creation visibility, not failover.
+    Start-Sleep -Seconds 2
     $payload = @{ model='gpt-4o-mini'; input='synthetic failover fixture'; stream=($scenario -in @('stream','partial')) } | ConvertTo-Json -Compress
     $r = Invoke-WebRequest "$base/v1/responses" -Method Post -ContentType 'application/json' -Body $payload -Headers @{ Authorization="Bearer $($k.data.key)" } -SkipHttpErrorCheck -TimeoutSec 45
     # Invoke-RestMethod arrays are unrolled explicitly for reliable counts.
