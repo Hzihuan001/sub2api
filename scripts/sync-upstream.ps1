@@ -36,7 +36,7 @@ function Get-LatestUpstreamTag {
     $tags = @(
         $raw |
             ForEach-Object { ($_ -split "`t", 2)[1] -replace '^refs/tags/', '' } |
-            Where-Object { $_ -match '^v\d+\.\d+\.\d+(?:[-+].*)?$' }
+            Where-Object { $_ -match '^v\d+\.\d+\.\d+$' }
     )
     if ($tags.Count -eq 0) { throw "No semantic v* tag was found on upstream" }
     return ($tags | Sort-Object { [version](($_ -replace '^v', '') -replace '[-+].*$', '') } -Descending | Select-Object -First 1)
@@ -119,6 +119,10 @@ if (-not $KeepWorktree) {
 Invoke-Git @("fetch", "origin", $BaseBranch)
 $existing = git branch --list $UpgradeBranch
 if ($existing) { throw "Upgrade branch already exists: $UpgradeBranch (choose another name)" }
+$remoteExisting = git ls-remote --exit-code origin "refs/heads/$UpgradeBranch" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    throw "Upgrade branch already exists on origin: $UpgradeBranch (choose another name)"
+}
 Invoke-Git @("switch", "--create", $UpgradeBranch, $baseRef)
 
 $mergeCode = Invoke-GitAllowFailure @("merge", "--no-ff", "--no-commit", $tagRef)
@@ -135,13 +139,17 @@ if ($mergeCode -ne 0) {
     exit 2
 }
 
+# Conclude the upstream merge before applying any custom patch branch. Git does
+# not allow another merge while MERGE_HEAD is present; each patch therefore
+# starts from a committed upstream merge and is committed independently.
+Invoke-Git @("commit", "--no-edit", "-m", "chore: merge upstream $UpstreamTag")
+
 foreach ($patchBranch in (Read-PatchBranches -Path $Manifest)) {
     if ([string]::IsNullOrWhiteSpace($patchBranch)) { continue }
     $patchCode = Invoke-GitAllowFailure @("fetch", "--prune", "origin", $patchBranch)
     if ($patchCode -ne 0) {
         $report.Add("Patch branch was not found on origin: ``$patchBranch``")
         $report | ForEach-Object { Write-Host $_ }
-        Invoke-Git @("merge", "--abort")
         if (-not $KeepWorktree) { Invoke-Git @("switch", $BaseBranch) }
         exit 2
     }
@@ -155,10 +163,8 @@ foreach ($patchBranch in (Read-PatchBranches -Path $Manifest)) {
         if (-not $KeepWorktree) { Invoke-Git @("switch", $BaseBranch) }
         exit 2
     }
+    Invoke-Git @("commit", "--no-edit", "-m", "chore: apply custom patch $patchBranch after upstream $UpstreamTag")
 }
-
-# A no-commit merge leaves the index ready for a deterministic merge commit.
-Invoke-Git @("commit", "--no-edit", "-m", "chore: merge upstream $UpstreamTag")
 $rangeCode = Invoke-GitAllowFailure @("range-diff", "$tagRef..$baseSha", "$tagRef..HEAD")
 $report.Add("## Merge")
 $report.Add("Merge completed. ``git range-diff`` exit code: $rangeCode")

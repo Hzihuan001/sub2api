@@ -16,8 +16,10 @@ on:
     - cron: "17 3 * * 1"
 
 permissions:
-  contents: write
-  pull-requests: write
+  # Keep the workflow read-only by default. The sync job below is the only
+  # job allowed to publish an upgrade branch and draft PR.
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: upstream-sync
@@ -34,6 +36,9 @@ jobs:
   sync:
     name: Prepare upstream upgrade PR
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout custom base
         uses: actions/checkout@v6
@@ -45,6 +50,8 @@ jobs:
       - name: Configure remotes
         shell: bash
         run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1 || \
             git remote add "$UPSTREAM_REMOTE" https://github.com/Wei-Shaw/sub2api.git
           git fetch --prune origin "$BASE_BRANCH"
@@ -59,12 +66,32 @@ jobs:
           set -euo pipefail
           tag="$REQUESTED_TAG"
           if [[ -z "$tag" ]]; then
-            tag="$(git tag -l 'v*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+([-.].*)?$' | head -n1)"
+            # Select stable official releases by default. Pre-releases remain
+            # available when an explicit upstream_tag is supplied.
+            tag="$(git tag -l 'v*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)"
           fi
           [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.].*)?$ ]] || { echo "No valid upstream tag" >&2; exit 1; }
           sha="$(git rev-list -n1 "$tag")"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Set up pinned Go toolchain
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up pinned Node and pnpm toolchain
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Detect duplicate upgrade PR
         id: existing
@@ -92,7 +119,7 @@ jobs:
           SHA: ${{ steps.upstream.outputs.sha }}
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           safe_tag="${TAG//[^0-9A-Za-z._-]/-}"
           branch="upgrade/upstream-$safe_tag"
           if git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
@@ -105,9 +132,7 @@ jobs:
             echo "noop=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git merge --no-ff --no-commit "$TAG" >merge.log 2>&1
-          code=$?
-          if [[ $code -ne 0 ]]; then
+          if ! git merge --no-ff --no-commit "$TAG" >merge.log 2>&1; then
             conflicts="$(git diff --name-only --diff-filter=U || true)"
             git merge --abort >/dev/null 2>&1 || true
             {
@@ -129,6 +154,9 @@ jobs:
             echo "blocked=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # Finish the upstream merge before applying custom patch branches.
+          # Git rejects a second merge while MERGE_HEAD is present.
+          git commit --no-edit -m "chore: merge upstream $TAG"
           # Apply the ordered patch stack declared in the manifest. The list
           # is intentionally empty until each isolated feature branch has its
           # own tested ref. Missing refs block the draft PR; they are never
@@ -140,18 +168,17 @@ jobs:
           ' "$MANIFEST")"
           while IFS= read -r patch; do
             [[ -z "$patch" ]] && continue
-            git fetch --prune origin "$patch" >"patch-$patch.log" 2>&1
-            if [[ $? -ne 0 ]]; then
+            patch_log="patch-${patch//\//_}.log"
+            if ! git fetch --prune origin "$patch" >"$patch_log" 2>&1; then
               echo "patch branch not found: $patch" >sync-report.md
-              cp "patch-$patch.log" sync-merge.log
+              cp "$patch_log" sync-merge.log
               git add sync-report.md sync-merge.log
               git commit -m "chore: report missing patch $patch"
               echo "branch=$branch" >> "$GITHUB_OUTPUT"
               echo "blocked=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            git merge --no-ff --no-commit "origin/$patch" >>merge.log 2>&1
-            if [[ $? -ne 0 ]]; then
+            if ! git merge --no-ff --no-commit "origin/$patch" >>merge.log 2>&1; then
               conflicts="$(git diff --name-only --diff-filter=U || true)"
               git merge --abort >/dev/null 2>&1 || true
               {
@@ -167,8 +194,8 @@ jobs:
               echo "blocked=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            git commit --no-edit -m "chore: apply custom patch $patch after upstream $TAG"
           done <<< "$patches"
-          git commit --no-edit -m "chore: merge upstream $TAG"
           echo "noop=false" >> "$GITHUB_OUTPUT"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "blocked=false" >> "$GITHUB_OUTPUT"
@@ -180,7 +207,9 @@ jobs:
         run: |
           set +e
           failed=0
-          git diff --check HEAD^..HEAD || failed=1
+          # Check the complete generated branch range, not only the last
+          # commit; patch stacks may contain several independent merge commits.
+          git diff --check "origin/$BASE_BRANCH..HEAD" || failed=1
           git range-diff "${{ steps.upstream.outputs.tag }}..origin/$BASE_BRANCH" "${{ steps.upstream.outputs.tag }}..HEAD" > range-diff.txt || true
           if [[ "${{ steps.merge.outputs.blocked }}" == "true" ]]; then
             echo "failed=true" >> "$GITHUB_OUTPUT"
@@ -207,8 +236,7 @@ jobs:
             if [[ $? -ne 0 ]]; then failed=1; fi
           fi
           if [[ -f frontend/package.json ]]; then
-            corepack enable
-            (cd frontend && pnpm install --frozen-lockfile && pnpm run typecheck) > frontend-test.log 2>&1
+            (cd frontend && pnpm install --frozen-lockfile && pnpm run typecheck && pnpm run lint) > frontend-test.log 2>&1
             if [[ $? -ne 0 ]]; then failed=1; fi
           fi
           if [[ $failed -ne 0 ]]; then

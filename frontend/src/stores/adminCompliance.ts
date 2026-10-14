@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import adminComplianceAPI, { type AdminComplianceStatus } from '@/api/admin/compliance'
 import { getLocale } from '@/i18n'
+import { normalizePublicBranding } from '@/utils/publicBranding'
 
 const FALLBACK_ZH_PHRASE = '我已阅读、理解并同意 Moshu 部署与运营合规承诺'
 const FALLBACK_EN_PHRASE = 'I have read, understood, and agree to the Moshu Deployment and Operation Compliance Commitment'
@@ -22,6 +23,9 @@ export const useAdminComplianceStore = defineStore('adminCompliance', () => {
     }
     return status.value?.ack_phrase_en || FALLBACK_EN_PHRASE
   })
+  // Keep the raw server phrase internally for backward compatibility, while
+  // exposing branded copy to the confirmation dialog.
+  const displayExpectedPhrase = computed(() => normalizePublicBranding(expectedPhrase.value))
 
   async function fetchStatus(): Promise<AdminComplianceStatus> {
     loading.value = true
@@ -39,8 +43,10 @@ export const useAdminComplianceStore = defineStore('adminCompliance', () => {
   async function accept(phrase: string): Promise<AdminComplianceStatus> {
     submitting.value = true
     try {
+      const rawPhrase = expectedPhrase.value
+      const brandedPhrase = displayExpectedPhrase.value
       const nextStatus = await adminComplianceAPI.accept({
-        phrase,
+        phrase: phrase === brandedPhrase ? rawPhrase : phrase,
         language: currentLocale.value
       })
       status.value = nextStatus
@@ -83,6 +89,7 @@ export const useAdminComplianceStore = defineStore('adminCompliance', () => {
     required,
     shouldShow,
     expectedPhrase,
+    displayExpectedPhrase,
     fetchStatus,
     accept,
     requireAcknowledgement,

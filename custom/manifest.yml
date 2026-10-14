@@ -2,6 +2,9 @@ version: 1
 name: sub2api-custom-layer
 upstream:
   remote: upstream
+  # The official repository exposes its canonical branch as `main`.
+  # Keep this ref aligned with the configured upstream remote; sync jobs
+  # consume release tags, while this field documents the mirror source.
   mirror_branch: upstream/main
   base_ref_pattern: v*
 
