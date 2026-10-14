@@ -96,3 +96,12 @@ docker stop image-smoke-f4002e20f2
 - **回滚**：若需回滚，恢复发布前 Compose 中的旧 digest 并仅重建对应应用容器；本次官方迁移已在本地旧镜像兼容演练中验证，生产若发现不可逆迁移问题仍必须按备份恢复数据库，不能只切镜像。
 
 后续等待旧版异步在途任务完成并继续观察错误率；未知提交结果超过 24 小时仍需人工核账，不得盲目重提或退款。
+
+## Nano Banana 热修复验收（2026-10-14，`custom-0.2.16.3`）
+
+- 来源 commit：`a1eb0aaac70cda552eb92882305e6f5241c95418`；`.2` 未部署。只修目录格式和权限过滤，不涉及生成或数据库迁移。
+- 后端 service/handler 定向单测与 vet、前端模型接口/视图 25 项、typecheck、定向 ESLint、Docker 生产构建、custom isolation、diff 和 Compose 检查通过。
+- Docker `sub2api-operator-test-v0216` / `127.0.0.1:18086`：模拟上游返回错误格式 `models` 加兼容 `data`（包含数字 ID、Nano Banana 和文本模型），真实网关正确归一化；白名单允许时仅 Nano Banana，拒绝时为空；测试合成账号/key/分组/mock 容器已移除，验收数据服务保留。
+- 镜像 `ghcr.io/hzihuan001/sub2api:0.2.16-custom.3`，digest `sha256:a96e2a5a52e0d7a83a9829371715359b2afcc0a02168fe8bded77b55dcfdeec3`；本地回拉与已验收镜像一致。Actions dispatch 失败为仓库禁用，使用本地已验证产物发布，不宣称 CI 通过。
+- 三站在 13:28–13:30（Asia/Shanghai）部署，healthy/重启0/版本/commit/digest/Compose均通过；健康与工作台入口 200。主站真实密钥在 localhost 和 ai.moshu.cloud 的目录均返回 `models/gemini-nano-banana-2.1`，没有费用性生成测试。
+- 完整备份 `/opt/sub2api-backups/v0.2.16-custom.2-20261014T031705Z` 可读取且校验和通过；每站另有 `.3-config-*` 切换前快照。回滚到 `.1` digest `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17`，仅重建应用。

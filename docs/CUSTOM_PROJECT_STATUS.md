@@ -12,10 +12,10 @@
 | 项目 | 当前值 |
 | --- | --- |
 | 记录日期 | 2026-10-14 |
-| 候选官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
-| 候选定制版本 | `0.2.16-custom.3`（Nano Banana 模型目录兼容修复，发布中；`.2` 未部署） |
-| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.1` |
-| 最新已发布基线 | `custom-0.2.16.1` / `ece7cf220`；文档提交 `2bc8f1379` |
+| 官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
+| 当前定制版本 | `0.2.16-custom.3`（Nano Banana 模型目录兼容修复；`.2` 未部署） |
+| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.3` |
+| 最新已发布基线 | `custom-0.2.16.3` / `a1eb0aaac70cda552eb92882305e6f5241c95418` |
 | 当前工作分支 | `codex/v0.2.16-image-studio` |
 | 升级工作树 | `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` |
 | 官方合并 / 生图移植提交 | `d3b78cf8c` / `2c007ec6a`；运行代码修复 `e42db1f11`，验收脚本 `f17cae568` |
@@ -23,9 +23,9 @@
 | 当前隔离改造 PR | 草稿 PR #1（如仍未合并）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 主站生产镜像 digest | `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17` |
-| L1/COS 生产镜像 digest | `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17` |
-| 当前发布状态 | `.1` 已部署；`.2` 在发布复核中发现异常载荷目录过滤边界，未部署；`.3` 补齐后发布中，用户批准三站统一发布 |
+| 主站生产镜像 digest | `sha256:a96e2a5a52e0d7a83a9829371715359b2afcc0a02168fe8bded77b55dcfdeec3` |
+| L1/COS 生产镜像 digest | `sha256:a96e2a5a52e0d7a83a9829371715359b2afcc0a02168fe8bded77b55dcfdeec3` |
+| 当前发布状态 | `.3` 已发布并部署三站，快速验收通过；`.2` 仅保留源码标签，未发布镜像或部署 |
 
 生产健康检查最近确认通过的入口：
 
@@ -35,17 +35,19 @@
 
 2026-10-12 两个下游入口切换到 Moshu 子域名并开启 Cloudflare 代理；旧 `tokenpulse.top` 入口保留。OVH OpenResty 继续使用 HTTPS、10 小时读写超时和关闭响应缓冲。域名运维记录见功能日志。
 
-本次生产三站统一使用同一镜像 digest：`sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17`。发布前备份标识为 `/opt/sub2api-backups/v0.2.16-custom.1-20261014T0010Z`；后续回滚只切应用镜像，不重建数据库、Redis、卷和网络。
+本次生产三站统一使用同一镜像 digest：`sha256:a96e2a5a52e0d7a83a9829371715359b2afcc0a02168fe8bded77b55dcfdeec3`。发布前完整备份标识为 `/opt/sub2api-backups/v0.2.16-custom.2-20261014T031705Z`（名称沿用最初候选）；三份数据库目录、数据归档和校验和已验证。切换前另有 `.3-config-*` 各站配置快照。回滚恢复 `.1` 的 digest `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17`，只重建应用；本热修复没有数据库迁移。
 
-### Nano Banana 热修复（2026-10-14，in-progress）
+### Nano Banana 热修复（2026-10-14，deployed）
 
 - **根因**：第三方 Gemini 上游在 `/v1beta/models` 返回 OpenAI `data[].id` 信封，原工作台只读取 `models[].name`；模型真实存在，不是账号停用或白名单拒绝。
 - **边界**：`gemini_models_endpoints.go` 将成功的兼容目录转为 Gemini 格式后再经过原有分组白名单；前端兼容两种信封，原生空列表保持空，不能从备用字段重新填充被权限过滤的模型。
 - **不变**：生成路径、调度、计费、尺寸、参考图和下载；不额外查询停用/限流账号，不注入静态假模型，无数据库迁移。
-- **验证**：受影响 service/handler 单测通过；前端 API/视图 25 项、typecheck、定向 lint 通过。镜像及生产验收待完成。
-- **下一步**：推送 `custom-0.2.16.3`，发布同一 GHCR digest 到主站/L1/COS，备份配置与数据后仅重建应用，确认 Nano Banana 目录和三站健康，再登记发布坐标。
+- **验证**：受影响 service/handler 单测、Go vet 通过；前端 API/视图 25 项、typecheck、定向 lint、Docker 生产构建通过。隔离容器用兼容格式与非法条目验证允许/拒绝模型目录通过。发布镜像拉回本地与验收镜像 digest 完全一致。
+- **生产验收**：13:28–13:30（Asia/Shanghai）顺序完成主站/L1/COS；三站 healthy、重启 0、版本/commit/digest 一致，内外 `/health` 和公网工作台入口 200，启动后无 panic/fatal/迁移失败/数据库或 Redis 错误。主站真实 Nano Banana 分组密钥对本机与公网 `/v1beta/models` 均返回 `models/gemini-nano-banana-2.1`；未提交生产付费生图。
+- **发布方式**：代码分支和 `custom-0.2.16.3` 已推送。GitHub 工作流 dispatch 仍返回 `Actions has been disabled`，按上一轮方式在本地门禁通过后直接发布已验收镜像到 GHCR；不把此次记录称作 CI 通过。
+- **后续**：下次升级从 `.3` 或包含它的更新提交开始；保留两种模型目录信封、异常条目和白名单回归。下一步可修复 GitHub Actions 运行限制；不影响本次生产完成。
 
-### 当前会话摘要（2026-10-14）
+### `.1` 官方升级验收摘要（2026-10-14，历史证据）
 
 - **Feature ID**：官方升级及 `image-studio`；状态：`deployed`，本地验收见 [`UPGRADE_V0_2_16_ACCEPTANCE.md`](UPGRADE_V0_2_16_ACCEPTANCE.md)，问题处理见 [`CUSTOM_UPGRADE_ISSUES.md`](CUSTOM_UPGRADE_ISSUES.md)。
 - **移植来源**：`codex/image-studio-session-20261004` / `01124885d` 中 14 个功能提交；不整分支合并旧 v0.2.13，不移植旧 VERSION，不重复移植已发布的用户隔离画廊。

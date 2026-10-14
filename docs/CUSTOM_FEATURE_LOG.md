@@ -6,6 +6,16 @@
 > 记录从 `custom-0.1.179.1` 开始。早期代理商/分站功能属于历史阶段；自
 > v0.2.8 后代理商运行时已移除，不能在后续升级中误恢复。
 
+### 2026-10-14 — 已部署 — `0.2.16-custom.3` Nano Banana 目录兼容
+
+- **Feature ID / 来源**：`image-studio`，官方基线 `v0.2.16`。修复提交 `5db535f6c`、异常载荷过滤加固 `a1eb0aaac70cda552eb92882305e6f5241c95418`；分支 `codex/v0.2.16-image-studio`、标签 `custom-0.2.16.3` 已推送。`.2` 仅源码标签，未发布镜像或部署，历史标签未改写。
+- **行为**：兼容第三方 `/v1beta/models` 返回 OpenAI `data[].id`；后端逐条转换后应用分组白名单，前端读取两种格式及 Gemini `displayName`。空原生目录不回填、错误条目不跳过白名单、不注入静态模型。生图/调度/计费/下载逻辑保持，无迁移。
+- **验证**：后端相关 service/handler 单测与 vet、前端 25 项/typecheck/定向 ESLint、生产构建及隔离规则检查通过。真实 Docker 网关验证异常兼容目录中的 Nano Banana 允许与拒绝均正确；测试夹具中的用户余额和 mock 启动方式修正后通过，未为夹具问题改业务逻辑。
+- **镜像**：`ghcr.io/hzihuan001/sub2api:0.2.16-custom.3`；`sha256:a96e2a5a52e0d7a83a9829371715359b2afcc0a02168fe8bded77b55dcfdeec3`，linux/amd64，内嵌 commit `a1eb0aaac70cda552eb92882305e6f5241c95418`。GitHub dispatch 仍报 Actions disabled；本地门禁通过后发布已验收镜像，拉回检查 digest 一致。
+- **部署 / 结果**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 在 13:28–13:30（Asia/Shanghai）统一更新；只重建应用。三站 healthy、重启 0、内外健康/工作台入口 200、无关键启动错误。真实主站分组密钥经内网和公网发现 Nano Banana 模型，未进行付费生成。
+- **备份 / 回滚**：完整备份 `/opt/sub2api-backups/v0.2.16-custom.2-20261014T031705Z` 已验证三份 pg_restore 目录、数据 tar 及 SHA256SUMS；切换前配置分别为 `v0.2.16-custom.3-config-20261014T052752Z-main`、`...T052905Z-l1`、`...T052946Z-cos`。回退镜像 `sha256:edf55576e8ea73d2a552d7489cabdd2a6f282290e2ac713cda0d5504a55f5f17`，仅重建对应应用，无需恢复数据库。
+- **共享同步**：根工作树保留其他会话改动，仅更新状态入口和本发布日志；下一轮以 `.3` 为最低功能基线，不能从旧 `custom/integration` 丢失本补丁。
+
 ### 2026-10-13 — 本地验收通过，未发布 — v0.2.16 与最新生图工作台
 
 - **需求 / Feature ID**：官方升级及 `image-studio`，保留 `operator`、`prompt-audit`、`branding`、`usage-extras`。
