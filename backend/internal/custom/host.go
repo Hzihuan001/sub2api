@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,7 +19,15 @@ import (
 // do not need to import server or wire packages, and an empty Host is a true
 // no-op.
 type Host struct {
-	providers *CustomProviderSet
+	providers   *CustomProviderSet
+	lifecycleMu sync.Mutex
+	workerRun   *workerRun
+}
+
+type workerRun struct {
+	cancel   context.CancelFunc
+	workers  []WorkerProvider
+	startErr error
 }
 
 // NewHost creates a host adapter. A nil provider set is normalized to an
@@ -118,13 +128,72 @@ func (h *Host) StartWorkers(ctx context.Context) error {
 	if h == nil {
 		return nil
 	}
+	if ctx == nil {
+		return errors.New("custom worker start context is nil")
+	}
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	if h.workerRun != nil {
+		return h.workerRun.startErr
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	background, cancel := context.WithCancel(ctx)
+	run := &workerRun{cancel: cancel}
+	h.workerRun = run
 	var errs []error
 	for _, worker := range h.providers.Workers() {
-		if err := worker.Start(ctx); err != nil {
+		// Include a failing Start: it may have partially acquired resources.
+		run.workers = append(run.workers, worker)
+		if err := worker.Start(background); err != nil {
 			errs = append(errs, fmt.Errorf("start custom worker %q: %w", worker.ID(), err))
 		}
 	}
-	return errors.Join(errs...)
+	run.startErr = errors.Join(errs...)
+	if run.startErr != nil {
+		cleanup, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		return errors.Join(run.startErr, h.shutdownWorkersLocked(cleanup))
+	}
+	return nil
+}
+
+// ShutdownWorkers cancels all custom workers, then waits in reverse start order.
+// A timeout retains the run so another shutdown can finish waiting; it must not
+// allow a second subscription to start while the old one is still exiting.
+func (h *Host) ShutdownWorkers(ctx context.Context) error {
+	if h == nil {
+		return nil
+	}
+	if ctx == nil {
+		return errors.New("custom worker shutdown context is nil")
+	}
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	return h.shutdownWorkersLocked(ctx)
+}
+
+func (h *Host) shutdownWorkersLocked(ctx context.Context) error {
+	run := h.workerRun
+	if run == nil {
+		return nil
+	}
+	run.cancel()
+	var errs []error
+	for i := len(run.workers) - 1; i >= 0; i-- {
+		worker := run.workers[i]
+		if err := worker.Shutdown(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("shutdown custom worker %q: %w", worker.ID(), err))
+		}
+	}
+	err := errors.Join(errs...)
+	if err == nil {
+		h.workerRun = nil
+	} else if run.startErr == nil {
+		run.startErr = err
+	}
+	return err
 }
 
 func (h *Host) permissionProviders() []PermissionProvider {

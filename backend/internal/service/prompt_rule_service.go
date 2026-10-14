@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -31,6 +32,8 @@ type PromptRuleCache interface {
 	Set(ctx context.Context, rules []*model.PromptRule) error
 	Invalidate(ctx context.Context) error
 	NotifyUpdate(ctx context.Context) error
+	// SubscribeUpdates blocks until ctx is canceled or the subscription ends.
+	// It must finish all callbacks and close the subscription before returning.
 	SubscribeUpdates(ctx context.Context, handler func())
 }
 
@@ -41,6 +44,15 @@ type PromptRuleService struct {
 
 	localCache   []*model.PromptRule
 	localCacheMu sync.RWMutex
+
+	lifecycleMu  sync.Mutex
+	subscription *promptRuleSubscription
+}
+
+type promptRuleSubscription struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 // NewPromptRuleService 创建提示词注入规则服务
@@ -61,15 +73,94 @@ func NewPromptRuleService(
 		}
 	}
 
-	if cache != nil {
-		cache.SubscribeUpdates(ctx, func() {
-			if err := svc.refreshLocalCache(context.Background()); err != nil {
+	return svc
+}
+
+// Start starts at most one cache subscription. Initial rules are loaded
+// synchronously by the constructor, independently of this background lifecycle.
+func (s *PromptRuleService) Start(ctx context.Context) error {
+	if s == nil {
+		return errors.New("prompt rule service is nil")
+	}
+	if ctx == nil {
+		return errors.New("prompt rule subscription context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.cache == nil {
+		return nil
+	}
+
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if run := s.subscription; run != nil {
+		select {
+		case <-run.done:
+			s.subscription = nil
+		default:
+			if run.ctx.Err() != nil {
+				return errors.New("prompt rule subscription is still stopping")
+			}
+			return nil
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	run := &promptRuleSubscription{ctx: runCtx, cancel: cancel, done: make(chan struct{})}
+	s.subscription = run
+	go func() {
+		defer close(run.done)
+		defer cancel()
+		s.cache.SubscribeUpdates(runCtx, func() {
+			if runCtx.Err() != nil {
+				return
+			}
+			if err := s.refreshLocalCache(runCtx); err != nil {
 				logger.LegacyPrintf("service.prompt_rule", "[PromptRuleService] Failed to refresh cache on notification: %v", err)
 			}
 		})
+	}()
+	return nil
+}
+
+// Shutdown cancels the subscription and waits for its callback and connection
+// cleanup. A timed-out shutdown retains the run so Start cannot overlap it.
+func (s *PromptRuleService) Shutdown(ctx context.Context) error {
+	if s == nil {
+		return errors.New("prompt rule service is nil")
+	}
+	if ctx == nil {
+		return errors.New("prompt rule shutdown context is nil")
+	}
+	s.lifecycleMu.Lock()
+	run := s.subscription
+	if run != nil {
+		run.cancel()
+	}
+	s.lifecycleMu.Unlock()
+	if run == nil {
+		return nil
 	}
 
-	return svc
+	// Prefer an already completed run, even if the caller's deadline expired.
+	select {
+	case <-run.done:
+	default:
+		select {
+		case <-run.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	s.lifecycleMu.Lock()
+	if s.subscription == run {
+		s.subscription = nil
+	}
+	s.lifecycleMu.Unlock()
+	return nil
 }
 
 func (s *PromptRuleService) List(ctx context.Context) ([]*model.PromptRule, error) {

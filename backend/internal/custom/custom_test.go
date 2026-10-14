@@ -41,8 +41,9 @@ func (testSettingProvider) Settings() []Setting { return nil }
 
 type testWorkerProvider struct{ id string }
 
-func (p testWorkerProvider) ID() string                { return p.id }
-func (testWorkerProvider) Start(context.Context) error { return nil }
+func (p testWorkerProvider) ID() string                   { return p.id }
+func (testWorkerProvider) Start(context.Context) error    { return nil }
+func (testWorkerProvider) Shutdown(context.Context) error { return nil }
 
 type testUsageEnricher struct{ id string }
 

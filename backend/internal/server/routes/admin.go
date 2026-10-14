@@ -37,11 +37,7 @@ func RegisterAdminRoutes(
 	admin.Use(middleware.OperatorFinancialResponseFilter(settingService))
 	admin.Use(middleware.AdminComplianceGuard(settingService))
 	{
-		// Global operator role policy. Operators may read their effective policy;
-		// only admins can update it because PUT is absent from the operator route table.
-		roles := admin.Group("/roles")
-		roles.GET("/operator/permissions", h.Admin.Setting.GetOperatorRolePolicy)
-		roles.PUT("/operator/permissions", h.Admin.Setting.UpdateOperatorRolePolicy)
+		customHost.RegisterAdminRoutesAt(admin, custom.AdminRoles)
 
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)
@@ -50,10 +46,10 @@ func RegisterAdminRoutes(
 		registerDashboardRoutes(admin, h)
 
 		// 用户管理
-		registerUserManagementRoutes(admin, h)
+		registerUserManagementRoutes(admin, h, customHost)
 
 		// 分组管理
-		registerGroupRoutes(admin, h)
+		registerGroupRoutes(admin, h, customHost)
 
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
@@ -97,7 +93,7 @@ func RegisterAdminRoutes(
 		registerBackupRoutes(admin, h, stepUpAuth)
 
 		// 运维监控（Ops）
-		registerOpsRoutes(admin, h)
+		registerOpsRoutes(admin, h, customHost)
 
 		// 系统管理
 		registerSystemRoutes(admin, h)
@@ -106,7 +102,7 @@ func RegisterAdminRoutes(
 		registerSubscriptionRoutes(admin, h)
 
 		// 使用记录管理
-		registerUsageRoutes(admin, h)
+		registerUsageRoutes(admin, h, customHost)
 
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
@@ -121,7 +117,7 @@ func RegisterAdminRoutes(
 		registerPluginRoutes(admin, h, stepUpAuth)
 
 		// API Key 管理
-		registerAdminAPIKeyRoutes(admin, h)
+		registerAdminAPIKeyRoutes(admin, h, customHost)
 
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
@@ -137,10 +133,10 @@ func RegisterAdminRoutes(
 		registerContentModerationRoutes(admin, h)
 
 		// 独立提示词输入审计
-		registerPromptAuditRoutes(admin, h)
+		registerPromptAuditRoutes(admin, h, customHost)
 
 		// 提示词注入规则管理
-		registerPromptRuleRoutes(admin, h)
+		customHost.RegisterAdminRoutesAt(admin, custom.AdminPromptRules)
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
@@ -154,33 +150,21 @@ func RegisterAdminRoutes(
 	}
 }
 
-func registerPromptAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerPromptAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers, customHost *custom.Host) {
 	promptAudit := admin.Group("/prompt-audit")
 	{
 		promptAudit.GET("/config", h.Admin.PromptAudit.GetConfig)
 		promptAudit.PUT("/config", h.Admin.PromptAudit.UpdateConfig)
 		promptAudit.POST("/endpoints/probe", h.Admin.PromptAudit.ProbeEndpoint)
 		promptAudit.GET("/runtime", h.Admin.PromptAudit.GetRuntime)
-		promptAudit.GET("/recording/stats", h.Admin.PromptAudit.GetRecordingStats)
-		promptAudit.POST("/recording/cleanup", h.Admin.PromptAudit.CleanupRecording)
+		customHost.RegisterAdminRoutesAt(promptAudit, custom.AdminPromptAuditRecording)
 		promptAudit.GET("/events", h.Admin.PromptAudit.ListEvents)
-		promptAudit.POST("/events/export", h.Admin.PromptAudit.ExportEvents)
+		customHost.RegisterAdminRoutesAt(promptAudit, custom.AdminPromptAuditExport)
 		promptAudit.GET("/events/:id", h.Admin.PromptAudit.GetEvent)
 		promptAudit.DELETE("/events/:id", h.Admin.PromptAudit.DeleteEvent)
 		promptAudit.POST("/events/batch-delete", h.Admin.PromptAudit.BatchDelete)
 		promptAudit.POST("/events/delete-preview", h.Admin.PromptAudit.DeletePreview)
 		promptAudit.POST("/events/delete-by-filter", h.Admin.PromptAudit.DeleteByFilter)
-	}
-}
-
-func registerPromptRuleRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	rules := admin.Group("/prompt-rules")
-	{
-		rules.GET("", h.Admin.PromptRule.List)
-		rules.GET("/:id", h.Admin.PromptRule.GetByID)
-		rules.POST("", h.Admin.PromptRule.Create)
-		rules.PUT("/:id", h.Admin.PromptRule.Update)
-		rules.DELETE("/:id", h.Admin.PromptRule.Delete)
 	}
 }
 
@@ -216,19 +200,19 @@ func registerContentModerationRoutes(admin *gin.RouterGroup, h *handler.Handlers
 	}
 }
 
-func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers, customHost *custom.Host) {
 	apiKeys := admin.Group("/api-keys")
 	{
 		apiKeys.PUT("/:id", h.Admin.APIKey.OperatorTargetUserWriteGuard(), h.Admin.APIKey.UpdateGroup)
-		apiKeys.DELETE("/:id", h.Admin.APIKey.OperatorTargetUserWriteGuard(), h.Admin.APIKey.Delete)
+		customHost.RegisterAdminRoutesAt(apiKeys, custom.AdminAPIKeys)
 	}
 }
 
-func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers, customHost *custom.Host) {
 	ops := admin.Group("/ops")
 	{
 		// Narrow feature flags for operators; avoids exposing the full settings payload.
-		ops.GET("/capabilities", h.Admin.Ops.GetCapabilities)
+		customHost.RegisterAdminRoutesAt(ops, custom.AdminOpsCapabilities)
 
 		// Realtime ops signals
 		ops.GET("/concurrency", h.Admin.Ops.GetConcurrencyStats)
@@ -279,7 +263,7 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 		// Error logs (legacy)
 		ops.GET("/errors", h.Admin.Ops.GetErrorLogs)
-		ops.DELETE("/errors", h.Admin.Ops.DeleteErrorLogs)
+		customHost.RegisterAdminRoutesAt(ops, custom.AdminOpsErrors)
 		ops.GET("/errors/:id", h.Admin.Ops.GetErrorLogByID)
 		ops.PUT("/errors/:id/resolve", h.Admin.Ops.UpdateErrorResolution)
 
@@ -337,14 +321,14 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers, customHost *custom.Host) {
 	users := admin.Group("/users")
 	operatorTargetWrite := h.Admin.User.OperatorTargetUserWriteGuard()
 	{
 		users.GET("", h.Admin.User.List)
 		users.GET("/:id", h.Admin.User.GetByID)
 		users.POST("/:id/auth-identities", operatorTargetWrite, h.Admin.User.BindAuthIdentity)
-		users.POST("/:id/api-keys", operatorTargetWrite, h.Admin.APIKey.CreateForUser)
+		customHost.RegisterAdminRoutesAt(users, custom.AdminUserAPIKeys)
 		users.POST("", h.Admin.User.Create)
 		users.PUT("/:id", operatorTargetWrite, h.Admin.User.Update)
 		users.DELETE("/:id", operatorTargetWrite, h.Admin.User.Delete)
@@ -366,7 +350,7 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers, customHost *custom.Host) {
 	groups := admin.Group("/groups")
 	{
 		groups.GET("", h.Admin.Group.List)
@@ -376,7 +360,7 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		groups.GET("/live-capability", h.Admin.Group.GetLiveCapability)
 		groups.PUT("/sort-order", h.Admin.Group.UpdateSortOrder)
 		groups.GET("/:id/model-allowlist-candidates", h.Admin.Group.GetGroupModelAllowlistCandidates)
-		groups.GET("/:id/effective-models", h.Admin.Group.GetEffectiveModels)
+		customHost.RegisterAdminRoutesAt(groups, custom.AdminGroupEffectiveModels)
 		groups.GET("/:id/composite-routes", h.Admin.Group.ListCompositeRoutes)
 		groups.POST("/:id/composite-routes", h.Admin.Group.CreateCompositeRoute)
 		groups.POST("/:id/composite-routes/preview", h.Admin.Group.PreviewCompositeRoute)
@@ -755,14 +739,14 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	admin.GET("/users/:id/subscriptions", h.Admin.Subscription.ListByUser)
 }
 
-func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers, customHost *custom.Host) {
 	usage := admin.Group("/usage")
 	{
 		usage.GET("", h.Admin.Usage.List)
 		usage.GET("/stats", h.Admin.Usage.Stats)
 		usage.GET("/search-users", h.Admin.Usage.SearchUsers)
 		usage.GET("/search-api-keys", h.Admin.Usage.SearchAPIKeys)
-		usage.GET("/filter-options", h.Admin.Usage.GetFilterOptions)
+		customHost.RegisterAdminRoutesAt(usage, custom.AdminUsageFilters)
 		usage.GET("/cleanup-tasks", h.Admin.Usage.ListCleanupTasks)
 		usage.POST("/cleanup-tasks", h.Admin.Usage.CreateCleanupTask)
 		usage.POST("/cleanup-tasks/:id/cancel", h.Admin.Usage.CancelCleanupTask)

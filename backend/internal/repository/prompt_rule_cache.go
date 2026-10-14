@@ -88,25 +88,26 @@ func (c *promptRuleCache) NotifyUpdate(ctx context.Context) error {
 }
 
 func (c *promptRuleCache) SubscribeUpdates(ctx context.Context, handler func()) {
-	go func() {
-		sub := c.rdb.Subscribe(ctx, promptRulePubSubKey)
-		defer func() { _ = sub.Close() }()
+	if ctx.Err() != nil {
+		return
+	}
+	sub := c.rdb.Subscribe(ctx, promptRulePubSubKey)
+	defer func() { _ = sub.Close() }()
 
-		ch := sub.Channel()
-		for {
-			select {
-			case <-ctx.Done():
+	ch := sub.Channel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-ch:
+			if msg == nil || ctx.Err() != nil {
 				return
-			case msg := <-ch:
-				if msg == nil {
-					return
-				}
-				c.localMu.Lock()
-				c.localCache = nil
-				c.localMu.Unlock()
-
-				handler()
 			}
+			c.localMu.Lock()
+			c.localCache = nil
+			c.localMu.Unlock()
+
+			handler()
 		}
-	}()
+	}
 }

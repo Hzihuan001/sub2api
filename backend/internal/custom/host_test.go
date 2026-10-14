@@ -57,6 +57,8 @@ func (w hostWorker) Start(context.Context) error {
 	return w.err
 }
 
+func (hostWorker) Shutdown(context.Context) error { return nil }
+
 func TestHostRegistersRoutesAndProviderCategories(t *testing.T) {
 	adminIDs := []string{}
 	gatewayIDs := []string{}

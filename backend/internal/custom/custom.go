@@ -59,10 +59,12 @@ type SettingProvider interface {
 
 // WorkerProvider describes a background worker owned by a custom feature.
 // The core application decides when to start and stop it; registering a
-// provider alone has no side effects.
+// provider alone has no side effects. Start and Shutdown must be idempotent;
+// Shutdown cancels work and waits for resource release within its context.
 type WorkerProvider interface {
 	ID() string
 	Start(ctx context.Context) error
+	Shutdown(ctx context.Context) error
 }
 
 // UsageRecord is the extension-neutral portion of a usage event.  The core

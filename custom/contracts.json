@@ -17,7 +17,8 @@
     {"file":"backend/internal/securityaudit/prompt_handler.go","import":"github.com/Wei-Shaw/sub2api/internal/server/middleware","reason":"Existing HTTP auth-subject adapter only; preserve authentication semantics, do not permit feature-wide server dependencies."}
   ],
   "host_entries": [
-    {"id":"backend-custom-host","host_prefixes":["backend/internal/server/","backend/cmd/"],"import_prefixes":["github.com/Wei-Shaw/sub2api/internal/custom"],"files":["backend/internal/server/custom_bootstrap.go","backend/internal/server/router.go","backend/internal/server/routes/admin.go","backend/internal/server/routes/gateway.go","backend/internal/server/routes/custom.go"]},
+    {"id":"backend-custom-host","host_prefixes":["backend/internal/server/","backend/cmd/"],"import_prefixes":["github.com/Wei-Shaw/sub2api/internal/custom"],"files":["backend/internal/server/custom_bootstrap.go","backend/internal/server/http.go","backend/internal/server/router.go","backend/internal/server/routes/admin.go","backend/internal/server/routes/custom.go","backend/internal/server/routes/gateway.go","backend/cmd/server/wire.go","backend/cmd/server/wire_gen.go"]},
+    {"id":"backend-custom-composition","host_prefixes":["backend/internal/customapp/"],"import_prefixes":["github.com/Wei-Shaw/sub2api/internal/custom"],"files":["backend/internal/customapp/composition.go"]},
     {"id":"frontend-custom-host","host_prefixes":["frontend/src/router/","frontend/src/components/","frontend/src/views/","frontend/src/i18n/","frontend/src/stores/"],"import_prefixes":["@/custom"],"files":["frontend/src/router/index.ts","frontend/src/router/title.ts","frontend/src/components/layout/AppSidebar.vue","frontend/src/views/admin/SettingsView.vue","frontend/src/i18n/index.ts","frontend/src/stores/app.ts"]}
   ],
   "tests": {
