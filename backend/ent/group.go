@@ -74,7 +74,7 @@ type Group struct {
 	ImagePrice2k *float64 `json:"image_price_2k,omitempty"`
 	// ImagePrice4k holds the value of the "image_price_4k" field.
 	ImagePrice4k *float64 `json:"image_price_4k,omitempty"`
-	// 批量图片生成折扣倍率，最终单价会乘以该值；0 表示免费
+	// 兼容字段；新批量任务不提供额外折扣，固定为 1
 	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier,omitempty"`
 	// 批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额
 	BatchImageHoldMultiplier float64 `json:"batch_image_hold_multiplier,omitempty"`

@@ -166,7 +166,7 @@ export default {
       step1: '1. Select an API key with batch image generation enabled. The model list shows the models available to that key’s group.',
       step2: '2. The task name can be left empty; the current time is used automatically on submit. Add prompts one by one. References can be shared across the whole job or set separately per prompt, with a repeat count.',
       step3: '3. After submitting, the job enters a managed queue and is split into single-image requests with controlled concurrency. Item progress updates as images finish; previews load on demand.',
-      step4: '4. Once completed you can download the ZIP or download original images one by one from the details. If some items failed, the More menu lets you retry only the failed items. Billing is still based on the number of successfully generated images; reference images are not billed separately.',
+      step4: '4. Once completed you can download the ZIP or download original images one by one from the details. If some items failed, the More menu lets you retry only the failed items. Successful images are billed at the normal per-image price using normal group and user multipliers, with no additional batch discount. Reference images are not billed separately.',
       skillTitle: 'Skill instructions for Codex',
       skillDesc: 'Tells Codex how to organize prompts, submit jobs, and download results on behalf of the user.',
     },

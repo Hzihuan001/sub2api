@@ -25,8 +25,8 @@ const (
 	defaultBatchImageMaxPromptChars     = 8000
 	defaultBatchImageResponseMime       = "image/png"
 	defaultBatchImageImageSize          = "2K"
-	defaultBatchImageDiscountMultiplier = 0.5
-	defaultBatchImageHoldMultiplier     = 0.6
+	defaultBatchImageDiscountMultiplier = 1.0
+	defaultBatchImageHoldMultiplier     = 1.0
 	maxBatchImagePublicErrorChars       = 500
 	maxBatchImageReferenceImageBytes    = 10 * 1024 * 1024
 	defaultBatchImageMaxReferenceImages = 1000
@@ -307,7 +307,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 		HoldMultiplier:          pricingSnapshot.HoldMultiplier,
 		BillableUnitPrice:       pricingSnapshot.BillableUnitPrice,
 		HoldUnitPrice:           pricingSnapshot.HoldUnitPrice,
-		PricingSnapshotVersion:  1,
+		PricingSnapshotVersion:  2,
 		Currency:                "USD",
 		HoldID:                  &holdID,
 		IdempotencyKey:          batchImageOptionalStringPtr(idempotencyKey),
@@ -1164,13 +1164,9 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 		if groupMultiplier < 0 {
 			groupMultiplier = 0
 		}
-		discountMultiplier = group.BatchImageDiscountMultiplier
-		if discountMultiplier < 0 {
-			discountMultiplier = 0
-		}
-		if group.BatchImageHoldMultiplier >= 0 {
-			holdMultiplier = group.BatchImageHoldMultiplier
-		}
+		// New jobs use ordinary image pricing; legacy batch discounts only
+		// remain meaningful on the immutable snapshots of existing jobs.
+		holdMultiplier = normalizeBatchImageHoldMultiplier(group.BatchImageHoldMultiplier)
 		// Group prices are configured per billing tier. Custom dimensions must
 		// resolve to the same tier used by ordinary image billing.
 		if configuredUnit := group.GetImagePrice(NormalizeImageBillingTierOrDefault(req.ImageSize)); configuredUnit != nil && *configuredUnit >= 0 {
@@ -1186,16 +1182,6 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 			return nil, ErrBatchImageSettlementPricingMissing
 		}
 		unit = resolvedUnit
-	}
-	// 定价不变式：hold 比例不得低于 discount 比例，否则成功率足够高时
-	// actualCost > holdAmount，结算永远失败、冻结余额无法解冻。
-	// 管理端已校验新配置，此处兜底钳制存量脏数据。
-	if holdMultiplier < discountMultiplier {
-		logger.L().Warn("batch_image.hold_multiplier_below_discount_clamped",
-			zap.Float64("hold_multiplier", holdMultiplier),
-			zap.Float64("discount_multiplier", discountMultiplier),
-		)
-		holdMultiplier = discountMultiplier
 	}
 	accountMultiplier := 1.0
 	if account != nil {
@@ -1218,6 +1204,14 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 		EstimatedCost:           billableUnitPrice * float64(len(req.Items)),
 		HoldAmount:              holdUnitPrice * float64(len(req.Items)),
 	}, nil
+}
+
+func normalizeBatchImageHoldMultiplier(multiplier float64) float64 {
+	// A full-price job must reserve at least its complete estimated cost.
+	if multiplier >= defaultBatchImageHoldMultiplier {
+		return multiplier
+	}
+	return defaultBatchImageHoldMultiplier
 }
 
 func (s *BatchImagePublicService) enabled() bool {

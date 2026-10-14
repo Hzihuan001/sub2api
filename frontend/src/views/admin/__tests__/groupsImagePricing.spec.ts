@@ -7,12 +7,25 @@ import {
   getVideoPricePlaceholder,
   imagePricingPlatforms,
   imagePricingI18nKey,
+  normalizeBatchImageHoldMultiplier,
   supportsImagePricingPlatform,
   supportsVideoPricingPlatform,
   videoPricingI18nKey,
 } from "../groupsImagePricing";
 
 describe("groups image pricing platform support", () => {
+  it.each([undefined, null, "", "invalid", 0, 0.6, -1, Infinity, NaN])(
+    "uses a full-price batch hold for legacy or invalid value %s",
+    (value) => {
+      expect(normalizeBatchImageHoldMultiplier(value)).toBe(1);
+    },
+  );
+
+  it("preserves batch hold ratios of at least one", () => {
+    expect(normalizeBatchImageHoldMultiplier(1)).toBe(1);
+    expect(normalizeBatchImageHoldMultiplier("1.25")).toBe(1.25);
+  });
+
   it("includes Grok image groups", () => {
     expect(supportsImagePricingPlatform("grok")).toBe(true);
     expect(imagePricingPlatforms.has("grok")).toBe(true);

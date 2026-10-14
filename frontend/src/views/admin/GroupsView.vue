@@ -1003,32 +1003,20 @@
             </p>
             <div
               v-if="createForm.allow_batch_image_generation"
-              class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2"
+              class="mt-3"
             >
-              <div>
-                <label class="input-label">{{
-                  t("admin.groups.imagePricing.batchDiscountMultiplier")
-                }}</label>
-                <input
-                  v-model.number="createForm.batch_image_discount_multiplier"
-                  type="number"
-                  step="0.0001"
-                  min="0"
-                  class="input"
-                  placeholder="0.5"
-                />
-              </div>
               <div>
                 <label class="input-label">{{
                   t("admin.groups.imagePricing.batchHoldMultiplier")
                 }}</label>
                 <input
                   v-model.number="createForm.batch_image_hold_multiplier"
+                  data-testid="batch-image-hold-multiplier"
                   type="number"
                   step="0.0001"
-                  min="0"
+                  min="1"
                   class="input"
-                  placeholder="0.6"
+                  placeholder="1"
                 />
               </div>
             </div>
@@ -2643,32 +2631,20 @@
             </p>
             <div
               v-if="editForm.allow_batch_image_generation"
-              class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2"
+              class="mt-3"
             >
-              <div>
-                <label class="input-label">{{
-                  t("admin.groups.imagePricing.batchDiscountMultiplier")
-                }}</label>
-                <input
-                  v-model.number="editForm.batch_image_discount_multiplier"
-                  type="number"
-                  step="0.0001"
-                  min="0"
-                  class="input"
-                  placeholder="0.5"
-                />
-              </div>
               <div>
                 <label class="input-label">{{
                   t("admin.groups.imagePricing.batchHoldMultiplier")
                 }}</label>
                 <input
                   v-model.number="editForm.batch_image_hold_multiplier"
+                  data-testid="batch-image-hold-multiplier"
                   type="number"
                   step="0.0001"
-                  min="0"
+                  min="1"
                   class="input"
-                  placeholder="0.6"
+                  placeholder="1"
                 />
               </div>
             </div>
@@ -4369,6 +4345,7 @@ import {
   getImagePricePlaceholder,
   getVideoPricePlaceholder,
   imagePricingI18nKey,
+  normalizeBatchImageHoldMultiplier,
   supportsImagePricingPlatform,
   supportsVideoPricingPlatform,
   videoPricingI18nKey,
@@ -4960,8 +4937,8 @@ const createForm = reactive({
   allow_batch_image_generation: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
-  batch_image_discount_multiplier: 0.5,
-  batch_image_hold_multiplier: 0.6,
+  batch_image_discount_multiplier: 1,
+  batch_image_hold_multiplier: 1,
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
@@ -5326,8 +5303,8 @@ const editForm = reactive({
   allow_batch_image_generation: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
-  batch_image_discount_multiplier: 0.5,
-  batch_image_hold_multiplier: 0.6,
+  batch_image_discount_multiplier: 1,
+  batch_image_hold_multiplier: 1,
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
@@ -5530,7 +5507,7 @@ const editWebSearchFinalPricePreview = computed(() =>
   buildWebSearchFinalPricePreview(editForm),
 );
 
-const resetDisabledBatchImagePricing = (
+const normalizeBatchImagePricing = (
   form: Pick<
     ImagePricingFormState,
     "platform" | "allow_image_generation" | "allow_batch_image_generation" | "batch_image_discount_multiplier" | "batch_image_hold_multiplier"
@@ -5539,10 +5516,11 @@ const resetDisabledBatchImagePricing = (
   if (form.platform !== "gemini" || !form.allow_image_generation) {
     form.allow_batch_image_generation = false;
   }
-  if (!form.allow_batch_image_generation) {
-    form.batch_image_discount_multiplier = 0.5;
-    form.batch_image_hold_multiplier = 0.6;
-  }
+  // Keep the legacy API field neutral: successful batch images use normal image pricing.
+  form.batch_image_discount_multiplier = 1;
+  form.batch_image_hold_multiplier = form.allow_batch_image_generation
+    ? normalizeBatchImageHoldMultiplier(form.batch_image_hold_multiplier)
+    : 1;
 };
 
 // 根据分组类型返回不同的删除确认消息
@@ -5784,8 +5762,8 @@ const closeCreateModal = () => {
   createForm.allow_batch_image_generation = false;
   createForm.image_rate_independent = false;
   createForm.image_rate_multiplier = 1;
-  createForm.batch_image_discount_multiplier = 0.5;
-  createForm.batch_image_hold_multiplier = 0.6;
+  createForm.batch_image_discount_multiplier = 1;
+  createForm.batch_image_hold_multiplier = 1;
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
@@ -5985,13 +5963,7 @@ const handleCreateGroup = async () => {
     requestData.image_rate_multiplier = normalizeRateMultiplier(
       requestData.image_rate_multiplier,
     );
-    resetDisabledBatchImagePricing(requestData);
-    requestData.batch_image_discount_multiplier = normalizeRateMultiplier(
-      requestData.batch_image_discount_multiplier,
-    );
-    requestData.batch_image_hold_multiplier = normalizeRateMultiplier(
-      requestData.batch_image_hold_multiplier,
-    );
+    normalizeBatchImagePricing(requestData);
     requestData.video_rate_multiplier = normalizeRateMultiplier(
       requestData.video_rate_multiplier,
     );
@@ -6079,9 +6051,10 @@ const handleEdit = async (group: AdminGroup) => {
     group.allow_batch_image_generation ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
-  editForm.batch_image_discount_multiplier =
-    group.batch_image_discount_multiplier ?? 0.5;
-  editForm.batch_image_hold_multiplier = group.batch_image_hold_multiplier ?? 0.6;
+  editForm.batch_image_discount_multiplier = 1;
+  editForm.batch_image_hold_multiplier = normalizeBatchImageHoldMultiplier(
+    group.batch_image_hold_multiplier,
+  );
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
@@ -6341,13 +6314,7 @@ const handleUpdateGroup = async () => {
     payload.image_rate_multiplier = normalizeRateMultiplier(
       payload.image_rate_multiplier,
     );
-    resetDisabledBatchImagePricing(payload);
-    payload.batch_image_discount_multiplier = normalizeRateMultiplier(
-      payload.batch_image_discount_multiplier,
-    );
-    payload.batch_image_hold_multiplier = normalizeRateMultiplier(
-      payload.batch_image_hold_multiplier,
-    );
+    normalizeBatchImagePricing(payload);
     payload.video_rate_multiplier = normalizeRateMultiplier(
       payload.video_rate_multiplier,
     );
@@ -6726,7 +6693,7 @@ watch(
       createForm.require_oauth_only = false;
       createForm.require_privacy_set = false;
     }
-    resetDisabledBatchImagePricing(createForm);
+    normalizeBatchImagePricing(createForm);
     resetModelAllowlistState(createModelAllowlistState);
     loadModelAllowlistCandidates("create", 0, newVal);
   },
@@ -6735,14 +6702,14 @@ watch(
 watch(
   () => createForm.allow_image_generation,
   () => {
-    resetDisabledBatchImagePricing(createForm);
+    normalizeBatchImagePricing(createForm);
   },
 );
 
 watch(
   () => createForm.allow_batch_image_generation,
   () => {
-    resetDisabledBatchImagePricing(createForm);
+    normalizeBatchImagePricing(createForm);
   },
 );
 
@@ -6783,7 +6750,7 @@ watch(
       editForm.require_oauth_only = false;
       editForm.require_privacy_set = false;
     }
-    resetDisabledBatchImagePricing(editForm);
+    normalizeBatchImagePricing(editForm);
     if (editingGroup.value) {
       resetModelAllowlistState(editModelAllowlistState, editForm.platform === editingGroup.value.platform ? editingGroup.value.model_allowlist : undefined);
       loadModelAllowlistCandidates("edit", editingGroup.value.id, newVal);
@@ -6794,14 +6761,14 @@ watch(
 watch(
   () => editForm.allow_image_generation,
   () => {
-    resetDisabledBatchImagePricing(editForm);
+    normalizeBatchImagePricing(editForm);
   },
 );
 
 watch(
   () => editForm.allow_batch_image_generation,
   () => {
-    resetDisabledBatchImagePricing(editForm);
+    normalizeBatchImagePricing(editForm);
   },
 );
 

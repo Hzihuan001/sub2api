@@ -130,11 +130,11 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
 		field.Float("batch_image_discount_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
-			Default(0.5).
-			Comment("批量图片生成折扣倍率，最终单价会乘以该值；0 表示免费"),
+			Default(1.0).
+			Comment("兼容字段；新批量任务不提供额外折扣，固定为 1"),
 		field.Float("batch_image_hold_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
-			Default(0.6).
+			Default(1.0).
 			Comment("批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额"),
 		field.Bool("video_rate_independent").
 			Default(false).

@@ -42,6 +42,7 @@ func TestBatchImageMVPFlow(t *testing.T) {
 	}}
 	registry := NewBatchImageProviderRegistry(provider)
 	billing := &fakeBatchImageBillingRepo{}
+	usageLogs := &openAIRecordUsageLogRepoStub{}
 	pricing := &fakeBatchImagePricingResolver{unitPrice: 0.25}
 	owner := testBatchImageOwner()
 
@@ -62,10 +63,11 @@ func TestBatchImageMVPFlow(t *testing.T) {
 			BillingRepo:      billing,
 		},
 		SettlementService: &BatchImageSettlementService{
-			Repo:        repo,
-			BillingRepo: billing,
-			Pricing:     pricing,
-			Config:      cfg,
+			Repo:         repo,
+			BillingRepo:  billing,
+			UsageLogRepo: usageLogs,
+			Pricing:      pricing,
+			Config:       cfg,
 		},
 	}
 	downloadSvc := &BatchImageDownloadService{
@@ -88,11 +90,13 @@ func TestBatchImageMVPFlow(t *testing.T) {
 	require.True(t, strings.HasPrefix(submitted.ID, "imgbatch_"))
 	require.Equal(t, "queued", submitted.Status)
 	require.Equal(t, 2, submitted.ItemCount)
+	require.InDelta(t, 0.5, submitted.EstimatedCost, 1e-12)
+	require.InDelta(t, 0.5, submitted.HoldAmount, 1e-12)
 	require.Equal(t, []string{submitted.ID}, queue.enqueued)
 	require.Len(t, provider.submits, 1)
 	require.Len(t, billing.reserves, 1)
 	require.Equal(t, BatchImageHoldRequestID(submitted.ID), billing.reserves[0].RequestID)
-	require.InDelta(t, 0.3, billing.reserves[0].HoldAmount, 1e-12)
+	require.InDelta(t, 0.5, billing.reserves[0].HoldAmount, 1e-12)
 	requireBatchImagePublicJSONHasNoInternals(t, mustMarshalBatchImageSmokeJSON(t, submitted))
 
 	firstProcess, err := processor.Process(ctx, submitted.ID)
@@ -117,13 +121,20 @@ func TestBatchImageMVPFlow(t *testing.T) {
 	require.Equal(t, 1, job.FailCount)
 	require.Len(t, billing.captures, 1)
 	require.Equal(t, BatchImageCaptureRequestID(submitted.ID), billing.captures[0].RequestID)
-	require.InDelta(t, 0.3, billing.captures[0].HoldAmount, 1e-12)
-	require.InDelta(t, 0.125, billing.captures[0].ActualAmount, 1e-12)
+	require.InDelta(t, 0.5, billing.captures[0].HoldAmount, 1e-12)
+	require.InDelta(t, 0.25, billing.captures[0].ActualAmount, 1e-12)
+	require.NotNil(t, usageLogs.lastLog)
+	require.Equal(t, 1, usageLogs.lastLog.ImageCount)
+	require.InDelta(t, 0.25, usageLogs.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.25, usageLogs.lastLog.ImageOutputCost, 1e-12)
+	require.InDelta(t, 0.25, usageLogs.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 1, usageLogs.lastLog.RateMultiplier, 1e-12)
 
 	secondSettlement, err := processor.SettlementService.Settle(ctx, submitted.ID)
 	require.NoError(t, err)
 	require.True(t, secondSettlement.AlreadySettled)
 	require.Len(t, billing.captures, 1)
+	require.Equal(t, 1, usageLogs.calls)
 
 	status, err := publicSvc.Get(ctx, owner, submitted.ID)
 	require.NoError(t, err)
@@ -131,6 +142,7 @@ func TestBatchImageMVPFlow(t *testing.T) {
 	require.Equal(t, 1, status.SuccessCount)
 	require.Equal(t, 1, status.FailCount)
 	require.NotNil(t, status.ActualCost)
+	require.InDelta(t, 0.25, *status.ActualCost, 1e-12)
 	requireBatchImagePublicJSONHasNoInternals(t, mustMarshalBatchImageSmokeJSON(t, status))
 
 	items, err := publicSvc.ListItems(ctx, owner, submitted.ID, BatchImageItemsQuery{Limit: 100})

@@ -210,6 +210,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.Equal(t, source.PeakRateMultiplier, duplicate.PeakRateMultiplier)
 	require.Equal(t, source.DefaultValidityDays, duplicate.DefaultValidityDays)
 	require.Equal(t, source.ImagePrice4K, duplicate.ImagePrice4K)
+	require.InDelta(t, 1, duplicate.BatchImageDiscountMultiplier, 1e-12)
+	require.InDelta(t, 1, duplicate.BatchImageHoldMultiplier, 1e-12)
 	require.Equal(t, source.VideoModelPrices, duplicate.VideoModelPrices)
 	require.Equal(t, source.WebSearchPricePerCall, duplicate.WebSearchPricePerCall)
 	require.Equal(t, source.FallbackGroupID, duplicate.FallbackGroupID)
@@ -245,6 +247,35 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.Equal(t, "gpt-5.4", source.ModelAllowlist.Models[0])
 	require.Equal(t, "xhigh", source.ReasoningEffortMappings[0].To)
 	require.Equal(t, 11.0, *source.DailyLimitUSD)
+}
+
+func TestDuplicateGroupNormalizesLegacyBatchImagePricing(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		discount float64
+		hold     float64
+		wantHold float64
+	}{
+		{name: "legacy zero", discount: 0, hold: 0, wantHold: 1},
+		{name: "legacy half price", discount: 0.5, hold: 0.6, wantHold: 1},
+		{name: "legacy custom discount", discount: 0.8, hold: 0.9, wantHold: 1},
+		{name: "custom hold margin", discount: 0.8, hold: 1.2, wantHold: 1.2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			source := &Group{
+				ID: 9, Name: "team", Platform: PlatformGemini, Status: StatusActive,
+				BatchImageDiscountMultiplier: tt.discount, BatchImageHoldMultiplier: tt.hold,
+			}
+			repo := newDuplicateGroupRepoStub(source)
+			svc := &adminServiceImpl{groupRepo: repo, groupDuplicateRepo: repo}
+			duplicate, err := svc.DuplicateGroup(context.Background(), source.ID, "admin:7", "key")
+			require.NoError(t, err)
+			require.InDelta(t, 1, duplicate.BatchImageDiscountMultiplier, 1e-12)
+			require.InDelta(t, tt.wantHold, duplicate.BatchImageHoldMultiplier, 1e-12)
+			require.Equal(t, tt.discount, source.BatchImageDiscountMultiplier)
+			require.Equal(t, tt.hold, source.BatchImageHoldMultiplier)
+		})
+	}
 }
 
 func TestCloneGroupForDuplicateCopiesKiroCacheConfiguration(t *testing.T) {

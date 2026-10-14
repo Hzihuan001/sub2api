@@ -74,6 +74,14 @@
 
 在同一已迁移数据库上，只切应用镜像回 `sub2api:0.2.15-custom.2-image-local`，健康、合成用户登录、模型发现均通过，记录数仍为 322；随后恢复候选镜像，并复用原有任务完成模型、下载和费用检查，未新增生成请求。最终候选健康、意外重启次数 0，最近日志无 panic/fatal、迁移失败及数据库/Redis 连接错误。未恢复数据库备份、未删表、未重建数据库/Redis/卷/网络。此证据是本地旧镜像兼容，不等同于 GHCR 发布产物验证。
 
+## 批量无额外折扣验收（2026-10-14，`.4` 候选）
+
+- service batch/group/duplicate 相关单测、Go vet 通过；迁移文本保护测试及真实 PostgreSQL `TestMigration9000BatchImageNoDiscount` 通过，旧运行中/已完成任务和无关分组字段不变，重复迁移幂等。
+- 前端分组/价格 helper/locale 33 项通过，typecheck、定向 ESLint 和 Docker 前端生产构建通过。
+- `sub2api:batch-no-discount-local` / `127.0.0.1:18086`：`deploy/tests/image-studio-smoke.ps1 -Project sub2api-operator-test-v0216 -Port 18086 -MockPort 18087 -VerifyNoBatchDiscount` 通过。
+- 合成旧折扣配置被 API 规范为 1、冻结倍率至少 1；展开三张估算/实际 $0.03。任务 `imgbatch_f1630a2934e6546c60d25c42c1a1c77e`，最大并发 3，3 张图片，4 次上游请求包含模拟故障恢复；单张、ZIP、参考图和 MIME 验证通过。数据库使用记录图片数 3、total/actual 均 0.03、rate 1。
+- 无生产付费图片调用；临时 mock/合成身份清理，验收数据库保留。发布时重新构建嵌入正式 commit/version 的最终镜像并验证，不把 local-uncommitted 镜像当正式产物。
+
 ## 留存与下一步
 
 验收环境保留。合成测试登录资料仅在本地验收脚本中，不是生产账号。

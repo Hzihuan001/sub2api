@@ -18,6 +18,13 @@ export const imagePricingI18nKey = (_platform: string, key: string): string =>
 export const videoPricingI18nKey = (key: string): string =>
   `admin.groups.videoPricing.${key}`;
 
+export const normalizeBatchImageHoldMultiplier = (
+  value: number | string | null | undefined,
+): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+};
+
 type ImagePricingTierKey = "image_price_1k" | "image_price_2k" | "image_price_4k";
 type VideoPricingTierKey =
   | "video_price_480p"

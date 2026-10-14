@@ -193,6 +193,7 @@ describe('GroupsView duplicate action', () => {
     ]) {
       fn.mockReset()
     }
+    vi.mocked(adminAPI.groups.create).mockReset()
 
     listGroups.mockResolvedValue({
       items: [sourceGroup],
@@ -322,6 +323,73 @@ describe('GroupsView duplicate action', () => {
 
     expect(updateGroup).toHaveBeenCalledTimes(1)
     expect(showError).toHaveBeenCalledWith('group name already exists')
+    wrapper.unmount()
+  })
+
+  it('creates batch image groups at normal pricing with a full-price hold', async () => {
+    vi.mocked(adminAPI.groups.create).mockResolvedValue(sourceGroup)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger('click')
+    const form = wrapper.get('#create-group-form')
+    await form.get('[placeholder="admin.groups.enterGroupName"]').setValue('Batch images')
+    wrapper.getComponent('[data-tour="group-form-platform"]').vm.$emit('update:modelValue', 'gemini')
+    await flushPromises()
+    await form.findAll('label').find(label => label.text() === 'admin.groups.imagePricing.allowImageGeneration')!.get('input').setValue(true)
+    await form.findAll('label').find(label => label.text() === 'admin.groups.imagePricing.allowBatchImageGeneration')!.get('input').setValue(true)
+    await form.get('[data-tour="group-form-multiplier"]').setValue('0.8')
+
+    expect(form.text()).not.toContain('admin.groups.imagePricing.batchDiscountMultiplier')
+    expect(form.get<HTMLInputElement>('[data-testid="batch-image-hold-multiplier"]').element.value).toBe('1')
+    expect(form.get('[data-testid="batch-image-hold-multiplier"]').attributes('min')).toBe('1')
+    await form.trigger('submit')
+    await flushPromises()
+    expect(adminAPI.groups.create).toHaveBeenCalledWith(expect.objectContaining({
+      allow_batch_image_generation: true,
+      batch_image_discount_multiplier: 1,
+      batch_image_hold_multiplier: 1,
+      rate_multiplier: 0.8,
+    }))
+    wrapper.unmount()
+  })
+
+  it.each([
+    { savedHold: 0.6, editedHold: '', expectedHold: 1 },
+    { savedHold: 1.25, editedHold: '0.6', expectedHold: 1 },
+    { savedHold: 1.25, editedHold: '1.4', expectedHold: 1.4 },
+  ])('saves legacy batch discounts neutrally while preserving normal multipliers (hold $editedHold)', async ({ savedHold, editedHold, expectedHold }) => {
+    const group = {
+      ...sourceGroup,
+      platform: 'gemini',
+      allow_image_generation: true,
+      allow_batch_image_generation: true,
+      batch_image_hold_multiplier: savedHold,
+      rate_multiplier: 0.8,
+      image_rate_independent: true,
+      image_rate_multiplier: 0.75,
+    }
+    listGroups.mockResolvedValue({ items: [group], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateGroup.mockResolvedValue(group)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+    const form = wrapper.get('#edit-group-form')
+    const hold = form.get<HTMLInputElement>('[data-testid="batch-image-hold-multiplier"]')
+    expect(hold.element.value).toBe(String(Math.max(1, savedHold)))
+    expect(hold.attributes('min')).toBe('1')
+    expect(form.text()).not.toContain('admin.groups.imagePricing.batchDiscountMultiplier')
+    await hold.setValue(editedHold)
+    await form.trigger('submit')
+    await flushPromises()
+    expect(updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({
+      allow_batch_image_generation: true,
+      batch_image_discount_multiplier: 1,
+      batch_image_hold_multiplier: expectedHold,
+      rate_multiplier: 0.8,
+      image_rate_independent: true,
+      image_rate_multiplier: 0.75,
+    }))
     wrapper.unmount()
   })
 

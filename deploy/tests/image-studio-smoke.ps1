@@ -6,7 +6,8 @@ param(
   [int]$TimeoutSeconds = 240,
   [string]$ResumeBatchId = '',
   [string]$ResumeFixtureSuffix = '',
-  [switch]$KeepFixtures
+  [switch]$KeepFixtures,
+  [switch]$VerifyNoBatchDiscount
 )
 
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 or newer is required.' }
@@ -85,9 +86,14 @@ try {
       name = "image-smoke-$suffix"; platform = 'openai'; subscription_type = 'standard'; rate_multiplier = 1
       allow_image_generation = $true; allow_batch_image_generation = $true
       image_price_1k = 0.01; image_price_2k = 0.01; image_price_4k = 0.01
-      batch_image_discount_multiplier = 1; batch_image_hold_multiplier = 1
+      batch_image_discount_multiplier = $(if ($VerifyNoBatchDiscount) { 0.5 } else { 1 })
+      batch_image_hold_multiplier = $(if ($VerifyNoBatchDiscount) { 0.6 } else { 1 })
     }
     $groupId = [long]$group.data.id
+    if ($VerifyNoBatchDiscount) {
+      Assert-True ([double]$group.data.batch_image_discount_multiplier -eq 1) 'Legacy discount was not normalized to full price'
+      Assert-True ([double]$group.data.batch_image_hold_multiplier -ge 1) 'Full-price hold is insufficient'
+    }
     $account = Request-Json POST '/api/v1/admin/accounts' $adminToken @{
       name = "image-fixture-$suffix"; platform = 'openai'; type = 'apikey'; concurrency = 3; priority = 1; rate_multiplier = 1
       credentials = @{ api_key = 'local-image-fixture-not-a-real-key'; base_url = "http://${container}:8080/v1"; model_mapping = @{ 'gpt-image-2' = 'gpt-image-2' } }
@@ -132,6 +138,9 @@ try {
     $idempotency = [Guid]::NewGuid().ToString()
     $job = Request-Json POST '/v1/images/batches' $apiKey $payload @{ 'Idempotency-Key' = $idempotency }
     Assert-True ($job.item_count -eq 3) 'Output fan-out did not create three single-image items'
+    if ($VerifyNoBatchDiscount) {
+      Assert-True ([Math]::Abs([double]$job.estimated_cost - 0.03) -lt 0.0000001) 'Three-image quote still contains an implicit batch discount'
+    }
     $repeated = Request-Json POST '/v1/images/batches' $apiKey $payload @{ 'Idempotency-Key' = $idempotency }
     Assert-True ($repeated.id -eq $job.id) 'Repeated batch submission created a duplicate job'
   } else {

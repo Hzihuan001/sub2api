@@ -1277,43 +1277,43 @@ func TestAdminService_UpdateGroup_RejectsNegativeImageRateMultiplier(t *testing.
 	require.Nil(t, repo.updated)
 }
 
-func TestAdminService_CreateGroup_BatchImagePricingSettings(t *testing.T) {
-	repo := &groupRepoStubForAdmin{}
-	svc := &adminServiceImpl{groupRepo: repo}
-	discount := 0.8
-	hold := 0.9
+func TestAdminService_CreateAndUpdateGroup_NormalizesBatchImagePricing(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		discount *float64
+		hold     *float64
+		wantHold float64
+	}{
+		{name: "omitted fields", wantHold: 1},
+		{name: "legacy half price", discount: groupDuplicateTestPointer(0.5), hold: groupDuplicateTestPointer(0.6), wantHold: 1},
+		{name: "legacy free", discount: groupDuplicateTestPointer(0.0), hold: groupDuplicateTestPointer(0.0), wantHold: 1},
+		{name: "legacy custom discount", discount: groupDuplicateTestPointer(0.8), hold: groupDuplicateTestPointer(0.6), wantHold: 1},
+		{name: "custom hold margin", discount: groupDuplicateTestPointer(1.5), hold: groupDuplicateTestPointer(1.2), wantHold: 1.2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{getByID: &Group{
+				ID: 1, Name: "existing", Platform: PlatformGemini, Status: StatusActive,
+				BatchImageDiscountMultiplier: 0.5, BatchImageHoldMultiplier: 0.6,
+			}}
+			svc := &adminServiceImpl{groupRepo: repo}
+			_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name: "batch-image-pricing", Platform: PlatformGemini, RateMultiplier: 1,
+				BatchImageDiscountMultiplier: tt.discount, BatchImageHoldMultiplier: tt.hold,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, repo.created)
+			require.InDelta(t, 1, repo.created.BatchImageDiscountMultiplier, 1e-12)
+			require.InDelta(t, tt.wantHold, repo.created.BatchImageHoldMultiplier, 1e-12)
 
-	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:                         "batch-image-pricing",
-		Platform:                     PlatformGemini,
-		RateMultiplier:               1,
-		BatchImageDiscountMultiplier: &discount,
-		BatchImageHoldMultiplier:     &hold,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, group)
-	require.NotNil(t, repo.created)
-	require.InDelta(t, 0.8, repo.created.BatchImageDiscountMultiplier, 1e-12)
-	require.InDelta(t, 0.9, repo.created.BatchImageHoldMultiplier, 1e-12)
-}
-
-func TestAdminService_CreateGroup_RejectsHoldBelowDiscount(t *testing.T) {
-	repo := &groupRepoStubForAdmin{}
-	svc := &adminServiceImpl{groupRepo: repo}
-	discount := 0.8
-	hold := 0.6
-
-	// hold < discount 时，成功率足够高的批量任务实际成本会超过冻结额，
-	// 结算永远失败，必须在配置入口拒绝。
-	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:                         "batch-image-pricing-invalid",
-		Platform:                     PlatformGemini,
-		RateMultiplier:               1,
-		BatchImageDiscountMultiplier: &discount,
-		BatchImageHoldMultiplier:     &hold,
-	})
-	require.Error(t, err)
-	require.Nil(t, repo.created)
+			_, err = svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+				BatchImageDiscountMultiplier: tt.discount, BatchImageHoldMultiplier: tt.hold,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, repo.updated)
+			require.InDelta(t, 1, repo.updated.BatchImageDiscountMultiplier, 1e-12)
+			require.InDelta(t, tt.wantHold, repo.updated.BatchImageHoldMultiplier, 1e-12)
+		})
+	}
 }
 
 func TestAdminService_GroupBatchImagePricingValidation(t *testing.T) {

@@ -258,6 +258,14 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 	inboundEndpoint := "/v1/images/batches"
 	upstreamEndpoint := "vertex:batchPredictionJobs"
 	imageSize := s.batchImageUsageSize(ctx, job)
+	totalCost := actualCost
+	rateMultiplier := job.GroupRateMultiplier * job.BatchDiscountMultiplier
+	if job.PricingSnapshotVersion >= 2 {
+		// New jobs separate the pre-multiplier image price from the amount
+		// actually captured. Keep v0/v1 logs unchanged for historical jobs.
+		totalCost = job.BaseUnitPrice * float64(job.SuccessCount)
+		rateMultiplier *= job.AccountRateMultiplier
+	}
 	usageLog := &UsageLog{
 		UserID:                job.UserID,
 		APIKeyID:              *job.APIKeyID,
@@ -268,10 +276,10 @@ func (s *BatchImageSettlementService) recordUsageLog(ctx context.Context, job *B
 		InboundEndpoint:       &inboundEndpoint,
 		UpstreamEndpoint:      &upstreamEndpoint,
 		ImageCount:            job.SuccessCount,
-		ImageOutputCost:       actualCost,
-		TotalCost:             actualCost,
+		ImageOutputCost:       totalCost,
+		TotalCost:             totalCost,
 		ActualCost:            actualCost,
-		RateMultiplier:        job.GroupRateMultiplier * job.BatchDiscountMultiplier,
+		RateMultiplier:        rateMultiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           BillingTypeBalance,
 		RequestType:           RequestTypeSync,
