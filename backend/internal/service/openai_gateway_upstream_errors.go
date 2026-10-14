@@ -256,34 +256,14 @@ func shouldFailoverUpstreamError(statusCode int) bool {
 }
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Account, statusCode int, upstreamMsg string, upstreamBody []byte) bool {
-	failureClass := classifyOpenAIGatewayFailure(statusCode, upstreamBody, upstreamMsg)
-	switch failureClass {
-	case openAIGatewayFailureRequest:
-		return false
-	case openAIGatewayFailureCredential, openAIGatewayFailureQuota:
-		return true
-	}
-	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, upstreamBody) {
-		return true
-	}
-	// A missing model is account/provider availability, not a malformed client
-	// request. Keep this unconditional exception inside the OpenAI-compatible
-	// gateway and require an eligible account so Anthropic/Gemini paths retain
-	// their existing opt-in 400/404 behavior.
-	// A bare forwarding service has no account-selection owner to consume a
-	// failover sentinel. In that mode (used by direct/single-account callers),
-	// preserve the deterministic upstream 400/404 instead of returning an unwritten
-	// retry signal. Managed gateway instances always have an account repository;
-	// their handler can exclude this account and actually select another one.
-	if s != nil && s.accountRepo != nil && account != nil && account.IsOpenAICompatible() &&
-		(statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound) &&
-		failureClass == openAIGatewayFailureModelUnavailable {
-		return true
-	}
-	if s.shouldFailoverUpstreamError(statusCode) {
-		return true
-	}
-	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
+	return decideOpenAIGatewayFailure(openAIGatewayFailureDecisionInput{
+		kind:       openAIGatewayFailureHTTP,
+		statusCode: statusCode,
+		body:       upstreamBody,
+		message:    upstreamMsg,
+		allowModelFailover: s != nil && s.accountRepo != nil && account != nil && account.IsOpenAICompatible() &&
+			(statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound),
+	}).shouldFailover
 }
 
 func isOpenAICompatibleModelNotFound400(respBody []byte) bool {
@@ -331,53 +311,26 @@ func newOpenAIUpstreamFailoverError(
 ) *UpstreamFailoverError {
 	requestScopedCapacity := isOpenAIRequestScopedCapacityShed(upstreamMsg, responseBody)
 	failureClass := classifyOpenAIGatewayFailure(statusCode, responseBody, upstreamMsg)
+	decision := decideOpenAIFailureReplay(openAIFailureReplayFacts{
+		class:                 failureClass,
+		statusCode:            statusCode,
+		requestScopedCapacity: requestScopedCapacity,
+		requestBodyTooLarge:   isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, responseBody),
+		accessStateFailure:    isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, responseBody),
+		capacityClientMessage: openAICapacityShedClientMessage(upstreamMsg, responseBody),
+	}, openAIFailureReplayState{sameAccountRetryAllowed: retryableOnSameAccount})
 	failoverErr := &UpstreamFailoverError{
 		StatusCode:             statusCode,
 		ResponseBody:           responseBody,
 		ResponseHeaders:        responseHeaders.Clone(),
-		RetryableOnSameAccount: retryableOnSameAccount || requestScopedCapacity,
-		RequestScopedTransient: requestScopedCapacity,
-	}
-	if failureClass == openAIGatewayFailureCredential || failureClass == openAIGatewayFailureQuota ||
-		failureClass == openAIGatewayFailureModelUnavailable || statusCode == http.StatusGatewayTimeout ||
-		(statusCode >= 520 && statusCode <= 524) {
-		// Replaying a rejected credential/model or exhausted balance cannot
-		// recover on this account. Gateway/edge timeouts already consumed one
-		// long upstream attempt; switch instead of multiplying that latency.
-		failoverErr.RetryableOnSameAccount = false
-		failoverErr.RequestScopedTransient = false
-		failoverErr.NextAccountAction = NextAccountRetry
-	}
-	if failureClass == openAIGatewayFailureCredential {
-		failoverErr.Stage = GatewayFailureStageAccountAuth
-		failoverErr.Scope = GatewayFailureScopeAccount
-		failoverErr.Reason = GatewayFailureReason("openai_upstream_credential")
-		failoverErr.ClientStatusCode = http.StatusBadGateway
-		failoverErr.ClientMessage = openAIUpstreamAccessUnavailableClientMessage
-	}
-	if isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, responseBody) {
-		failoverErr.RetryableOnSameAccount = false
-		failoverErr.RequestScopedTransient = false
-		failoverErr.Scope = GatewayFailureScopeAccount
-		failoverErr.Reason = openAIRequestBodyTooLargeReason
-		failoverErr.NextAccountAction = NextAccountRetry
-		failoverErr.ClientStatusCode = http.StatusRequestEntityTooLarge
-		failoverErr.ClientMessage = OpenAIRequestBodyTooLargeClientMessage
-	}
-	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, responseBody) {
-		failoverErr.RetryableOnSameAccount = false
-		failoverErr.RequestScopedTransient = false
-		failoverErr.Stage = GatewayFailureStageAccountAuth
-		failoverErr.Scope = GatewayFailureScopeAccount
-		failoverErr.Reason = OpenAIUpstreamAccessStateReason
-		failoverErr.NextAccountAction = NextAccountRetry
-		failoverErr.ClientStatusCode = http.StatusBadGateway
-		failoverErr.ClientMessage = openAIUpstreamAccessUnavailableClientMessage
-	} else if requestScopedCapacity {
-		// Preserve the provider's actionable overload message after gateway
-		// retries are exhausted, but expose it as a retryable server_error.
-		failoverErr.ClientStatusCode = http.StatusServiceUnavailable
-		failoverErr.ClientMessage = openAICapacityShedClientMessage(upstreamMsg, responseBody)
+		RetryableOnSameAccount: decision.retryableOnSameAccount,
+		RequestScopedTransient: decision.requestScopedTransient,
+		NextAccountAction:      decision.nextAccountAction,
+		Stage:                  decision.stage,
+		Scope:                  decision.scope,
+		Reason:                 decision.reason,
+		ClientStatusCode:       decision.clientStatusCode,
+		ClientMessage:          decision.clientMessage,
 	}
 	return failoverErr
 }
