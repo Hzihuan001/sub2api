@@ -1,6 +1,10 @@
 # 官方主线同步说明
 
-本仓库把官方主线、长期定制集成分支和临时升级分支分开。每次官方发布后，先由同步工作流生成升级分支、冲突报告和测试结果，再由人工确认定制功能边界；同步工作流不负责构建、部署或修改生产环境。
+本仓库把官方主线、长期定制集成分支和临时升级分支分开。预期流程是每次官方发布后，先由同步工作流生成升级分支、冲突报告和测试结果，再由人工确认定制功能边界；同步工作流不负责构建、部署或修改生产环境。
+
+2026-10-15 当前边界：正式发布工作流 dispatch 仍返回 HTTP 422 `Actions has been disabled for this repository`。离线升级脚本/YAML Shell 检查已完成，不代表真实 Actions、草稿 PR 和报告链路已运行成功。用户批准的 `.6` 本地 GHCR 发布已完成，正式提交 `655a16868` / `custom-0.2.16.6` 已部署三站，回拉隔离验收、备份和逐站检查通过，见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)。
+
+本轮核对祖先关系后，已将 `origin/custom/integration` 普通快进到发布运行提交 `655a16868fc310d6dcc742c4bb60a2f740456a58`，`ls-remote` 核验一致，未强推。本轮文档收尾提交也同步至发布分支与集成分支，精确 ref 由 Git 核验，执行结果见发布报告；这仍不是远端自动升级 PR 链路成功。下次升级从 [项目状态](CUSTOM_PROJECT_STATUS.md) 和实际远端重新核对完整功能集合。
 
 标准顺序：
 
@@ -10,11 +14,11 @@
 4. 运行受影响后端测试、前端 typecheck/lint/test/build、`scripts/check-custom-isolation.py` 和 Docker 验收。
 5. 验收通过后再创建 `custom-X.Y.Z.N` 标签、构建不可变镜像并按发布运行手册部署。
 
-`.github/workflows/upstream-sync.yml` 会以只读默认权限检查稳定 `v*` 标签，并在明确请求时创建 `upgrade/upstream-vX.Y.Z` 草稿 PR。冲突或测试失败必须保留在报告中；不能通过选择整文件 ours/theirs 来静默丢弃定制功能。`patch_branches` 只登记从 `custom/integration` 重新创建且已经独立验收的功能分支，历史发布分支不得直接复用。
+`.github/workflows/upstream-sync.yml` 设计为以只读默认权限检查稳定 `v*` 标签，并在明确请求时创建 `upgrade/upstream-vX.Y.Z` 草稿 PR；真实运行状态按上方限制记录。冲突或测试失败必须保留在报告中；不能通过选择整文件 ours/theirs 来静默丢弃定制功能。`patch_branches` 只登记从 `custom/integration` 重新创建且已经独立验收的功能分支，历史发布分支不得直接复用。
 
-当前 `v0.2.15` 生图回补使用独立工作分支 `codex/v0.2.15-image-studio-sync`，来源提交仅选择 image-studio 代码和测试，没有带入旧版本文件、代理商历史代码或生产凭据。
+历史 `v0.2.15` 生图回补使用独立工作分支 `codex/v0.2.15-image-studio-sync`，来源提交仅选择 image-studio 代码和测试，没有带入旧版本文件、代理商历史代码或生产凭据。
 
-2026-10-13 的 `v0.2.16` 候选为 `codex/v0.2.16-image-studio`，起点 `custom-0.2.15.3` / `0e5158d24`；官方 merge `d3b78cf8c`，14 个生图功能提交止于 `2c007ec6a`。`origin/custom/integration` 仍在旧提交 `fd7c1b914`，最终候选验收通过前不要把它当作最新生产/功能基线。当前版本与验证记录以 `CUSTOM_PROJECT_STATUS.md` 为准。
+2026-10-13 的历史 `v0.2.16` 候选为 `codex/v0.2.16-image-studio`，起点 `custom-0.2.15.3` / `0e5158d24`；官方 merge `d3b78cf8c`，14 个生图功能提交止于 `2c007ec6a`。当时 `origin/custom/integration` 为旧提交 `fd7c1b914`，不能把该历史坐标当作最新生产/功能基线；本轮普通快进结果见上方，当前版本与验证记录以 `CUSTOM_PROJECT_STATUS.md` 为准。
 
 ## 操作命令
 

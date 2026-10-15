@@ -1,7 +1,7 @@
 # 定制项目状态与官方升级说明
 
 > 本文是给后续维护会话、代码审查者和自动化工具使用的项目交接说明。
-> 先读本文，再读 [`CODEX_HANDOFF.md`](../CODEX_HANDOFF.md)、
+> 先读本文，再读 [`本轮发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)、
 > [`UPSTREAM_SYNC.md`](UPSTREAM_SYNC.md) 和
 > [`custom/manifest.yml`](../custom/manifest.yml)。
 >
@@ -9,7 +9,18 @@
 
 ## 1. 当前快照
 
-### 2026-10-15 — `.6` 源码已推送，GitHub 禁用 Actions 阻止自动发布
+### 2026-10-15 — `.6` 三站部署完成（唯一当前发布状态）
+
+- **已完成**：源码/标签/GHCR 及三站生产发布。运行提交 `655a16868fc310d6dcc742c4bb60a2f740456a58`，版本 `0.2.16-custom.6`，标签 `custom-0.2.16.6`；三站统一 digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`。后续文档提交不改变运行源码。
+- **内容**：定制层模块化、取消结算/恢复、分组错误累计规则与全分组账号冷却/手动恢复；不含 API Key 主备分组新需求，不合并新官方版本。
+- **验证**：复用已验收源码范围；最终 GHCR 镜像回拉一致，独立容器角色/JWT/API Key/WebSocket/重启/日志验收退出 0。17:49–17:51 主站→L1→COS 顺序 app-only 更新，主站等在途槽位归零才操作。三站 healthy、restart 0，版本/commit/digest 一致，本地/公网健康与工作台入口 200、匿名管理接口 401、关键启动日志 0；配置、DB/Redis 容器、迁移指纹不变。
+- **备份**：`/opt/sub2api-backups/v0.2.16-custom.6-20261015T093931Z`，三站 PG dump 的 restore list、配置/数据/OpenResty tar 可读和 SHA-256 已核验。回滚仅应用至 `.5` digest `sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b`；不恢复旧库覆盖新业务。
+- **边界**：用户明确批准本地 GHCR 替代路径；Actions 实测禁用，不能称 CI 全绿或自动升级 PR 链路完成。SSE mixed 风险已接受；未知生图结果继续待核对/冻结；15 项基线 lint 及 P4 全组合旧新矩阵缺口继续披露。未做生产付费调用或长时间压测，生产无现成管理 Key，角色完整验证来自本地最终镜像。
+- **交接**：[完整发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)。下方“未发布/未授权/等待 SSE”均为历史阶段记录，不覆盖本条；长期集成分支本轮以普通快进同步本成果及文档，不强推、不改默认分支。
+
+以下阶段记录均为历史快照；其中的“当前”“未部署”“等待授权”只描述当时，不覆盖页首唯一当前状态。
+
+### 2026-10-15 — `.6` 源码已推送，GitHub 禁用 Actions 阻止自动发布（历史）
 
 - 发布准备提交 `d2476c39f9a0f109f6bfc0d29a517013c125547c` 已推送 `origin/codex/group-failover-rules-v0.2.16`；版本 `0.2.16-custom.6`。未建版本标签、未发布新镜像、未改生产。
 - 本次实际执行 `gh workflow run custom-release.yml --repo Hzihuan001/sub2api --ref codex/group-failover-rules-v0.2.16`，返回 HTTP 422：`Actions has been disabled for this repository.`。未生成运行，不是 CI 测试失败；权限开关显示 active 不能覆盖此实际结果。不重复 dispatch。
@@ -132,27 +143,27 @@
 - **当前状态 / 下一步**：本次修复及三站部署完成。后续另行恢复 GitHub Actions，并核对其他功能会话后推进落后的集成分支；恢复前不能认为定时升级可用，不能从旧集成引用丢失 `.3`/`.4` 修复。
 - **验证范围**：复用已通过的相关单元/真实 PostgreSQL/前端检查；正式 GHCR 镜像拉回确认 digest 一致，Docker 三图结算/参考图/下载验收通过。生产只重建应用，未发起付费生图，未重建数据库、Redis、网络或卷。
 
-### 最近发布快照（2026-10-14，非当前开发分支）
+### 当前发布快照（2026-10-15）
 
-当前模块化开发分支和未决验收以页首为准；下表仅保留最近已记录的生产/发布坐标，不表示本轮重新查询了远端或生产。
+本表为本轮实际核验的生产/发布坐标，历史过程以页首说明和发布报告区分。
 
 | 项目 | 最近发布记录 |
 | --- | --- |
-| 记录日期 | 2026-10-14 |
+| 记录日期 | 2026-10-15 |
 | 官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
-| 当前定制版本 | `0.2.16-custom.5`（统一故障切换；包含 `.4` / `.3` 修复） |
-| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.5` |
-| 最新已发布基线 | `custom-0.2.16.5` / `00e8f24a40eba481d1e61cfebb5f4ab3f9401a2b` |
-| 发布分支 | `codex/v0.2.16-image-studio` |
+| 当前定制版本 | `0.2.16-custom.6`（模块化、取消结算恢复、分组切换规则） |
+| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.6` |
+| 最新已发布基线 | `custom-0.2.16.6` / `655a16868fc310d6dcc742c4bb60a2f740456a58` |
+| 发布分支 | `codex/group-failover-rules-v0.2.16` |
 | 升级工作树 | `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` |
 | 官方合并 / 生图移植提交 | `d3b78cf8c` / `2c007ec6a`；运行代码修复 `e42db1f11`，验收脚本 `f17cae568` |
-| 长期集成基线 | `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071` |
+| 长期集成基线 | `origin/custom/integration` 本轮普通快进至包含 `.6` 和文档的收尾提交；以远端 ref 核验，不使用旧 `fd7c1b9` |
 | 历史隔离改造 PR | 草稿 PR #1（状态待另行核验）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 主站生产镜像 digest | `sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b` |
-| L1/COS 生产镜像 digest | `sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b` |
-| 当前发布状态 | `.5` 已发布并部署三站，快速验收通过；旧 `.2` 仍仅保留源码标签 |
+| 主站生产镜像 digest | `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e` |
+| L1/COS 生产镜像 digest | `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e` |
+| 当前发布状态 | `.6` 三站部署及快速验收通过，`.5` 镜像保留供回滚 |
 
 生产健康检查最近确认通过的入口：
 
@@ -162,7 +173,7 @@
 
 2026-10-12 两个下游入口切换到 Moshu 子域名并开启 Cloudflare 代理；旧 `tokenpulse.top` 入口保留。OVH OpenResty 继续使用 HTTPS、10 小时读写超时和关闭响应缓冲。域名运维记录见功能日志。
 
-本次生产三站统一使用同一镜像 digest：`sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b`。`.5` 备份和回退 `.4` 的命令见本页最新验收文档；此前 `.4` 备份 `/opt/sub2api-backups/v0.2.16-custom.4-20261014T074350Z` 继续保留。所有历史批量任务与价格快照不改，不还原旧库覆盖新业务。
+本次三站统一使用 `.6` digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`；备份及回退 `.5` 的命令见 [发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)。历史备份继续保留，已完成批量任务与价格快照不重算，不还原旧库覆盖新业务。
 
 ### 批量无额外折扣（2026-10-14，deployed）
 

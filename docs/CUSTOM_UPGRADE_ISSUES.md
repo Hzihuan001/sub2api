@@ -1,5 +1,16 @@
 # 定制升级问题记录
 
+## 2026-10-15 — `.6` Actions 禁用与已批准的本地 GHCR 发布
+
+- 正式 workflow dispatch 实测 HTTP 422 `Actions has been disabled for this repository`，未产生 CI 新运行。用户明确批准沿用本地构建 → GHCR → 回拉验收 → 备份 → 主站/L1/COS 顺序 app-only 部署；不修改仓库设置，不将替代路径写成 CI 通过。
+- 正式运行提交 `655a16868fc310d6dcc742c4bb60a2f740456a58`、源码标签 `custom-0.2.16.6` 已推送；镜像 `ghcr.io/hzihuan001/sub2api:0.2.16-custom.6`，不可变 digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`。回拉后 image ID 与本地正式产物一致，`UsePublishedImage` 的角色/API Key/WebSocket/重启/日志验收 exit 0，专属验收项目已由脚本清理。
+- 三站备份 `/opt/sub2api-backups/v0.2.16-custom.6-20261015T093931Z` 已通过 `pg_restore --list`、tar 读取和 SHA 校验。主站等待请求槽位归零后才更新，未强制中断；主站/L1/COS 顺序部署均通过，完成 UTC 09:50:04 / 09:50:44 / 09:51:17。三站 healthy、重启 0、版本/提交/镜像一致，环境/端口/挂载/网络、数据库/Redis 容器身份与启动时间、迁移数量及全行指纹均不变，详见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)。
+- 各站本地/公网 health 和 image-studio 均 200，匿名设置与新 failure-policy 接口均 401，启动关键错误日志匹配为 0。生产没有现成 admin API Key，未新增或伪造有鉴权登录；完整角色/API Key/WebSocket 矩阵以正式 GHCR 镜像本地验收为据。未做付费模型测试或长期监控。
+- UTC 09:54:31 / 北京时间 17:54:31 三站复核仍 healthy、重启 0、digest 一致、关键日志 0，原始证据 `D:/projects/go-tmp/custom6-final-check-20261015.json`；此为有限复核，不冒称完成 30 分钟或 24 小时观察。
+- 核对祖先关系后，已将 `origin/custom/integration` 普通快进到发布运行提交 `655a16868fc310d6dcc742c4bb60a2f740456a58`，`ls-remote` 核验一致，未强推；本轮文档收尾提交也同步至发布分支与集成分支，精确 ref 由 Git 核验，实际推进结果见发布报告。这不构成真实自动升级 PR 链路成功证据。
+- SSE mixed 已由用户接受为未决风险并停止追加测试，不再等待新的 SSE 结果，也没有改判通过。15 项全量 lint 基线欠账、P4 完整旧新账务双跑矩阵、Actions 与真实升级 PR 链路仍未闭环；未知结果保留待核对且不新增管理员入口。
+- 下方“暂缓发布”“仍需反序诊断”“尚待最终镜像”等段落保留为历史发现与当时状态；后续结果以本条、最终门禁和发布报告为准，不删除失败证据或倒写测试范围。
+
 ## 2026-10-15 — 新定制路由必须同步实际应用契约
 
 - 新分组策略已在 composition/variation 测试登记 18 条，但 `custom_bootstrap_test.go` 的真实应用清单仍只有旧 16 条，且邻接顺序跳过新增接口；开发时仅按 GroupFailure 等名字选测未包含此测试。

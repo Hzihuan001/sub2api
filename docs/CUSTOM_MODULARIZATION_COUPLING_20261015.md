@@ -2,6 +2,8 @@
 
 本报告补充计划第 6 节要求的逐阶段前后清单，不替代最终候选验收报告。固定官方起点为 `01842576b3d5c1e2545b5a99ad555d36e28ed306`（v0.2.16），定制基线为 `989594099c1bd10db911c737449d15d2bb6149ed`。初次复核点 `9831e38c6`；后续独立运行修复 `8d5dba9a4`、`3e78ebe2b`，检查补强 `851b49e7a`、测试夹具 `d16ef65ce`。本报告不把业务修复算入结构收益，也不宣称最终门禁、性能或部署完成；唯一当前状态见项目状态页。
 
+2026-10-15 后续结果：用户批准的 `.6` 本地 GHCR 发布和三站顺序部署已完成；正式镜像回拉隔离验收、三站备份和生产健康/版本/日志检查通过。坐标、逐站结果及生产检查边界统一见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)。下面的耦合统计仍按原提交范围阅读，后续分组规则不计入纯重构收益；发布不代表 P4 完整双跑矩阵或自动升级链路已补齐。
+
 ## 统计口径
 
 - “宿主文件”指本阶段实际保留定制调用的文件；“登记文件”专指 `contracts.json.host_entries` 按 import 检查的文件，二者不能混同。
@@ -69,7 +71,7 @@
 - 依赖 `BatchImageHandler → *OpenAIGatewayHandler`：1 → 0；替换为 `BatchImageHandler → SecurityAuditGate.Check`：0 → 1。Gate 只有 1 个方法；生产 provider 使用原 coordinator＋legacy moderation，Wire 生成调用 `ProvideBatchImageHandler`。
 - 批量原有 public/download/cleanup service 依赖保留；Provider/Repository/Queue 和账务事务在基线已存在，不因本次重构重新包装或复制。完整网关实现不再通过批量构造函数传入。
 - 审计协调器仍是原实现，错误输出抽取共享入口；不把复制审计或新建账务层算作成果。
-- `security_audit_gate_test.go` 同时有结构断言、真实 handler/provider 调用、off/capture_only/async/blocking、去重、JSON/SSE 格式及缺组件拒绝。组合夹具的重构前后任务/账目一致仍须配合最终 PG/Redis/Docker 证据，窄接口测试本身不能完成 P4 全部恢复/账务验收。
+- `security_audit_gate_test.go` 同时有结构断言、真实 handler/provider 调用、off/capture_only/async/blocking、去重、JSON/SSE 格式及缺组件拒绝。后续 PG/Redis/Docker 恢复证据已记录，但完整旧新任务/账务双跑矩阵仍未完成；窄接口和独立恢复测试不能替代该矩阵。
 
 ## P5：纯决策与协议适配
 
@@ -100,8 +102,8 @@
 | Wire/Ent 生成 | d16 和 577 独立干净工作树精确提交，生成零差异、迁移无变化 | 若后续改变生成输入，按影响重新核验；不能沿用 57ed 旧坐标冒充所有新提交 |
 | 完整质量与联合运行 | 完整 Go/前端、真实 PG/Redis 与 577 精确镜像角色/生图/11 故障通过 | 结果按源码范围复用；全量 lint 15 项基线欠账单列，精确工具链/命令/镜像见最终候选报告 |
 | 恢复与幂等 | 577 镜像实际 3 次 SIGKILL：真实持久化图片恢复、Redis 重投账务不变、未知结果不重发并保留冻结通过 | 租约仅测试任务加速，不宣称自然 TTL 或所有极短中断窗口；工件与限制见最终候选报告 |
-| 性能 | P0 阈值保持；53fd 恢复原短路求值后同源微基准通过；4,000 次 HTTP/SSE 和固定 CBBC 1,200 次 SSE 已执行 | SSE 尾延迟在 CBBC 中为预注册 mixed 结果，未决；原失败和全部原始样本保留，不以平均值或 unchanged classifier 替代 |
-| 自动升级 | 本地脚本和 workflow 已接 contracts | Actions 实际运行、获准后的集成基线推进、草稿 PR/报告生成；当前远程限制不能写为已完成 |
+| 性能 | P0 阈值保持；53fd 恢复原短路求值后同源微基准通过；4,000 次 HTTP/SSE、固定 CBBC 1,200 次 SSE 及有限 DEBUG 已执行 | SSE mixed 技术结论不变；用户已接受未决风险、停止追加测试，不再阻塞本次发布。全部原始样本保留，不以 DEBUG、平均值或 unchanged classifier 改判 |
+| 自动升级 | 本地脚本和 workflow 已接 contracts；离线脚本检查已补强；远端集成分支已普通快进到发布运行 `655a16868` 并核验，本轮文档收尾提交同步至发布分支与集成分支 | 正式 dispatch 仍 HTTP 422 Actions disabled，真实草稿 PR/报告链路未闭环；集成分支快进和本地 GHCR 发布不是 CI 成功证据 |
 
 没有做相同起点/目标/功能集的真实历史合并比较；本报告不提供“冲突减少百分比”。下一次真实升级应记录冲突和耗时。
 
@@ -109,4 +111,4 @@
 
 `python -B scripts/custom_contracts.py` 通过（6 modules、7 executable groups）；`python -B -m unittest discover -s scripts -p test_custom_contracts.py` 通过（17 项）；`git diff --check` 通过。原 12 项包含正例和 parser 用例，不能全部称为 12 个独立负例；新增 5 项覆盖真实启动调用缺失、注释/字符串伪接线、错误函数、重复调用、删除 required_host_calls 配置。
 
-本报告首轮只核查架构/夹具；后续全量、生成和容器证据已由主执行者追加，统一以 [最终候选门禁](CUSTOM_MODULARIZATION_FINAL_GATES_20261015.md) 的源码坐标与限制为准。没有远程写入或生产操作。
+本报告首轮只核查架构/夹具，当时没有远程写入或生产操作；后续全量、生成和容器证据统一以 [最终候选门禁](CUSTOM_MODULARIZATION_FINAL_GATES_20261015.md) 的源码坐标与限制为准。此次获准的远程发布和生产进展另见页首发布报告，不改写原阶段证据。
