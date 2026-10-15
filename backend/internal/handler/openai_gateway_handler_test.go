@@ -1921,8 +1921,8 @@ type openAIResponsesWSUsageLogCase struct {
 	compositeResolver      *service.CompositeRouteResolver
 	accountPlatform        string
 	firstPayload           string
-	// midPayload 在首个 turn 完成后发送（如 session.update），上游桩会为它
-	// 回一个 response.completed，客户端按普通事件读取。
+	// midPayload 在首个 turn 完成后发送 session.update；上游只回 session.updated，
+	// 不伪造一次 response.completed、usage 或新的生成轮次。
 	midPayload                string
 	secondPayload             string
 	userAgent                 *string
@@ -2867,13 +2867,14 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	gin.SetMode(gin.TestMode)
 
 	turnCount := 1
-	if strings.TrimSpace(tc.midPayload) != "" {
-		turnCount++
-	}
 	if strings.TrimSpace(tc.secondPayload) != "" {
 		turnCount++
 	}
-	upstreamPayloadCh := make(chan []byte, turnCount)
+	messageCount := turnCount
+	if strings.TrimSpace(tc.midPayload) != "" {
+		messageCount++
+	}
+	upstreamPayloadCh := make(chan []byte, messageCount)
 	upstreamErrCh := make(chan error, 1)
 	var channelSvc *service.ChannelService
 	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2899,7 +2900,9 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 			_ = conn.CloseNow()
 		}()
 
-		for turn := 1; turn <= turnCount; turn++ {
+		responseCount := 0
+		sessionModel := ""
+		for message := 1; message <= messageCount; message++ {
 			readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
 			msgType, payload, readErr := conn.Read(readCtx)
 			cancelRead()
@@ -2912,18 +2915,35 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 				return
 			}
 			upstreamPayloadCh <- payload
-			if turn == 1 && tc.afterFirstUpstreamRequest != nil {
+			if message == 1 && tc.afterFirstUpstreamRequest != nil {
 				if callbackErr := tc.afterFirstUpstreamRequest(channelSvc); callbackErr != nil {
 					upstreamErrCh <- callbackErr
 					return
 				}
 			}
 
-			response := fmt.Sprintf(
-				`{"type":"response.completed","response":{"id":"resp_usage_e2e_%d","model":%q,"usage":{"input_tokens":2,"output_tokens":1}}}`,
-				turn,
-				gjson.GetBytes(payload, "model").String(),
-			)
+			var response string
+			switch gjson.GetBytes(payload, "type").String() {
+			case "session.update":
+				sessionModel = gjson.GetBytes(payload, "session.model").String()
+				response = fmt.Sprintf(`{"type":"session.updated","session":{"model":%q}}`, sessionModel)
+			case "response.create":
+				responseCount++
+				model := gjson.GetBytes(payload, "model").String()
+				if model == "" {
+					model = sessionModel
+				}
+				if sessionModel == "" {
+					sessionModel = model
+				}
+				response = fmt.Sprintf(
+					`{"type":"response.completed","response":{"id":"resp_usage_e2e_%d","model":%q,"usage":{"input_tokens":2,"output_tokens":1}}}`,
+					responseCount, model,
+				)
+			default:
+				upstreamErrCh <- fmt.Errorf("unexpected upstream fixture event: %s", gjson.GetBytes(payload, "type").String())
+				return
+			}
 			writeCtx, cancelWrite := context.WithTimeout(r.Context(), 3*time.Second)
 			writeErr := conn.Write(writeCtx, coderws.MessageText, []byte(response))
 			cancelWrite()
@@ -3133,7 +3153,13 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		err = clientConn.Write(writeCtx, coderws.MessageText, []byte(tc.midPayload))
 		cancelWrite()
 		require.NoError(t, err)
-		readCompleted()
+		readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+		_, event, readErr := clientConn.Read(readCtx)
+		cancelRead()
+		require.NoError(t, readErr)
+		require.Equal(t, "session.updated", gjson.GetBytes(event, "type").String())
+		require.Equal(t, gjson.Get(tc.midPayload, "session.model").String(), gjson.GetBytes(event, "session.model").String())
+		require.False(t, gjson.GetBytes(event, "response").Exists(), "a session acknowledgement cannot carry a generated response")
 	}
 	if strings.TrimSpace(tc.secondPayload) != "" && (turnCount >= 2) {
 		writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
@@ -3154,6 +3180,20 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 			}
 			require.Contains(t, closeErr.Reason, reason)
 			_ = clientConn.CloseNow()
+			if tc.midPayload != "" {
+				select {
+				case <-upstreamErrCh:
+				case <-time.After(3 * time.Second):
+					t.Fatal("等待策略拒绝后上游连接退出超时")
+				}
+				require.Len(t, upstreamPayloadCh, 2, "the rejected second response.create must never reach upstream")
+				first, update := <-upstreamPayloadCh, <-upstreamPayloadCh
+				require.Equal(t, "response.create", gjson.GetBytes(first, "type").String())
+				require.NotEmpty(t, gjson.GetBytes(first, "model").String())
+				require.Equal(t, "session.update", gjson.GetBytes(update, "type").String())
+				require.Equal(t, gjson.Get(tc.midPayload, "session.model").String(), gjson.GetBytes(update, "session.model").String())
+				require.Len(t, clientEvents, 1, "session.update must not fabricate a completed generation")
+			}
 			return openAIResponsesWSUsageLogResult{}
 		}
 		readCompleted()
@@ -3171,8 +3211,8 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		}
 	}
 
-	upstreamPayloads := make([][]byte, 0, turnCount)
-	for len(upstreamPayloads) < turnCount {
+	upstreamPayloads := make([][]byte, 0, messageCount)
+	for len(upstreamPayloads) < messageCount {
 		select {
 		case payload := <-upstreamPayloadCh:
 			upstreamPayloads = append(upstreamPayloads, payload)
@@ -3189,6 +3229,18 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		require.NoError(t, upstreamErr)
 	case <-time.After(3 * time.Second):
 		t.Fatal("等待上游 WebSocket 结束超时")
+	}
+	if tc.midPayload != "" {
+		require.Len(t, upstreamPayloads, 3)
+		require.Equal(t, "response.create", gjson.GetBytes(upstreamPayloads[0], "type").String())
+		require.Equal(t, "session.update", gjson.GetBytes(upstreamPayloads[1], "type").String())
+		require.Equal(t, "response.create", gjson.GetBytes(upstreamPayloads[2], "type").String())
+		model := gjson.Get(tc.midPayload, "session.model").String()
+		require.Equal(t, model, gjson.GetBytes(upstreamPayloads[1], "session.model").String())
+		require.Equal(t, model, gjson.GetBytes(upstreamPayloads[2], "model").String(), "model-less follow-up uses the accepted session model")
+		require.Len(t, usageLogs, 2, "only response.create completions produce usage")
+		require.Len(t, clientEvents, 2)
+		require.Empty(t, usageRepo.created, "session.updated must not enqueue an extra usage record")
 	}
 
 	return openAIResponsesWSUsageLogResult{

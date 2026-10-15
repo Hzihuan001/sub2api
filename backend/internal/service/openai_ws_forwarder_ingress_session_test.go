@@ -1124,6 +1124,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridg
 		payload         string
 		threshold       int64
 		wantRelayReject bool
+		orphanTerminal  bool
 	}{
 		{
 			name:      "small response create",
@@ -1137,8 +1138,14 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridg
 		},
 		{
 			name:      "other event type",
-			payload:   `{"type":"session.update","padding":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}`,
+			payload:   `{"type":"session.update","session":{"model":"gpt-5.1"},"padding":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}`,
 			threshold: 1,
+		},
+		{
+			name:           "orphan terminal without response create fails closed",
+			payload:        `{"type":"session.update","session":{"model":"gpt-5.1"}}`,
+			threshold:      1,
+			orphanTerminal: true,
 		},
 		{
 			name:            "malformed data",
@@ -1172,9 +1179,12 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridg
 			cfg.Gateway.OpenAIWS.HTTPBridgeEnabled = true
 			cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes = tt.threshold
 
-			upstreamConn := &openAIWSCaptureConn{events: [][]byte{
-				[]byte(`{"type":"response.completed","response":{"id":"resp_duplicate_keys","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
-			}}
+			upstreamEvent := `{"type":"response.completed","response":{"id":"resp_duplicate_keys","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`
+			isSessionUpdate := gjson.Get(tt.payload, "type").String() == "session.update"
+			if isSessionUpdate && !tt.orphanTerminal {
+				upstreamEvent = `{"type":"session.updated","session":{"model":"gpt-5.1"}}`
+			}
+			upstreamConn := &openAIWSCaptureConn{events: [][]byte{[]byte(upstreamEvent)}}
 			dialer := &openAIWSCaptureDialer{conn: upstreamConn}
 			httpUpstream := &httpUpstreamRecorder{}
 			svc := &OpenAIGatewayService{
@@ -1199,6 +1209,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridg
 			}
 
 			errCh := make(chan error, 1)
+			completedResponses := make(chan string, 2)
 			wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				conn, err := coderws.Accept(w, r, nil)
 				if err != nil {
@@ -1214,7 +1225,13 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridg
 				rec := httptest.NewRecorder()
 				ginCtx, _ := gin.CreateTestContext(rec)
 				ginCtx.Request = r
-				errCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, nil)
+				errCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, &OpenAIWSIngressHooks{
+					AfterTurn: func(_ int, result *OpenAIForwardResult, turnErr error) {
+						if turnErr == nil && result != nil && result.UpstreamTerminalEvent == "response.completed" {
+							completedResponses <- result.RequestID
+						}
+					},
+				})
 			}))
 			defer wsServer.Close()
 
@@ -1227,14 +1244,28 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridg
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, "resp_duplicate_keys", gjson.GetBytes(event, "response.id").String())
-				require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+				require.JSONEq(t, upstreamEvent, string(event))
+				if tt.orphanTerminal {
+					closeCtx, cancelClose := context.WithTimeout(context.Background(), 3*time.Second)
+					_, _, closeErr := clientConn.Read(closeCtx)
+					cancelClose()
+					require.Error(t, closeErr)
+					require.Equal(t, coderws.StatusTryAgainLater, coderws.CloseStatus(closeErr))
+					require.Contains(t, closeErr.Error(), "response identity is ambiguous")
+				} else {
+					require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+				}
 			}
 
 			select {
 			case proxyErr := <-errCh:
 				if tt.wantRelayReject {
 					require.Error(t, proxyErr)
+				} else if tt.orphanTerminal {
+					var identityErr *OpenAIWSClientCloseError
+					require.ErrorAs(t, proxyErr, &identityErr)
+					require.Equal(t, coderws.StatusTryAgainLater, identityErr.StatusCode())
+					require.Contains(t, identityErr.Reason(), "response identity is ambiguous")
 				} else if proxyErr != nil {
 					require.Contains(t, proxyErr.Error(), "StatusNormalClosure")
 				}
@@ -1248,6 +1279,14 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridg
 			} else {
 				require.Equal(t, 1, dialer.DialCount())
 				require.Len(t, upstreamConn.writes, 1)
+				require.Equal(t, gjson.Get(tt.payload, "type").String(), upstreamConn.writes[0]["type"])
+				if isSessionUpdate {
+					require.Equal(t, "gpt-5.1", upstreamConn.writes[0]["session"].(map[string]any)["model"])
+					require.Empty(t, completedResponses, "no response.create means no successful generation callback")
+				} else {
+					require.Equal(t, "gpt-5.1", upstreamConn.writes[0]["model"])
+					require.Len(t, completedResponses, 1)
+				}
 			}
 		})
 	}
