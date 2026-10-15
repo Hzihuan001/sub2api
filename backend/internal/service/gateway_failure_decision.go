@@ -47,21 +47,36 @@ type openAIGatewayFailureDecision struct {
 }
 
 func decideOpenAIGatewayFailure(input openAIGatewayFailureDecisionInput) openAIGatewayFailureDecision {
+	return evaluateOpenAIGatewayFailure(input, true)
+}
+
+// Boolean-only adapters retain the published short-circuit order without
+// computing status metadata that their caller will discard. Both entry points
+// use the same policy; the complete Decision always includes semanticStatus.
+func shouldFailoverOpenAIGatewayFailure(input openAIGatewayFailureDecisionInput) bool {
+	return evaluateOpenAIGatewayFailure(input, false).shouldFailover
+}
+
+func evaluateOpenAIGatewayFailure(input openAIGatewayFailureDecisionInput, includeSemanticStatus bool) openAIGatewayFailureDecision {
 	classificationStatus := input.statusCode
 	if input.kind == openAIGatewayFailureResponseFailed || input.kind == openAIGatewayFailureErrorEvent {
 		classificationStatus = 0
 	}
 	decision := openAIGatewayFailureDecision{
 		failureClass:   classifyOpenAIGatewayFailure(classificationStatus, input.body, input.message),
-		semanticStatus: input.statusCode,
+		semanticStatus: classificationStatus,
 	}
 
 	switch input.kind {
 	case openAIGatewayFailureResponseFailed:
-		decision.semanticStatus = openAIStreamFailureStatusForClass(input.body, input.message, decision.failureClass)
+		if includeSemanticStatus {
+			decision.semanticStatus = openAIStreamFailureStatusForClass(input.body, input.message, decision.failureClass)
+		}
 		decision.shouldFailover = shouldFailoverOpenAIResponseFailedDecision(input, decision)
 	case openAIGatewayFailureErrorEvent:
-		decision.semanticStatus = openAIStreamSemanticStatusForClass(input.body, input.message, decision.failureClass)
+		if includeSemanticStatus {
+			decision.semanticStatus = openAIStreamSemanticStatusForClass(input.body, input.message, decision.failureClass)
+		}
 		decision.shouldFailover = shouldFailoverOpenAIErrorEventDecision(input, decision)
 	default:
 		decision.shouldFailover = shouldFailoverOpenAIHTTPDecision(input, decision)
@@ -154,7 +169,7 @@ func shouldFailoverOpenAIHTTPDecision(input openAIGatewayFailureDecisionInput, d
 	if isOpenAIRequestBodyTooLargeError(input.statusCode, input.message, input.body) {
 		return true
 	}
-	if isOpenAIHTTPUpstreamAccessStateError(input.statusCode, input.message, input.body) {
+	if input.kind == openAIGatewayFailurePassthrough && isOpenAIHTTPUpstreamAccessStateError(input.statusCode, input.message, input.body) {
 		return true
 	}
 	if input.poolRetryable {
@@ -173,6 +188,9 @@ func shouldFailoverOpenAIResponseFailedDecision(input openAIGatewayFailureDecisi
 	}
 	if isOpenAIUpstreamAccessStateError(input.message, input.body) {
 		return true
+	}
+	if decision.semanticStatus == 0 {
+		decision.semanticStatus = openAIStreamFailureStatusForClass(input.body, input.message, decision.failureClass)
 	}
 	if decision.semanticStatus == http.StatusForbidden {
 		return openAIStream403AccountFailure(input.body, input.message)
@@ -209,6 +227,9 @@ func shouldFailoverOpenAIErrorEventDecision(input openAIGatewayFailureDecisionIn
 	}
 	if isOpenAIUpstreamAccessStateError(input.message, input.body) {
 		return true
+	}
+	if decision.semanticStatus == 0 {
+		decision.semanticStatus = openAIStreamSemanticStatusForClass(input.body, input.message, decision.failureClass)
 	}
 	switch decision.semanticStatus {
 	case http.StatusForbidden:

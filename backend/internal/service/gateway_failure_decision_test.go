@@ -47,9 +47,87 @@ func TestGatewayFailureDecisionPreservesEnvelopeDistinctions(t *testing.T) {
 				input := openAIGatewayFailureDecisionInput{kind: envelope.kind, statusCode: tt.status, body: body, message: tt.message, allowModelFailover: tt.allowModel}
 				first := decideOpenAIGatewayFailure(input)
 				require.Equal(t, envelope.want, first.shouldFailover, "envelope %d", envelope.kind)
+				require.Equal(t, first.shouldFailover, shouldFailoverOpenAIGatewayFailure(input), "boolean policy must match complete Decision")
 				require.Equal(t, first, decideOpenAIGatewayFailure(input), "pure result must be repeatable")
 				require.Equal(t, before, body, "policy must not rewrite provider bytes")
 			}
+		})
+	}
+}
+
+func TestGatewayFailureDecisionStreamShortCircuitKeepsCompleteMetadata(t *testing.T) {
+	for _, tt := range []struct {
+		code                    string
+		class                   openAIGatewayFailureClass
+		failedStatus, errStatus int
+		wantFailover            bool
+	}{
+		{"invalid_parameter", openAIGatewayFailureRequest, http.StatusBadGateway, http.StatusBadRequest, false},
+		{"permission_error", openAIGatewayFailureRequest, http.StatusForbidden, http.StatusForbidden, false},
+		{"invalid_api_key", openAIGatewayFailureCredential, http.StatusUnauthorized, http.StatusUnauthorized, true},
+		{"account_suspended", openAIGatewayFailureCredential, http.StatusForbidden, http.StatusForbidden, true},
+		{"insufficient_quota", openAIGatewayFailureQuota, http.StatusPaymentRequired, http.StatusPaymentRequired, true},
+		{"model_not_found", openAIGatewayFailureModelUnavailable, http.StatusNotFound, http.StatusNotFound, true},
+	} {
+		t.Run(tt.code, func(t *testing.T) {
+			body := []byte(`{"response":{"error":{"code":"` + tt.code + `"}}}`)
+			var classified openAIGatewayFailureClass
+			classificationAllocs := testing.AllocsPerRun(100, func() {
+				classified = classifyOpenAIGatewayFailure(0, body, "")
+			})
+			require.Equal(t, tt.class, classified)
+			for _, envelope := range []struct {
+				kind   openAIGatewayFailureDecisionKind
+				status int
+			}{
+				{openAIGatewayFailureResponseFailed, tt.failedStatus},
+				{openAIGatewayFailureErrorEvent, tt.errStatus},
+			} {
+				input := openAIGatewayFailureDecisionInput{kind: envelope.kind, statusCode: http.StatusOK, body: body}
+				complete := decideOpenAIGatewayFailure(input)
+				require.Equal(t, envelope.status, complete.semanticStatus)
+				require.Equal(t, tt.wantFailover, complete.shouldFailover)
+				var failover bool
+				booleanAllocs := testing.AllocsPerRun(100, func() {
+					failover = shouldFailoverOpenAIGatewayFailure(input)
+				})
+				require.Equal(t, tt.wantFailover, failover)
+				require.LessOrEqual(t, booleanAllocs, classificationAllocs, "classified stream failures must not allocate discarded status metadata")
+			}
+		})
+	}
+}
+
+func TestGatewayFailureDecisionHTTPStatusShortCircuitAllocations(t *testing.T) {
+	body := []byte(`{"error":{"code":"server_is_overloaded","message":"overloaded"}}`)
+	var classified openAIGatewayFailureClass
+	classificationAllocs := testing.AllocsPerRun(100, func() {
+		classified = classifyOpenAIGatewayFailure(http.StatusServiceUnavailable, body, "")
+	})
+	require.Equal(t, openAIGatewayFailureUnknown, classified)
+	input := openAIGatewayFailureDecisionInput{kind: openAIGatewayFailureHTTP, statusCode: http.StatusServiceUnavailable, body: body}
+	var decision openAIGatewayFailureDecision
+	decisionAllocs := testing.AllocsPerRun(100, func() { decision = decideOpenAIGatewayFailure(input) })
+	require.True(t, decision.shouldFailover)
+	require.Equal(t, http.StatusServiceUnavailable, decision.semanticStatus)
+	require.LessOrEqual(t, decisionAllocs, classificationAllocs, "normal HTTP must not add the passthrough-only access-state scan")
+}
+
+func TestGatewayFailureReplayCapacityMessagePreservesAccessStatePriority(t *testing.T) {
+	for _, tt := range []struct {
+		code    string
+		status  int
+		message string
+	}{
+		{"server_is_overloaded", http.StatusServiceUnavailable, "server is overloaded"},
+		{"account_suspended", http.StatusBadGateway, openAIUpstreamAccessUnavailableClientMessage},
+	} {
+		t.Run(tt.code, func(t *testing.T) {
+			body := []byte(`{"error":{"code":"` + tt.code + `","message":"server is overloaded"}}`)
+			require.True(t, isOpenAIRequestScopedCapacityShed("", body), "both cases carry capacity text")
+			failure := newOpenAIUpstreamFailoverError(http.StatusServiceUnavailable, nil, body, "", true)
+			require.Equal(t, tt.status, failure.ClientStatusCode)
+			require.Equal(t, tt.message, failure.ClientMessage)
 		})
 	}
 }

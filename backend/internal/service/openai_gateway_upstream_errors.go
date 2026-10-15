@@ -311,14 +311,17 @@ func newOpenAIUpstreamFailoverError(
 ) *UpstreamFailoverError {
 	requestScopedCapacity := isOpenAIRequestScopedCapacityShed(upstreamMsg, responseBody)
 	failureClass := classifyOpenAIGatewayFailure(statusCode, responseBody, upstreamMsg)
-	decision := decideOpenAIFailureReplay(openAIFailureReplayFacts{
+	facts := openAIFailureReplayFacts{
 		class:                 failureClass,
 		statusCode:            statusCode,
 		requestScopedCapacity: requestScopedCapacity,
 		requestBodyTooLarge:   isOpenAIRequestBodyTooLargeError(statusCode, upstreamMsg, responseBody),
 		accessStateFailure:    isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, responseBody),
-		capacityClientMessage: openAICapacityShedClientMessage(upstreamMsg, responseBody),
-	}, openAIFailureReplayState{sameAccountRetryAllowed: retryableOnSameAccount})
+	}
+	if facts.requestScopedCapacity && !facts.accessStateFailure {
+		facts.capacityClientMessage = openAICapacityShedClientMessage(upstreamMsg, responseBody)
+	}
+	decision := decideOpenAIFailureReplay(facts, openAIFailureReplayState{sameAccountRetryAllowed: retryableOnSameAccount})
 	failoverErr := &UpstreamFailoverError{
 		StatusCode:             statusCode,
 		ResponseBody:           responseBody,

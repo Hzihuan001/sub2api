@@ -1475,15 +1475,15 @@ func applyOpenAIStreamFailedErrorPassthroughRule(
 }
 
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
-	return decideOpenAIGatewayFailure(openAIGatewayFailureDecisionInput{
+	return shouldFailoverOpenAIGatewayFailure(openAIGatewayFailureDecisionInput{
 		kind: openAIGatewayFailureResponseFailed, body: payload, message: message,
-	}).shouldFailover
+	})
 }
 
 func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
-	return decideOpenAIGatewayFailure(openAIGatewayFailureDecisionInput{
+	return shouldFailoverOpenAIGatewayFailure(openAIGatewayFailureDecisionInput{
 		kind: openAIGatewayFailureErrorEvent, body: payload, message: message,
-	}).shouldFailover
+	})
 }
 
 func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
