@@ -9,6 +9,13 @@
 
 ## 1. 当前快照
 
+### 2026-10-15 — `.6` 源码已推送，GitHub 禁用 Actions 阻止自动发布
+
+- 发布准备提交 `d2476c39f9a0f109f6bfc0d29a517013c125547c` 已推送 `origin/codex/group-failover-rules-v0.2.16`；版本 `0.2.16-custom.6`。未建版本标签、未发布新镜像、未改生产。
+- 本次实际执行 `gh workflow run custom-release.yml --repo Hzihuan001/sub2api --ref codex/group-failover-rules-v0.2.16`，返回 HTTP 422：`Actions has been disabled for this repository.`。未生成运行，不是 CI 测试失败；权限开关显示 active 不能覆盖此实际结果。不重复 dispatch。
+- 本地验收与独立审查支持进入发布，但不能将 15 项基线 lint 欠账说成全量绿，也不将 P4 缺失的旧新全矩阵实验或真实升级 PR 链路说成完成。SSE 疑点按用户决定不再阻塞。
+- 按原方案，等待确认采用“本地构建/验收 → 直发 GHCR → 回拉校验 → 备份 → 主站/L1/COS 顺序 app-only”替代发布；不能将旧次直接发布授权自动沿用到本轮。当前生产仍 `.5`；在途和连接检查必须在实际部署前重做。
+
 ### 2026-10-15 — `.6` 发布准备（已获条件授权，尚未部署）
 
 - 用户要求检查本轮目标，满足上线条件后推送部署；这取代历史“等待发布授权”，不包含新 API Key 主备分组功能。此次仅发布模块化、取消结算恢复与已验收的分组切换规则。
