@@ -2,14 +2,14 @@
 
 本仓库把官方主线、长期定制集成分支和临时升级分支分开。预期流程是每次官方发布后，先由同步工作流生成升级分支、冲突报告和测试结果，再由人工确认定制功能边界；同步工作流不负责构建、部署或修改生产环境。
 
-2026-10-15 当前边界：正式发布工作流 dispatch 仍返回 HTTP 422 `Actions has been disabled for this repository`。离线升级脚本/YAML Shell 检查已完成，不代表真实 Actions、草稿 PR 和报告链路已运行成功。用户批准的 `.6` 本地 GHCR 发布已完成，正式提交 `655a16868` / `custom-0.2.16.6` 已部署三站，回拉隔离验收、备份和逐站检查通过，见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)。
+2026-10-15 当前边界：上一轮 workflow dispatch 为 HTTP 422 `Actions has been disabled for this repository`；本轮按 `.7` 运行 f36/分支 3ce 查询均无 Actions 运行。离线升级脚本/YAML Shell 检查不代表真实 Actions、草稿 PR 和报告链路成功。用户批准的 `.7` 本地 GHCR 发布已完成，运行 `f36de3d4a` / `custom-0.2.16.7` 已部署三站，精确镜像本地验收、GHCR 回拉、备份和逐站检查通过，见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md)。
 
-本轮核对祖先关系后，已将 `origin/custom/integration` 普通快进到发布运行提交 `655a16868fc310d6dcc742c4bb60a2f740456a58`，`ls-remote` 核验一致，未强推。本轮文档收尾提交也同步至发布分支与集成分支，精确 ref 由 Git 核验，执行结果见发布报告；这仍不是远端自动升级 PR 链路成功。下次升级从 [项目状态](CUSTOM_PROJECT_STATUS.md) 和实际远端重新核对完整功能集合。
+发布分支与 `origin/custom/integration` 已推送 `3ce7de3ebe68263a3f0e8bf6a83393486747306f`，包含正式运行 `f36de3d4a00400c66994a02c13c5d23f6a7feac8`；本轮文档随后提交同步，精确 ref 由 Git 核验。这仍不是远端自动升级 PR 链路成功。下次升级从 [项目状态](CUSTOM_PROJECT_STATUS.md) 和实际远端重新核对完整功能集合，不从历史 `.6` 收尾点遗漏主备 Key 模块。
 
 标准顺序：
 
 1. 读取 [`CUSTOM_PROJECT_STATUS.md`](CUSTOM_PROJECT_STATUS.md)、[`CUSTOM_FEATURE_LOG.md`](CUSTOM_FEATURE_LOG.md) 和 `custom/manifest.yml`。
-2. 先确认 `custom/integration` 包含最新已验收定制提交和共享日志登记的功能提交；落后时明确选择最新已提交定制基线并记录差异，不从旧功能分支整分支合并。然后合并指定官方标签，复核 `operator`、`prompt-audit`、`image-studio`、`branding` 和 `usage-extras`。
+2. 先确认 `custom/integration` 包含最新已验收定制提交和共享日志登记的功能提交；落后时明确选择最新已提交定制基线并记录差异，不从旧功能分支整分支合并。然后合并指定官方标签，复核 `operator`、`prompt-audit`、`image-studio`、`branding`、`usage-extras`、`gateway-resilience` 和 `key-routing`；后者的备用组存储、缓存失效、有效组计费及禁止跨组重播不能因宿主升级丢失。
 3. 只允许追加数据库迁移；生成代码按当前官方工具重新生成，不用旧分支覆盖。
 4. 运行受影响后端测试、前端 typecheck/lint/test/build、`scripts/check-custom-isolation.py` 和 Docker 验收。
 5. 验收通过后再创建 `custom-X.Y.Z.N` 标签、构建不可变镜像并按发布运行手册部署。

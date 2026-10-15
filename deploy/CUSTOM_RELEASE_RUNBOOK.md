@@ -2,19 +2,21 @@
 
 ## Release coordinates and authorization
 
-- Read [`CUSTOM_PROJECT_STATUS.md`](../docs/CUSTOM_PROJECT_STATUS.md) before each release; it identifies the active worktree, accepted feature set and current production coordinates. Verify actual `custom/integration` ancestry and contents rather than assuming its historical ref is current. This cycle fast-forwarded the remote integration branch to published runtime `655a16868fc310d6dcc742c4bb60a2f740456a58`, verified with `ls-remote`; the final documentation commit is synchronized to both the release and integration branches. Resolve the precise ref with Git and check the release report for the recorded result.
-- For the 2026-10-15 release: upstream `v0.2.16`, branch `codex/group-failover-rules-v0.2.16`, runtime commit `655a16868fc310d6dcc742c4bb60a2f740456a58`, application version `0.2.16-custom.6`, source tag `custom-0.2.16.6`, platform `linux/amd64`.
-- Published image: `ghcr.io/hzihuan001/sub2api:0.2.16-custom.6`; immutable digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`.
+- Read [`CUSTOM_PROJECT_STATUS.md`](../docs/CUSTOM_PROJECT_STATUS.md) before each release and verify actual integration ancestry/contents. Both release and integration branches have been pushed to `3ce7de3ebe68263a3f0e8bf6a83393486747306f`, including `.7` runtime; this release's documentation follows in a separate commit. Resolve the precise ref with Git.
+- For the current 2026-10-15 release: upstream `v0.2.16`, branch `codex/group-failover-rules-v0.2.16`, runtime `f36de3d4a00400c66994a02c13c5d23f6a7feac8`, version `0.2.16-custom.7`, tag `custom-0.2.16.7`, `linux/amd64`, built `2026-10-15T13:15:08Z`.
+- Published image: `ghcr.io/hzihuan001/sub2api:0.2.16-custom.7`; immutable digest `sha256:ec8860583ac3603fadc108e90b2036abf352d395b5035ee8f4cb51d1de66ac42`. Local and OVH pull-back image IDs and version metadata match.
 - The user has explicitly approved local build → GHCR → pull-back acceptance → backups → sequential main/L1/COS application-only deployment. This authorization covers the stated sequence; the former v0.2.13 Tencent-staging/separate-OVH-approval procedure is historical.
 
-The `.6` source/tag and image have been pushed and deployed to all three sites. The pulled image ID matched the local release artifact, published-image acceptance exited 0, and backups and per-site deployment checks passed. Main waited for active work to drain without forced interruption. Use the [release report](../docs/CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md) for exact evidence and rollback coordinates.
+The `.7` release completed all three sites: main 21:42:45–21:42:58, L1 21:44:21–21:44:28 and COS 21:45:01–21:45:12 (Asia/Shanghai). All deployment logs passed with exit 0; final checks found healthy/zero restarts and matching version/commit/digest. Main and L1 drained active requests without forced interruption. Configuration fingerprints and PostgreSQL/Redis identities remained unchanged; old migration rows remained intact and only the expected migration was added. Use the [current release report](../docs/CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md) for exact evidence, backup and rollback coordinates. References to `.6` later in this runbook are historical examples.
+
+The `.7` isolated b fixture passed seven requests with five successful upstream calls/usage/dedup rows, exact balances and quota, restart and limited `.6` read-only rollback/restoration. The initial a fixture configuration failure remains recorded. Role/API Key/WebSocket checks passed locally; browser checks covered entries and unsaved drafts only. Production had no admin API Key, so no authenticated role login, paid model test or long-term monitoring is claimed. Actions queries for both current commits returned no runs; the existing local-GHCR authorization applies, not a CI success. The a/b containers are stopped with volumes/evidence retained; the role project and temporary browser proxy/empty network have been removed.
 
 Never create a `v*` tag for this custom build. Never put passwords, tokens, SSH
 keys, server addresses, or the contents of `CODEX_HANDOFF.md` in Git.
 
 ## Local quality and isolated container gate
 
-Use the locked toolchain recorded with the accepted source scope: this cycle used Go 1.27.2, Node 20.20.2, pnpm 9.15.9 and golangci-lint 2.14.0. The commands below describe the quality gate, not a claim that every command was rerun at every release step. Reuse prior results only when source, dependencies, toolchain and fixture scope match; rerun affected checks after changes.
+Use the toolchain recorded with the accepted source scope: `.7` local functional checks used portable Go 1.27.2, Node 22.13.0 and pnpm 10.33.0; the earlier `.6` gate used Node 20.20.2/pnpm 9.15.9 and golangci-lint 2.14.0. Build and test scopes are recorded separately in the release report. The commands below describe the quality gate, not a claim that every command was rerun. Reuse results only when source, dependencies, toolchain and fixture scope match.
 
 This release retains 15 baseline full-lint findings, an incomplete P4 full old/new task/accounting matrix and an unclosed real Actions/upgrade-PR workflow. SSE remains technically mixed; the user accepted that unresolved risk and stopped further load tests. Do not relabel these as passing or run additional SSE diagnostics merely to obtain a green release summary. Precise results and reuse boundaries are in the [final gate report](../docs/CUSTOM_MODULARIZATION_FINAL_GATES_20261015.md).
 
@@ -121,6 +123,13 @@ For `.6`, `/opt/sub2api-backups/v0.2.16-custom.6-20261015T093931Z` contains the
 three-site backups. PostgreSQL `pg_restore --list`, tar reads and SHA checks
 passed. Backup verification is not a claim of a live database restore drill.
 
+The current `.7` backup is `/opt/sub2api-backups/v0.2.16-custom.7-20261015T131751Z`;
+all three dumps/archives/checksums were verified. Its new migration
+`9000_custom_api_key_routes.sql` has trimmed SHA-256
+`468f453bd5381c9a6a336371d893b1fc3a3396035f1ced20702825020fc17d2f`.
+Verify one new migration and unchanged old rows, not an unchanged total/full-table
+fingerprint as in the historical `.6` release.
+
 ## Main → L1 → COS application-only deployment
 
 1. Complete the read-only preflight, published-image acceptance and all three backup gates. Before each site, recheck the installed version and in-flight work; `.6` waited until the main-site request-slot count reached zero before updating it.
@@ -159,11 +168,18 @@ snapshot, not a completed 30-minute or 24-hour observation window.
 Set the application image back to the recorded previous digest and recreate
 only Sub2API. Record any newly applied migration in the release report. An
 older binary must never be started after an unverified irreversible migration.
-The recorded `.5` rollback build retains the custom roles. Do not substitute an
+The current `.7` rollback target is `.6`, digest
+`sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`.
+It reads the primary group and ignores backup routing. Do not edit or detach the
+primary group of a multi-group Key while running the old image; it cannot maintain
+the backup combination. Keep the extension table/data and recheck combinations
+when restoring `.7`. The local rollback verified reading/persistence only;
+production rollback was not triggered. Do not substitute an
 official or much older image and assume it understands the same roles, settings
 and batch states; that requires a separate compatibility review.
 
-The `.6` scope adds no migration. For a compatible application rollback, do not
+The historical `.6` scope added no migration; `.7` adds the extension migration
+described above. For a compatible application rollback, do not
 restore an old database backup over new business data. If a future release
 crosses an unverified irreversible migration, stop and prepare a separately
 reviewed recovery plan; never run the old image against that database or restore

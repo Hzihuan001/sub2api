@@ -1,5 +1,13 @@
 # 定制升级问题记录
 
+## 2026-10-15 — `.7` 主备 Key：夹具归因、迁移回退与三站发布
+
+- 正式运行 `f36de3d4a00400c66994a02c13c5d23f6a7feac8` / `custom-0.2.16.7`，发布/集成分支已推 `3ce7de3ebe68263a3f0e8bf6a83393486747306f`；GHCR digest `sha256:ec8860583ac3603fadc108e90b2036abf352d395b5035ee8f4cb51d1de66ac42` 本地/OVH 回拉同 ID。三站已顺序健康部署，旧配置/数据服务身份和旧迁移记录保持，仅新增预期迁移，细节见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md)。
+- 首轮 a 夹具把主组设为透传，却期待模型白名单触发备用；实际主组选路符合配置，断言失败为测试配置错误。修正夹具后独立 b 环境固定 7 请求、5 成功/usage/dedup，真实余额/同 Key quota、倍率/SSE 和两个零调用零扣费拒绝场景通过；保留首次失败，未改运行源码。
+- 新增 `9000_custom_api_key_routes.sql`，trim SHA-256 `468f453bd5381c9a6a336371d893b1fc3a3396035f1ced20702825020fc17d2f`；本轮必须核对旧迁移不变且新增一条，不能套 `.6` 的总数/全行指纹不变判据。本地重启、`.6` 只读回退及恢复 `.7` 通过；旧镜像禁止多组 Key 主组编辑/解绑，扩展表保留，不恢复旧库覆盖新业务。生产未触发回滚。
+- 角色验收和限定本地浏览器检查通过；草稿未保存，不能冒称生产登录/保存或所有平台组合通过。原始 Docker 证据 `D:/projects/go-tmp/key-routing-docker-custom7-20261015b/evidence.json`；三站备份 `/opt/sub2api-backups/v0.2.16-custom.7-20261015T131751Z` 已核验。a/b 停止保留卷/证据、角色项目自动回收、临时浏览器代理及空网络删除，其他项目未动。
+- Actions 对 f36/3ce 查询均为空，沿用本地 GHCR 授权，不称 CI 成功；SSE mixed、15 lint 基线、P4 完整旧新矩阵、真实升级 PR 链路和未知图片结果边界继续保留。生产无 admin API Key，未跑生产角色登录、付费模型或长期监控。下方旧版本记录保持原样。
+
 ## 2026-10-15 — `.6` Actions 禁用与已批准的本地 GHCR 发布
 
 - 正式 workflow dispatch 实测 HTTP 422 `Actions has been disabled for this repository`，未产生 CI 新运行。用户明确批准沿用本地构建 → GHCR → 回拉验收 → 备份 → 主站/L1/COS 顺序 app-only 部署；不修改仓库设置，不将替代路径写成 CI 通过。

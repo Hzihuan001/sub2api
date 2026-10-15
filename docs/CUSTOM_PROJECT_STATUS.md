@@ -1,7 +1,7 @@
 # 定制项目状态与官方升级说明
 
 > 本文是给后续维护会话、代码审查者和自动化工具使用的项目交接说明。
-> 先读本文，再读 [`本轮发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)、
+> 先读本文，再读 [`本轮发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md)、
 > [`UPSTREAM_SYNC.md`](UPSTREAM_SYNC.md) 和
 > [`custom/manifest.yml`](../custom/manifest.yml)。
 >
@@ -9,10 +9,16 @@
 
 ## 1. 当前快照
 
-### 2026-10-15 — `.7` 发布准备（用户已授权，尚未部署）
+### 2026-10-15 — `.7` 三站部署完成（唯一当前发布状态）
 
-- 用户要求“推送部署，更新文档”。本次包含下方主备 Key 路由和分组规则默认值编辑；准备版本 `0.2.16-custom.7`，不合并新的官方版本。三站现场核验仍为健康 `.6`，后续以备份和逐站结果更新本条。
-- 正在补充当前候选独立 Docker 应用验收、真实账目/迁移重启和回退，以及浏览器入口检查；成功后沿用本地构建、GHCR、回拉及主站→L1→COS app-only 发布。未完成前不把准备状态说成已上线。
+- **坐标**：`0.2.16-custom.7` / `custom-0.2.16.7`，运行提交 `f36de3d4a00400c66994a02c13c5d23f6a7feac8`；发布分支与 `custom/integration` 已推送 `3ce7de3ebe68263a3f0e8bf6a83393486747306f`，后续文档提交不改变运行镜像。GHCR digest `sha256:ec8860583ac3603fadc108e90b2036abf352d395b5035ee8f4cb51d1de66ac42` 本地及 OVH 回拉 image ID 一致，amd64，构建时间 `2026-10-15T13:15:08Z`。
+- **内容**：独立主备 Key 模块和分组显式默认值，不合并新官方版本。首期限已授权 standard 无资源绑定文本 HTTP/SSE；发送前选组，按实际组计费，共用 Key 额度，不跨组重播。图片/WS/模型目录仍走主组，绑定资源和 Claude 客户端专用组限制见 [实现记录](CUSTOM_KEY_ROUTING_20261015.md)。
+- **部署**：北京时间主站 21:42:45–21:42:58、L1 21:44:21–21:44:28、COS 21:45:01–21:45:12 顺序 app-only 更新，三个部署日志均 passed/exit 0。主站/L1 等在途归零才重建，未强制中断。三站最终 healthy、restart 0、版本/完整提交/digest 一致；env/挂载/网络/端口指纹与 PG/Redis 容器 ID/启动时间保持，旧迁移全行不变，仅新增预期迁移。内外健康/工作台 200、匿名管理设置/规则 401、关键日志 0；详见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md)。
+- **本地验证**：独立 b 环境 7 请求、5 成功上游/5 usage/5 dedup，余额 `10→9.99998919`、同 Key quota `0.00001081`；实际组倍率、SSE、全部无资源 503 和图片主组 403 的零调用零扣费、重启、`.6` 只读回退/恢复 `.7` 通过。独立角色/JWT/API Key/WebSocket/重启/日志验收 exit 0；本地浏览器检查 Keys/Groups 入口及未保存草稿，console error `[]`。首轮 a 的透传/白名单夹具配置失败保留，修夹具后 b 通过，运行源码未改。
+- **迁移与回退**：新增 `9000_custom_api_key_routes.sql`，trim SHA-256 `468f453bd5381c9a6a336371d893b1fc3a3396035f1ced20702825020fc17d2f`。三站备份 `/opt/sub2api-backups/v0.2.16-custom.7-20261015T131751Z` 已核验。回退目标 `.6` digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`；保留扩展表，旧镜像期间不得编辑多组 Key 主组或解绑，不恢复旧库覆盖新业务。本次未触发生产回滚。
+- **限制与收尾**：Actions 对 f36/3ce 查询均为空，沿用已批准本地 GHCR 路径，不冒称 CI 成功。SSE mixed、15 项 lint 基线欠账、P4 完整旧新账务矩阵、真实升级 PR 链路及未知图片结果待核对/冻结继续保留。生产无现成 admin API Key，未执行生产角色登录、付费模型测试或长期监控；完整角色矩阵是本地证据。a/b 测试容器按精确标签停止并保留卷/证据，角色项目自动回收，临时浏览器代理与空网络删除，其他项目未动。
+
+以下开发、准备及 `.6` 发布条目均为历史阶段；“未提交/未发布”“唯一当前”等仅描述当时，不覆盖本条和下方当前发布表。
 
 ### 2026-10-15 — API Key 主备分组模块开发与本地回归（未发布）
 
@@ -30,7 +36,7 @@
 - 源码限于 `frontend/src/features/gateway-resilience` 与真实分组页集成测试，权限、失败草稿、重复提交和过期请求隔离仍保留。本次没有提交、推送、构建发布镜像或部署；生产仍为下条 `.6`。
 - 检查：编辑器 43 项、真实分组页 16 项通过；其余分组/registry/i18n 5 文件 27 项通过；类型检查、受影响文件 ESLint、生产构建、diff check 通过。最初一项旧集成测试仍寻找已移除下拉，已更新为四类默认值完整保存断言并复验通过。无后端改动，未重复 Go/Docker/付费请求/SSE 性能验收；未做生产浏览器验收。
 
-### 2026-10-15 — `.6` 三站部署完成（唯一当前发布状态）
+### 2026-10-15 — `.6` 三站部署完成（上一发布的历史快照）
 
 - **已完成**：源码/标签/GHCR 及三站生产发布。运行提交 `655a16868fc310d6dcc742c4bb60a2f740456a58`，版本 `0.2.16-custom.6`，标签 `custom-0.2.16.6`；三站统一 digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`。后续文档提交不改变运行源码。
 - **内容**：定制层模块化、取消结算/恢复、分组错误累计规则与全分组账号冷却/手动恢复；不含 API Key 主备分组新需求，不合并新官方版本。
@@ -172,19 +178,19 @@
 | --- | --- |
 | 记录日期 | 2026-10-15 |
 | 官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
-| 当前定制版本 | `0.2.16-custom.6`（模块化、取消结算恢复、分组切换规则） |
-| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.6` |
-| 最新已发布基线 | `custom-0.2.16.6` / `655a16868fc310d6dcc742c4bb60a2f740456a58` |
+| 当前定制版本 | `0.2.16-custom.7`（主备 Key 模块、分组显式默认值） |
+| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.7` |
+| 最新已发布基线 | `custom-0.2.16.7` / `f36de3d4a00400c66994a02c13c5d23f6a7feac8` |
 | 发布分支 | `codex/group-failover-rules-v0.2.16` |
 | 升级工作树 | `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` |
 | 官方合并 / 生图移植提交 | `d3b78cf8c` / `2c007ec6a`；运行代码修复 `e42db1f11`，验收脚本 `f17cae568` |
-| 长期集成基线 | `origin/custom/integration` 本轮普通快进至包含 `.6` 和文档的收尾提交；以远端 ref 核验，不使用旧 `fd7c1b9` |
+| 长期集成基线 | 发布分支与 `origin/custom/integration` 已推 `3ce7de3ebe68263a3f0e8bf6a83393486747306f`，包含 `.7` 运行源码；后续文档同步结果由实际远端 ref 核验 |
 | 历史隔离改造 PR | 草稿 PR #1（状态待另行核验）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 主站生产镜像 digest | `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e` |
-| L1/COS 生产镜像 digest | `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e` |
-| 当前发布状态 | `.6` 三站部署及快速验收通过，`.5` 镜像保留供回滚 |
+| 主站生产镜像 digest | `sha256:ec8860583ac3603fadc108e90b2036abf352d395b5035ee8f4cb51d1de66ac42` |
+| L1/COS 生产镜像 digest | `sha256:ec8860583ac3603fadc108e90b2036abf352d395b5035ee8f4cb51d1de66ac42` |
+| 当前发布状态 | `.7` 三站部署及快速验收通过，`.6` 为本轮回退目标；未触发生产回滚 |
 
 生产健康检查最近确认通过的入口：
 
@@ -194,7 +200,7 @@
 
 2026-10-12 两个下游入口切换到 Moshu 子域名并开启 Cloudflare 代理；旧 `tokenpulse.top` 入口保留。OVH OpenResty 继续使用 HTTPS、10 小时读写超时和关闭响应缓冲。域名运维记录见功能日志。
 
-本次三站统一使用 `.6` digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`；备份及回退 `.5` 的命令见 [发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)。历史备份继续保留，已完成批量任务与价格快照不重算，不还原旧库覆盖新业务。
+本次三站统一使用上述 `.7` digest；备份及回退 `.6` 的命令见 [发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md)。旧镜像只使用主组，禁止编辑多组 Key 主组或解绑；扩展表和历史备份保留，不重算批量价格快照或还原旧库覆盖新业务。
 
 ### 批量无额外折扣（2026-10-14，deployed）
 
@@ -239,7 +245,8 @@
 | `image-studio` | 生图工作台、批量任务、应用层拆分、参考图、单张/ZIP 下载 | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、用户生图视图 | 保留并受测试保护 |
 | `branding` | 对客品牌和公共文案统一为 Moshu，隐藏不应出现在对客界面的上游项目名称 | `frontend/src/i18n`、公共页面和品牌处理逻辑 | 保留；每次升级需做文案扫描 |
 | `usage-extras` | 管理员使用记录增强，例如缓存命中率、分页和 API Key 管理辅助能力 | 管理员使用记录 handler/view 及对应测试 | 保留；管理员侧可见，用户侧按权限隐藏 |
-| `gateway-resilience` | OpenAI 跨请求 overload 冷却及安全重试边界 | `overload_failure_breaker`、Redis 扩展、OpenAI 网关窄接入点及回归 | `.5` 已部署；本轮结构重构仅本地 |
+| `gateway-resilience` | 分组错误累计、全分组账号冷却/恢复、安全重试及四类规则显式默认值编辑 | `group_failure_*`、`overload_failure_breaker`、Redis/网关窄入口、前端 `features/gateway-resilience` | 后端规则随 `.6` 发布；默认值编辑器随 `.7` 已部署 |
+| `key-routing` | 1 主＋最多 4 备，发送前按模型/可调度性选组，按实际组计费，共享 Key 额度，无跨组重播 | `internal/keyrouting`、service/readiness、middleware、扩展仓储、前端 `features/key-routing` | `.7` 已部署；首期限 standard 无资源绑定文本 HTTP/SSE，图片/WS/目录仍主组 |
 
 历史代理商/分站运行时功能已从当前定制层移除，不应在后续官方升级时被旧分支或旧 PR 自动带回。历史代理商阶段只在
 [`CUSTOM_FEATURE_LOG.md`](CUSTOM_FEATURE_LOG.md) 中留作变更记录。
