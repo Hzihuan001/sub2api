@@ -1,5 +1,9 @@
 # Modularization performance acceptance (local only)
 
+## User disposition — 2026-10-15
+
+After clarification that the INFO/CBBC difference was not reproduced by the bounded DEBUG run and did not establish a stable regression, the user said “那就不管” (stop pursuing this). Stop further SSE diagnostics and load tests; record this item as an accepted unresolved performance risk, no longer a current blocker. Preserve all measurements, thresholds and the mixed technical conclusion below; this is not a performance pass or proof of measurement noise. It does not authorize remote workflow execution, pushing or deployment, or waive other acceptance/release restrictions.
+
 ## Fixed inputs and safety
 
 - Published runtime: `00e8f24a40eba481d1e61cfebb5f4ab3f9401a2b`, source/document baseline `989594099c1bd10db911c737449d15d2bb6149ed`.
