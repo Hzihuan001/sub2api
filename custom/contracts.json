@@ -25,7 +25,7 @@
     {"id":"backend-custom-worker-start","file":"backend/cmd/server/main.go","function":"runMainServer","call":"app.Custom.StartWorkers","count":1}
   ],
   "tests": {
-    "architecture-negative":{"cwd":"scripts","argv":["python","-m","unittest","test_custom_contracts"]},
+    "architecture-negative":{"cwd":"scripts","argv":["python","-m","unittest","test_custom_contracts","test_sync_upstream"]},
     "backend-host":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/custom","./internal/customapp","./internal/authz","./internal/server","./internal/server/routes","./internal/service","./internal/repository","./cmd/server","-run","Custom|Operator|HostWorker|PromptRule|Application|Cleanup","-count=1"]},
     "backend-audit":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/securityaudit","./internal/handler","./internal/service","-run","PromptAudit|PromptCapture|AuditGate|SecurityAudit|CaptureOnly","-count=1"]},
     "backend-batch":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/handler","./internal/service","-run","BatchImage|BananaAsync","-count=1"]},

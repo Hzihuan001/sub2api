@@ -11,6 +11,13 @@ foreach($file in @('modular-performance.ps1','modular-microbenchmark.ps1')) {
 }
 $checks=0
 function Must-Fail([scriptblock]$Action){$threw=$false;try{& $Action}catch{$threw=$true};if(-not$threw){throw 'Expected rejection'};$script:checks++}
+$repository=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+foreach($path in @('deploy/tests/modular-perf-fixture.mjs','deploy/acceptance/fixtures/modular-perf-fixture-20261015-b46b2da7.mjs')) {
+  $attribute=& git -C $repository check-attr eol -- $path
+  if($LASTEXITCODE -ne 0 -or $attribute -ne "${path}: eol: lf"){throw "Measured fixture must retain LF on checkout: $path"};$checks++
+}
+$historical=Join-Path $repository 'deploy/acceptance/fixtures/modular-perf-fixture-20261015-b46b2da7.mjs'
+if((Get-FileHash -LiteralPath $historical -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'b46b2da7968cc2b6236c30a7fa58cafe77ca98c1ede91376779a4ab001be1d4b'){throw 'Historical measured fixture bytes changed'};$checks++
 $container='a'*64;$image='sha256:'+('b'*64)
 $valid=@{Id=$container;Image=$image;State=@{StartedAt='2026-10-15T01:00:00Z';Running=$true};RestartCount=0}
 Assert-SnapshotIdentity $valid $container $image;$checks++

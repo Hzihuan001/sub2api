@@ -83,6 +83,9 @@ $baseRef = "origin/$BaseBranch"
 $tagRef = "refs/tags/$UpstreamTag"
 $tagCommitRef = "$tagRef^{commit}"
 
+# Apply must freeze the fetched base before reporting or testing ancestry.
+# Dry runs retain their metadata-only behavior and do not fetch origin.
+if ($Apply) { Invoke-Git @("fetch", "origin", $BaseBranch) }
 $baseSha = (git rev-parse $baseRef 2>$null).Trim()
 $baseCode = $LASTEXITCODE
 $tagSha = (git rev-parse $tagCommitRef 2>$null).Trim()
@@ -99,7 +102,7 @@ $report.Add("- Proposed branch: ``$UpgradeBranch``")
 $report.Add("- Deployment: never performed by this script")
 $report.Add("")
 
-if ($baseSha -eq $tagSha -or (Invoke-GitAllowFailure @("merge-base", "--is-ancestor", $tagCommitRef, $baseRef)) -eq 0) {
+if ($baseSha -eq $tagSha -or (Invoke-GitAllowFailure @("merge-base", "--is-ancestor", $tagCommitRef, $baseSha)) -eq 0) {
     $report.Add("No update: base already points at the selected upstream tag.")
     $report | ForEach-Object { Write-Host $_ }
     exit 0
@@ -116,10 +119,9 @@ if (-not $KeepWorktree) {
     if ($status) { throw "Working tree is not clean. Commit or stash changes before -Apply.`n$status" }
 }
 
-Invoke-Git @("fetch", "origin", $BaseBranch)
 $existing = git branch --list $UpgradeBranch
 if ($existing) { throw "Upgrade branch already exists: $UpgradeBranch (choose another name)" }
-Invoke-Git @("switch", "--create", $UpgradeBranch, $baseRef)
+Invoke-Git @("switch", "--create", $UpgradeBranch, $baseSha)
 
 $mergeCode = Invoke-GitAllowFailure @("merge", "--no-ff", "--no-commit", $tagRef)
 if ($mergeCode -ne 0) {

@@ -25,3 +25,7 @@ Dockerfile text eol=lf
 # upstream update; never resolve these files by blindly choosing one side.
 backend/ent/** linguist-generated
 backend/cmd/server/wire_gen.go linguist-generated
+
+# Performance evidence refers to these exact bytes, including on Windows.
+deploy/tests/modular-perf-fixture.mjs text eol=lf
+deploy/acceptance/fixtures/modular-perf-fixture-20261015-b46b2da7.mjs text eol=lf

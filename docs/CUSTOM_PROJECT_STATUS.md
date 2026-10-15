@@ -93,18 +93,22 @@
 - **当前状态 / 下一步**：本次修复及三站部署完成。后续另行恢复 GitHub Actions，并核对其他功能会话后推进落后的集成分支；恢复前不能认为定时升级可用，不能从旧集成引用丢失 `.3`/`.4` 修复。
 - **验证范围**：复用已通过的相关单元/真实 PostgreSQL/前端检查；正式 GHCR 镜像拉回确认 digest 一致，Docker 三图结算/参考图/下载验收通过。生产只重建应用，未发起付费生图，未重建数据库、Redis、网络或卷。
 
-| 项目 | 当前值 |
+### 最近发布快照（2026-10-14，非当前开发分支）
+
+当前模块化开发分支和未决验收以页首为准；下表仅保留最近已记录的生产/发布坐标，不表示本轮重新查询了远端或生产。
+
+| 项目 | 最近发布记录 |
 | --- | --- |
 | 记录日期 | 2026-10-14 |
 | 官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
 | 当前定制版本 | `0.2.16-custom.5`（统一故障切换；包含 `.4` / `.3` 修复） |
 | 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.5` |
 | 最新已发布基线 | `custom-0.2.16.5` / `00e8f24a40eba481d1e61cfebb5f4ab3f9401a2b` |
-| 当前工作分支 | `codex/v0.2.16-image-studio` |
+| 发布分支 | `codex/v0.2.16-image-studio` |
 | 升级工作树 | `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` |
 | 官方合并 / 生图移植提交 | `d3b78cf8c` / `2c007ec6a`；运行代码修复 `e42db1f11`，验收脚本 `f17cae568` |
 | 长期集成基线 | `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071` |
-| 当前隔离改造 PR | 草稿 PR #1（如仍未合并）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
+| 历史隔离改造 PR | 草稿 PR #1（状态待另行核验）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
 | 主站生产镜像 digest | `sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b` |

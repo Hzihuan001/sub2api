@@ -22,6 +22,7 @@
 | 真实审计集成 | 新建本地临时 PG/Redis，11 个需外部地址的集成用例实际通过；全包 119 顶层 + 135 子例，0 skip/失败，9.285s；临时容器已按归属清理 | `D:/projects/go-tmp/modular-securityaudit-real-20261015-summary.log` 及同名前缀 JSONL/lifecycle 日志 |
 | 新增差异静态检查 | 57721bba9 相对 989594099，0 issues；不是全量 lint 零问题 | `D:/projects/go-tmp/modular-d16-followup-diff-lint-20261015.log` |
 | 架构检查 | 6 模块 / 7 可执行组，17 项脚本测试（含正例与解析器，不全是负例）通过 | `851b49e7a`；`python -B scripts/custom_contracts.py`，`python -B -m unittest discover -s scripts -p test_custom_contracts.py` |
+| 升级维护脚本补充 | 保留上述 17 项，增加 5 项冻结升级基线的离线 mock；最终 22 项全部通过、无 skip，3.791s。性能工具 21 项离线契约通过，含 Windows LF/历史哈希保护；没有新增模型负载 | `python -B scripts/custom_contracts.py --run-tests --group architecture-negative`，`PWSH` 指向已记录的 PowerShell 7；`D:/projects/go-tmp/modular-maintenance-contracts-20261015.log`；`deploy/tests/modular-performance-contracts.ps1` |
 | 官方路由变体 | 生产子路由 registrar/composition：4 条官方路由新增、反序后 16 条定制路由各一次；漏挂载检测、默认拒绝、实际限流在审计前通过 | `backend/internal/server/routes/custom_upgrade_variation_test.go`；3 顶层 / 3 布局子例通过 |
 | 官方设置新增 | 临时副本真实增加 general 字段及 API 类型；6 项负控准确失败、15 项正控及类型检查通过；活动 frontend 不变 | `custom/fixtures/settings-upgrade/` 两份 patch 与复跑说明；`D:/projects/go-tmp/p6-settings-20261015/verified-run/` |
 | 独立 `.5` 故障对照 | 验证原 989594099 源码后只读 overlay 采集 50 个固定输入；当前 wrapper 对照通过，不使用新 decision 自产期望 | `backend/internal/service/testdata/gateway_failure_published_989594099.README.md` |
@@ -70,7 +71,7 @@ Windows 测试进程 PATH 包含锁定 Go 和 `G:/PC/Git/bin`，后者满足 PgD
 - 微基准在同 Go 1.27.2、GOMAXPROCS=2、固定同源夹具、count=5/100ms 下仅复测一轮；原 7 项退化消除，25 项宿主边界最大中位数变化 +5.31%（原门槛 20%），所有 30 组无新增分配。控制组 -2.21%～+4.74%。旧失败记录保留，不以换夹具或降低阈值通过；新原始证据在 `D:/projects/go-tmp/modular-microbenchmark-53fd17b5-20261015`。
 - 从干净工作树精确 53fd 构建 `sub2api:modular-53fd17-local`，linux/amd64；image ID `sha256:a11840c20fa0e546ec1518f44762cb51ce448382a38beece0214f46c0e116a11`。构建日志 `D:/projects/go-tmp/modular-53fd17-docker-build-20261015.log`；前端复用同 tree 的构建缓存。没有更改生成输入，复用 577 生成零差异证据，构建后工作树仍干净。
 - 精确 53fd 新镜像的 11 故障场景全部通过：overload 主账号 3 次、备用 1 次；quota/model/server/timeout/auth/rate/stream 各 1+1；safety/parameter/partial 各 1+0。命令 `pwsh -NoProfile -File deploy/tests/gateway-failover-smoke.ps1 -Project sub2api-operator-test-failover53fd -Port 18093 -MockPort 18091`，终态 exit 0，日志 `D:/projects/go-tmp/modular-53fd17-failover-smoke-20261015.log`。再次确认二进制 revision、image ID 和 `/health` 后，仅清理这个新建项目的 3 容器、合成数据卷及网络；未动恢复项目和待核对任务。
-- 正常 HTTP/SSE 完成预定 4,000 次测量，全部通过 HTTP 200、自然 EOF 和预期标记校验，每个测量窗口精确 100 次上游调用、零额外 probe/reject。旧计时客户端没有独立 JSON/SSE 语法完整性校验，不能外推更强结论。HTTP 总耗时和 SSE 中位总耗时接近旧版，但 SSE 首字节 p95 的窗口中位值 23.806→32.203ms（+35.28%），不能把请求成功当性能通过。原始数据和归因限制见 `deploy/acceptance/MODULAR_PERFORMANCE.md`；正进行预先固定顺序的有限诊断，不重跑整套或删除初次结果。
+- 正常 HTTP/SSE 完成预定 4,000 次测量，全部通过 HTTP 200、自然 EOF 和预期标记校验，每个测量窗口精确 100 次上游调用、零额外 probe/reject。旧计时客户端没有独立 JSON/SSE 语法完整性校验，不能外推更强结论。HTTP 总耗时和 SSE 中位总耗时接近旧版，但 SSE 首字节 p95 的窗口中位值 23.806→32.203ms（+35.28%），不能把请求成功当性能通过。后续固定 CBBC 和用户批准的有限 DEBUG 均已结束，结论见下节及 `deploy/acceptance/MODULAR_PERFORMANCE.md`；不再追加负载或删除初次结果。
 
 ## 尚未闭环，禁止外推为完成
 

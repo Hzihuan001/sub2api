@@ -188,6 +188,8 @@ Actual read-only baseline preflight matched all 3,065 tracked Go/module Git blob
 
 The crossover command above is a record of the one permitted diagnostic against its retained exact containers/counters and historical fixture; the post-measurement tool intentionally rejects trying to repeat it with changed inputs. No “clean” result replaces the unresolved measurement.
 
+Follow-up checkout portability check: with `core.autocrlf=true`, Git would have transformed the archived LF fixture to CRLF and changed its SHA-256 from `b46b2da7…` to `79ef8cee…` on a fresh Windows checkout. Narrow `.gitattributes` rules now pin LF for the historical and current performance MJS files. `git cat-file --filters` under `core.autocrlf=true` reproduces the exact recorded hashes for both, without changing fixture bodies. The PowerShell contracts now also require these attributes and the immutable historical checksum: **21 checks passed**, with no Docker/network/model request.
+
 ## User-authorized finite DEBUG attribution (2026-10-15)
 
 The user explicitly approved one additional diagnostic of exactly 100 synthetic SSE requests per version. This is not another performance acceptance run. Fixed order baseline → candidate, concurrency 2, no model warmups/retries, same app limits and owned PostgreSQL/Redis/mock. Only the app was recreated; the final candidate was restored. Runtime logging was temporarily set to DEBUG with sampling disabled via the existing local admin API, then all original functional settings were verified restored (INFO, access-log persistence false and unchanged retention). No business code, production configuration or paid-provider request changed.

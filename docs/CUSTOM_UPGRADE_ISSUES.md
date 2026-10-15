@@ -1,5 +1,16 @@
 # 定制升级问题记录
 
+## 2026-10-15 — 升级报告与实际分支必须使用同一冻结基线
+
+- `sync-upstream.ps1` 原先先解析 `origin/<base>` 的旧 SHA、生成报告，再 fetch origin 并从可移动 ref 建升级分支。远端前进时报告/检查起点可能不是实际起点。
+- Apply 改为 fetch 后才冻结 SHA，祖先检查、报告、创建分支、range-diff/隔离检查统一使用该 SHA；dry run 不新增 origin fetch。未推进远端集成分支，也没有真实执行 Apply。
+- 五个离线测试在旧实现失败、修复后通过：fetch 顺序、后续 ref 变化、dry-run、fetch 后已是最新、fetch 失败停止。夹具真实运行脚本，但外部 Git/测试调用均为 fail-closed mock；已接入 `architecture-negative`。缺 PowerShell 7 时明确 skip，不能将其称为完成验证。
+
+## 2026-10-15 — Windows 检出不能改变历史验收夹具
+
+- 只读模拟 `core.autocrlf=true` 检出发现：未声明换行规则的历史 `.mjs` 会由 LF 转 CRLF，内容逻辑相同但 SHA-256 从 `b46b2da7…` 变为 `79ef8cee…`，后续会误报夹具被修改。
+- 用两条精确 `.gitattributes` 规则固定当前/历史性能夹具的 LF，未修改夹具正文或测量结果。真实 Git filter 前后校验通过；永久契约检查增加属性和历史哈希断言，21 项离线检查通过。没有因此重跑性能负载。
+
 ## 2026-10-15 — 有限诊断不能代替原性能门禁
 
 - 用户批准的两版本各 100 次 DEBUG 已完成，完整 SSE / 实际 usage 各 200，双请求 ID 与七类阶段日志精确关联，无删慢样本；临时日志设置已恢复。
