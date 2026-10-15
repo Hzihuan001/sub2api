@@ -1,7 +1,6 @@
 export const zh = {
   title: '备用分组（可选）',
   description: '主组优先；需要备用时，按下列顺序，根据原请求的模型、接口和分组可调度性选择分组。最多添加 4 个备用分组。',
-  scope: '本期备用路由仅支持无状态文本 HTTP / SSE 请求，不支持订阅、图片和 WebSocket 请求；Claude Code 专用分组不能参与多组路由。',
   billing: '费用按实际命中的分组及该组适用价格计算，可能与主组不同。',
   select: '添加备用分组',
   emptyOptions: '暂无其他可用的按量分组',
@@ -28,7 +27,6 @@ export const zh = {
 export const en: Record<keyof typeof zh, string> = {
   title: 'Backup groups (optional)',
   description: 'The primary group is preferred. When a backup is needed, groups are considered in this order using the original request model, endpoint, and scheduling availability. Add up to 4 backup groups.',
-  scope: 'Backup routing currently supports stateless text HTTP / SSE requests only. Subscription, image, and WebSocket requests are not supported; Claude Code-only groups cannot participate in multi-group routing.',
   billing: 'Charges use the group that actually handles the request and its applicable prices, which may differ from the primary group.',
   select: 'Add a backup group',
   emptyOptions: 'No other pay-as-you-go groups available',

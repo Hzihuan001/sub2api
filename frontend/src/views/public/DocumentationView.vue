@@ -16,19 +16,35 @@
       </div>
     </header>
     <div class="mx-auto grid max-w-[1440px] grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)]">
-      <aside class="border-b border-slate-200 bg-white px-4 py-4 dark:border-dark-700 dark:bg-dark-900 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:border-b-0 lg:border-r lg:px-5 lg:py-8">
+      <aside class="border-b border-slate-200 bg-white px-4 py-4 dark:border-dark-700 dark:bg-dark-900 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-5 lg:py-8">
         <label class="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400 lg:hidden">选择文档</label>
         <Select
-          :model-value="activeTopic"
-          :options="topicOptions"
+          :model-value="activeTopic === 'tools' ? activeTool.id : activeTopic"
+          :options="documentOptions"
           :searchable="false"
           class="lg:hidden"
           aria-label="选择文档"
-          @update:model-value="selectTopic"
+          @update:model-value="selectDocument"
         />
         <nav class="hidden space-y-1 lg:block" aria-label="文档目录">
           <p class="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">使用指南</p>
           <router-link v-for="item in topics" :key="item.id" :to="topicPath(item.id)" class="block rounded-lg px-3 py-2.5 text-sm transition-colors" :class="activeTopic === item.id ? 'bg-primary-50 font-medium text-primary-700 dark:bg-primary-900/20 dark:text-primary-300' : 'text-slate-600 hover:bg-slate-100 dark:text-dark-300 dark:hover:bg-dark-800'">
+            {{ item.label }}
+          </router-link>
+        </nav>
+        <nav class="mt-5 hidden space-y-1 lg:block" aria-label="常用工具接入指南">
+          <p class="mb-2 px-3 text-xs font-semibold tracking-wider text-slate-400">常用工具接入指南</p>
+          <router-link
+            v-for="item in toolGuides"
+            :key="item.id"
+            :to="toolPath(item.id)"
+            :aria-current="activeTopic === 'tools' && activeTool.id === item.id ? 'page' : undefined"
+            class="flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-mono text-[13px] transition-colors"
+            :class="activeTopic === 'tools' && activeTool.id === item.id ? 'bg-slate-100 font-medium text-slate-950 dark:bg-dark-800 dark:text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white'"
+          >
+            <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Zm0 0v5h5M8 12h8M8 16h8" />
+            </svg>
             {{ item.label }}
           </router-link>
         </nav>
@@ -67,10 +83,7 @@
             <DocHeading title="CC Switch 的使用" description="CC Switch 可以统一管理 Codex、Claude Code 等工具的 API 服务商配置。" />
             <DocSection title="安装 CC Switch">
               <p>从 CC Switch 官方发布页下载当前系统对应的版本：</p>
-              <ul class="doc-list list-disc">
-                <li><a class="doc-link" href="https://github.com/farion1231/cc-switch/releases/download/v3.18.0/CC-Switch-v3.18.0-Windows.msi" target="_blank" rel="noopener noreferrer">Windows 安装包</a></li>
-                <li><a class="doc-link" href="https://github.com/farion1231/cc-switch/releases/download/v3.18.0/CC-Switch-v3.18.0-macOS.dmg" target="_blank" rel="noopener noreferrer">macOS 安装包</a></li>
-              </ul>
+              <p class="mt-3"><a class="doc-link" href="https://ccswitch.io/zh/download" target="_blank" rel="noopener noreferrer">CC Switch 官方下载页</a></p>
             </DocSection>
             <DocSection title="一、使用平台一键导入配置">
               <ol class="doc-list list-decimal">
@@ -115,76 +128,115 @@
           </template>
 
           <template v-else>
-            <DocHeading title="接入其他工具" description="本章包含 Codex、Trae、Cherry Studio、Claude Code、WorkBuddy、Claude Desktop、Zcode 和 OpenCode 的接入方法。" />
-            <DocSection title="配置前准备">
-              <p>开始前需要准备三个信息：</p>
-              <ol class="doc-list list-decimal">
-                <li><strong>中转站 API 地址：</strong><code class="inline-code">https://ai.moshu.cloud</code></li>
-                <li><strong>API Key：</strong><code class="inline-code">sk-xxxxxxxxxxxxxxxx</code></li>
-                <li><strong>可用模型 ID：</strong>必须从模型列表接口获取。</li>
-              </ol>
-              <p class="mt-5">打开 PowerShell，执行以下命令。把示例 Key 替换成你创建的 API Key：</p>
-              <CodeBlock :code="modelsCommand" />
-              <DocImage :src="modelListImage" alt="PowerShell 查询 MoShu 模型列表返回结果" caption="返回结果中每个 id 的值就是模型 ID。" />
-              <Callout title="模型名称必须完全一致" tone="info">工具中填写的模型名称必须与接口返回的 <code class="inline-code">id</code> 完全一致。</Callout>
-            </DocSection>
-            <DocSection title="接口地址填写规则">
-              <div class="grid gap-4 sm:grid-cols-2">
-                <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
-                  <p class="text-sm font-semibold text-emerald-800 dark:text-emerald-300">正确：Base URL</p>
-                  <code class="mt-2 block break-all text-sm">https://ai.moshu.cloud/v1</code>
-                </div>
-                <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/50 dark:bg-rose-950/20">
-                  <p class="text-sm font-semibold text-rose-800 dark:text-rose-300">不要填写完整接口</p>
-                  <code class="mt-2 block break-all text-sm">https://ai.moshu.cloud/v1/chat/completions</code>
-                </div>
-              </div>
-              <p class="mt-4">AI Agent 会自动拼接 <code class="inline-code">/chat/completions</code>。只填写 <code class="inline-code">https://ai.moshu.cloud</code> 在部分软件中可用，但兼容性较差。</p>
-            </DocSection>
-            <DocSection title="Codex 配置方法">
-              <p>先完全退出 Codex，并备份 <code class="inline-code">%USERPROFILE%\.codex\config.toml</code>。然后写入以下供应商配置：</p>
-              <CodeBlock :code="codexConfig" />
-              <p class="mt-5">Windows PowerShell 中设置 API Key：</p>
-              <CodeBlock :code="codexEnvWindows" />
-              <p class="mt-5">macOS 或 Linux 终端中设置 API Key：</p>
-              <CodeBlock :code="codexEnvUnix" />
-              <Callout title="重启客户端" tone="info">设置完成后重新打开 Codex 或新建终端，再运行 <code class="inline-code">codex</code>。模型名称必须替换为 <code class="inline-code">/v1/models</code> 返回的实际 <code class="inline-code">id</code>。</Callout>
-            </DocSection>
-            <DocSection title="Trae 配置方法">
-              <p>打开 Trae，进入底部的模型列表，选择“添加模型 → 自定义模型”。</p>
-              <DefinitionGrid :items="traeFields" />
-              <ol class="doc-list list-decimal mt-5">
-                <li>填写完成后点击“添加”，并启用刚创建的模型。</li>
-                <li>回到对话页面，在模型选择器中选择该模型。</li>
-                <li>如果接入 Claude 模型，将 API 格式切换为“Anthropic Messages API”，地址按页面提示使用根地址 <code class="inline-code">https://ai.moshu.cloud</code>。</li>
-              </ol>
-              <DocImagePlaceholder label="Trae 自定义模型配置截图（待补充）" />
-            </DocSection>
-            <DocSection title="Cherry Studio 配置方法">
-              <p>打开 Cherry Studio，依次进入“设置 → 模型服务 → 添加”。推荐选择 Anthropic 类型接入 Claude 模型：</p>
-              <DefinitionGrid :items="cherryFields" />
-              <ol class="doc-list list-decimal mt-5">
-                <li>保存供应商后点击“添加模型”。</li>
-                <li><strong>模型 ID</strong> 填写 <code class="inline-code">/v1/models</code> 返回的完整 ID，区分大小写。</li>
-                <li>模型名称和分组名可以按用途自定义，例如“Claude Sonnet”和“claude”。</li>
-                <li>回到会话窗口选择模型并发送一条短消息测试。</li>
-              </ol>
-              <Callout title="地址规则" tone="info">Anthropic 类型通常填写 <code class="inline-code">https://ai.moshu.cloud</code>；如果 Cherry Studio 的请求预览显示它会拼接 <code class="inline-code">/v1/messages</code>，请保持根地址，不要重复填写路径。</Callout>
-              <DocImagePlaceholder label="Cherry Studio 模型服务与模型配置截图（待补充）" />
-            </DocSection>
-            <DocSection title="Claude CLI 配置方法">
-              <p>先安装 Claude Code：</p>
+            <DocHeading :title="activeTool.title" :description="activeTool.description" />
+            <div v-if="activeTool.id === 'codex'" class="text-[15px] leading-7 text-slate-700 dark:text-dark-200">
+              <h2 class="mt-7 text-xl font-semibold text-slate-950 dark:text-white">1. 写入配置</h2>
+              <p class="mt-3">命令会先将已有配置备份为 <code class="inline-code">config.toml.bak</code>，再写入 MoShu 配置。</p>
+              <p class="mt-5 font-medium">macOS / Linux</p>
+              <p class="mt-3">打开终端，粘贴并执行：</p>
+              <CodeBlock :code="codexConfigUnix" />
+              <p class="mt-5 font-medium">Windows</p>
+              <p class="mt-3">打开 PowerShell，粘贴并执行：</p>
+              <CodeBlock :code="codexConfigWindows" />
+              <h2 class="mt-7 text-xl font-semibold text-slate-950 dark:text-white">2. 设置 API Key</h2>
+              <p class="mt-3">将命令中的“你的 MoShu API Key”替换为自己的 API Key。</p>
+              <p class="mt-5 font-medium">macOS</p>
+              <CodeBlock :code="codexApiKeyMac" />
+              <p class="mt-5 font-medium">Linux</p>
+              <CodeBlock :code="codexApiKeyLinux" />
+              <p class="mt-5 font-medium">Windows</p>
+              <CodeBlock :code="codexApiKeyWindows" />
+              <h2 class="mt-7 text-xl font-semibold text-slate-950 dark:text-white">3. 开始使用</h2>
+              <ul class="doc-list mt-3">
+                <li>Codex 桌面版：完全退出应用后重新打开。</li>
+                <li>Codex CLI：打开新的终端窗口，在项目目录运行 <code class="inline-code">codex</code>。</li>
+              </ul>
+            </div>
+            <div v-if="activeTool.id === 'claude-cli'" class="text-[15px] leading-7 text-slate-700 dark:text-dark-200">
+              <h2 class="mt-7 text-xl font-semibold text-slate-950 dark:text-white">1. 安装 Claude Code</h2>
+              <p class="mt-3">确认已安装 Node.js，然后打开终端执行：</p>
               <CodeBlock :code="claudeInstall" />
-              <p class="mt-5">Windows PowerShell 使用 <code class="inline-code">setx</code> 保存配置：</p>
-              <CodeBlock :code="claudeCliWindows" />
-              <p class="mt-5">macOS 或 Linux 将以下内容加入 <code class="inline-code">~/.zshrc</code> 或 <code class="inline-code">~/.bashrc</code>，然后执行 <code class="inline-code">source ~/.zshrc</code>（按实际文件调整）：</p>
+              <p class="mt-3">显示版本号即安装成功。</p>
+              <h2 class="mt-7 text-xl font-semibold text-slate-950 dark:text-white">2. 配置 MoShu</h2>
+              <p class="mt-3">将代码中的“你的 MoShu API Key”替换为自己的 API Key。</p>
+              <p class="mt-5 font-medium">macOS / Linux</p>
               <CodeBlock :code="claudeCliUnix" />
-              <Callout title="模型 ID 以接口返回为准" tone="warning">示例中的 Claude 模型只用于说明格式。请先查询 <code class="inline-code">/v1/models</code>，再替换 <code class="inline-code">ANTHROPIC_MODEL</code> 等变量，否则可能返回模型不存在。</Callout>
-              <p class="mt-5">重新打开终端，进入项目目录后运行：</p>
+              <p class="mt-5 font-medium">Windows</p>
+              <p class="mt-3">打开命令提示符执行：</p>
+              <CodeBlock :code="claudeCliWindows" />
+              <Callout title="模型 ID 以接口返回为准" tone="warning">如果某个模型 ID 在你的账号中不可用，请先查询 <code class="inline-code">/v1/models</code>，再替换对应变量。</Callout>
+              <h2 class="mt-7 text-xl font-semibold text-slate-950 dark:text-white">3. 开始使用</h2>
+              <p class="mt-3">重新打开终端，在项目目录执行：</p>
               <CodeBlock code="claude" />
-              <DocImagePlaceholder label="Claude Code CLI 配置截图（待补充）" />
-            </DocSection>
-            <DocSection title="Claude Desktop 配置方法">
+            </div>
+            <template v-if="activeTool.id === 'workbuddy'">
+              <DocSection title="1. 添加模型">
+                <p>打开 WorkBuddy「系统设置」，选择「模型」，点击「添加模型」。</p>
+                <DocImage :src="workbuddyAddModelImage" alt="WorkBuddy 系统设置中的添加模型入口" />
+              </DocSection>
+              <DocSection title="2. 填写配置">
+                <p>按下表填写，然后点击「保存」。</p>
+                <DefinitionGrid :items="workbuddyFields" />
+                <p class="mt-5">高级配置参考模型能力按需填写，这里参考 <code class="inline-code">gpt-6.1-sol</code>：开启「工具调用」和「图片输入」，输入选择 <code class="inline-code">256K</code>，输出选择 <code class="inline-code">64K</code>。</p>
+                <DocImage :src="workbuddyConfigImage" alt="WorkBuddy 模型接口与高级能力配置" />
+              </DocSection>
+              <DocSection title="3. 开始使用">
+                <p>返回对话页面，在底部选择 <code class="inline-code">gpt-6.1-sol</code>，发送消息即可。</p>
+                <DocImage :src="workbuddyChatImage" alt="WorkBuddy 选择模型并发送消息" />
+                <Callout title="连接失败时检查" tone="info">如果提示 API Key 或模型不可用，请检查 API Key 是否完整、模型名称是否填写正确。</Callout>
+              </DocSection>
+            </template>
+            <template v-if="activeTool.id === 'trae'">
+              <DocSection title="1. 添加模型">
+                <p>在 Trae 对话框底部打开模型列表，点击「添加模型」。</p>
+                <DocImage :src="traeAddModelImage" alt="Trae 对话框底部添加模型入口" />
+              </DocSection>
+              <DocSection title="2. 进入自定义模型">
+                <p>在模型设置中点击「添加模型」或「在这里添加自定义模型」。</p>
+                <DocImage :src="traeModelSettingsImage" alt="Trae 模型设置中的添加模型按钮" />
+                <p class="mt-5">选择「自定义模型」。</p>
+                <DocImage :src="traeCustomModelImage" alt="Trae 选择自定义模型" />
+              </DocSection>
+              <DocSection title="3. 填写配置">
+                <p>按下表填写，然后点击「添加模型」。如果要使用 Claude 模型，需要选择 Anthropic Messages 的 API 格式。</p>
+                <DefinitionGrid :items="traeFields" />
+                <DocImage :src="traeConfigImage" alt="Trae 自定义请求地址、模型 ID 和 API 密钥配置" />
+              </DocSection>
+              <DocSection title="4. 开始使用">
+                <p>确认模型已启用，返回对话页面选择 <code class="inline-code">gpt-6.1-sol</code>，发送消息即可。</p>
+                <DocImage :src="traeChatImage" alt="Trae 启用模型并开始对话" />
+              </DocSection>
+            </template>
+            <template v-if="activeTool.id === 'cherry-studio'">
+              <DocSection title="1. 打开模型服务设置">
+                <p>打开 CherryStudio 设置，在侧边栏进入「模型服务」，点击底部的「添加」。</p>
+                <DocImage :src="cherrySettingsImage" alt="Cherry Studio 打开模型服务设置" caption="截图中的历史供应商地址仅用于展示界面，实际配置以本文文字为准。" />
+              </DocSection>
+              <DocSection title="2. 添加 Anthropic 供应商">
+                <p>在添加供应商窗口中填写供应商名称，例如 <code class="inline-code">MoShu</code>，供应商类型选择「Anthropic」。</p>
+                <DocImage :src="cherryProviderImage" alt="Cherry Studio 添加 Anthropic 供应商" />
+              </DocSection>
+              <DocSection title="3. 填写 API Key 和接口地址">
+                <p>按下表填写配置。API Key 请替换为自己的 MoShu API Key，不要把真实 Key 写入文档、截图或提交到代码仓库。</p>
+                <DefinitionGrid :items="cherryFields" />
+                <p class="mt-5">CherryStudio 会自动在该地址后拼接 Anthropic 请求路径（例如 <code class="inline-code">/v1/messages</code>）。如果你的版本要求填写完整接口前缀，也可以填写 <code class="inline-code">https://ai.moshu.cloud/v1</code>，以界面下方显示的请求预览为准。</p>
+                <DocImage :src="cherryApiImage" alt="Cherry Studio 填写 API 密钥与接口地址" />
+                <p class="mt-5">填写完成后，向下滚动到模型列表，点击「添加」。</p>
+                <DocImage :src="cherryAddModelImage" alt="Cherry Studio 模型列表中的添加按钮" />
+              </DocSection>
+              <DocSection title="4. 添加模型">
+                <p>在「添加模型」窗口填写模型信息：</p>
+                <DefinitionGrid :items="cherryModelFields" />
+                <p class="mt-5">模型 ID 区分大小写，请以 MoShu 模型广场中显示的名称为准。填写后点击「添加模型」。</p>
+                <DocImage :src="cherryModelImage" alt="Cherry Studio 添加模型 ID、名称与分组" />
+              </DocSection>
+              <DocSection title="5. 开始使用">
+                <p>返回 CherryStudio 会话页面，在顶部模型选择器中选择刚添加的模型，然后发送消息测试连接。</p>
+                <DocImage :src="cherryChatImage" alt="Cherry Studio 选择模型并测试连接" />
+                <Callout title="请求失败时检查" tone="info">如果请求失败，请依次检查 API Key 是否完整、供应商类型是否为「Anthropic」、API 地址是否正确，以及模型 ID 是否与模型广场中的名称完全一致。</Callout>
+              </DocSection>
+            </template>
+            <DocSection v-if="activeTool.id === 'claude-desktop'" title="Claude Desktop 配置方法">
               <p>先在 PowerShell 中生成 UUID：</p>
               <CodeBlock code="[guid]::NewGuid().ToString()" />
               <p class="mt-5">修改 <code class="inline-code">%LOCALAPPDATA%\Claude-3p\configLibrary\_meta.json</code>：</p>
@@ -192,22 +244,22 @@
               <p class="mt-5">在同一目录创建以该 UUID 命名的 JSON 文件，并填入：</p>
               <CodeBlock :code="claudeConfig" />
             </DocSection>
-            <DocSection title="WorkBuddy 配置示例">
-              <p>依次进入“模型设置 → 添加模型 → 自定义”。</p>
-              <DocImage :src="workbuddyAddModelImage" alt="WorkBuddy 添加自定义模型入口" />
-              <DefinitionGrid :items="workbuddyFields" />
-              <p class="mt-5">在高级配置中，按客户端版本开启工具调用和图片输入；上下文长度可填写 <code class="inline-code">256K</code>，最大输出长度可填写 <code class="inline-code">64K</code>。如果版本没有这些选项，保持默认即可。</p>
-              <DocImage :src="workbuddyConfigImage" alt="WorkBuddy 中填写 MoShu 配置" caption="确认模型 ID 来自 /v1/models 后保存。" />
-            </DocSection>
-            <DocSection title="Zcode 配置示例">
+            <DocSection v-if="activeTool.id === 'zcode'" title="Zcode 配置示例">
               <p>在自定义提供商中填写相同的 API 地址、API Key 和模型 ID。</p>
               <DocImage :src="zcodeConfigImage" alt="Zcode 接入 MoShu 配置示例" />
             </DocSection>
-            <DocSection title="OpenCode 配置示例">
+            <DocSection v-if="activeTool.id === 'opencode'" title="OpenCode 配置示例">
               <p>先新增自定义提供商，再添加从模型接口获取的模型 ID。</p>
               <DocImage :src="opencodeProviderImage" alt="OpenCode 自定义提供商配置" />
               <DocImage :src="opencodeModelImage" alt="OpenCode 模型配置" />
             </DocSection>
+            <details class="mt-12 rounded-xl border border-slate-200 bg-white p-5 text-sm leading-7 dark:border-dark-700 dark:bg-dark-900">
+              <summary class="cursor-pointer font-medium text-slate-700 dark:text-dark-200">查询可用模型与接口地址说明</summary>
+              <p class="mt-4">模型 ID 以 MoShu 模型广场或接口返回为准。打开 PowerShell，将示例 Key 替换为自己的 API Key 后执行：</p>
+              <CodeBlock :code="modelsCommand" />
+              <DocImage :src="modelListImage" alt="PowerShell 查询 MoShu 模型列表返回结果" caption="返回结果中每个 id 的值就是模型 ID。" />
+              <p class="mt-4">OpenAI / Codex 通常填写 <code class="inline-code">https://ai.moshu.cloud/v1</code>；Claude Code / Anthropic 类型按本页对应步骤填写根地址 <code class="inline-code">https://ai.moshu.cloud</code>。不要填写完整的 <code class="inline-code">/chat/completions</code> 或 <code class="inline-code">/responses</code> 接口路径。使用 CCSwitch 时，请求地址栏填写根地址即可。</p>
+            </details>
           </template>
           <footer class="mt-16 border-t border-slate-200 pt-6 text-sm text-slate-500 dark:border-dark-700 dark:text-dark-400">
             <div class="flex flex-col justify-between gap-3 sm:flex-row">
@@ -242,8 +294,20 @@ import ccRouteSwitchImage from '@/assets/docs/ccswitch/route-switch.png'
 import ccHistorySettingImage from '@/assets/docs/ccswitch/conversation-history-setting.png'
 import ccHistoryResultImage from '@/assets/docs/ccswitch/conversation-history-result.png'
 import modelListImage from '@/assets/docs/tools/model-list.jpeg'
-import workbuddyAddModelImage from '@/assets/docs/tools/workbuddy-add-model.png'
-import workbuddyConfigImage from '@/assets/docs/tools/workbuddy-config.jpeg'
+import workbuddyAddModelImage from '@/assets/docs/tools/integrations/WB1.png'
+import workbuddyConfigImage from '@/assets/docs/tools/integrations/WB2.png'
+import workbuddyChatImage from '@/assets/docs/tools/integrations/WB3.png'
+import traeAddModelImage from '@/assets/docs/tools/integrations/T1.png'
+import traeModelSettingsImage from '@/assets/docs/tools/integrations/T2.png'
+import traeCustomModelImage from '@/assets/docs/tools/integrations/T3.png'
+import traeConfigImage from '@/assets/docs/tools/integrations/T4.png'
+import traeChatImage from '@/assets/docs/tools/integrations/T5.png'
+import cherrySettingsImage from '@/assets/docs/tools/integrations/CS1.png'
+import cherryProviderImage from '@/assets/docs/tools/integrations/CS2.png'
+import cherryApiImage from '@/assets/docs/tools/integrations/CS3.jpg'
+import cherryAddModelImage from '@/assets/docs/tools/integrations/CS4.jpg'
+import cherryModelImage from '@/assets/docs/tools/integrations/CS5.jpg'
+import cherryChatImage from '@/assets/docs/tools/integrations/CS6.jpg'
 import zcodeConfigImage from '@/assets/docs/tools/zcode-config.jpeg'
 import opencodeProviderImage from '@/assets/docs/tools/opencode-provider.png'
 import opencodeModelImage from '@/assets/docs/tools/opencode-model.jpeg'
@@ -252,13 +316,46 @@ type TopicId = 'token' | 'ccswitch' | 'tools'
 
 const topics: Array<{ id: TopicId; label: string }> = [
   { id: 'token', label: '创建令牌' },
-  { id: 'ccswitch', label: 'CCSwitch 的使用' },
-  { id: 'tools', label: '接入其他工具' }
+  { id: 'ccswitch', label: 'CCSwitch 的使用' }
 ]
-const topicOptions: SelectOption[] = topics.map((item) => ({
-  value: item.id,
-  label: item.label
-}))
+
+// Menu order follows the user's latest requested reading order.
+const toolGuides = [
+  {
+    id: 'codex', label: 'Codex 接入指南', title: 'Codex 接入指南',
+    description: '本指南同时适用于 Codex 桌面版和 Codex CLI。准备好 MoShu API Key 后，按以下步骤操作。'
+  },
+  {
+    id: 'claude-cli', label: 'Claude CLI 接入指南', title: 'Claude Code 接入指南',
+    description: '准备好 MoShu API Key 后，按以下步骤操作。'
+  },
+  {
+    id: 'claude-desktop', label: 'Claude Desktop', title: 'Claude Desktop 配置方法',
+    description: '使用现有 Claude Desktop 网关配置接入 MoShu。'
+  },
+  {
+    id: 'workbuddy', label: 'WorkBuddy 接入指南', title: 'WorkBuddy 接入指南',
+    description: '准备好 MoShu API Key 后，按以下步骤操作。'
+  },
+  {
+    id: 'trae', label: 'Trae 接入指南', title: 'Trae 接入指南',
+    description: '准备好 MoShu API Key 后，按以下步骤操作。'
+  },
+  {
+    id: 'cherry-studio', label: 'Cherry Studio', title: 'CherryStudio 接入指南',
+    description: '准备好 MoShu API Key 后，可以在 CherryStudio 中通过 Anthropic 兼容接口接入 Claude 模型。以下步骤以 CherryStudio 的桌面版界面为例。'
+  },
+  {
+    id: 'zcode', label: 'Zcode', title: 'Zcode 配置示例',
+    description: '在 Zcode 中添加 MoShu 自定义提供商，使用你的 API Key 和可用模型。'
+  },
+  {
+    id: 'opencode', label: 'OpenCode', title: 'OpenCode 配置示例',
+    description: '在 OpenCode 中添加自定义提供商与模型。'
+  }
+] as const
+type ToolId = typeof toolGuides[number]['id']
+const documentOptions: SelectOption[] = [...topics, ...toolGuides].map((item) => ({ value: item.id, label: item.label }))
 
 const route = useRoute()
 const router = useRouter()
@@ -267,55 +364,89 @@ const authStore = useAuthStore()
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'MoShu')
 const activeTopic = computed<TopicId>(() => {
   const candidate = String(route.params.topic || 'token')
-  return topics.some((item) => item.id === candidate) ? candidate as TopicId : 'token'
+  return candidate === 'tools' || topics.some((item) => item.id === candidate) ? candidate as TopicId : 'token'
 })
+const activeTool = computed(() => toolGuides.find((item) => item.id === route.params.tool) || toolGuides[0])
 
 function topicPath(id: TopicId) {
   return '/docs/' + id
 }
 
-function selectTopic(value: string | number | boolean | null) {
-  const topic = String(value) as TopicId
-  if (topics.some((item) => item.id === topic)) {
-    void router.push(topicPath(topic))
+function toolPath(id: ToolId) {
+  return '/docs/tools/' + id
+}
+
+function selectDocument(value: string | number | boolean | null) {
+  const topic = topics.find((item) => item.id === value)
+  if (topic) {
+    void router.push(topicPath(topic.id))
+    return
+  }
+  const tool = toolGuides.find((item) => item.id === value)
+  if (tool) {
+    void router.push(toolPath(tool.id))
   }
 }
 
 const modelsCommand = 'curl.exe https://ai.moshu.cloud/v1/models -H "Authorization: Bearer sk-xxxxxxxx"'
-const codexConfig = [
-  'model_provider = "moshu"',
-  'model = "gpt-5.6-sol"',
-  'model_reasoning_effort = "high"',
-  '',
-  '[model_providers.moshu]',
-  'name = "MoShu 模枢"',
-  'env_key = "OPENAI_API_KEY"',
-  'wire_api = "responses"',
-  'base_url = "https://ai.moshu.cloud/v1"'
-].join('\n')
-const codexEnvWindows = 'setx OPENAI_API_KEY "sk-xxxxxxxxxxxxxxxx"\n# 关闭当前终端，重新打开后配置才会生效'
-const codexEnvUnix = 'export OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxx"\n# 持久保存可写入 ~/.zshrc 或 ~/.bashrc，然后执行 source ~/.zshrc'
+const codexConfigUnix = String.raw`mkdir -p ~/.codex
+[ -f ~/.codex/config.toml ] && cp ~/.codex/config.toml ~/.codex/config.toml.bak
+cat > ~/.codex/config.toml <<'EOF'
+model_provider = "moshu"
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
+
+[model_providers.moshu]
+name = "OpenAI"
+base_url = "https://ai.moshu.cloud/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+EOF`
+const codexConfigWindows = String.raw`$codexDir = Join-Path $HOME ".codex"
+$configPath = Join-Path $codexDir "config.toml"
+New-Item -ItemType Directory -Force -Path $codexDir | Out-Null
+if (Test-Path $configPath) {
+  Copy-Item $configPath "$configPath.bak" -Force
+}
+@'
+model_provider = "moshu"
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
+
+[model_providers.moshu]
+name = "OpenAI"
+base_url = "https://ai.moshu.cloud/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+'@ | Set-Content -Path $configPath -Encoding UTF8`
+const codexApiKeyMac = 'echo \'export OPENAI_API_KEY="你的 MoShu API Key"\' >> ~/.zshrc\nsource ~/.zshrc'
+const codexApiKeyLinux = 'echo \'export OPENAI_API_KEY="你的 MoShu API Key"\' >> ~/.bashrc\nsource ~/.bashrc'
+const codexApiKeyWindows = '[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "你的 MoShu API Key", "User")'
 const claudeInstall = 'npm install -g @anthropic-ai/claude-code\nclaude --version'
 const claudeCliWindows = [
   'setx ANTHROPIC_BASE_URL "https://ai.moshu.cloud"',
-  'setx ANTHROPIC_AUTH_TOKEN "sk-xxxxxxxxxxxxxxxx"',
-  'setx ANTHROPIC_MODEL "YOUR_CLAUDE_MODEL_ID"',
-  'setx ANTHROPIC_DEFAULT_OPUS_MODEL "YOUR_CLAUDE_MODEL_ID"',
-  'setx ANTHROPIC_DEFAULT_SONNET_MODEL "YOUR_CLAUDE_MODEL_ID"',
-  'setx ANTHROPIC_DEFAULT_HAIKU_MODEL "YOUR_CLAUDE_MODEL_ID"',
-  'setx CLAUDE_CODE_SUBAGENT_MODEL "YOUR_CLAUDE_MODEL_ID"'
+  'setx ANTHROPIC_AUTH_TOKEN "你的 MoShu API Key"',
+  'setx ANTHROPIC_MODEL "claude-opus-5-5"',
+  'setx ANTHROPIC_DEFAULT_OPUS_MODEL "claude-opus-4-8"',
+  'setx ANTHROPIC_DEFAULT_SONNET_MODEL "claude-sonnet-5-5"',
+  'setx ANTHROPIC_DEFAULT_HAIKU_MODEL "claude-haiku-5-5"',
+  'setx CLAUDE_CODE_SUBAGENT_MODEL "claude-fable-5-1"'
 ].join('\n')
-const claudeCliUnix = [
-  'export ANTHROPIC_BASE_URL="https://ai.moshu.cloud"',
-  'export ANTHROPIC_AUTH_TOKEN="sk-xxxxxxxxxxxxxxxx"',
-  'export ANTHROPIC_MODEL="YOUR_CLAUDE_MODEL_ID"',
-  'export ANTHROPIC_DEFAULT_OPUS_MODEL="YOUR_CLAUDE_MODEL_ID"',
-  'export ANTHROPIC_DEFAULT_SONNET_MODEL="YOUR_CLAUDE_MODEL_ID"',
-  'export ANTHROPIC_DEFAULT_HAIKU_MODEL="YOUR_CLAUDE_MODEL_ID"',
-  'export CLAUDE_CODE_SUBAGENT_MODEL="YOUR_CLAUDE_MODEL_ID"',
-  '',
-  'source ~/.zshrc  # 如果使用 bash，请改为 source ~/.bashrc'
-].join('\n')
+const claudeCliUnix = String.raw`SHELL_RC="$HOME/.zshrc"; case "$SHELL" in *bash*) SHELL_RC="$HOME/.bashrc";; esac
+cat >> "$SHELL_RC" <<'EOF'
+export ANTHROPIC_BASE_URL="https://ai.moshu.cloud"
+export ANTHROPIC_AUTH_TOKEN="你的 MoShu API Key"
+export ANTHROPIC_MODEL="claude-opus-5-5"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="claude-opus-4-8"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-sonnet-5-5"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-haiku-5-5"
+export CLAUDE_CODE_SUBAGENT_MODEL="claude-fable-5-1"
+EOF
+source "$SHELL_RC"`
 const claudeMeta = [
   '{',
   '  "appliedid": "生成的UUID",',
@@ -345,24 +476,26 @@ const ccSwitchFields = [
   ['默认模型', '点击“获取模型列表”测试连通性即可']
 ]
 const workbuddyFields = [
-  ['提供商', '自定义 / MoShu'],
+  ['提供商', '自定义 / Custom'],
   ['接口地址', 'https://ai.moshu.cloud/v1'],
-  ['API Key', 'sk-xxxxxxxx'],
-  ['模型名称', '例如 gpt-5.6-sol（以 /v1/models 返回为准）']
+  ['API Key', '你的 MoShu API Key'],
+  ['模型名称', 'gpt-6.1-sol']
 ]
 const traeFields = [
   ['API 格式', 'OpenAI Chat Completions 格式'],
   ['自定义请求地址', 'https://ai.moshu.cloud/v1'],
-  ['模型 ID', '例如 gpt-5.6-sol（以 /v1/models 返回为准）'],
-  ['展示名称', '可与模型 ID 相同'],
-  ['API 密钥', '控制台创建的 MoShu API Key']
+  ['模型 ID', 'gpt-6.1-sol'],
+  ['模型展示名称', 'gpt-6.1-sol'],
+  ['API 密钥', '你的 MoShu API Key']
 ]
 const cherryFields = [
-  ['供应商名称', '例如 MoShu'],
-  ['类型', 'Anthropic（Claude 模型）'],
-  ['API Key', '控制台创建的 MoShu API Key'],
-  ['API 地址', 'https://ai.moshu.cloud'],
-  ['模型 ID', '完整模型 ID，区分大小写']
+  ['API 密钥', '你的 MoShu API Key'],
+  ['API 地址', 'https://ai.moshu.cloud']
+]
+const cherryModelFields = [
+  ['模型 ID', 'MoShu 模型广场中的完整模型 ID，例如 claude-sonnet-4-6'],
+  ['模型名称', '与模型 ID 保持一致，或填写便于识别的名称'],
+  ['分组名称', '例如 claude-sonnet']
 ]
 const DocHeading = defineComponent({
   props: {
@@ -446,15 +579,6 @@ const DocImage = defineComponent({
         })
       ]),
       props.caption ? h('figcaption', { class: 'mt-2 text-center text-xs text-slate-500 dark:text-dark-400' }, props.caption) : null
-    ])
-  }
-})
-
-const DocImagePlaceholder = defineComponent({
-  props: { label: { type: String, required: true } },
-  setup(props) {
-    return () => h('figure', { class: 'mt-5' }, [
-      h('div', { class: 'flex min-h-40 items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-100 px-6 py-12 text-center text-sm text-slate-500 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-300' }, props.label)
     ])
   }
 })

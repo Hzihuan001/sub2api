@@ -177,7 +177,7 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/docs/:topic?',
+    path: '/docs/:topic?/:tool?',
     name: 'Documentation',
     component: () => import('@/views/public/DocumentationView.vue'),
     meta: {

@@ -27,7 +27,8 @@ describe('real i18n host message loading', () => {
     expect(i18n.global.t('custom.keyRouting.title')).toBe(title)
     expect(i18n.global.t('custom.keyRouting.summary', { count: 2 })).toBe(summary)
     expect(i18n.global.t('custom.keyRouting.position', { position: 3 })).toBe(position)
-    expect(i18n.global.te('custom.keyRouting.scope')).toBe(true)
+    expect(i18n.global.te('custom.keyRouting.billing')).toBe(true)
+    expect(i18n.global.te('custom.keyRouting.scope')).toBe(false)
     expect(i18n.global.te('custom.keyRouting.adminEditHint')).toBe(true)
   })
 

@@ -2,7 +2,6 @@
   <fieldset class="space-y-3 rounded-xl border border-gray-200 p-3 dark:border-dark-600" :disabled="disabled" data-test="key-backup-groups">
     <legend class="px-1 text-sm font-medium text-gray-900 dark:text-white">{{ t('custom.keyRouting.title') }}</legend>
     <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('custom.keyRouting.description') }}</p>
-    <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('custom.keyRouting.scope') }}</p>
     <ol v-if="modelValue.length" class="space-y-2" :aria-label="t('custom.keyRouting.title')">
       <li v-for="(entry, index) in selectedGroups" :key="`${entry.id}-${index}`" class="flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 p-2 dark:bg-dark-800" :data-backup-id="entry.id">
         <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('custom.keyRouting.position', { position: index + 1 }) }}</span>

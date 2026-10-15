@@ -150,14 +150,15 @@ describe('Key backup groups', () => {
     expect(wrapper.props('modelValue')).toEqual([2, 3])
   })
 
-  it('disables every edit while saving and explains actual-group billing and supported scope', async () => {
+  it('disables every edit while saving and retains the actual-group billing notice', async () => {
     const wrapper = mountEditor([2, 3])
     await wrapper.setProps({ disabled: true })
     wrapper.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 4)
     expect(wrapper.findAll<HTMLButtonElement>('button').every((button) => button.element.disabled)).toBe(true)
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
     expect(wrapper.text()).toContain('group that actually handles the request')
-    expect(wrapper.text()).toContain('stateless text HTTP / SSE')
+    expect(wrapper.text()).not.toContain('stateless text HTTP / SSE')
+    expect(wrapper.text()).not.toContain('custom.keyRouting.scope')
   })
 
   it('has matching English and Chinese message keys', () => {
