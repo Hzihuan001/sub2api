@@ -1,0 +1,3837 @@
+{
+  "baseline_commit": "989594099c1bd10db911c737449d15d2bb6149ed",
+  "generation_command": "SUB2API_CAPTURE_PUBLISHED_FAILURES=989594099c1bd10db911c737449d15d2bb6149ed go test -overlay=<capture-overlay.json> -tags=unit ./internal/service -run '^TestGatewayFailurePublishedBaselineCapture$' -count=1 -v",
+  "baseline_source_sha256": {
+    "gateway_failure_policy.go": "6ba8c049685bd5d4a4995d46439d39d1fbc391f8b3b5e151b34b80c006a5a309",
+    "openai_gateway_passthrough.go": "1c7458480660fbcf60652684cb111b244348587ffdd1a64fd636fb43d8024269",
+    "openai_gateway_upstream_errors.go": "02a91e8385a8cffa8dc7bce889fc947168087dc7bf450e1d60ae13134c8c87ec"
+  },
+  "cases": [
+    {
+      "input": {
+        "name": "unknown_http_200",
+        "http_status": 200,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 200,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 200,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_400",
+        "http_status": 400,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_401",
+        "http_status": 401,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 401,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 401,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_402",
+        "http_status": 402,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 402,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 402,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_403",
+        "http_status": 403,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 403,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 403,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_404",
+        "http_status": 404,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 404,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 404,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_405",
+        "http_status": 405,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 405,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 405,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_408",
+        "http_status": 408,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 408,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 408,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_413",
+        "http_status": 413,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 413,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "scope": "account",
+            "reason": "openai_request_body_too_large",
+            "client_status": 413,
+            "client_message": "Request payload is too large"
+          },
+          {
+            "upstream_status": 413,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "scope": "account",
+            "reason": "openai_request_body_too_large",
+            "client_status": 413,
+            "client_message": "Request payload is too large"
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_418",
+        "http_status": 418,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 418,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 418,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_429",
+        "http_status": 429,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 429,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 429,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_500",
+        "http_status": 500,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 500,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 500,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_502",
+        "http_status": 502,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 502,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 502,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_503",
+        "http_status": 503,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 503,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 503,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_504",
+        "http_status": 504,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 504,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          },
+          {
+            "upstream_status": 504,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_520",
+        "http_status": 520,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 520,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          },
+          {
+            "upstream_status": 520,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_524",
+        "http_status": 524,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 524,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          },
+          {
+            "upstream_status": 524,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_http_529",
+        "http_status": 529,
+        "body": "{}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 529,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 529,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "safety_over_server_status",
+        "http_status": 503,
+        "body": "{\"error\":{\"code\":\"content_policy_violation\",\"type\":\"invalid_request_error\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"content_policy_violation\",\"type\":\"invalid_request_error\"}}}"
+      },
+      "observed": {
+        "http_class": "request",
+        "error_event_class": "request",
+        "response_failed_class": "request",
+        "error_semantic_status": 400,
+        "response_failed_semantic_status": 400,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": false,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 503,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 503,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "parameter_over_server_status",
+        "http_status": 502,
+        "body": "{\"error\":{\"code\":\"invalid_parameter\",\"type\":\"invalid_request_error\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"invalid_parameter\",\"type\":\"invalid_request_error\"}}}"
+      },
+      "observed": {
+        "http_class": "request",
+        "error_event_class": "request",
+        "response_failed_class": "request",
+        "error_semantic_status": 400,
+        "response_failed_semantic_status": 400,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": false,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 502,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 502,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "context_over_body_limit",
+        "http_status": 413,
+        "body": "{\"error\":{\"code\":\"context_length_exceeded\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"context_length_exceeded\"}}}"
+      },
+      "observed": {
+        "http_class": "request",
+        "error_event_class": "request",
+        "response_failed_class": "request",
+        "error_semantic_status": 400,
+        "response_failed_semantic_status": 400,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": false,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 413,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 413,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "permission_request",
+        "http_status": 403,
+        "body": "{\"error\":{\"type\":\"permission_error\",\"status_code\":403}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"type\":\"permission_error\",\"status_code\":403}}}"
+      },
+      "observed": {
+        "http_class": "request",
+        "error_event_class": "request",
+        "response_failed_class": "request",
+        "error_semantic_status": 403,
+        "response_failed_semantic_status": 403,
+        "response_failed_status": 403,
+        "error_event_failover": false,
+        "response_failed_failover": false,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 403,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 403,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "permission_ip_blocked",
+        "http_status": 403,
+        "body": "{\"error\":{\"type\":\"permission_error\",\"details\":{\"reason\":\"ip_blocked\"}}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"type\":\"permission_error\",\"details\":{\"reason\":\"ip_blocked\"}}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "request",
+        "response_failed_class": "request",
+        "error_semantic_status": 403,
+        "response_failed_semantic_status": 403,
+        "response_failed_status": 403,
+        "error_event_failover": false,
+        "response_failed_failover": false,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 403,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 403,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "generic_invalid_request",
+        "http_status": 400,
+        "body": "{\"error\":{\"type\":\"invalid_request_error\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"type\":\"invalid_request_error\"}}}"
+      },
+      "observed": {
+        "http_class": "request",
+        "error_event_class": "request",
+        "response_failed_class": "request",
+        "error_semantic_status": 400,
+        "response_failed_semantic_status": 400,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": false,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "generic_invalid_request_auth_status",
+        "http_status": 401,
+        "body": "{\"error\":{\"type\":\"invalid_request_error\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"type\":\"invalid_request_error\"}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "request",
+        "response_failed_class": "request",
+        "error_semantic_status": 400,
+        "response_failed_semantic_status": 400,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": false,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 401,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 401,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "echoed_credentials_are_not_signals",
+        "http_status": 503,
+        "body": "{\"error\":{\"code\":\"invalid_parameter\",\"message\":\"bad schema\"},\"request\":{\"code\":\"invalid_api_key\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"invalid_parameter\",\"message\":\"bad schema\"},\"request\":{\"code\":\"invalid_api_key\"}}}"
+      },
+      "observed": {
+        "http_class": "request",
+        "error_event_class": "request",
+        "response_failed_class": "request",
+        "error_semantic_status": 400,
+        "response_failed_semantic_status": 400,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": false,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 503,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 503,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "credential_under_400",
+        "http_status": 400,
+        "body": "{\"error\":{\"code\":\"invalid_api_key\",\"type\":\"invalid_request_error\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"invalid_api_key\",\"type\":\"invalid_request_error\"}}}"
+      },
+      "observed": {
+        "http_class": "credential",
+        "error_event_class": "credential",
+        "response_failed_class": "credential",
+        "error_semantic_status": 401,
+        "response_failed_semantic_status": 401,
+        "response_failed_status": 401,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "stage": "account_auth",
+            "scope": "account",
+            "reason": "openai_upstream_credential",
+            "client_status": 502,
+            "client_message": "Upstream access is temporarily unavailable, please retry later"
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "stage": "account_auth",
+            "scope": "account",
+            "reason": "openai_upstream_credential",
+            "client_status": 502,
+            "client_message": "Upstream access is temporarily unavailable, please retry later"
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "credential_under_503",
+        "http_status": 503,
+        "body": "{\"error\":{\"type\":\"authentication_error\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"type\":\"authentication_error\"}}}"
+      },
+      "observed": {
+        "http_class": "credential",
+        "error_event_class": "credential",
+        "response_failed_class": "credential",
+        "error_semantic_status": 401,
+        "response_failed_semantic_status": 401,
+        "response_failed_status": 401,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 503,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "stage": "account_auth",
+            "scope": "account",
+            "reason": "openai_upstream_credential",
+            "client_status": 502,
+            "client_message": "Upstream access is temporarily unavailable, please retry later"
+          },
+          {
+            "upstream_status": 503,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "stage": "account_auth",
+            "scope": "account",
+            "reason": "openai_upstream_credential",
+            "client_status": 502,
+            "client_message": "Upstream access is temporarily unavailable, please retry later"
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "account_suspended",
+        "http_status": 403,
+        "body": "{\"error\":{\"code\":\"account_suspended\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"account_suspended\"}}}"
+      },
+      "observed": {
+        "http_class": "credential",
+        "error_event_class": "credential",
+        "response_failed_class": "credential",
+        "error_semantic_status": 403,
+        "response_failed_semantic_status": 403,
+        "response_failed_status": 403,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 403,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "stage": "account_auth",
+            "scope": "account",
+            "reason": "openai_upstream_access_state",
+            "client_status": 502,
+            "client_message": "Upstream access is temporarily unavailable, please retry later"
+          },
+          {
+            "upstream_status": 403,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "stage": "account_auth",
+            "scope": "account",
+            "reason": "openai_upstream_access_state",
+            "client_status": 502,
+            "client_message": "Upstream access is temporarily unavailable, please retry later"
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "workspace_deactivated",
+        "http_status": 400,
+        "body": "{\"error\":{\"code\":\"deactivated_workspace\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"deactivated_workspace\"}}}"
+      },
+      "observed": {
+        "http_class": "credential",
+        "error_event_class": "credential",
+        "response_failed_class": "credential",
+        "error_semantic_status": 403,
+        "response_failed_semantic_status": 403,
+        "response_failed_status": 403,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "stage": "account_auth",
+            "scope": "account",
+            "reason": "openai_upstream_access_state",
+            "client_status": 502,
+            "client_message": "Upstream access is temporarily unavailable, please retry later"
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "stage": "account_auth",
+            "scope": "account",
+            "reason": "openai_upstream_access_state",
+            "client_status": 502,
+            "client_message": "Upstream access is temporarily unavailable, please retry later"
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "hard_quota",
+        "http_status": 429,
+        "body": "{\"error\":{\"code\":\"insufficient_quota\",\"type\":\"invalid_request_error\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"insufficient_quota\",\"type\":\"invalid_request_error\"}}}"
+      },
+      "observed": {
+        "http_class": "quota",
+        "error_event_class": "quota",
+        "response_failed_class": "quota",
+        "error_semantic_status": 402,
+        "response_failed_semantic_status": 402,
+        "response_failed_status": 402,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 429,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          },
+          {
+            "upstream_status": 429,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "billing_hard_limit",
+        "http_status": 402,
+        "body": "{\"error\":{\"code\":\"billing_hard_limit_reached\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"billing_hard_limit_reached\"}}}"
+      },
+      "observed": {
+        "http_class": "quota",
+        "error_event_class": "quota",
+        "response_failed_class": "quota",
+        "error_semantic_status": 402,
+        "response_failed_semantic_status": 402,
+        "response_failed_status": 402,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 402,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          },
+          {
+            "upstream_status": 402,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "model_unavailable_400",
+        "http_status": 400,
+        "body": "{\"error\":{\"code\":\"model_not_found\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"model_not_found\"}}}"
+      },
+      "observed": {
+        "http_class": "model_unavailable",
+        "error_event_class": "model_unavailable",
+        "response_failed_class": "model_unavailable",
+        "error_semantic_status": 404,
+        "response_failed_semantic_status": 404,
+        "response_failed_status": 404,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "model_unavailable_404",
+        "http_status": 404,
+        "body": "{\"error\":{\"code\":\"model_not_found\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"model_not_found\"}}}"
+      },
+      "observed": {
+        "http_class": "model_unavailable",
+        "error_event_class": "model_unavailable",
+        "response_failed_class": "model_unavailable",
+        "error_semantic_status": 404,
+        "response_failed_semantic_status": 404,
+        "response_failed_status": 404,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 404,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          },
+          {
+            "upstream_status": 404,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "model_unavailable_500",
+        "http_status": 500,
+        "body": "{\"error\":{\"code\":\"model_not_found\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"model_not_found\"}}}"
+      },
+      "observed": {
+        "http_class": "model_unavailable",
+        "error_event_class": "model_unavailable",
+        "response_failed_class": "model_unavailable",
+        "error_semantic_status": 404,
+        "response_failed_semantic_status": 404,
+        "response_failed_status": 404,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 500,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          },
+          {
+            "upstream_status": 500,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "compatible_unknown_provider",
+        "http_status": 400,
+        "body": "{\"error\":{\"message\":\"unknown provider for model fixture\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"unknown provider for model fixture\"}}}"
+      },
+      "observed": {
+        "http_class": "model_unavailable",
+        "error_event_class": "model_unavailable",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 404,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "capacity_shed_400",
+        "http_status": 400,
+        "body": "{\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 503,
+        "response_failed_semantic_status": 503,
+        "response_failed_status": 503,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": true,
+            "next_account_action": 0,
+            "client_status": 503,
+            "client_message": "Our servers are currently overloaded. Please try again later."
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": true,
+            "next_account_action": 0,
+            "client_status": 503,
+            "client_message": "Our servers are currently overloaded. Please try again later."
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "capacity_shed_503",
+        "http_status": 503,
+        "body": "{\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 503,
+        "response_failed_semantic_status": 503,
+        "response_failed_status": 503,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 503,
+            "same_account_retry": true,
+            "request_scoped_transient": true,
+            "next_account_action": 0,
+            "client_status": 503,
+            "client_message": "Our servers are currently overloaded. Please try again later."
+          },
+          {
+            "upstream_status": 503,
+            "same_account_retry": true,
+            "request_scoped_transient": true,
+            "next_account_action": 0,
+            "client_status": 503,
+            "client_message": "Our servers are currently overloaded. Please try again later."
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "capacity_shed_504",
+        "http_status": 504,
+        "body": "{\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 503,
+        "response_failed_semantic_status": 503,
+        "response_failed_status": 503,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 504,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "client_status": 503,
+            "client_message": "Our servers are currently overloaded. Please try again later."
+          },
+          {
+            "upstream_status": 504,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "client_status": 503,
+            "client_message": "Our servers are currently overloaded. Please try again later."
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "slow_down",
+        "http_status": 429,
+        "body": "{\"error\":{\"code\":\"slow_down\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"slow_down\"}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 503,
+        "response_failed_semantic_status": 503,
+        "response_failed_status": 503,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 429,
+            "same_account_retry": true,
+            "request_scoped_transient": true,
+            "next_account_action": 0,
+            "client_status": 503,
+            "client_message": "Upstream service is temporarily overloaded, please retry later"
+          },
+          {
+            "upstream_status": 429,
+            "same_account_retry": true,
+            "request_scoped_transient": true,
+            "next_account_action": 0,
+            "client_status": 503,
+            "client_message": "Upstream service is temporarily overloaded, please retry later"
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "plain_text_capacity",
+        "http_status": 503,
+        "body": "Our servers are currently overloaded. Please try again later.",
+        "message": "",
+        "response_failed_body": "Our servers are currently overloaded. Please try again later."
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 503,
+            "same_account_retry": true,
+            "request_scoped_transient": true,
+            "next_account_action": 0,
+            "client_status": 503,
+            "client_message": "Upstream service is temporarily overloaded, please retry later"
+          },
+          {
+            "upstream_status": 503,
+            "same_account_retry": true,
+            "request_scoped_transient": true,
+            "next_account_action": 0,
+            "client_status": 503,
+            "client_message": "Upstream service is temporarily overloaded, please retry later"
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "transient_processing",
+        "http_status": 400,
+        "body": "{\"error\":{\"message\":\"An error occurred while processing your request\"}}",
+        "message": "An error occurred while processing your request",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"An error occurred while processing your request\"}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "rate_limit",
+        "http_status": 429,
+        "body": "{\"error\":{\"code\":\"rate_limit_exceeded\",\"type\":\"rate_limit_error\"}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"rate_limit_exceeded\",\"type\":\"rate_limit_error\"}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 429,
+        "response_failed_semantic_status": 429,
+        "response_failed_status": 429,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 429,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 429,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "embedded_rate_status",
+        "http_status": 400,
+        "body": "{\"error\":{\"type\":\"invalid_request_error\",\"status_code\":429}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"type\":\"invalid_request_error\",\"status_code\":429}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 429,
+        "response_failed_semantic_status": 429,
+        "response_failed_status": 429,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "embedded_server_status",
+        "http_status": 400,
+        "body": "{\"error\":{\"status\":503}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"status\":503}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 503,
+        "response_failed_semantic_status": 503,
+        "response_failed_status": 503,
+        "error_event_failover": true,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "embedded_auth_status",
+        "http_status": 400,
+        "body": "{\"error\":{\"type\":\"invalid_request_error\",\"status_code\":401}}",
+        "message": "",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"type\":\"invalid_request_error\",\"status_code\":401}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 401,
+        "response_failed_semantic_status": 401,
+        "response_failed_status": 401,
+        "error_event_failover": true,
+        "response_failed_failover": false,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "body_limit",
+        "http_status": 413,
+        "body": "{\"error\":{\"message\":\"Request payload is too large\"}}",
+        "message": "Request payload is too large",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"Request payload is too large\"}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 413,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "scope": "account",
+            "reason": "openai_request_body_too_large",
+            "client_status": 413,
+            "client_message": "Request payload is too large"
+          },
+          {
+            "upstream_status": 413,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 1,
+            "scope": "account",
+            "reason": "openai_request_body_too_large",
+            "client_status": 413,
+            "client_message": "Request payload is too large"
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "empty_payload",
+        "http_status": 400,
+        "body": "",
+        "message": "",
+        "response_failed_body": ""
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "malformed_payload",
+        "http_status": 502,
+        "body": "{\"error\":",
+        "message": "",
+        "response_failed_body": "{\"error\":"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "deepseek_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "kimi_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "none": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_api_key": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_oauth": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          },
+          "openai_pool_400": {
+            "http": true,
+            "managed_http": true,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 502,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 502,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "name": "unknown_provider_message",
+        "http_status": 400,
+        "body": "{\"error\":{\"message\":\"provider refused\"}}",
+        "message": "provider refused",
+        "response_failed_body": "{\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"provider refused\"}}}"
+      },
+      "observed": {
+        "http_class": "unknown",
+        "error_event_class": "unknown",
+        "response_failed_class": "unknown",
+        "error_semantic_status": 502,
+        "response_failed_semantic_status": 502,
+        "response_failed_status": 502,
+        "error_event_failover": false,
+        "response_failed_failover": true,
+        "account_contexts": {
+          "anthropic": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "deepseek_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "kimi_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "none": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_api_key": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_oauth": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": false
+          },
+          "openai_pool_400": {
+            "http": false,
+            "managed_http": false,
+            "passthrough": true
+          }
+        },
+        "replay_without_then_with_same_account_flag": [
+          {
+            "upstream_status": 400,
+            "same_account_retry": false,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          },
+          {
+            "upstream_status": 400,
+            "same_account_retry": true,
+            "request_scoped_transient": false,
+            "next_account_action": 0
+          }
+        ]
+      }
+    }
+  ]
+}

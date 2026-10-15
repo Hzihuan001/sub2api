@@ -33,6 +33,38 @@ def imports(source: str, suffix: str) -> list[str]:
     return re.findall(r'''(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)["']([^"']+)["']''', source)
 
 
+def go_host_call_count(source: str, function: str, call: str) -> int:
+    """Count a qualified call inside one named Go host function.
+
+    This checks the production call site, not just its package import. Ignore
+    comments and literals so a deleted call cannot survive as documentation.
+    Balanced delimiters keep calls in another function outside this contract.
+    """
+    if not re.fullmatch(r'[A-Za-z_]\w*', function) or not re.fullmatch(r'[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+', call):
+        raise ContractError("invalid required host function or qualified call")
+    code = re.sub(r'''//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`''', ' ', source)
+    declaration = re.search(r'\bfunc\s+' + re.escape(function) + r'\s*\(', code)
+    if not declaration:
+        return 0
+    depth = 1
+    cursor = declaration.end()
+    while cursor < len(code) and depth:
+        depth += (code[cursor] == '(') - (code[cursor] == ')')
+        cursor += 1
+    opening = code.find('{', cursor)
+    if depth or opening < 0:
+        return 0
+    depth = 1
+    cursor = opening + 1
+    while cursor < len(code) and depth:
+        depth += (code[cursor] == '{') - (code[cursor] == '}')
+        cursor += 1
+    if depth:
+        return 0
+    pattern = r'(?<![\w.])' + r'\s*\.\s*'.join(re.escape(part) for part in call.split('.')) + r'\s*\('
+    return len(re.findall(pattern, code[opening + 1:cursor - 1]))
+
+
 def production_sources(root: Path):
     for folder in ("backend/internal", "backend/cmd", "frontend/src"):
         for path in (root / folder).rglob("*"):
@@ -129,6 +161,19 @@ def check(root: Path) -> dict:
                 found.add(rel)
         if found != allowed:
             raise ContractError(f"{boundary['id']}: host entry mismatch; unregistered={sorted(found-allowed)}, disconnected={sorted(allowed-found)}")
+    required_calls = data.get("required_host_calls", [])
+    if not required_calls:
+        raise ContractError("required host calls cannot be empty")
+    for contract in required_calls:
+        path = relative_path(root, contract["file"])
+        if path.suffix != ".go" or not path.is_file():
+            raise ContractError(f"invalid required host call file: {contract['file']}")
+        expected = contract.get("count", 1)
+        if type(expected) is not int or expected < 1:
+            raise ContractError("required host call count must be a positive integer")
+        actual = go_host_call_count(path.read_text(encoding="utf-8"), contract["function"], contract["call"])
+        if actual != expected:
+            raise ContractError(f"{contract['id']}: required host call {contract['file']}:{contract['function']} -> {contract['call']} expected={expected}, actual={actual}")
     return data
 
 

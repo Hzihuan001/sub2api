@@ -21,12 +21,15 @@
     {"id":"backend-custom-composition","host_prefixes":["backend/internal/customapp/"],"import_prefixes":["github.com/Wei-Shaw/sub2api/internal/custom"],"files":["backend/internal/customapp/composition.go"]},
     {"id":"frontend-custom-host","host_prefixes":["frontend/src/router/","frontend/src/components/","frontend/src/views/","frontend/src/i18n/","frontend/src/stores/"],"import_prefixes":["@/custom"],"files":["frontend/src/router/index.ts","frontend/src/router/title.ts","frontend/src/components/layout/AppSidebar.vue","frontend/src/views/admin/SettingsView.vue","frontend/src/i18n/index.ts","frontend/src/stores/app.ts"]}
   ],
+  "required_host_calls": [
+    {"id":"backend-custom-worker-start","file":"backend/cmd/server/main.go","function":"runMainServer","call":"app.Custom.StartWorkers","count":1}
+  ],
   "tests": {
     "architecture-negative":{"cwd":"scripts","argv":["python","-m","unittest","test_custom_contracts"]},
     "backend-host":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/custom","./internal/customapp","./internal/authz","./internal/server","./internal/server/routes","./internal/service","./internal/repository","./cmd/server","-run","Custom|Operator|HostWorker|PromptRule|Application|Cleanup","-count=1"]},
     "backend-audit":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/securityaudit","./internal/handler","./internal/service","-run","PromptAudit|PromptCapture|AuditGate|SecurityAudit|CaptureOnly","-count=1"]},
     "backend-batch":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/handler","./internal/service","-run","BatchImage|BananaAsync","-count=1"]},
-    "backend-resilience":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/service","./internal/repository","-run","GatewayFailurePolicy|GatewayFailureDecision|GatewayFailureReplayDecision|GatewayFailureAttempt|GatewayFailureSemanticStatus|OpenAIRecoverableFailover|AccountOverload|OpenAIRepeatedOverload|OpenAIQueueHeartbeat|CountsOverloadOnce|SameAccount|ClearAccountError|RateLimitService_Clear","-count=1"]},
+    "backend-resilience":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/service","./internal/repository","-run","GatewayFailurePolicy|GatewayFailureDecision|GatewayFailureReplayDecision|GatewayFailureAttempt|GatewayFailureSemanticStatus|^TestGatewayFailurePublishedBaseline$|OpenAIRecoverableFailover|AccountOverload|OpenAIRepeatedOverload|OpenAIQueueHeartbeat|CountsOverloadOnce|SameAccount|ClearAccountError|RateLimitService_Clear|^TestOpenAIWSPassthroughIdentity|^TestOpenAIWSPassthroughTurnLifecycle_|^TestPassthroughLifecycle_","-count=1"]},
     "frontend-host":{"cwd":"frontend","argv":["pnpm","exec","vitest","run","src/custom","src/authz","src/router/__tests__","src/components/layout/__tests__","src/views/admin/__tests__/SettingsView.spec.ts","src/i18n/__tests__"]},
     "frontend-features":{"cwd":"frontend","argv":["pnpm","exec","vitest","run","src/features/image-studio","src/features/prompt-audit","src/utils/__tests__/imageGenerationPolicy.spec.ts","src/api/__tests__/imageStudio.spec.ts","src/composables/__tests__/useBatchImageAccess.retry.spec.ts","src/views/user/__tests__/ImageStudioView.sizeDisplay.spec.ts"]}
   }

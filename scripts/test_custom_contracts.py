@@ -16,12 +16,14 @@ class ContractTests(unittest.TestCase):
         self.write(".github/custom-features.json", '{"features":[{"id":"probe"}]}')
         self.write("backend/internal/custom/probe.go", "package custom\n")
         self.write("backend/internal/server/router.go", 'package server\nimport "example/custom"\n')
+        self.write("backend/cmd/server/main.go", 'package main\nfunc runMainServer() { app.Custom.StartWorkers(context.Background()) }\n')
         self.contract = {
             "version": 1,
             "modules": [{"id": "probe", "owner": "custom/probe", "entries": ["backend/internal/custom"], "tests": ["probe"]}],
             "tests": {"probe": {"cwd": ".", "argv": ["go", "test", "./..."]}},
             "dependency_rules": [{"id": "neutral", "source_prefixes": ["backend/internal/custom/"], "forbidden_import_prefixes": ["example/server"]}],
             "host_entries": [{"id": "host", "host_prefixes": ["backend/internal/server/"], "import_prefixes": ["example/custom"], "files": ["backend/internal/server/router.go"]}],
+            "required_host_calls": [{"id": "worker-start", "file": "backend/cmd/server/main.go", "function": "runMainServer", "call": "app.Custom.StartWorkers"}],
         }
 
     def write(self, path, contents):
@@ -44,6 +46,46 @@ class ContractTests(unittest.TestCase):
     def test_unregistered_host_patch_is_rejected(self):
         self.write("backend/internal/server/extra.go", 'package server\nimport "example/custom"\n')
         with self.assertRaisesRegex(ContractError, "unregistered"):
+            self.validate()
+
+    def test_removed_production_startup_call_is_rejected_with_imports_intact(self):
+        self.write("backend/cmd/server/main.go", 'package main\nfunc runMainServer() {}\n')
+        with self.assertRaisesRegex(ContractError, "worker-start: required host call.*actual=0"):
+            self.validate()
+
+    def test_startup_call_in_comments_or_literals_cannot_replace_execution(self):
+        self.write("backend/cmd/server/main.go", '''package main
+func runMainServer() {
+    // app.Custom.StartWorkers(context.Background())
+    /* app.Custom.StartWorkers(context.Background()) */
+    message := "app.Custom.StartWorkers(context.Background())"
+    raw := `app.Custom.StartWorkers(context.Background())`
+}
+''')
+        with self.assertRaisesRegex(ContractError, "worker-start: required host call.*actual=0"):
+            self.validate()
+
+    def test_startup_call_in_an_uninvoked_function_is_rejected(self):
+        self.write("backend/cmd/server/main.go", '''package main
+func runMainServer() { if ready { ready = false } }
+func unused() { app.Custom.StartWorkers(context.Background()) }
+''')
+        with self.assertRaisesRegex(ContractError, "worker-start: required host call.*actual=0"):
+            self.validate()
+
+    def test_duplicate_production_startup_call_is_rejected(self):
+        self.write("backend/cmd/server/main.go", '''package main
+func runMainServer() {
+    app.Custom.StartWorkers(context.Background())
+    app.Custom.StartWorkers(context.Background())
+}
+''')
+        with self.assertRaisesRegex(ContractError, "worker-start: required host call.*actual=2"):
+            self.validate()
+
+    def test_removed_required_host_calls_cannot_disable_the_gate(self):
+        self.contract["required_host_calls"] = []
+        with self.assertRaisesRegex(ContractError, "required host calls cannot be empty"):
             self.validate()
 
     def test_reverse_dependency_is_rejected(self):
