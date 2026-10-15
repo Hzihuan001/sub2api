@@ -99,3 +99,13 @@ Windows 测试进程 PATH 包含锁定 Go 和 `G:/PC/Git/bin`，后者满足 PgD
 | 发布与生产 | 当前不执行 | 用户暂缓发布，需新授权；不以本地验收自动推送/打标签/部署 |
 
 本表核对的是原范围，不以新增目录或接口数量作为完成标准；性能未闭环前仍不能将 P0–P6 整体验收标为完成。
+
+## 自动升级 workflow 离线复核（2026-10-15，本地）
+
+- 原范围复核固定 `260f3c1b6` / 运行 `53fd17b5b`，二者 backend/frontend 无差异。当前分支后续 `caa717338` 是独立分组规则功能；不能继承原完整 suite、16 路由或 Docker/性能验收作为新功能发布证据。本节只改 workflow、离线测试、契约清单与文档。
+- 修复报告反引号命令替换、缺 bot 身份、switch/commit 错误继续、未提交 MERGE_HEAD 连续合并、带斜杠补丁日志路径；PR 正常标题要求 merge/check outcome 与输出均成功，异常或缺失结果明确 blocked。
+- 真实 YAML Bash 在临时目录运行，Git/gh 使用 shell 替身，PATH 清空只允许本地 awk/sed/cp 包装；每场景 15 秒上限，无网络、凭据或远端写入。覆盖字面量报告、提交顺序、异常状态、补丁冲突及 no-op。
+- **最终定向门禁**：Python 3.12 执行 `python scripts/custom_contracts.py --run-tests --group architecture-negative`，6 模块 / 8 可执行分组结构检查通过；原 22 项加 workflow 11 项，共 33 项、6.443 秒、0 失败 / 0 skip。日志 `D:/projects/go-tmp/upstream-workflow-contracts-20261015.log`；`git diff --check` 通过。测试包含已包含补丁不空提交且继续下一补丁的情况。
+- **远端只读事实**：`actions/permissions` 为 enabled/all，workflow 默认 write、允许 PR；全仓最近执行仍 2026-10-08，升级 workflow 最近成功为 2026-10-05（run `37296118305`）。远端 `custom/integration=fd7c1b91446a38666b7f5c32ab9d493f6431d071`，到原收尾点 `260f3c1b6` 图差异 0/296；开放草稿 PR #1 仍旧 isolation 分支。未 dispatch、未推进分支；不能据权限正常声称账号层限制或整条链路已恢复。
+- **P4 证据限制补充**：现有真实 PG / 候选 Docker 证明正确性与恢复，另有旧新取消缺陷复现；未找到完整同一组合夹具的旧新任务/账目逐项对照矩阵。不声称该实验已完成，也不以此追加负载；用户授权的取消修复本来就有意改变旧缺陷结果。
+- 原 INFO/CBBC mixed、15 项基线 lint 和用户暂缓发布保持；没有应用源码变化，不重跑已通过的后端/前端套件，不增加性能实验。

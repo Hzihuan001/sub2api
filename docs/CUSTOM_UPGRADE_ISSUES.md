@@ -1,5 +1,13 @@
 # 定制升级问题记录
 
+## 2026-10-15 — Workflow 必须测试真实 Shell，而不只看 YAML 存在
+
+- 双引号报告内的 Markdown 反引号会被 Bash 解释成命令替换；改成单引号格式串配合 `printf`，并验证 tag/SHA/分支文本原样保留。
+- runner 未设置 bot 提交身份，且 `set +e` 会放过 switch/commit 失败；改为显式配置身份、`set -euo pipefail`，仅对预期 merge 冲突分支处理退出码。
+- 上游 merge 尚未提交就开始 patch merge 会触发 MERGE_HEAD 错误；每一步先提交，已包含补丁不空提交。带 `/` 的 patch 分支不能直接拼进日志文件路径。
+- 不能只判断 `failed == true`：步骤异常终止时输出可能为空。PR 标题现在要求 outcome 与显式输出同时通过，缺失结果为 blocked。
+- 新测试从实际 YAML 提取 Bash，执行于临时目录，Git/gh 均替身、无可执行 PATH，单场景 15 秒上限；不触发真实 fetch/push/PR。真实 Actions 验证仍需独立授权和运行证据。
+
 ## 2026-10-15 — 升级报告与实际分支必须使用同一冻结基线
 
 - `sync-upstream.ps1` 原先先解析 `origin/<base>` 的旧 SHA、生成报告，再 fetch origin 并从可移动 ref 建升级分支。远端前进时报告/检查起点可能不是实际起点。
