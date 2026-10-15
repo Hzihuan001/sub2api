@@ -382,6 +382,16 @@
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
               <button
+                v-if="authStore.canOperator('groups.read')"
+                type="button"
+                data-testid="group-failure-policy-action"
+                @click="handleFailurePolicy(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+              >
+                <Icon name="swap" size="sm" />
+                <span class="text-xs">{{ t('custom.gatewayResilience.action') }}</span>
+              </button>
+              <button
                 @click="handleEdit(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
               >
@@ -2114,6 +2124,15 @@
         @submit.prevent="handleUpdateGroup"
         class="space-y-5"
       >
+        <button
+          v-if="authStore.canOperator('groups.read')"
+          type="button"
+          class="btn btn-secondary"
+          data-testid="edit-group-failure-policy-action"
+          @click="handleFailurePolicy(editingGroup)"
+        >
+          {{ t('custom.gatewayResilience.action') }}
+        </button>
         <div>
           <GroupI18nField
             v-model="editForm.name"
@@ -4237,6 +4256,12 @@
       @close="showRPMOverridesModal = false"
       @success="loadGroups"
     />
+    <GroupFailurePolicyModal
+      v-if="showFailurePolicyModal"
+      :show="showFailurePolicyModal"
+      :group="failurePolicyGroup"
+      @close="showFailurePolicyModal = false"
+    />
   </AppLayout>
 </template>
 
@@ -4279,6 +4304,7 @@ import Icon from "@/components/icons/Icon.vue";
 import GroupI18nField from "@/components/admin/group/GroupI18nField.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
+import GroupFailurePolicyModal from "@/features/gateway-resilience/GroupFailurePolicyModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
@@ -4822,6 +4848,8 @@ const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
 const rpmOverridesGroup = ref<AdminGroup | null>(null);
+const showFailurePolicyModal = ref(false);
+const failurePolicyGroup = ref<AdminGroup | null>(null);
 const sortableGroups = ref<AdminGroup[]>([]);
 type ConcreteGroupPlatform = Exclude<GroupPlatform, "composite">;
 type CompositeRouteFormState = {
@@ -6402,6 +6430,12 @@ const handleRateMultipliers = (group: AdminGroup) => {
 const handleRPMOverrides = (group: AdminGroup) => {
   rpmOverridesGroup.value = group;
   showRPMOverridesModal.value = true;
+};
+
+const handleFailurePolicy = (group: AdminGroup) => {
+  if (!authStore.canOperator("groups.read")) return;
+  failurePolicyGroup.value = group;
+  showFailurePolicyModal.value = true;
 };
 
 const handleDuplicate = async (group: AdminGroup) => {

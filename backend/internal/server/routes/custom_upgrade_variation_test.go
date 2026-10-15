@@ -27,6 +27,8 @@ var customUpgradeBuiltinRoutes = []string{
 	"PUT /api/v1/admin/roles/operator/permissions",
 	"POST /api/v1/admin/users/:id/api-keys",
 	"GET /api/v1/admin/groups/:id/effective-models",
+	"GET /api/v1/admin/groups/:id/failure-policy",
+	"PUT /api/v1/admin/groups/:id/failure-policy",
 	"GET /api/v1/admin/ops/capabilities",
 	"DELETE /api/v1/admin/ops/errors",
 	"GET /api/v1/admin/usage/filter-options",

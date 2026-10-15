@@ -1,5 +1,15 @@
 # 定制功能日志
 
+### 2026-10-15 — 分组错误累计与全分组暂停（本地完成，未发布）
+
+- 用户批准“先开发分组切换规则”，明确共用账号触发阈值后全分组暂停。分支 `codex/group-failover-rules-v0.2.16`，基线 `260f3c1b6`；与之前纯模块化和批量取消账务任务分开记录。
+- 新增 `GET/PUT /api/v1/admin/groups/:id/failure-policy`，复用 `groups.read/write` 与 settings 键 `custom.gateway-resilience.group-failure-policy.<id>`。PUT 整体替换；`{"rules":{}}` 恢复全部继承。四类规则可独立继承，严格校验未知字段/类别、整数、边界和分组存在性。
+- 新增模块内配置/执行器/Redis 适配器、前端 `features/gateway-resilience`，登记现有 feature 和升级契约，不新增管理菜单。修改规则参数后启用新计数版本，不解除已有冷却；冷却到期或账号“恢复状态”解除。恢复不会修改管理员手动关闭的调度开关。
+- 复用既有 HTTP/SSE/WS 错误分类和尝试去重；补齐 WS 分组上下文、原生调度本地冷却检查。已有明确配额/凭据/模型/Retry-After/账号规则优先，不扩大重试次数，不重放部分输出，不改账务。
+- 针对 Redis 间歇故障补保留窗口证据、并发 Lua 单次触发/固定截止时间/租约重试、有界缓存满时不反复延长冷却。自动恢复不新增 Redis 硬依赖；手动恢复的共享计数清理失败会明确报错。
+- 验证：Go 四包定向回归 157 顶层 / 422 含子例，0 失败 / 0 skip（日志 `D:/projects/go-tmp/group-failover-final-20261015.jsonl`）；前端编辑器/实际 GroupsView/消息宿主 52 项、类型/非修复 lint 通过；真实注册消息纳入 locale 完整性门禁，4 项含缺失贡献负例及生产构建通过；架构负例 22 项通过。相对 `260f3c1b6` 差异 golangci-lint 0 issues，diff check 通过；两处等价静态简化后计数器/Redis 定向复验通过。实现与本记录一起本地提交，分支如上。
+- 没有 push/deploy，无新增迁移、无真实模型费用；本功能未进行 Docker/生产验收。之前用户暂缓发布和性能 mixed 门禁仍有效，不宣称整个模块化项目可上线。
+
 ### 2026-10-15 — 升级维护入口收尾（本地，无运行代码变化）
 
 - 升级脚本 Apply 先拉取再冻结基线 SHA，实际起点与报告/检查一致；新增 5 项离线 mock 测试并接入架构检查。最终 `architecture-negative` 共 22 项通过、无 skip，耗时 3.791s；日志 `D:/projects/go-tmp/modular-maintenance-contracts-20261015.log`。不执行真实 fetch/Apply/push，也不推进落后的集成分支。

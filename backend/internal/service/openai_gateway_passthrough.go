@@ -1494,6 +1494,23 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	headers http.Header,
 	canonicalModel ...string,
 ) (int, bool) {
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	return s.handleOpenAIStreamTerminalAccountSideEffectsWithContext(ctx, account, payload, message, headers, canonicalModel...)
+}
+
+// WebSocket observers already own the authenticated request context, even when
+// they do not have a Gin response writer. Preserve it for group failure rules.
+func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffectsWithContext(
+	ctx context.Context,
+	account *Account,
+	payload []byte,
+	message string,
+	headers http.Header,
+	canonicalModel ...string,
+) (int, bool) {
 	statusCode := openAIStreamFailureStatus(payload, message)
 	if isOpenAIRequestScopedFailure(payload, message) {
 		return statusCode, false
@@ -1502,10 +1519,6 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	// it on both sides of the output guard; an unsafe-to-replay current stream
 	// must still protect subsequent requests from the same overloaded account.
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed(message, payload) {
-		ctx := context.Background()
-		if c != nil && c.Request != nil {
-			ctx = c.Request.Context()
-		}
 		return statusCode, s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, headers, payload, canonicalModel...)
 	}
 	switch statusCode {
@@ -1515,10 +1528,6 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 		}
 		fallthrough
 	case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusNotFound, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, 520, 521, 522, 523, 524, 529:
-		ctx := context.Background()
-		if c != nil && c.Request != nil {
-			ctx = c.Request.Context()
-		}
 		model := firstNonEmpty(canonicalModel...)
 		if model == "" {
 			model = firstNonEmpty(gjson.GetBytes(payload, "model").String(), gjson.GetBytes(payload, "response.model").String())

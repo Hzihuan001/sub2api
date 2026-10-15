@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { createCustomFeatureRegistry, loadCustomLocaleMessages, type CustomLocaleMessages } from '@/custom'
 
 import en from '../locales/en'
 import zh from '../locales/zh'
@@ -61,9 +62,22 @@ function missingKeys(usedKeys: string[], availableKeys: Set<string>): string[] {
 }
 
 describe('locale key completeness', () => {
-  const enKeys = new Set(flattenLeafKeys(en))
-  const zhKeys = new Set(flattenLeafKeys(zh))
+  let messages: { en: CustomLocaleMessages; zh: CustomLocaleMessages }
+  let enKeys: Set<string>
+  let zhKeys: Set<string>
   const usedKeys = [...new Set(sourceKeys())].sort()
+
+  beforeAll(async () => {
+    // Match the production locale loader, including registered feature additions
+    // and validated overrides. Missing feature translations remain gate failures.
+    const [english, chinese] = await Promise.all([
+      loadCustomLocaleMessages('en', en),
+      loadCustomLocaleMessages('zh', zh)
+    ])
+    messages = { en: english, zh: chinese }
+    enKeys = new Set(flattenLeafKeys(english))
+    zhKeys = new Set(flattenLeafKeys(chinese))
+  })
 
   it('keeps English and Chinese locale schemas identical', () => {
     expect([...enKeys].filter((key) => !zhKeys.has(key)).sort()).toEqual([])
@@ -71,9 +85,9 @@ describe('locale key completeness', () => {
   })
 
   it('contains a non-empty message for every locale leaf', () => {
-    for (const [locale, messages] of Object.entries({ en, zh })) {
-      const emptyKeys = flattenLeafKeys(messages).filter((key) => {
-        let current: unknown = messages
+    for (const [locale, localeMessages] of Object.entries(messages)) {
+      const emptyKeys = flattenLeafKeys(localeMessages).filter((key) => {
+        let current: unknown = localeMessages
         for (const segment of key.split('.')) {
           current = (current as LocaleValue)[segment]
         }
@@ -86,5 +100,22 @@ describe('locale key completeness', () => {
   it('contains every statically referenced production key', () => {
     expect(missingKeys(usedKeys, enKeys), 'English locale is missing referenced keys').toEqual([])
     expect(missingKeys(usedKeys, zhKeys), 'Chinese locale is missing referenced keys').toEqual([])
+  })
+
+  it('still detects missing feature messages and missing locale contributions', async () => {
+    const registry = createCustomFeatureRegistry()
+    registry.register({
+      id: 'locale-completeness-probe',
+      i18nNamespace: 'custom.localeCompleteness',
+      messages: { en: async () => ({ 'custom.localeCompleteness.title': 'Feature title' }) }
+    })
+    const probeKeys = collectStaticSourceKeys("t('custom.localeCompleteness.title'); t('custom.localeCompleteness.missing')")
+    const english = await loadCustomLocaleMessages('en', en, registry)
+    const chinese = await loadCustomLocaleMessages('zh', zh, registry)
+    expect(missingKeys(probeKeys, new Set(flattenLeafKeys(english)))).toEqual(['custom.localeCompleteness.missing'])
+    expect(missingKeys(probeKeys, new Set(flattenLeafKeys(chinese)))).toEqual([
+      'custom.localeCompleteness.missing',
+      'custom.localeCompleteness.title'
+    ])
   })
 })

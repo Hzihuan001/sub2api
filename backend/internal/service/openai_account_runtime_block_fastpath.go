@@ -114,6 +114,9 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	// pool accounts and failures received after downstream output has started.
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
 		if s != nil && s.rateLimitService != nil {
+			if handled, until := s.rateLimitService.applyGroupHTTPFailure(ctx, account, statusCode, headers, responseBody, firstNonEmpty(canonicalModel...)); handled {
+				return !until.IsZero()
+			}
 			if until := s.rateLimitService.RecordAccountOverload(ctx, account); !until.IsZero() {
 				s.BlockAccountScheduling(account, until, "repeated_overload")
 				return true
@@ -194,6 +197,11 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 			s.BlockAccountScheduling(account, time.Now().Add(openAIHardQuotaFallbackCooldown), "quota_exhausted")
 		}
 		return true
+	}
+	if s.rateLimitService != nil {
+		if handled, until := s.rateLimitService.applyGroupHTTPFailure(stateCtx, account, statusCode, headers, responseBody, firstNonEmpty(canonicalModel...)); handled {
+			return !until.IsZero()
+		}
 	}
 	if statusCode == http.StatusTooManyRequests {
 		s.markOpenAIOAuth429RateLimited(stateCtx, account, headers, responseBody)

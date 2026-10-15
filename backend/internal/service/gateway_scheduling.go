@@ -1158,6 +1158,9 @@ func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool
 	if !account.IsSchedulable() {
 		return false
 	}
+	if s != nil && s.rateLimitService != nil && s.rateLimitService.IsAccountOverloadCooling(account.ID, time.Now()) {
+		return false
+	}
 	return s.isKiroRuntimeSchedulable(context.Background(), account)
 }
 
@@ -1166,6 +1169,9 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 		return false
 	}
 	if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+		return false
+	}
+	if s != nil && s.rateLimitService != nil && s.rateLimitService.IsAccountOverloadCooling(account.ID, time.Now()) {
 		return false
 	}
 	return s.isKiroRuntimeSchedulable(ctx, account)
@@ -1216,6 +1222,9 @@ func (s *GatewayService) kiroTransientCooldownRecoveryKeys(ctx context.Context, 
 			continue
 		}
 		if !acc.IsSchedulable() {
+			continue
+		}
+		if s.rateLimitService != nil && s.rateLimitService.IsAccountOverloadCooling(acc.ID, time.Now()) {
 			continue
 		}
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {

@@ -38,6 +38,10 @@ func (s *RateLimitService) IsAccountOverloadCooling(accountID int64, now time.Ti
 // Database recovery and counter removal are serialized with this process's
 // overload observations. The caller still owns clearing other runtime blocks.
 func (s *RateLimitService) ClearAccountOverload(ctx context.Context, accountID int64) error {
+	return s.clearAccountOverload(ctx, accountID, false)
+}
+
+func (s *RateLimitService) clearAccountOverload(ctx context.Context, accountID int64, requireGroupCounterReset bool) error {
 	if s == nil || accountID <= 0 {
 		return nil
 	}
@@ -50,12 +54,21 @@ func (s *RateLimitService) ClearAccountOverload(ctx context.Context, accountID i
 	if s.accountRepo == nil {
 		return errors.New("clear account overload: account repository unavailable")
 	}
+	// The manual recover-state action requires a shared counter reset. Existing
+	// automatic recovery remains available when Redis cannot be reached.
+	if err := s.clearAccountGroupFailures(ctx, accountID); err != nil {
+		if requireGroupCounterReset {
+			return err
+		}
+		slog.Warn("group_failure_counter_clear_failed", "account_id", accountID, "error", err)
+	}
 	if err := s.accountRepo.ClearRateLimit(ctx, accountID); err != nil {
 		return err
 	}
 	s.overloadFailures.mu.Lock()
 	delete(s.overloadFailures.entries, accountID)
 	s.overloadFailures.mu.Unlock()
+	s.groupFailures.clear(accountID)
 	if cache, ok := s.tempUnschedCache.(AccountOverloadFailureCache); ok {
 		if err := cache.ClearAccountOverloadFailures(ctx, accountID); err != nil {
 			slog.Warn("account_overload_counter_clear_failed", "account_id", accountID, "error", err)

@@ -30,6 +30,7 @@ describe('real i18n host message loading', () => {
     expect(i18n.global.t('custom.localeProbe.title')).toBe('Registered message')
     expect(i18n.global.t('common.save')).toBe('Explicit save override')
     expect(i18n.global.t('setup.title')).toBe('Moshu Setup')
+    expect(i18n.global.t('custom.gatewayResilience.title')).toBe('Group failover rules')
     expect(i18n.global.t('custom.localeProbe.echo', { url: 'https://Sub2API.example/sub2api' })).toBe('URL: https://Sub2API.example/sub2api')
     expect(localStorage.getItem('sub2api_locale')).toBe('en')
     expect(localStorage.getItem('moshu_locale')).toBeNull()

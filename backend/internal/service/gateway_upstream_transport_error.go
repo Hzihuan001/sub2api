@@ -65,6 +65,8 @@ func (s *GatewayService) handleUpstreamTransportError(ctx context.Context, c *gi
 
 	if classifyUpstreamTransportError(err).Persistent {
 		s.tempUnscheduleTransportError(ctx, account, safeErr)
+	} else if s.rateLimitService != nil {
+		s.rateLimitService.applyGroupTransportTimeout(ctx, account, err)
 	}
 
 	return &UpstreamFailoverError{

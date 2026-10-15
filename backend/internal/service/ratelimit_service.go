@@ -32,6 +32,7 @@ type RateLimitService struct {
 	tokenCacheInvalidator TokenCacheInvalidator
 	runtimeBlocker        AccountRuntimeBlocker
 	overloadFailures      accountOverloadLocalState
+	groupFailures         groupFailureLocalState
 	// ollamaCloudUsageProbe is the optional Ollama Cloud usage probe scheduler
 	// injected via SetOllamaCloudUsageProbeScheduler. See
 	// ratelimit_service_ollama_429.go for how real-Ollama 429s schedule an async
@@ -59,6 +60,9 @@ type SuccessfulTestRecoveryResult struct {
 // AccountRecoveryOptions 控制账号恢复时的附加行为。
 type AccountRecoveryOptions struct {
 	InvalidateToken bool
+	// RequireGroupCounterReset is reserved for explicit manual recovery. Redis
+	// reset failure must be returned before any database or local-state clearing.
+	RequireGroupCounterReset bool
 }
 
 type geminiUsageCacheEntry struct {
@@ -356,6 +360,9 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// by retrying the same account now. Pool mode must not suppress this signal.
 	if account.IsOpenAICompatible() && !account.IsShadow() && failureClass == openAIGatewayFailureQuota {
 		return s.handleOpenAIQuotaExhaustion(ctx, account, statusCode, headers, responseBody)
+	}
+	if handled, until := s.applyGroupHTTPFailure(ctx, account, statusCode, headers, responseBody, tempUnschedulableModel(ctx, requestedModel)); handled {
+		return !until.IsZero()
 	}
 
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
@@ -2224,7 +2231,11 @@ func (s *RateLimitService) samplePassiveUsageFromHeaders(ctx context.Context, ac
 
 // ClearRateLimit 清除账号的限流状态
 func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) error {
-	if err := s.ClearAccountOverload(ctx, accountID); err != nil {
+	return s.clearRateLimit(ctx, accountID, false)
+}
+
+func (s *RateLimitService) clearRateLimit(ctx context.Context, accountID int64, requireGroupCounterReset bool) error {
+	if err := s.clearAccountOverload(ctx, accountID, requireGroupCounterReset); err != nil {
 		return err
 	}
 	if err := s.accountRepo.ClearAntigravityQuotaScopes(ctx, accountID); err != nil {
@@ -2264,6 +2275,14 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	}
 
 	result := &SuccessfulTestRecoveryResult{}
+	if options.RequireGroupCounterReset {
+		// Also clear pre-threshold counters and local-only cooldowns when the
+		// database snapshot has no recoverable fields yet. Do this before ClearError.
+		if err := s.clearRateLimit(ctx, accountID, true); err != nil {
+			return nil, err
+		}
+		result.ClearedRateLimit = true
+	}
 	if account.Status == StatusError {
 		if err := s.accountRepo.ClearError(ctx, accountID); err != nil {
 			return nil, err
@@ -2276,8 +2295,8 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 		}
 	}
 
-	if hasRecoverableRuntimeState(account) {
-		if err := s.ClearRateLimit(ctx, accountID); err != nil {
+	if !options.RequireGroupCounterReset && hasRecoverableRuntimeState(account) {
+		if err := s.clearRateLimit(ctx, accountID, false); err != nil {
 			return nil, err
 		}
 		result.ClearedRateLimit = true
@@ -2952,6 +2971,9 @@ func truncateTempUnschedMessage(body []byte, maxBytes int) string {
 func (s *RateLimitService) HandleStreamTimeout(ctx context.Context, account *Account, model string) bool {
 	if account == nil {
 		return false
+	}
+	if handled, until := s.ApplyGroupFailurePolicy(ctx, account, GroupFailureTimeout); handled {
+		return !until.IsZero()
 	}
 
 	// 获取系统设置

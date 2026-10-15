@@ -11,7 +11,7 @@ upstream:
 features:
   - id: gateway-resilience
     owner: custom/gateway-resilience
-    description: Shared failure classification, recoverable cooldown and safe pre-output failover.
+    description: Shared failure classification, per-group failure thresholds, recoverable account-wide cooldown and safe pre-output failover.
     tests:
       - backend/internal/service/overload_failure_breaker_test.go
       - backend/internal/service/openai_overload_failover_test.go
@@ -19,6 +19,16 @@ features:
       - backend/internal/repository/overload_failure_cache_test.go
       - backend/internal/service/gateway_failure_policy_test.go
       - backend/internal/service/gateway_failure_policy_stream_test.go
+      - backend/internal/service/group_failure_policy_settings_test.go
+      - backend/internal/service/group_failure_breaker_test.go
+      - backend/internal/service/group_failure_runtime_hooks_test.go
+      - backend/internal/service/group_failure_native_scheduling_test.go
+      - backend/internal/service/group_failure_recovery_test.go
+      - backend/internal/repository/group_failure_cache_test.go
+      - backend/internal/handler/admin/setting_handler_group_failure_policy_test.go
+      - backend/internal/handler/admin/account_handler_group_failure_recovery_test.go
+      - frontend/src/features/gateway-resilience
+      - frontend/src/views/admin/__tests__/GroupsView.codexManifest.spec.ts
       - deploy/tests/gateway-failover-smoke.ps1
   - id: operator
     owner: custom/operator

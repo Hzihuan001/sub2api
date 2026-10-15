@@ -28,7 +28,9 @@ const {
   showError: vi.fn()
 }))
 
-const authState = vi.hoisted(() => ({ isSimpleMode: false }))
+const authState = vi.hoisted(() => ({ isSimpleMode: false, canOperator: vi.fn((_permission: string) => true) }))
+const failurePolicyAPI = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
+vi.mock('@/api/client', () => ({ apiClient: failurePolicyAPI }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
@@ -178,6 +180,9 @@ function mountView() {
 describe('GroupsView duplicate action', () => {
   beforeEach(() => {
     authState.isSimpleMode = false
+    authState.canOperator.mockImplementation(() => true)
+    failurePolicyAPI.get.mockReset().mockResolvedValue({ data: { rules: {} } })
+    failurePolicyAPI.put.mockReset().mockResolvedValue({ data: { rules: {} } })
     localStorage.clear()
     vi.spyOn(console, 'error').mockImplementation(() => {})
     for (const fn of [
@@ -216,6 +221,49 @@ describe('GroupsView duplicate action', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('opens and saves the actual failover editor for the selected group', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="group-failure-policy-action"]').trigger('click')
+    await flushPromises()
+    expect(failurePolicyAPI.get).toHaveBeenCalledWith('/admin/groups/42/failure-policy', expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    await wrapper.get('[data-testid="failure-mode-timeout"]').setValue('custom')
+    await wrapper.get('[data-testid="failure-policy-save"]').trigger('click')
+    await flushPromises()
+    expect(failurePolicyAPI.put).toHaveBeenCalledWith('/admin/groups/42/failure-policy', {
+      rules: { timeout: { threshold: 2, window_seconds: 60, cooldown_seconds: 60 } }
+    }, expect.anything())
+    expect(wrapper.find('[data-testid="group-failure-policy"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('offers the same failover editor from edit group without submitting the group form', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'common.edit')!.trigger('click')
+    await wrapper.get('[data-testid="edit-group-failure-policy-action"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="group-failure-policy"]').exists()).toBe(true)
+    expect(updateGroup).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('opens failover rules read-only with groups.read and hides the entry without it', async () => {
+    authState.canOperator.mockImplementation(permission => permission === 'groups.read')
+    const reader = mountView()
+    await flushPromises()
+    await reader.get('[data-testid="group-failure-policy-action"]').trigger('click')
+    await flushPromises()
+    expect(reader.find('[data-testid="failure-policy-readonly"]').exists()).toBe(true)
+    expect(reader.find('[data-testid="failure-policy-save"]').exists()).toBe(false)
+    reader.unmount()
+    authState.canOperator.mockImplementation(permission => permission === 'groups.write')
+    const writerWithoutRead = mountView()
+    await flushPromises()
+    expect(writerWithoutRead.find('[data-testid="group-failure-policy-action"]').exists()).toBe(false)
+    writerWithoutRead.unmount()
   })
 
   it('duplicates the selected group, reports success, and refreshes the list', async () => {

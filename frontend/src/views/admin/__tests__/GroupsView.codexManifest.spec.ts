@@ -60,7 +60,7 @@ vi.mock("@/stores/onboarding", () => ({
 }));
 
 vi.mock("@/stores/auth", () => ({
-  useAuthStore: () => ({ isSimpleMode: false }),
+  useAuthStore: () => ({ isSimpleMode: false, canOperator: () => true }),
 }));
 
 vi.mock("vue-i18n", async () => {

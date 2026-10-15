@@ -51,6 +51,8 @@ func NewHost(h *handler.Handlers, promptRules *service.PromptRuleService, additi
 		{custom.AdminRoles, http.MethodPut, "/roles/operator/permissions", []gin.HandlerFunc{a.Setting.UpdateOperatorRolePolicy}},
 		{custom.AdminUserAPIKeys, http.MethodPost, "/:id/api-keys", []gin.HandlerFunc{a.User.OperatorTargetUserWriteGuard(), a.APIKey.CreateForUser}},
 		{custom.AdminGroupEffectiveModels, http.MethodGet, "/:id/effective-models", []gin.HandlerFunc{a.Group.GetEffectiveModels}},
+		{custom.AdminGroupEffectiveModels, http.MethodGet, "/:id/failure-policy", []gin.HandlerFunc{a.Setting.GetGroupFailurePolicy}},
+		{custom.AdminGroupEffectiveModels, http.MethodPut, "/:id/failure-policy", []gin.HandlerFunc{a.Setting.UpdateGroupFailurePolicy}},
 		{custom.AdminOpsCapabilities, http.MethodGet, "/capabilities", []gin.HandlerFunc{a.Ops.GetCapabilities}},
 		{custom.AdminOpsErrors, http.MethodDelete, "/errors", []gin.HandlerFunc{a.Ops.DeleteErrorLogs}},
 		{custom.AdminUsageFilters, http.MethodGet, "/filter-options", []gin.HandlerFunc{a.Usage.GetFilterOptions}},
