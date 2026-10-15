@@ -16,6 +16,21 @@ afterEach(() => {
 })
 
 describe('real i18n host message loading', () => {
+  it.each([
+    { locale: 'en' as const, title: 'Backup groups (optional)', summary: '+2 backup groups', position: 'Backup 3' },
+    { locale: 'zh' as const, title: '备用分组（可选）', summary: '+2 个备用分组', position: '备用 3' }
+  ])('loads key routing translations and placeholders in $locale through the real host', async ({ locale, title, summary, position }) => {
+    const { i18n, loadLocaleMessages } = await import('@/i18n')
+    await loadLocaleMessages(locale)
+    i18n.global.locale.value = locale
+    expect(registry.has('key-routing')).toBe(true)
+    expect(i18n.global.t('custom.keyRouting.title')).toBe(title)
+    expect(i18n.global.t('custom.keyRouting.summary', { count: 2 })).toBe(summary)
+    expect(i18n.global.t('custom.keyRouting.position', { position: 3 })).toBe(position)
+    expect(i18n.global.te('custom.keyRouting.scope')).toBe(true)
+    expect(i18n.global.te('custom.keyRouting.adminEditHint')).toBe(true)
+  })
+
   it('loads registered additions and explicit overrides through the real locale loader', async () => {
     registry.register({
       id: 'locale-host-probe', i18nNamespace: 'custom.localeProbe', messageOverrides: ['common.save'],

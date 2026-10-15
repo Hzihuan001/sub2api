@@ -18,6 +18,9 @@ func (s *adminServiceImpl) AdminCreateAPIKey(ctx context.Context, userID int64, 
 	if userID <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_USER_ID", "user id must be positive")
 	}
+	if len(req.BackupGroupIDs) > 0 {
+		return s.apiKeyService.Create(ctx, userID, req)
+	}
 
 	requestedGroupID := req.GroupID
 	req.GroupID = nil

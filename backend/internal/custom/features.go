@@ -12,6 +12,7 @@ import (
 type FeatureID string
 
 const (
+	FeatureKeyRouting        FeatureID = "key-routing"
 	FeatureGatewayResilience FeatureID = "gateway-resilience"
 	FeatureOperator          FeatureID = "operator"
 	FeaturePromptAudit       FeatureID = "prompt-audit"
@@ -34,6 +35,7 @@ type FeatureManifest struct {
 // cannot mutate the package-level list.
 func BuiltInFeatureManifests() []FeatureManifest {
 	manifests := []FeatureManifest{
+		{ID: FeatureKeyRouting, SettingsNamespace: SettingNamespace(FeatureKeyRouting)},
 		{ID: FeatureGatewayResilience, SettingsNamespace: SettingNamespace(FeatureGatewayResilience)},
 		{ID: FeatureOperator, SettingsNamespace: SettingNamespace(FeatureOperator)},
 		{ID: FeaturePromptAudit, SettingsNamespace: SettingNamespace(FeaturePromptAudit)},

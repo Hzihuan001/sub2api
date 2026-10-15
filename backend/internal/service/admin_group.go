@@ -1543,14 +1543,33 @@ func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []
 // AdminUpdateAPIKeyGroupID 管理员修改 API Key 分组绑定
 // groupID: nil=不修改, 指向0=解绑, 指向正整数=绑定到目标分组
 func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error) {
+	return s.adminUpdateAPIKeyGroupID(ctx, keyID, groupID, nil)
+}
+
+func (s *adminServiceImpl) adminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64, backups *[]int64) (*AdminUpdateAPIKeyGroupIDResult, error) {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
 	if err != nil {
 		return nil, err
 	}
+	fields := APIKeyUpdateFields{GroupID: groupID != nil, BackupGroupIDs: backups != nil}
+	if backups != nil {
+		apiKey.BackupGroupIDs = append([]int64(nil), (*backups)...)
+	}
 
 	if groupID == nil {
+		if backups != nil {
+			if err := s.apiKeyRepo.Update(ctx, apiKey, fields); err != nil {
+				return nil, err
+			}
+			if s.authCacheInvalidator != nil {
+				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+			}
+		}
 		// nil 表示不修改，直接返回
 		return &AdminUpdateAPIKeyGroupIDResult{APIKey: apiKey}, nil
+	}
+	if len(apiKey.BackupGroupIDs) > 0 {
+		return s.AdminUpdateAPIKeyRoutes(ctx, keyID, groupID, nil)
 	}
 
 	if *groupID < 0 {
@@ -1608,7 +1627,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 			if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
 				return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
 			}
-			if err := s.apiKeyRepo.Update(opCtx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
+			if err := s.apiKeyRepo.Update(opCtx, apiKey, fields); err != nil {
 				return nil, fmt.Errorf("update api key: %w", err)
 			}
 			if tx != nil {
@@ -1632,7 +1651,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	}
 
 	// 非专属分组 / 解绑：无需事务，单步更新即可
-	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
+	if err := s.apiKeyRepo.Update(ctx, apiKey, fields); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
 

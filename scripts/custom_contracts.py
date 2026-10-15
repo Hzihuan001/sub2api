@@ -34,14 +34,14 @@ def imports(source: str, suffix: str) -> list[str]:
 
 
 def go_host_call_count(source: str, function: str, call: str) -> int:
-    """Count a qualified call inside one named Go host function.
+    """Count a local or qualified call inside one named Go host function.
 
     This checks the production call site, not just its package import. Ignore
     comments and literals so a deleted call cannot survive as documentation.
     Balanced delimiters keep calls in another function outside this contract.
     """
-    if not re.fullmatch(r'[A-Za-z_]\w*', function) or not re.fullmatch(r'[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+', call):
-        raise ContractError("invalid required host function or qualified call")
+    if not re.fullmatch(r'[A-Za-z_]\w*', function) or not re.fullmatch(r'[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*', call):
+        raise ContractError("invalid required host function or call")
     code = re.sub(r'''//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`''', ' ', source)
     declaration = re.search(r'\bfunc\s+' + re.escape(function) + r'\s*\(', code)
     if not declaration:

@@ -13,8 +13,10 @@ export interface GroupFailurePolicy {
   rules: Partial<Record<FailureKind, GroupFailureRule>>
 }
 
-// These are editable examples, never an implicit policy for an inherited rule.
-export const ruleExamples: Record<FailureKind, GroupFailureRule> = {
+// Editor defaults are persisted explicitly on save, never by opening the editor.
+// Keep the API compatible with older partial policies; missing kinds are filled
+// only in the draft so an unsaved visit does not change runtime behavior.
+export const ruleDefaults: Record<FailureKind, GroupFailureRule> = {
   overload: { threshold: 3, window_seconds: 300, cooldown_seconds: 600 },
   server_error: { threshold: 3, window_seconds: 60, cooldown_seconds: 60 },
   timeout: { threshold: 2, window_seconds: 60, cooldown_seconds: 60 },

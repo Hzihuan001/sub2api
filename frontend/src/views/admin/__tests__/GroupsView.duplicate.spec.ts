@@ -229,11 +229,17 @@ describe('GroupsView duplicate action', () => {
     await wrapper.get('[data-testid="group-failure-policy-action"]').trigger('click')
     await flushPromises()
     expect(failurePolicyAPI.get).toHaveBeenCalledWith('/admin/groups/42/failure-policy', expect.objectContaining({ signal: expect.any(AbortSignal) }))
-    await wrapper.get('[data-testid="failure-mode-timeout"]').setValue('custom')
+    expect(wrapper.find('[data-testid="failure-mode-timeout"]').exists()).toBe(false)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="failure-timeout-threshold"]').element.value).toBe('2')
     await wrapper.get('[data-testid="failure-policy-save"]').trigger('click')
     await flushPromises()
     expect(failurePolicyAPI.put).toHaveBeenCalledWith('/admin/groups/42/failure-policy', {
-      rules: { timeout: { threshold: 2, window_seconds: 60, cooldown_seconds: 60 } }
+      rules: {
+        overload: { threshold: 3, window_seconds: 300, cooldown_seconds: 600 },
+        server_error: { threshold: 3, window_seconds: 60, cooldown_seconds: 60 },
+        timeout: { threshold: 2, window_seconds: 60, cooldown_seconds: 60 },
+        rate_limit: { threshold: 3, window_seconds: 60, cooldown_seconds: 60 }
+      }
     }, expect.anything())
     expect(wrapper.find('[data-testid="group-failure-policy"]').exists()).toBe(false)
     wrapper.unmount()

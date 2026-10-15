@@ -43,7 +43,19 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 }
 
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
-	builder := r.client.APIKey.Create().
+	if len(key.BackupGroupIDs) > 0 {
+		return r.withAPIKeyRoutesTx(ctx, func(txCtx context.Context) error {
+			if err := r.create(txCtx, key); err != nil {
+				return err
+			}
+			return r.replaceAPIKeyRoutes(txCtx, key.ID, key.BackupGroupIDs)
+		})
+	}
+	return r.create(ctx, key)
+}
+
+func (r *apiKeyRepository) create(ctx context.Context, key *service.APIKey) error {
+	builder := clientFromContext(ctx, r.client).APIKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
 		SetName(key.Name).
@@ -86,7 +98,7 @@ func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIK
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	return r.apiKeyWithRoutes(ctx, m)
 }
 
 // GetKeyAndOwnerID 根据 API Key ID 获取其 key 与所有者（用户）ID。
@@ -124,7 +136,7 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	return r.apiKeyWithRoutes(ctx, m)
 }
 
 func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
@@ -239,10 +251,25 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	return r.apiKeyWithRoutes(ctx, m)
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
+	if fields.BackupGroupIDs || fields.GroupID {
+		return r.withAPIKeyRoutesTx(ctx, func(txCtx context.Context) error {
+			if err := r.update(txCtx, key, fields); err != nil {
+				return err
+			}
+			if fields.BackupGroupIDs {
+				return r.replaceAPIKeyRoutes(txCtx, key.ID, key.BackupGroupIDs)
+			}
+			return r.checkAPIKeyRoutePrimary(txCtx, key.ID)
+		})
+	}
+	return r.update(ctx, key, fields)
+}
+
+func (r *apiKeyRepository) update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
 	// 空掩码代表调用方不改任何列，直接返回，避免产生一次无意义的整行写。
 	if fields.IsEmpty() {
 		return nil
@@ -507,6 +534,9 @@ func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, fi
 }
 
 func (r *apiKeyRepository) attachLastUsedIPs(ctx context.Context, keys []service.APIKey) error {
+	if err := r.attachAPIKeyRoutes(ctx, keys); err != nil {
+		return err
+	}
 	if len(keys) == 0 || r.sql == nil {
 		return nil
 	}
@@ -644,6 +674,9 @@ func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, par
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 	}
+	if err := r.attachAPIKeyRoutes(ctx, outKeys); err != nil {
+		return nil, nil, err
+	}
 
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
 }
@@ -715,26 +748,55 @@ func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyw
 	for i := range keys {
 		outKeys = append(outKeys, *apiKeyEntityToService(keys[i]))
 	}
+	if err := r.attachAPIKeyRoutes(ctx, outKeys); err != nil {
+		return nil, err
+	}
 	return outKeys, nil
 }
 
 // ClearGroupIDByGroupID 将指定分组的所有 API Key 的 group_id 设为 nil
 func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	n, err := r.client.APIKey.Update().
-		Where(apikey.GroupIDEQ(groupID), apikey.DeletedAtIsNil()).
-		ClearGroupID().
-		Save(ctx)
-	return int64(n), err
+	var affected int
+	err := r.withAPIKeyRoutesTx(ctx, func(txCtx context.Context) error {
+		client := clientFromContext(txCtx, r.client)
+		// Use the same primary-row-first locking order as route updates. This
+		// prevents a concurrent backup edit from leaving an unbound route.
+		if _, err := client.APIKey.Update().Where(apikey.GroupIDEQ(groupID), apikey.DeletedAtIsNil()).SetGroupID(groupID).Save(txCtx); err != nil {
+			return err
+		}
+		if _, err := client.ExecContext(txCtx, `DELETE FROM custom_api_key_routes
+			WHERE api_key_id IN (SELECT id FROM api_keys WHERE group_id = $1 AND deleted_at IS NULL)`, groupID); err != nil {
+			return err
+		}
+		var err error
+		affected, err = client.APIKey.Update().
+			Where(apikey.GroupIDEQ(groupID), apikey.DeletedAtIsNil()).ClearGroupID().Save(txCtx)
+		return err
+	})
+	return int64(affected), err
 }
 
 // UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
 func (r *apiKeyRepository) UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
-	client := clientFromContext(ctx, r.client)
-	n, err := client.APIKey.Update().
-		Where(apikey.UserIDEQ(userID), apikey.GroupIDEQ(oldGroupID), apikey.DeletedAtIsNil()).
-		SetGroupID(newGroupID).
-		Save(ctx)
-	return int64(n), err
+	var affected int
+	err := r.withAPIKeyRoutesTx(ctx, func(txCtx context.Context) error {
+		client := clientFromContext(txCtx, r.client)
+		var err error
+		affected, err = client.APIKey.Update().
+			Where(apikey.UserIDEQ(userID), apikey.GroupIDEQ(oldGroupID), apikey.DeletedAtIsNil()).
+			SetGroupID(newGroupID).Save(txCtx)
+		if err != nil {
+			return err
+		}
+		// A former backup promoted by bulk replacement must not remain twice in
+		// the route. Gaps in position preserve the remaining backups' order.
+		_, err = client.ExecContext(txCtx, `DELETE FROM custom_api_key_routes
+			WHERE group_id = $1 AND api_key_id IN (
+				SELECT id FROM api_keys WHERE user_id = $2 AND group_id = $1 AND deleted_at IS NULL
+			)`, newGroupID, userID)
+		return err
+	})
+	return int64(affected), err
 }
 
 // CountByGroupID 获取分组的 API Key 数量
@@ -756,7 +818,13 @@ func (r *apiKeyRepository) ListKeysByUserID(ctx context.Context, userID int64) (
 
 func (r *apiKeyRepository) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
 	keys, err := r.activeQuery().
-		Where(apikey.GroupIDEQ(groupID)).
+		Where(func(s *entsql.Selector) {
+			routes := entsql.Table("custom_api_key_routes")
+			s.Where(entsql.Or(
+				entsql.EQ(s.C(apikey.FieldGroupID), groupID),
+				entsql.In(s.C(apikey.FieldID), entsql.Select(routes.C("api_key_id")).From(routes).Where(entsql.EQ(routes.C("group_id"), groupID))),
+			))
+		}).
 		Select(apikey.FieldKey).
 		Strings(ctx)
 	if err != nil {

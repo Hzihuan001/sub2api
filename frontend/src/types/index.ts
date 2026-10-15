@@ -751,6 +751,7 @@ export interface ApiKey {
   key: string
   name: string
   group_id: number | null
+  backup_group_ids?: number[] // Ordered fallback groups; absent on older responses
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
@@ -780,6 +781,7 @@ export interface ApiKey {
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
+  backup_group_ids?: number[]
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -793,6 +795,7 @@ export interface CreateApiKeyRequest {
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
+  backup_group_ids?: number[] // Omitted preserves the route; [] clears backup groups
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]

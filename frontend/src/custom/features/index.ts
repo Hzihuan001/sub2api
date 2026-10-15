@@ -5,9 +5,13 @@ import { operatorRoleFeature } from './operatorRole'
 import { usageExtrasFeature } from './usageExtras'
 import { brandingFeature } from './branding'
 import { gatewayResilienceFeature } from './gatewayResilience'
+import { keyRoutingFeature } from './keyRouting'
 
 /** Register built-in custom features once during application bootstrap. */
 export function registerBuiltInCustomFeatures(): void {
+  if (!customFeatureRegistry.has(keyRoutingFeature.id)) {
+    customFeatureRegistry.register(keyRoutingFeature)
+  }
   if (!customFeatureRegistry.has(gatewayResilienceFeature.id)) {
     customFeatureRegistry.register(gatewayResilienceFeature)
   }
@@ -36,3 +40,4 @@ export { operatorRoleFeature }
 export { usageExtrasFeature }
 export { brandingFeature }
 export { gatewayResilienceFeature }
+export { keyRoutingFeature }

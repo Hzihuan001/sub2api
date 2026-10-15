@@ -173,6 +173,7 @@ const DataTableStub = {
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
         <slot name="cell-name" :value="row.name" :row="row" />
+        <slot name="cell-group" :row="row" />
         <slot name="cell-actions" :row="row" />
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
@@ -545,6 +546,116 @@ describe('user KeysView column settings', () => {
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+  })
+
+  describe('backup group integration', () => {
+    const routeGroups = [1, 2, 3, 4].map((id) => ({ id, name: `Group ${id}`, platform: 'openai', status: 'active', subscription_type: 'standard', rate_multiplier: 1 }))
+
+    beforeEach(() => getAvailableGroups.mockResolvedValue(routeGroups))
+
+    it('loads existing order, preserves it on edit, and explicitly clears it on removal', async () => {
+      listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1, backup_group_ids: [3, 2] }], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await wrapper.get('[data-test="edit-key-backups"]').trigger('click')
+      const editor = wrapper.findComponent({ name: 'KeyBackupGroupsEditor' })
+      expect(editor.props('modelValue')).toEqual([3, 2])
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenLastCalledWith(1, expect.objectContaining({ backup_group_ids: [3, 2] }))
+      await wrapper.get('[data-test="edit-key-backups"]').trigger('click')
+      wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).vm.$emit('update:modelValue', [])
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenLastCalledWith(1, expect.objectContaining({ backup_group_ids: [] }))
+      wrapper.unmount()
+    })
+
+    it('opens complete editing for a routed key when its primary group is clicked', async () => {
+      listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1, backup_group_ids: [2] }], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+      expect(wrapper.find('#key-form').exists()).toBe(true)
+      expect(wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).props('modelValue')).toEqual([2])
+      expect(updateKey).not.toHaveBeenCalled()
+      wrapper.unmount()
+    })
+
+    it('keeps backup order while changing primary and blocks choosing an existing backup', async () => {
+      listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1, backup_group_ids: [3, 2] }], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      const primarySelect = wrapper.findComponent('[data-tour="key-form-group"]')
+      primarySelect.vm.$emit('update:modelValue', 2)
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      expect(updateKey).not.toHaveBeenCalled()
+      expect(showError).toHaveBeenCalledWith('custom.keyRouting.duplicate')
+      expect(wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).props('modelValue')).toEqual([3, 2])
+
+      primarySelect.vm.$emit('update:modelValue', 4)
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ group_id: 4, backup_group_ids: [3, 2] }))
+      wrapper.unmount()
+    })
+
+    it.each([
+      { backups: [99], error: 'groupUnavailable' },
+      { backups: [2, 2], error: 'duplicate' },
+      { backups: [2, 3, 4, 5, 6], error: 'tooMany' }
+    ])('preserves an invalid existing route $backups until explicitly repaired', async ({ backups, error }) => {
+      listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1, backup_group_ids: backups }], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      await wrapper.get('[data-tour="key-form-name"]').setValue('Unsaved name')
+      await wrapper.get('#key-form').trigger('submit')
+      expect(updateKey).not.toHaveBeenCalled()
+      expect(showError).toHaveBeenCalledWith(`custom.keyRouting.${error}`)
+      expect(wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).props('modelValue')).toEqual(backups)
+
+      wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).vm.$emit('update:modelValue', [])
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'Unsaved name', backup_group_ids: [] }))
+      wrapper.unmount()
+    })
+
+    it('submits create order and resets backups when reopening the form', async () => {
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      await wrapper.get('[data-tour="key-form-name"]').setValue('Routed key')
+      wrapper.findComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 1)
+      wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).vm.$emit('update:modelValue', [3, 2])
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(vi.mocked(keysAPI.create).mock.calls[0][8]).toEqual([3, 2])
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      expect(wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).props('modelValue')).toEqual([])
+      wrapper.unmount()
+    })
+
+    it('rejects subscription combinations but keeps single subscription editing valid', async () => {
+      getAvailableGroups.mockResolvedValue([{ ...routeGroups[0], subscription_type: 'subscription' }, routeGroups[1]])
+      listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1 }], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      const editor = wrapper.findComponent({ name: 'KeyBackupGroupsEditor' })
+      editor.vm.$emit('update:modelValue', [2])
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      expect(updateKey).not.toHaveBeenCalled()
+      expect(showError).toHaveBeenCalledWith('custom.keyRouting.standardOnly')
+      editor.vm.$emit('update:modelValue', [])
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ group_id: 1, backup_group_ids: [] }))
+      wrapper.unmount()
+    })
   })
 
   describe('create provider selection', () => {

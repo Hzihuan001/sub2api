@@ -95,6 +95,13 @@ describe('user API key loading', () => {
 })
 
 describe('user API key actions', () => {
+  it('shows existing backups and protects their route from quick group changes', async () => {
+    getKeys.mockResolvedValue({ items: [{ ...keys(1, 'routed-key').items[0], group_id: 1, backup_group_ids: [2, 3] }] })
+    const wrapper = await open(); await flushPromises()
+    expect(wrapper.get('[data-test="admin-key-backups"]').text()).toContain('custom.keyRouting.adminEditHint')
+    expect(wrapper.find('[data-test="quick-change-key-group"]').exists()).toBe(false)
+  })
+
   it('creates a key for the selected user', async () => {
     getKeys.mockResolvedValue(keys(1, 'existing-key'))
     const created = { ...keys(2, 'created-key').items[0], user_id: 1 }

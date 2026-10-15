@@ -9,6 +9,21 @@ upstream:
 # contracts.json is consumed by scripts/custom_contracts.py and sync checks.
 # Tests below document coverage; executable argv and dependency rules live there.
 features:
+  - id: key-routing
+    owner: custom/key-routing
+    description: Ordered API key backup groups, read-only preflight and effective-group billing on stateless text requests; no upstream replay.
+    tests:
+      - backend/internal/keyrouting
+      - backend/internal/service/key_routing_service_test.go
+      - backend/internal/service/key_routing_readiness_test.go
+      - backend/internal/service/custom_api_key_routes_test.go
+      - backend/internal/repository/custom_api_key_routes_test.go
+      - backend/internal/repository/custom_api_key_routes_integration_test.go
+      - backend/internal/server/middleware/key_routing_test.go
+      - backend/internal/server/middleware/key_routing_json_test.go
+      - backend/internal/server/routes/key_routing_test.go
+      - frontend/src/features/key-routing
+      - frontend/src/views/user/__tests__/KeysView.spec.ts
   - id: gateway-resilience
     owner: custom/gateway-resilience
     description: Shared failure classification, per-group failure thresholds, recoverable account-wide cooldown and safe pre-output failover.

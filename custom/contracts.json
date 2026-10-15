@@ -1,6 +1,7 @@
 {
   "version": 1,
   "modules": [
+    {"id":"key-routing","owner":"custom/key-routing","entries":["backend/internal/keyrouting","backend/internal/service/key_routing_service.go","backend/internal/service/key_routing_readiness.go","backend/internal/service/custom_api_key_routes.go","backend/internal/repository/custom_api_key_routes.go","backend/internal/server/middleware/key_routing.go","frontend/src/features/key-routing","frontend/src/custom/features/keyRouting.ts"],"dependencies":[],"tests":["backend-key-routing","frontend-key-routing"]},
     {"id":"operator","owner":"custom/operator","entries":["backend/internal/authz","frontend/src/authz","frontend/src/custom/features/operatorRole.ts"],"dependencies":[],"tests":["backend-host","frontend-host"]},
     {"id":"prompt-audit","owner":"custom/prompt-audit","entries":["backend/internal/securityaudit","backend/internal/handler/security_audit_gate.go","frontend/src/features/prompt-audit"],"dependencies":[],"tests":["backend-audit","frontend-features"]},
     {"id":"image-studio","owner":"custom/image-studio","entries":["frontend/src/features/image-studio","frontend/src/utils/imageGenerationPolicy.ts","backend/internal/handler/batch_image_handler.go"],"dependencies":[],"tests":["backend-batch","frontend-features"]},
@@ -9,9 +10,10 @@
     {"id":"gateway-resilience","owner":"custom/gateway-resilience","entries":["backend/internal/service/gateway_failure_policy.go","backend/internal/service/gateway_failure_decision.go","backend/internal/service/gateway_failure_attempt.go","backend/internal/service/overload_failure_breaker.go","backend/internal/service/group_failure_breaker.go","backend/internal/service/group_failure_policy_settings.go","backend/internal/service/group_failure_runtime_hooks.go","backend/internal/repository/group_failure_cache.go","backend/internal/handler/admin/setting_handler_group_failure_policy.go","frontend/src/features/gateway-resilience","frontend/src/custom/features/gatewayResilience.ts"],"dependencies":[],"tests":["backend-resilience","frontend-resilience"]}
   ],
   "dependency_rules": [
+    {"id":"key-routing-planner-independent","source_prefixes":["backend/internal/keyrouting/"],"forbidden_import_prefixes":["github.com/Wei-Shaw/sub2api/internal/","github.com/gin-gonic/"]},
     {"id":"neutral-contracts","source_prefixes":["backend/internal/custom/"],"forbidden_import_prefixes":["github.com/Wei-Shaw/sub2api/internal/"]},
     {"id":"feature-does-not-own-host","source_prefixes":["backend/internal/authz/","backend/internal/securityaudit/"],"forbidden_import_prefixes":["github.com/Wei-Shaw/sub2api/internal/server","github.com/Wei-Shaw/sub2api/internal/handler"]},
-    {"id":"frontend-feature-does-not-own-host","source_prefixes":["frontend/src/features/image-studio/","frontend/src/features/prompt-audit/","frontend/src/features/gateway-resilience/"],"forbidden_import_prefixes":["@/router","@/views/admin/SettingsView","@/components/layout/AppSidebar"]}
+    {"id":"frontend-feature-does-not-own-host","source_prefixes":["frontend/src/features/image-studio/","frontend/src/features/prompt-audit/","frontend/src/features/gateway-resilience/","frontend/src/features/key-routing/"],"forbidden_import_prefixes":["@/router","@/views/admin/SettingsView","@/components/layout/AppSidebar"]}
   ],
   "exceptions": [
     {"file":"backend/internal/securityaudit/prompt_handler.go","import":"github.com/Wei-Shaw/sub2api/internal/server/middleware","reason":"Existing HTTP auth-subject adapter only; preserve authentication semantics, do not permit feature-wide server dependencies."}
@@ -22,9 +24,12 @@
     {"id":"frontend-custom-host","host_prefixes":["frontend/src/router/","frontend/src/components/","frontend/src/views/","frontend/src/i18n/","frontend/src/stores/"],"import_prefixes":["@/custom"],"files":["frontend/src/router/index.ts","frontend/src/router/title.ts","frontend/src/components/layout/AppSidebar.vue","frontend/src/views/admin/SettingsView.vue","frontend/src/i18n/index.ts","frontend/src/stores/app.ts"]}
   ],
   "required_host_calls": [
-    {"id":"backend-custom-worker-start","file":"backend/cmd/server/main.go","function":"runMainServer","call":"app.Custom.StartWorkers","count":1}
+    {"id":"backend-custom-worker-start","file":"backend/cmd/server/main.go","function":"runMainServer","call":"app.Custom.StartWorkers","count":1},
+    {"id":"key-routing-ingress","file":"backend/internal/server/middleware/api_key_auth.go","function":"apiKeyAuthWithSubscription","call":"selectAPIKeyGroupRoute","count":1}
   ],
   "tests": {
+    "backend-key-routing":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/keyrouting","./internal/service","./internal/repository","./internal/server/middleware","./internal/server/routes","./internal/handler/admin","./internal/handler/dto","-run","^TestPlanner|KeyRouting|CustomAPIKeyRoutes|APIKey|Admin.*APIKey","-count=1"]},
+    "frontend-key-routing":{"cwd":"frontend","argv":["pnpm","exec","vitest","run","src/features/key-routing","src/views/user/__tests__/KeysView.spec.ts","src/components/admin/user/__tests__/UserApiKeysModal.spec.ts","src/api/__tests__/keys.routing.spec.ts","src/custom/__tests__/hostMessages.integration.spec.ts"]},
     "architecture-negative":{"cwd":"scripts","argv":["python","-m","unittest","test_custom_contracts","test_sync_upstream","test_upstream_sync_workflow"]},
     "backend-host":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/custom","./internal/customapp","./internal/authz","./internal/server","./internal/server/routes","./internal/service","./internal/repository","./cmd/server","-run","Custom|Operator|HostWorker|PromptRule|Application|Cleanup","-count=1"]},
     "backend-audit":{"cwd":"backend","argv":["go","test","-tags=unit","./internal/securityaudit","./internal/handler","./internal/service","-run","PromptAudit|PromptCapture|AuditGate|SecurityAudit|CaptureOnly","-count=1"]},

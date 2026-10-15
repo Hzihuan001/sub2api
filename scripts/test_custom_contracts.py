@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from custom_contracts import ContractError, check, imports
+from custom_contracts import ContractError, check, imports, go_host_call_count
 
 
 class ContractTests(unittest.TestCase):
@@ -37,6 +37,16 @@ class ContractTests(unittest.TestCase):
 
     def test_valid_fixture(self):
         self.validate()
+
+    def test_local_ingress_hook_inside_returned_handler(self):
+        source = '''package middleware
+func auth() Handler { return func(c *Context) { selectRoute(c) } }
+func unused() { selectRoute(c) }
+'''
+        self.assertEqual(go_host_call_count(source, "auth", "selectRoute"), 1)
+        self.assertEqual(go_host_call_count(source.replace("selectRoute(c)", '"selectRoute(c)"'), "auth", "selectRoute"), 0)
+        self.assertEqual(go_host_call_count(source.replace("selectRoute(c)", "other.selectRoute(c)"), "auth", "selectRoute"), 0)
+        self.assertEqual(go_host_call_count(source.replace("selectRoute(c)", "selectRoute(c); selectRoute(c)"), "auth", "selectRoute"), 2)
 
     def test_disconnected_host_is_rejected_even_if_file_survives(self):
         self.write("backend/internal/server/router.go", "package server\n")

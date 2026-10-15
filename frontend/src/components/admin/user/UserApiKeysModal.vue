@@ -95,8 +95,9 @@
             <div class="flex items-center gap-1">
               <span>{{ t('admin.users.group') }}:</span>
               <button
-                v-if="!props.readOnly"
+                v-if="!props.readOnly && !key.backup_group_ids?.length"
                 :ref="(el) => setGroupButtonRef(key.id, el)"
+                data-test="quick-change-key-group"
                 @click="openGroupSelector(key)"
                 class="-mx-1 -my-0.5 flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
                 :disabled="updatingKeyIds.has(key.id)"
@@ -131,6 +132,9 @@
             </div>
             <div class="flex items-center gap-1"><span>{{ t('admin.users.columns.created') }}: {{ formatDateTime(key.created_at) }}</span></div>
           </div>
+          <p v-if="key.backup_group_ids?.length" class="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300" data-test="admin-key-backups">
+            {{ t('custom.keyRouting.summary', { count: key.backup_group_ids.length }) }} · {{ t('custom.keyRouting.adminEditHint') }}
+          </p>
         </div>
       </div>
     </div>
@@ -373,7 +377,7 @@ const DROPDOWN_HEIGHT = 272 // max-h-64 = 16rem = 256px + padding
 const DROPDOWN_GAP = 4
 
 const openGroupSelector = (key: ApiKey) => {
-  if (props.readOnly) return
+  if (props.readOnly || key.backup_group_ids?.length) return
   if (groupSelectorKeyId.value === key.id) {
     closeGroupSelector()
   } else {
@@ -397,7 +401,7 @@ const closeGroupSelector = () => {
 }
 
 const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
-  if (props.readOnly) return
+  if (props.readOnly || key.backup_group_ids?.length) return
   closeGroupSelector()
   if (key.group_id === newGroupId || (!key.group_id && newGroupId === null)) return
 

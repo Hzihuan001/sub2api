@@ -2,6 +2,10 @@
   "version": 1,
   "features": [
     {
+      "id": "key-routing",
+      "settingsNamespace": "custom.key-routing"
+    },
+    {
       "id": "branding",
       "settingsNamespace": "custom.branding"
     },

@@ -192,6 +192,14 @@
                   />
                 </svg>
               </button>
+              <button
+                v-if="row.backup_group_ids?.length"
+                type="button"
+                class="mt-1 text-xs text-primary-600 hover:underline dark:text-primary-400"
+                :title="t('custom.keyRouting.billing')"
+                data-test="edit-key-backups"
+                @click="editKey(row)"
+              >{{ t('custom.keyRouting.summary', { count: row.backup_group_ids.length }) }}</button>
             </div>
           </template>
 
@@ -579,6 +587,14 @@
             </template>
           </Select>
         </div>
+
+        <KeyBackupGroupsEditor
+          v-model="formData.backup_group_ids"
+          :primary-group-id="formData.group_id"
+          :groups="groups"
+          :user-group-rates="userGroupRates"
+          :disabled="submitting"
+        />
 
         <!-- Custom Key Section (only for create) -->
         <div v-if="!showEditModal" class="space-y-3">
@@ -1211,6 +1227,8 @@ import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
+import KeyBackupGroupsEditor from '@/features/key-routing/KeyBackupGroupsEditor.vue'
+import { validateKeyRouting } from '@/features/key-routing/keyRouting'
 	import DataTable from '@/components/common/DataTable.vue'
 	import Pagination from '@/components/common/Pagination.vue'
 	import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1433,6 +1451,7 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
 const formData = ref({
   name: '',
   group_id: null as number | null,
+  backup_group_ids: [] as number[],
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
   custom_key: '',
@@ -1701,6 +1720,7 @@ const editKey = (key: ApiKey) => {
   formData.value = {
     name: key.name,
     group_id: key.group_id,
+    backup_group_ids: [...(key.backup_group_ids ?? [])],
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
     custom_key: '',
@@ -1734,6 +1754,12 @@ const toggleKeyStatus = async (key: ApiKey) => {
 }
 
 const openGroupSelector = (key: ApiKey) => {
+  if (key.backup_group_ids?.length) {
+    groupSelectorKeyId.value = null
+    dropdownPosition.value = null
+    editKey(key)
+    return
+  }
   if (groupSelectorKeyId.value === key.id) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
@@ -1805,6 +1831,12 @@ const handleSubmit = async () => {
     return
   }
 
+  const routingError = validateKeyRouting(formData.value.group_id, formData.value.backup_group_ids, groups.value)
+  if (routingError) {
+    appStore.showError(t(`custom.keyRouting.${routingError}`))
+    return
+  }
+
   // Validate custom key if enabled
   if (!showEditModal.value && formData.value.use_custom_key) {
     if (!formData.value.custom_key) {
@@ -1858,6 +1890,7 @@ const handleSubmit = async () => {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
         group_id: formData.value.group_id,
+        backup_group_ids: [...formData.value.backup_group_ids],
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1881,7 +1914,8 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        [...formData.value.backup_group_ids]
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1927,6 +1961,7 @@ const closeModals = () => {
   formData.value = {
     name: '',
     group_id: null,
+    backup_group_ids: [],
     status: 'active',
     use_custom_key: false,
     custom_key: '',

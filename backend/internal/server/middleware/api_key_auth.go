@@ -31,7 +31,11 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 // /v1/usage、/v1/sub2api/billing 端点与异步生图任务查询只需鉴权，不需要计费执行。
 // usage 允许过期/配额耗尽的 Key 查询自身用量，billing 用于读取当前 Key 的倍率配置，
 // 异步生图查询允许已耗尽额度的 Key 拉取自身任务结果。
-func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
+func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config, routeSelectors ...APIKeyRouteSelector) gin.HandlerFunc {
+	var routeSelector APIKeyRouteSelector
+	if len(routeSelectors) > 0 {
+		routeSelector = routeSelectors[0]
+	}
 	return func(c *gin.Context) {
 		// ── 1. 提取 API Key ──────────────────────────────────────────
 		if rejectInvalidAuthAbuse(c, apiKeyService) {
@@ -156,6 +160,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			MarkIngressRejected(c, IngressRejectUserInactive)
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
+		}
+		if routed, ok := selectAPIKeyGroupRoute(c, apiKey, routeSelector); !ok {
+			return
+		} else {
+			apiKey = routed
 		}
 		if abortIfAPIKeyGroupUnavailable(c, apiKey) {
 			return
