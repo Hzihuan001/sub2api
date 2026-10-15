@@ -1,0 +1,69 @@
+diff --git a/src/views/admin/SettingsView.vue b/src/views/admin/SettingsView.vue
+index 4766026..0a6dec6 100644
+--- a/src/views/admin/SettingsView.vue
++++ b/src/views/admin/SettingsView.vue
+@@ -6453,6 +6453,20 @@
+                 </div>
+               </div>
+ 
++              <!-- P6 fixture: simulated new upstream general setting. -->
++              <div data-testid="upstream-support-notice-setting">
++                <label for="upstream-support-notice" class="mb-2 block text-sm font-medium">
++                  Official support notice
++                </label>
++                <input
++                  id="upstream-support-notice"
++                  v-model="form.upstream_support_notice"
++                  type="text"
++                  class="input"
++                  data-testid="upstream-support-notice"
++                />
++              </div>
++
+               <!-- API Base URL -->
+               <div>
+                 <label
+@@ -9808,6 +9822,7 @@ type SettingsForm = Omit<
+   | "wechat_connect_mobile_enabled"
+   | "openai_oauth_scheduling_rate_multiplier"
+ > & {
++  upstream_support_notice: string;
+   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
+   channel_monitor_hide_throughput: boolean;
+   channel_monitor_show_quota: boolean;
+@@ -9898,6 +9913,7 @@ const form = reactive<SettingsForm>({
+   force_email_on_third_party_signup: false,
+   default_user_rpm_limit: 0,
+   site_name: "Moshu",
++  upstream_support_notice: "",
+   site_logo: "",
+   site_subtitle: "Subscription to API Conversion Platform",
+   api_base_url: "",
+@@ -11615,6 +11631,7 @@ async function saveSettings() {
+       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
+       default_user_rpm_limit: form.default_user_rpm_limit,
+       site_name: form.site_name,
++      upstream_support_notice: form.upstream_support_notice,
+       site_logo: form.site_logo,
+       site_subtitle: form.site_subtitle,
+       api_base_url: form.api_base_url,
+diff --git a/src/api/admin/settings.ts b/src/api/admin/settings.ts
+index c760d45..f627006 100644
+--- a/src/api/admin/settings.ts
++++ b/src/api/admin/settings.ts
+@@ -482,6 +482,7 @@ export interface SystemSettings {
+   auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;
+   // OEM settings
+   site_name: string;
++  upstream_support_notice?: string;
+   site_logo: string;
+   site_subtitle: string;
+   api_base_url: string;
+@@ -834,6 +835,7 @@ export interface UpdateSettingsRequest {
+   auth_source_default_google_platform_quotas?: DefaultPlatformQuotasMap;
+   auth_source_default_dingtalk_platform_quotas?: DefaultPlatformQuotasMap;
+   site_name?: string;
++  upstream_support_notice?: string;
+   site_logo?: string;
+   site_subtitle?: string;
+   api_base_url?: string;

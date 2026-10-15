@@ -1,0 +1,121 @@
+diff --git a/src/views/admin/__tests__/SettingsView.spec.ts b/src/views/admin/__tests__/SettingsView.spec.ts
+index 9e9507c..5e60b7d 100644
+--- a/src/views/admin/__tests__/SettingsView.spec.ts
++++ b/src/views/admin/__tests__/SettingsView.spec.ts
+@@ -101,6 +101,8 @@ vi.mock("@/api", () => ({
+     settings: {
+       getSettings,
+       updateSettings,
++      // The real email editor mounts for admin/global grants; supply its read contract.
++      getEmailTemplates: vi.fn().mockResolvedValue({ events: [], locales: [], placeholders: [] }),
+       getWebSearchEmulationConfig,
+       updateWebSearchEmulationConfig,
+       getAdminApiKey,
+@@ -800,6 +802,107 @@ describe("admin SettingsView payment visible method controls", () => {
+       expect(customFeatureRegistry.has("image-studio")).toBe(true);
+     });
+ 
++    describe("P6 official general field upgrade rehearsal", () => {
++      const fieldSelector = '[data-testid="upstream-support-notice"]';
++
++      it.each([
++        ["administrator", []],
++        ["scoped operator", ["settings.general.read", "settings.general.write"]],
++        ["global operator", ["settings.read", "settings.write"]],
++      ] as const)("loads and saves the new official field alongside the real custom contribution for %s", async (role, permissions) => {
++        registerProbe();
++        if (role !== "administrator") operatorPermissions(...permissions);
++        const existingMenus = [{ id: "existing", label: "Existing", url: "https://example.com", icon_svg: "", visibility: "user", sort_order: 0, pass_auth_context: false }];
++        getSettings.mockResolvedValue({
++          ...baseSettingsResponse,
++          upstream_support_notice: "Server support notice",
++          custom_menu_items: existingMenus,
++        });
++        updateSettings.mockImplementation(async (payload) => ({
++          ...baseSettingsResponse,
++          ...payload,
++          upstream_support_notice: `Stored: ${payload.upstream_support_notice}`,
++        }));
++
++        wrapper = mountView();
++        await flushPromises();
++        assertSettingsContribution(wrapper);
++        expect(getSettings).toHaveBeenCalledOnce();
++        expect(readProbe).toHaveBeenCalledOnce();
++        expect(wrapper.get("#settings-tab-general").attributes("aria-selected")).toBe("true");
++        expect(wrapper.find(fieldSelector).exists(), "real official general field must exist").toBe(true);
++        const field = wrapper.get<HTMLInputElement>(fieldSelector);
++        expect(field.element.value).toBe("Server support notice");
++        expect(field.element.matches(":disabled")).toBe(false);
++        await field.setValue("Edited support notice");
++        await wrapper.get("form").trigger("submit");
++        await flushPromises();
++        expect(updateSettings).toHaveBeenCalledOnce();
++        expect(updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({
++          site_name: "Sub2API",
++          upstream_support_notice: "Edited support notice",
++          custom_menu_items: existingMenus,
++        }));
++        expect(field.element.value).toBe("Stored: Edited support notice");
++        expect(showError).not.toHaveBeenCalled();
++        expect(writeProbe).not.toHaveBeenCalled();
++
++        await wrapper.get(`#settings-tab-${tabId}`).trigger("click");
++        expect(wrapper.get('[data-testid="custom-settings-readonly"]').text()).toBe("false");
++        expect(wrapper.get('[data-testid="custom-settings-input"]').element.matches(":disabled")).toBe(false);
++        await wrapper.get('[data-testid="custom-settings-save"]').trigger("click");
++        await wrapper.get("form").trigger("submit");
++        await flushPromises();
++        expect(writeProbe).toHaveBeenCalledOnce();
++        expect(updateSettings).toHaveBeenCalledOnce();
++        await wrapper.get("#settings-tab-general").trigger("click");
++        expect(wrapper.get<HTMLInputElement>(fieldSelector).element.value).toBe("Stored: Edited support notice");
++      });
++
++      it.each([undefined, null])("retains the new official default when a server response contains %s", async (value) => {
++        registerProbe();
++        getSettings.mockResolvedValue({ ...baseSettingsResponse, upstream_support_notice: value });
++        wrapper = mountView();
++        await flushPromises();
++        assertSettingsContribution(wrapper);
++        expect(wrapper.find(fieldSelector).exists(), "real official general field must exist").toBe(true);
++        expect(wrapper.get<HTMLInputElement>(fieldSelector).element.value).toBe("");
++        await wrapper.get("form").trigger("submit");
++        await flushPromises();
++        expect(updateSettings).toHaveBeenCalledOnce();
++        expect(updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ upstream_support_notice: "" }));
++        expect(readProbe).toHaveBeenCalledOnce();
++        expect(writeProbe).not.toHaveBeenCalled();
++      });
++
++      it("loads both official and custom panels but prevents either save for a read-only operator", async () => {
++        registerProbe();
++        operatorPermissions("settings.general.read");
++        getSettings.mockResolvedValue({ ...baseSettingsResponse, upstream_support_notice: "Read-only server notice" });
++        wrapper = mountView();
++        await flushPromises();
++        assertSettingsContribution(wrapper);
++        expect(getSettings).toHaveBeenCalledOnce();
++        expect(readProbe).toHaveBeenCalledOnce();
++        expect(wrapper.find(fieldSelector).exists(), "real official general field must exist").toBe(true);
++        const field = wrapper.get<HTMLInputElement>(fieldSelector);
++        expect(field.element.value).toBe("Read-only server notice");
++        expect(field.element.matches(":disabled")).toBe(true);
++        await wrapper.get("form").trigger("submit");
++        await flushPromises();
++        expect(updateSettings).not.toHaveBeenCalled();
++
++        await wrapper.get(`#settings-tab-${tabId}`).trigger("click");
++        expect(wrapper.get('[data-testid="custom-settings-readonly"]').text()).toBe("true");
++        expect(wrapper.get('[data-testid="custom-settings-input"]').element.matches(":disabled")).toBe(true);
++        await wrapper.get('[data-testid="custom-settings-save"]').trigger("click");
++        await wrapper.get("form").trigger("submit");
++        await flushPromises();
++        expect(writeProbe).not.toHaveBeenCalled();
++        expect(updateSettings).not.toHaveBeenCalled();
++      });
++    });
++
+     it("mounts the actual registry component and label without replacing official settings", async () => {
+       registerProbe();
+       wrapper = mountView();
