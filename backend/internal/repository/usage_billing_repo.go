@@ -156,9 +156,10 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	// These stable IDs also identify the other terminal operation. Accepting an
 	// arbitrary ID here would let it bypass both cross-operation checks.
 	expectedRequestID := service.BatchImageHoldRequestID(cmd.BatchID)
-	if operation == batchImageBalanceCapture {
+	switch operation {
+	case batchImageBalanceCapture:
 		expectedRequestID = service.BatchImageCaptureRequestID(cmd.BatchID)
-	} else if operation == batchImageBalanceRelease {
+	case batchImageBalanceRelease:
 		expectedRequestID = service.BatchImageReleaseRequestID(cmd.BatchID)
 	}
 	if cmd.BatchID == "" || cmd.RequestID != expectedRequestID {

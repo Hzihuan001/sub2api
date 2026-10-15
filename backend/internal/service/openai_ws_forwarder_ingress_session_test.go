@@ -1281,7 +1281,9 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughBridg
 				require.Len(t, upstreamConn.writes, 1)
 				require.Equal(t, gjson.Get(tt.payload, "type").String(), upstreamConn.writes[0]["type"])
 				if isSessionUpdate {
-					require.Equal(t, "gpt-5.1", upstreamConn.writes[0]["session"].(map[string]any)["model"])
+					session, ok := upstreamConn.writes[0]["session"].(map[string]any)
+					require.True(t, ok, "upstream session update must contain an object")
+					require.Equal(t, "gpt-5.1", session["model"])
 					require.Empty(t, completedResponses, "no response.create means no successful generation callback")
 				} else {
 					require.Equal(t, "gpt-5.1", upstreamConn.writes[0]["model"])
