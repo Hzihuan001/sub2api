@@ -6,7 +6,8 @@
 
 - 已发布源码基线：`989594099c1bd10db911c737449d15d2bb6149ed`，实际 `.5` 镜像运行提交为 `00e8f24a4`。不能混淆源码文档提交与镜像 revision。
 - 首个完整单元通过候选：`d16ef65ce18e8d92f7b8f4c9e21a77fd784fac6b`，含运行修复 `8d5dba9a4`、`3e78ebe2b`，独立门禁 `851b49e7a` 与 WS 模拟协议夹具修正 `d16ef65ce`。
-- 当前候选：`57721bba97234054d1e4a9c3bd13aa078967da2d`。相对 d16 仅为等价 switch 和测试类型断言错误检查；定向 WS、真实 PostgreSQL BatchImageBalance 回归通过（后者 55.762s），差异 lint 0 issues。完整单元结果归属于 d16，不冒称完整 suite 在 577 上再次执行。
+- 首个 Docker/恢复候选：`57721bba97234054d1e4a9c3bd13aa078967da2d`。相对 d16 仅为等价 switch 和测试类型断言错误检查；定向 WS、真实 PostgreSQL BatchImageBalance 回归通过（后者 55.762s），差异 lint 0 issues。完整单元结果归属于 d16，不冒称完整 suite 在 577 上再次执行。
+- 当前运行候选：`53fd17b5b46be47a216f55381beaac24eefe667f`，恢复已发布故障策略的短路求值，避免计算调用方丢弃的语义状态和容量文案。相对 577 仅 4 个故障策略/测试文件变化；frontend、Go 依赖、Ent/迁移、Wire 输入/产物及审计/账务/恢复源码均未变。受影响回归及新增静态检查单独执行；其余结果按同源码范围复用，不冒称再次全量执行。
 - frontend tree：`9abed689f5b2b6c33afc8e5cfa8a1ee3864d3183`。前端完整验证过程中无源码、配置或 lockfile 变化。
 - 工具链：宿主 Go 1.27.2 windows/amd64、Node 20.20.2 / pnpm 9.15.9、golangci-lint 2.14.0、Docker Desktop Linux。容器构建沿用原 Dockerfile，其 Node builder 为 Node 24，不把宿主 Node 20 验证冒充镜像 builder 版本。
 
@@ -62,10 +63,38 @@ Windows 测试进程 PATH 包含锁定 Go 和 `G:/PC/Git/bin`，后者满足 PgD
 
 边界：仅在应用停止后加速这两个测试任务的 Redis 过期租约，不声称自然 TTL 等待通过；数据库行锁只控制真实 fsync 后的时间窗口，没有手造成功状态。capture→usage 的极短进程中断窗口未直接注入，相关确认丢失/并发由独立真实 PG 测试覆盖；未知结果并未自动核对完成。旧 57ed 镜像的局部验收不再冒充最终候选。
 
+## 53fd 性能修复与受影响门禁
+
+- 新运行提交 `53fd17b5b` 只修复重构引入的提前解析，不改变故障规则、重试预算或结算逻辑。19 个顶层 / 113 个含子测试通过，其中固定已发布输出 51 项；日志 `D:/projects/go-tmp/gateway-policy-short-circuit-regression-final-20261015.jsonl`，包耗时 1.546s。
+- 对受影响 service 包执行 `golangci-lint run --timeout 5m --new-from-rev 57721bba9 ./internal/service`，0 issues；日志 `D:/projects/go-tmp/modular-53fd17-diff-lint-20261015.log`。
+- 微基准在同 Go 1.27.2、GOMAXPROCS=2、固定同源夹具、count=5/100ms 下仅复测一轮；原 7 项退化消除，25 项宿主边界最大中位数变化 +5.31%（原门槛 20%），所有 30 组无新增分配。控制组 -2.21%～+4.74%。旧失败记录保留，不以换夹具或降低阈值通过；新原始证据在 `D:/projects/go-tmp/modular-microbenchmark-53fd17b5-20261015`。
+- 从干净工作树精确 53fd 构建 `sub2api:modular-53fd17-local`，linux/amd64；image ID `sha256:a11840c20fa0e546ec1518f44762cb51ce448382a38beece0214f46c0e116a11`。构建日志 `D:/projects/go-tmp/modular-53fd17-docker-build-20261015.log`；前端复用同 tree 的构建缓存。没有更改生成输入，复用 577 生成零差异证据，构建后工作树仍干净。
+- 精确 53fd 新镜像的 11 故障场景全部通过：overload 主账号 3 次、备用 1 次；quota/model/server/timeout/auth/rate/stream 各 1+1；safety/parameter/partial 各 1+0。命令 `pwsh -NoProfile -File deploy/tests/gateway-failover-smoke.ps1 -Project sub2api-operator-test-failover53fd -Port 18093 -MockPort 18091`，终态 exit 0，日志 `D:/projects/go-tmp/modular-53fd17-failover-smoke-20261015.log`。再次确认二进制 revision、image ID 和 `/health` 后，仅清理这个新建项目的 3 容器、合成数据卷及网络；未动恢复项目和待核对任务。
+- 正常 HTTP/SSE 完成预定 4,000 次测量，全部通过 HTTP 200、自然 EOF 和预期标记校验，每个测量窗口精确 100 次上游调用、零额外 probe/reject。旧计时客户端没有独立 JSON/SSE 语法完整性校验，不能外推更强结论。HTTP 总耗时和 SSE 中位总耗时接近旧版，但 SSE 首字节 p95 的窗口中位值 23.806→32.203ms（+35.28%），不能把请求成功当性能通过。原始数据和归因限制见 `deploy/acceptance/MODULAR_PERFORMANCE.md`；正进行预先固定顺序的有限诊断，不重跑整套或删除初次结果。
+
 ## 尚未闭环，禁止外推为完成
 
+用户随后批准的有限 DEBUG 已完成：基线/候选各 100 次，完整 SSE、实际 usage 与逐请求日志均齐全，原日志配置已恢复。DEBUG 首字节 p95 48.869→41.849ms，可见账号选择阶段 p95 均 23ms；未复现候选更慢，但不同条件不能推翻下述 INFO / CBBC mixed。只到已有日志可观察边界，不把共享选择墙钟归因为某个 Redis/DB/GC 原因。本轮不再追加负载；完整方法、最后 JSON 证据整理错误及恢复说明见 `deploy/acceptance/MODULAR_PERFORMANCE.md`。
+
 1. 完整 lint 首轮 17 项，其中新 2 项已修；另 15 项所在 9 文件与基线 blob 完全一致，见 [逐项归因](CUSTOM_MODULARIZATION_LINT_BASELINE_20261015.md)。没有以修改错误文案、删除容错测试或禁用 lint 掩盖它们；差异 0 issues 不等于全量绿。
-2. 首轮性能门禁未通过：同源 overlay 两轮计时发现宿主决策的提前解析增加分配，普通 HTTP overload 中位数 +71.98%、10→11 alloc，request 的流式失败 +53.03%、6→9 alloc；未变分类器控制组基本持平。详见 `deploy/acceptance/MODULAR_PERFORMANCE.md`。只恢复原短路求值，保持纯策略和既有行为；修复后再复验，不更改阈值或基准输入。正常 HTTP/SSE 容器对照尚未执行。577 的既有正确性结果保留，不等于性能通过或新候选已验。
+2. 首轮微基准退化已由 53fd 的短路求值修复及同源复验关闭，新镜像最终 11 故障也通过；端到端 SSE 尾延迟差异仍待解释。唯一固定 CBBC 诊断完成 1,200 请求，原始样本 p95 39.921→48.522ms，两对约 +19%，按事先规则属于 mixed，仍未决。两份二进制 Go 版本/依赖/build flags 逐行相同；现有日志和合成 PG 只读关联用于定位，不因此新增负载或改变阈值。全部原始结果保留，不能套用微基准或平均值宣布性能全部通过。
 3. Actions 真实可运行、获准后的集成分支推进/草稿 PR 自动链路仍未完成。本轮没有远程写授权；不要把本地脚本执行当 Actions 成功。2026-10-15 再次只读查询 permissions 为 enabled=true / all，最近运行仍为 10-08；未 dispatch，不能据权限开关宣称账号层限制已恢复。
 
 耦合收益按 [逐阶段清单](CUSTOM_MODULARIZATION_COUPLING_20261015.md) 的真实调用/依赖/重复规则计算；没有声称零冲突或减少某个百分比。下一次真实官方升级另行指定版本并记录冲突与耗时。
+
+## 原方案交付核对
+
+| 原要求 | 实际实现/证据 | 状态边界 |
+| --- | --- | --- |
+| P0 固定基线、行为和协作归属 | 执行记录的 P0 清单、989594099 / v0.2.16、独立 codex 分支、原发布镜像及其他工作树差异 | 不合并旧功能分支，不改变远端集成分支；生产仅引用最近发布记录，不假装已现场复查 |
+| P1 可执行模块契约、真实宿主、正负门禁 | `custom/contracts.json`、真实路由/Sidebar/Settings 测试、17 项脚本测试、required_host_calls | 不是只检查文件存在；metadata 不授予生产权限；通用 Host 设置/权限 registrar 不冒充动态业务插件 |
+| P2 菜单/品牌/语言/图片共享策略 | frontend feature 元数据、精确语言覆盖、展示适配器、imageGenerationPolicy；完整前端和变体夹具 | 原 URL/授权与技术字段保持；生产无新业务 settings tab，真实定制字段已迁入小组件，不复制官方面板 |
+| P3 统一装配、启停与生成 | `customapp/composition.go`、16 条路由、真实 main/Wire 启停、负向调用检查、干净生成及实际重启 | 复用官方审计/批量 worker，不重复所有者；没有 Ent schema 或 SQL 运行迁移变化 |
+| P4 审计窄接口、计费和恢复 | `SecurityAuditGate.Check`、原 coordinator/账务事务、真实 PG、参考图/PNG/ZIP/取消/Redis 重投/进程中断证据 | 用户后续批准取消结算独立修复；未知结果保持冻结、不增加管理员解除入口、不补扣历史 |
+| P5 决策与执行分离、协议边界 | 纯值 decision/replay，真实发送及 response ID attempt，固定旧版输出、HTTP/SSE/WS 测试、精确 53fd 11 故障 | 不重写转发循环，不新增故障规则/重试预算/正常请求期远程调用；纯策略仍同 service 包，限制已披露 |
+| P6 联合验收和升级边界演练 | 真实 PG/Redis/Docker、官方路由重排/新增、真实设置字段 patch、真实工作台能力变化、生成零差异 | 完整质量的 skip 与基线 lint 欠账单列；端到端性能剩余结论见性能报告，不用局部成功替代 |
+| 维护交付、共享日志、效果指标 | 本文件、执行记录、耦合清单、`custom/README.md`、项目状态/功能日志/升级问题记录及根目录指针 | 记录真实接入点/依赖/重复规则，不声称已证明未来冲突减少百分比 |
+| 远端自动升级 | workflow / 同步脚本本地接入，权限只读核验 | 未实际触发，不能称链路完成；原方案明确允许已验证本地代码阶段单独交付 |
+| 发布与生产 | 当前不执行 | 用户暂缓发布，需新授权；不以本地验收自动推送/打标签/部署 |
+
+本表核对的是原范围，不以新增目录或接口数量作为完成标准；性能未闭环前仍不能将 P0–P6 整体验收标为完成。

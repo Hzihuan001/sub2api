@@ -1,0 +1,17 @@
+services:
+  sub2api:
+    cpus: 2
+    mem_limit: 2g
+  perf-mock:
+    image: node:24-alpine
+    command: ["node", "/fixture/perf.mjs", "server"]
+    volumes:
+      - ./tests/modular-perf-fixture.mjs:/fixture/perf.mjs:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)process.exit(1)})"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+networks:
+  default:
+    internal: true
