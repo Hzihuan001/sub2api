@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Regression reproducer only: use real provider/processor/settlement with a
+// Use real provider/processor/settlement with a
 // deterministic mock upstream and the existing repository/billing test doubles.
 // The second upstream response is held until cancellation, so the first image
 // is durably checkpointed before cancel and the second is a late success.
@@ -26,9 +26,9 @@ func TestAppManagedBatchImageCancelAfterPartialSuccessMustSettleCompletedImages(
 	ctx := context.Background()
 	job := testSettlingBatchImageJob("imgbatch_cancel_accounting_repro")
 	job.Provider, job.Model, job.Status = BatchImageProviderAppManaged, "gpt-image-1", BatchImageJobStatusRunning
-	job.ItemCount, job.SuccessCount, job.FailCount = 2, 0, 0
+	job.ItemCount, job.SuccessCount, job.FailCount = 3, 0, 0
 	job.ProviderOutputRef = nil
-	hold := 0.5
+	hold := 0.75
 	job.HoldAmount = &hold
 	account := &Account{ID: *job.AccountID, Type: AccountTypeAPIKey, Platform: PlatformOpenAI,
 		Credentials: map[string]any{"api_key": "synthetic-test-key", "base_url": "https://upstream.invalid"}}
@@ -37,6 +37,7 @@ func TestAppManagedBatchImageCancelAfterPartialSuccessMustSettleCompletedImages(
 	itemRepo := &appManagedTestRepo{items: map[string][]*BatchImageItem{job.BatchID: {
 		{CustomID: "one", InputPayload: []byte(`{"custom_id":"one","prompt":"first synthetic image"}`)},
 		{CustomID: "two", InputPayload: []byte(`{"custom_id":"two","prompt":"second synthetic image"}`)},
+		{CustomID: "three", InputPayload: []byte(`{"custom_id":"three","prompt":"must remain unsubmitted"}`)},
 	}}}
 	provider := NewAppManagedBatchImageProvider(AppManagedBatchImageProviderOptions{
 		HTTPUpstream: upstream, ItemRepo: itemRepo, ResultDir: t.TempDir(), Concurrency: 1,
@@ -98,8 +99,25 @@ func TestAppManagedBatchImageCancelAfterPartialSuccessMustSettleCompletedImages(
 	t.Logf("upstream successes=%d, status=%s, capture calls=%d, release calls=%d, released hold=%.2f, usage records=%d",
 		upstream.successes.Load(), job.Status, len(billing.captures), len(billing.releases), released, usageLogs.calls)
 	require.Len(t, billing.captures, 1, "successful images must be settled even when cancellation arrives before batch completion")
-	require.GreaterOrEqual(t, billing.captures[0].ActualAmount, 0.25, "the durably successful pre-cancel image must not become free")
+	require.InDelta(t, 0.5, billing.captures[0].ActualAmount, 1e-12, "both the completed and late successful images remain billable")
+	require.InDelta(t, 0.75, billing.captures[0].HoldAmount, 1e-12, "capture atomically returns the unsubmitted item's unused hold")
+	require.EqualValues(t, 2, upstream.calls.Load(), "cancel must stop the item waiting for a concurrency slot")
+	require.Equal(t, 2, job.SuccessCount)
+	require.Equal(t, 1, job.FailCount)
 	require.Empty(t, billing.releases, "do not release the entire hold when successful output exists")
+	require.Equal(t, 1, usageLogs.calls)
+	require.Equal(t, 2, usageLogs.lastLog.ImageCount)
+	require.InDelta(t, 0.5, usageLogs.lastLog.ActualCost, 1e-12)
+	require.Equal(t, BatchImageJobStatusCompleted, job.Status)
+	require.FileExists(t, provider.resultPath(job.BatchID))
+	// A repeated cancel and duplicate delivery neither removes output nor
+	// repeats the ledger capture/usage record.
+	require.NoError(t, provider.Cancel(ctx, job, account))
+	_, err = pipeline.Process(ctx, job.BatchID)
+	require.NoError(t, err)
+	require.FileExists(t, provider.resultPath(job.BatchID))
+	require.Len(t, billing.captures, 1)
+	require.Empty(t, billing.releases)
 	require.Equal(t, 1, usageLogs.calls)
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -18,10 +19,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type appManagedTestRepo struct{ items map[string][]*BatchImageItem }
+type appManagedTestRepo struct {
+	mu    sync.Mutex
+	items map[string][]*BatchImageItem
+}
 
 func (r *appManagedTestRepo) ListBatchImageItems(_ context.Context, id string, _ BatchImageItemFilter) ([]*BatchImageItem, error) {
-	return r.items[id], nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := make([]*BatchImageItem, len(r.items[id]))
+	for i, item := range r.items[id] {
+		copy := *item
+		copy.InputPayload = append([]byte(nil), item.InputPayload...)
+		items[i] = &copy
+	}
+	return items, nil
+}
+
+func (r *appManagedTestRepo) CompareAndSetBatchImageAsyncState(_ context.Context, batchID, customID string, previous, next json.RawMessage) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, item := range r.items[batchID] {
+		if item.CustomID != customID {
+			continue
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(item.InputPayload, &raw); err != nil {
+			return err
+		}
+		var stored, expected any
+		_ = json.Unmarshal(raw["managed_async"], &stored)
+		_ = json.Unmarshal(previous, &expected)
+		if !reflect.DeepEqual(stored, expected) || (stored == nil && string(raw["managed_async_cancel_requested"]) == "true") {
+			return ErrBatchImageIndexStateConflict
+		}
+		raw["managed_async"] = next
+		item.InputPayload, _ = json.Marshal(raw)
+		return nil
+	}
+	return ErrBatchImageIndexStateConflict
+}
+
+func (r *appManagedTestRepo) RequestBatchImageAsyncCancel(_ context.Context, batchID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, item := range r.items[batchID] {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(item.InputPayload, &raw); err != nil {
+			return err
+		}
+		raw["managed_async_cancel_requested"] = json.RawMessage("true")
+		item.InputPayload, _ = json.Marshal(raw)
+	}
+	return nil
 }
 
 type appManagedTestUpstream struct {
@@ -125,6 +175,27 @@ func TestAppManagedBatchImageProviderFanoutAndIdempotentCompletion(t *testing.T)
 	require.NoError(t, provider.Cleanup(context.Background(), job, account, CleanupTargetOutput))
 	_, err = os.Stat(filepath.Join(dir, jobID+".jsonl"))
 	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestAppManagedBatchImageProviderCancelBeforeDispatchReleasesAsCancelled(t *testing.T) {
+	dir := t.TempDir()
+	upstream := &appManagedTestUpstream{}
+	jobID := "imgbatch_app_managed_cancel_before_dispatch"
+	repo := &appManagedTestRepo{items: map[string][]*BatchImageItem{
+		jobID: {{CustomID: "one", InputPayload: []byte(`{"custom_id":"one","prompt":"draw a cat"}`)}},
+	}}
+	provider := NewAppManagedBatchImageProvider(AppManagedBatchImageProviderOptions{
+		HTTPUpstream: upstream, ItemRepo: repo, ResultDir: dir, Concurrency: 1,
+	})
+	account := &Account{ID: 7, Type: AccountTypeAPIKey, Platform: PlatformOpenAI, Credentials: map[string]any{
+		"api_key": "test-key", "base_url": "https://upstream.invalid",
+	}}
+	job := &BatchImageJob{BatchID: jobID, Model: "gpt-image-1", ItemCount: 1}
+	require.NoError(t, provider.Cancel(context.Background(), job, account))
+	status, err := provider.Get(context.Background(), job, account)
+	require.NoError(t, err)
+	require.Equal(t, BatchProviderStateCancelled, status.InternalState)
+	require.Equal(t, 0, upstream.calls)
 }
 
 func TestAppManagedBatchImageProviderDoesNotSilentlyDropFileReference(t *testing.T) {

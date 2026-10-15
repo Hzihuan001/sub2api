@@ -12,16 +12,17 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -131,142 +132,7 @@ func (p *appManagedBatchImageProvider) Get(ctx context.Context, job *BatchImageJ
 	if isBananaRouterGeminiAccount(account) {
 		return p.getBananaRouterBatch(ctx, job, account)
 	}
-	if _, err := os.Stat(p.cancelPath(job.BatchID)); err == nil {
-		return &BatchProviderStatus{RawState: "CANCELLED", InternalState: BatchProviderStateCancelled, Done: true}, nil
-	}
-	path := p.resultPath(job.BatchID)
-	if _, err := os.Stat(path); err == nil {
-		return &BatchProviderStatus{RawState: "SUCCEEDED", InternalState: BatchProviderStateSucceeded, Done: true, ProviderOutputRef: path}, nil
-	}
-	if p.itemRepo == nil {
-		return nil, ErrBatchImageProviderInvalidInput.WithCause(fmt.Errorf("managed provider item repository is unavailable"))
-	}
-	items, err := p.itemRepo.ListBatchImageItems(ctx, job.BatchID, BatchImageItemFilter{Limit: maxInt(job.ItemCount, 1000)})
-	if err != nil {
-		return nil, err
-	}
-	if len(items) == 0 {
-		return nil, ErrBatchImageProviderInvalidInput.WithCause(fmt.Errorf("batch has no items"))
-	}
-	if err := os.MkdirAll(p.resultDir, 0750); err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, p.timeout)
-	defer cancel()
-
-	lines := make([][]byte, len(items))
-	completed := loadManagedLines(path + ".partial")
-	for i, item := range items {
-		if item != nil {
-			lines[i] = completed[item.CustomID]
-			if len(lines[i]) > 0 {
-				_ = p.persistManagedProgress(ctx, job.BatchID, item.CustomID, lines[i])
-			}
-		}
-	}
-	sem := make(chan struct{}, p.concurrency)
-	var wg sync.WaitGroup
-	var writeMu sync.Mutex
-	for i, item := range items {
-		if item == nil {
-			continue
-		}
-		wg.Add(1)
-		go func(i int, item *BatchImageItem) {
-			defer wg.Done()
-			if len(lines[i]) > 0 {
-				return
-			}
-			if _, err := os.Stat(p.cancelPath(job.BatchID)); err == nil {
-				return
-			}
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
-			defer func() { <-sem }()
-			var payload managedBatchImageItemPayload
-			imageSize, responseMimeType, aspectRatio := "2K", "image/png", ""
-			var in BatchImageSubmitItem
-			if len(item.InputPayload) > 0 && json.Unmarshal(item.InputPayload, &payload) == nil && strings.TrimSpace(payload.Item.Prompt) != "" {
-				in = payload.Item
-				if strings.TrimSpace(payload.ImageSize) != "" {
-					imageSize = payload.ImageSize
-				}
-				if strings.TrimSpace(payload.ResponseMimeType) != "" {
-					responseMimeType = payload.ResponseMimeType
-				}
-				aspectRatio = strings.TrimSpace(payload.AspectRatio)
-			} else if len(item.InputPayload) > 0 && json.Unmarshal(item.InputPayload, &in) == nil {
-				// Legacy payloads stored the item directly.
-			} else {
-				in = BatchImageSubmitItem{CustomID: item.CustomID, Prompt: batchImageDerefString(item.PromptPreview), OutputCount: 1}
-			}
-			if in.CustomID == "" {
-				in.CustomID = item.CustomID
-			}
-			line := p.generateOne(ctx, job, account, in, imageSize, aspectRatio, responseMimeType)
-			// Context cancellation is a worker timeout, not a final item result.
-			// Leave the item absent from the checkpoint so the next queue pass can
-			// retry it instead of permanently recording a timeout failure.
-			if ctx.Err() != nil {
-				return
-			}
-			lines[i] = line
-			_ = p.persistManagedProgress(ctx, job.BatchID, item.CustomID, line)
-			if len(line) > 0 {
-				writeMu.Lock()
-				_ = appendManagedLine(path+".partial", line)
-				writeMu.Unlock()
-			}
-		}(i, item)
-	}
-	wg.Wait()
-	if _, err := os.Stat(p.cancelPath(job.BatchID)); err == nil {
-		return &BatchProviderStatus{RawState: "CANCELLED", InternalState: BatchProviderStateCancelled, Done: true}, nil
-	}
-	// Never publish a partial result as a successful batch. A timeout can leave
-	// some requests finished and others still running; returning a partial
-	// JSONL would let settlement treat the missing items as unaccounted-for.
-	// Keep the partial checkpoint and let the queue retry only the unfinished
-	// items on the next worker pass.
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	for _, line := range lines {
-		if len(line) == 0 {
-			return nil, fmt.Errorf("managed batch fan-out incomplete: an item has no result")
-		}
-	}
-	tmp := path + ".tmp-" + strconv.FormatInt(time.Now().UnixNano(), 10)
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if err != nil {
-		return nil, err
-	}
-	w := bufio.NewWriter(f)
-	for _, line := range lines {
-		if len(line) == 0 {
-			continue
-		}
-		_, _ = w.Write(line)
-		_ = w.WriteByte('\n')
-	}
-	if err := w.Flush(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return nil, err
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return nil, err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return nil, err
-	}
-	_ = os.Remove(path + ".partial")
-	return &BatchProviderStatus{RawState: "SUCCEEDED", InternalState: BatchProviderStateSucceeded, Done: true, ProviderOutputRef: path}, nil
+	return p.getManagedFanoutBatch(ctx, job, account)
 }
 
 func (p *appManagedBatchImageProvider) persistManagedProgress(ctx context.Context, batchID, customID string, line []byte) error {
@@ -291,7 +157,7 @@ func (p *appManagedBatchImageProvider) persistManagedProgress(ctx context.Contex
 	return updater.RefreshBatchImageJobCounts(ctx, batchID)
 }
 
-func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *BatchImageJob, account *Account, item BatchImageSubmitItem, imageSize, aspectRatio, responseMimeType string) []byte {
+func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *BatchImageJob, account *Account, item BatchImageSubmitItem, imageSize, aspectRatio, responseMimeType string) ([]byte, error) {
 	model := account.GetMappedModel(job.Model)
 	if strings.TrimSpace(model) == "" {
 		model = job.Model
@@ -318,7 +184,7 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 		_ = mw.WriteField("size", imageSize)
 		for _, ref := range item.ReferenceImages {
 			if len(ref.Data) == 0 {
-				return managedErrorLine(item.CustomID, "REFERENCE_UNAVAILABLE", "reference image bytes are unavailable")
+				return managedErrorLine(item.CustomID, "REFERENCE_UNAVAILABLE", "reference image bytes are unavailable"), nil
 			}
 			name := strings.TrimSpace(ref.ID)
 			if name == "" {
@@ -326,14 +192,14 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 			}
 			part, partErr := mw.CreateFormFile("image[]", filepath.Base(name))
 			if partErr != nil {
-				return managedErrorLine(item.CustomID, "REFERENCE_BUILD_FAILED", partErr.Error())
+				return managedErrorLine(item.CustomID, "REFERENCE_BUILD_FAILED", partErr.Error()), nil
 			}
 			if _, partErr = part.Write(ref.Data); partErr != nil {
-				return managedErrorLine(item.CustomID, "REFERENCE_BUILD_FAILED", partErr.Error())
+				return managedErrorLine(item.CustomID, "REFERENCE_BUILD_FAILED", partErr.Error()), nil
 			}
 		}
 		if err := mw.Close(); err != nil {
-			return managedErrorLine(item.CustomID, "REFERENCE_BUILD_FAILED", err.Error())
+			return managedErrorLine(item.CustomID, "REFERENCE_BUILD_FAILED", err.Error()), nil
 		}
 		reqBody, contentType = &buffer, mw.FormDataContentType()
 		endpoint = "/v1/images/edits"
@@ -345,7 +211,7 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 	target := buildOpenAIEndpointURL(base, endpoint)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, reqBody)
 	if err != nil {
-		return managedErrorLine(item.CustomID, "REQUEST_BUILD_FAILED", err.Error())
+		return managedErrorLine(item.CustomID, "REQUEST_BUILD_FAILED", err.Error()), nil
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", "Bearer "+managedAccountAPIKey(account))
@@ -358,26 +224,27 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 		req.Header.Set("User-Agent", ua)
 	}
 	account.ApplyHeaderOverrides(req.Header)
-	var resp *http.Response
-	if p.httpUpstream != nil {
-		proxyURL := ""
-		if account.Proxy != nil {
-			proxyURL = account.Proxy.URL()
-		}
-		resp, err = p.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
-	} else {
-		resp, err = (&http.Client{Timeout: p.timeout}).Do(req)
-	}
+	resp, err := p.doManagedRequest(req, account)
 	if err != nil {
-		return managedErrorLine(item.CustomID, "UPSTREAM_REQUEST_FAILED", err.Error())
+		var dnsErr *net.DNSError
+		var opErr *net.OpError
+		if errors.As(err, &dnsErr) || (errors.As(err, &opErr) && opErr.Op == "dial") {
+			// The connection was not established, so this request cannot have
+			// generated an image upstream. It is safe to settle it as a failure.
+			return managedErrorLine(item.CustomID, "UPSTREAM_REQUEST_FAILED", err.Error()), nil
+		}
+		return nil, fmt.Errorf("managed image submission outcome is unknown; retaining balance hold: %w", err)
+	}
+	if resp == nil || resp.Body == nil {
+		return nil, fmt.Errorf("managed image submission returned no response; retaining balance hold")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if readErr != nil {
-		return managedErrorLine(item.CustomID, "UPSTREAM_READ_FAILED", readErr.Error())
+		return nil, fmt.Errorf("managed image response was incomplete; retaining balance hold: %w", readErr)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return managedErrorLine(item.CustomID, strconv.Itoa(resp.StatusCode), strings.TrimSpace(string(responseBody)))
+		return managedErrorLine(item.CustomID, strconv.Itoa(resp.StatusCode), strings.TrimSpace(string(responseBody))), nil
 	}
 	var out struct {
 		Data []struct {
@@ -386,7 +253,7 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 		} `json:"data"`
 	}
 	if json.Unmarshal(responseBody, &out) != nil || len(out.Data) == 0 {
-		return managedErrorLine(item.CustomID, "EMPTY_IMAGE_OUTPUT", "upstream returned no image")
+		return nil, fmt.Errorf("managed image response has no confirmed image result; retaining balance hold")
 	}
 	parts := make([]any, 0, len(out.Data))
 	for _, img := range out.Data {
@@ -404,10 +271,10 @@ func (p *appManagedBatchImageProvider) generateOne(ctx context.Context, job *Bat
 		parts = append(parts, map[string]any{"inlineData": map[string]any{"mimeType": mime, "data": data}})
 	}
 	if len(parts) == 0 {
-		return managedErrorLine(item.CustomID, "EMPTY_IMAGE_OUTPUT", "upstream returned no decodable image")
+		return nil, fmt.Errorf("managed image result could not be downloaded or decoded; retaining balance hold")
 	}
 	line, _ := json.Marshal(map[string]any{"key": item.CustomID, "response": map[string]any{"candidates": []any{map[string]any{"content": map[string]any{"parts": parts}}}}})
-	return line
+	return line, nil
 }
 
 func bananaRouterRequestBody(item BatchImageSubmitItem, imageSize, aspectRatio string) ([]byte, error) {
@@ -669,25 +536,16 @@ func bananaImageSize(value string) string {
 }
 
 func (p *appManagedBatchImageProvider) Cancel(ctx context.Context, job *BatchImageJob, account *Account) error {
-	if isBananaRouterGeminiAccount(account) {
-		if job == nil {
-			return ErrBatchImageProviderInvalidInput
-		}
-		repo, ok := p.itemRepo.(BatchImageAsyncStateRepository)
-		if !ok {
-			return fmt.Errorf("managed async state repository is unavailable")
-		}
-		// Cancellation stops unsubmitted work. Submitted tasks must be drained
-		// and indexed so successful images are still settled exactly once.
-		return repo.RequestBatchImageAsyncCancel(ctx, job.BatchID)
+	if job == nil {
+		return ErrBatchImageProviderInvalidInput
 	}
-	if job != nil {
-		_ = os.Remove(p.resultPath(job.BatchID))
-		if err := os.MkdirAll(p.resultDir, 0750); err == nil {
-			_ = os.WriteFile(p.cancelPath(job.BatchID), []byte("cancelled"), 0600)
-		}
+	repo, ok := p.itemRepo.(BatchImageAsyncStateRepository)
+	if !ok {
+		return fmt.Errorf("managed async state repository is unavailable")
 	}
-	return nil
+	// Cancellation stops unsubmitted work only. Do not delete result files or
+	// interrupt a dispatched request: its late response remains billable.
+	return repo.RequestBatchImageAsyncCancel(ctx, job.BatchID)
 }
 
 func (p *appManagedBatchImageProvider) OpenResult(_ context.Context, job *BatchImageJob, _ *Account) (io.ReadCloser, string, error) {
@@ -858,11 +716,14 @@ func normalizeManagedImageMime(value string) string {
 	}
 }
 
-func loadManagedLines(path string) map[string][]byte {
+func loadManagedLinesStrict(path string) (map[string][]byte, error) {
 	out := make(map[string][]byte)
 	f, err := os.Open(path)
 	if err != nil {
-		return out
+		if os.IsNotExist(err) {
+			return out, nil
+		}
+		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 	scanner := bufio.NewScanner(f)
@@ -875,11 +736,15 @@ func loadManagedLines(path string) map[string][]byte {
 		var envelope struct {
 			Key string `json:"key"`
 		}
-		if json.Unmarshal(line, &envelope) == nil && strings.TrimSpace(envelope.Key) != "" {
-			out[envelope.Key] = append([]byte(nil), line...)
+		if err := json.Unmarshal(line, &envelope); err != nil || strings.TrimSpace(envelope.Key) == "" {
+			return nil, fmt.Errorf("invalid managed batch result checkpoint")
 		}
+		out[envelope.Key] = append([]byte(nil), line...)
 	}
-	return out
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func appendManagedLine(path string, line []byte) error {
@@ -894,8 +759,10 @@ func appendManagedLine(path string, line []byte) error {
 	if _, err := f.Write(line); err != nil {
 		return err
 	}
-	_, err = f.Write([]byte("\n"))
-	return err
+	if _, err = f.Write([]byte("\n")); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 func fetchManagedImage(ctx context.Context, rawURL string) (string, string) {

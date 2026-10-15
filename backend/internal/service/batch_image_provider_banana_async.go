@@ -108,7 +108,7 @@ func (p *appManagedBatchImageProvider) getBananaRouterBatch(ctx context.Context,
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	items, err := p.itemRepo.ListBatchImageItems(ctx, job.BatchID, BatchImageItemFilter{Limit: maxInt(job.ItemCount, 1000)})
+	items, err := listAllManagedBatchItems(ctx, p.itemRepo, job.BatchID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,10 @@ func (p *appManagedBatchImageProvider) getBananaRouterBatch(ctx context.Context,
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
-	completed := loadManagedLines(path + ".partial")
+	completed, err := loadManagedLinesStrict(path + ".partial")
+	if err != nil {
+		return nil, err
+	}
 	pending := make([]*bananaRouterPendingItem, len(items))
 	lines := make([][]byte, len(items))
 	active := 0
