@@ -2,9 +2,9 @@
 
 本仓库把官方主线、长期定制集成分支和临时升级分支分开。预期流程是每次官方发布后，先由同步工作流生成升级分支、冲突报告和测试结果，再由人工确认定制功能边界；同步工作流不负责构建、部署或修改生产环境。
 
-2026-10-15 当前边界：上一轮 workflow dispatch 为 HTTP 422 `Actions has been disabled for this repository`；本轮按 `.7` 运行 f36/分支 3ce 查询均无 Actions 运行。离线升级脚本/YAML Shell 检查不代表真实 Actions、草稿 PR 和报告链路成功。用户批准的 `.7` 本地 GHCR 发布已完成，运行 `f36de3d4a` / `custom-0.2.16.7` 已部署三站，精确镜像本地验收、GHCR 回拉、备份和逐站检查通过，见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md)。
+2026-10-16 当前边界：`.8` 文档和 Key 提示删除已按批准的本地验收/GHCR 路径部署三站，运行 `46083426af6cf993b0dfd86767fc35df9977dd22` / `custom-0.2.16.8`，精确产物、备份和逐站检查通过，见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM8_20261016.md)。个人 Fork 的本次运行提交 Actions API 为 0，仓库 enabled/workflow active；此前 HTTP 422 是历史结果，不代表当前仍禁用。离线检查不等于真实自动升级 PR 链路成功。
 
-发布分支与 `origin/custom/integration` 已推送 `3ce7de3ebe68263a3f0e8bf6a83393486747306f`，包含正式运行 `f36de3d4a00400c66994a02c13c5d23f6a7feac8`；本轮文档随后提交同步，精确 ref 由 Git 核验。这仍不是远端自动升级 PR 链路成功。下次升级从 [项目状态](CUSTOM_PROJECT_STATUS.md) 和实际远端重新核对完整功能集合，不从历史 `.6` 收尾点遗漏主备 Key 模块。
+发布分支与 `origin/custom/integration` 已包含 `.8` 运行提交，文档收尾随分支同步、精确 ref 由 Git 核验。下次升级从 [项目状态](CUSTOM_PROJECT_STATUS.md) 和实际远端核对完整功能集合，保留主备 Key 及本次公共文档。GitHub CLI 默认仓库曾指向上游，现已在本机校正为个人 Fork；查询/触发工作流仍应显式使用 `-R Hzihuan001/sub2api` 或完整 API 路径，避免读到上游运行。
 
 标准顺序：
 
