@@ -109,3 +109,29 @@ Windows 测试进程 PATH 包含锁定 Go 和 `G:/PC/Git/bin`，后者满足 PgD
 - **远端只读事实**：`actions/permissions` 为 enabled/all，workflow 默认 write、允许 PR；全仓最近执行仍 2026-10-08，升级 workflow 最近成功为 2026-10-05（run `37296118305`）。远端 `custom/integration=fd7c1b91446a38666b7f5c32ab9d493f6431d071`，到原收尾点 `260f3c1b6` 图差异 0/296；开放草稿 PR #1 仍旧 isolation 分支。未 dispatch、未推进分支；不能据权限正常声称账号层限制或整条链路已恢复。
 - **P4 证据限制补充**：现有真实 PG / 候选 Docker 证明正确性与恢复，另有旧新取消缺陷复现；未找到完整同一组合夹具的旧新任务/账目逐项对照矩阵。不声称该实验已完成，也不以此追加负载；用户授权的取消修复本来就有意改变旧缺陷结果。
 - 原 INFO/CBBC mixed、15 项基线 lint 和用户暂缓发布保持；没有应用源码变化，不重跑已通过的后端/前端套件，不增加性能实验。
+
+## 分组规则独立 Docker 验收（2026-10-15，不关闭原性能门禁）
+
+这节只验收用户另行授权的 `caa717338` 分组规则，不替代原 `53fd17b5b` 模块化对照。运行源码从干净 `git archive 0068815bde233b3833d458b89fd13f9a2cea343c` 导出，二者 backend/frontend 一致；后续本次只改测试和文档。
+
+- 镜像 `sub2api:group-policy-0068815-local`，linux/amd64，ID `sha256:31d0fdadcac8e2edbeb49e8da781b1f999d76b926690a5cf70f1b01c3472db4d`。二进制报告完整 0068815 commit，版本仅本地标记 `0.2.16-custom.5-group-policy-local`。标准 Dockerfile 构建通过；4 项语言检查、vue-tsc、1143 模块生产构建、Go 1.27.2 embed 编译完成。构建日志 `D:/projects/go-tmp/group-policy-docker-build-20261015.log`。
+- 脚本 `deploy/tests/group-failure-smoke.ps1` SHA256 `06f663c86e7320eba675136b84e722deff099f732a638c6f80120cd1abf05b5d`；默认无副作用，需 `-Execute`、上述镜像 ID、完整 commit 和新目录。运行参数项目 `sub2api-operator-test-group-20261015` / 18095、18096；网络 internal，客户端在模拟容器内执行，禁止外部模型转发。严格核对容器/卷归属、镜像及二进制，不复用旧项目或未知图片任务。
+- 一轮运行 `2026-10-15T08:20:34Z` 至 `08:28:21Z`，退出 0；固定 8 次非流式网关请求、23 次模拟上游尝试，无热身或失败重发。既有能力探针单独应答，不冒充用户尝试；此脚本不用于性能测量，也不证明所有供应商/协议的容器覆盖。
+
+| 请求 | 场景 | 主账号尝试 / 备用尝试 | HTTP |
+| --- | --- | --- | --- |
+| 1 | A 阈值 4，前三次不暂停 | 3 / 1 | 200 |
+| 2 | app 重启后第四次累计触发 | 1 / 1 | 200 |
+| 3 | B 共享账号同样被避开 | 0 / 1 | 200 |
+| 4 | 手动解除后 A 可再次使用 | 3 / 1 | 200 |
+| 5 | 未达阈值时手动恢复也清计数 | 3 / 1 | 200 |
+| 6 | B 自己的阈值 2 独立触发 | 2 / 1 | 200 |
+| 7 | 再次重启后 A 仍避开、截止时间不延长 | 0 / 1 | 200 |
+| 8 | 最终恢复后 A 重新可用 | 3 / 1 | 200 |
+
+- 两次真实 app-only restart 的 StartedAt 已改变，配置、部分 Redis 计数、数据库冷却分别验证。管理员读写、普通用户 403、普通 API Key 401、operator 无权/只读/读写组合全部通过，合成 operator 设置最终恢复。
+- 独立只读 PG 核对：8 条使用记录、8 个不同 request ID，全部归属成功备用账号；输入 80 / 输出 16 token，usage actual_cost 合计 `0.0000216000`，余额减少 `0.00002160`，差额在 `1e-8` 内。原始 `ledger-check.json` 明确 balanced=true，没有对失败主账号额外生成成功账单。
+- 完成时四容器 healthy；本次 app 日志中 panic/fatal/迁移失败/connection refused 匹配 0。普通合成过载错误属于预期注入，不声称零错误日志。原始目录 `D:/projects/go-tmp/group-failure-smoke-20261015/` 含 `evidence.json`、`ledger-check.json`、`app.log`；控制台 `D:/projects/go-tmp/group-failure-smoke-20261015.log`。日志采集参数格式纠正未重复业务请求。
+- 验收后逐个核对精确容器 ID 的项目标签，只停止本次新建四容器，未删除容器/卷/证据；app/PG/Redis 退出 0，模拟 Node 在 stop 的 10 秒宽限后被终止（137），不是测试过程中的应用崩溃。旧性能、恢复和未知任务项目未修改。不自动重跑脚本或新建重复项目。
+- 实际应用路由测试补齐两条新接口，完整 18 条 handler/鉴权/顺序/空 Host 对照。命令 `go test -tags=unit ./internal/server -run '^TestApplicationCustomRoutesPreserveOrderMiddlewareAndNativeSurface$' -count=1 -v` 通过，package 0.442s；只改测试。`git diff --check` 通过。
+- 没有推送、标签、Actions dispatch 或生产操作；没有重新做 SSE 负载。原性能 mixed、全量基线 lint 欠账、未知图片待核对及发布暂缓仍有效。

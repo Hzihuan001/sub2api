@@ -125,6 +125,8 @@ var builtinAdminRouteContracts = map[string]string{
 	"PUT /api/v1/admin/roles/operator/permissions":      "UpdateOperatorRolePolicy",
 	"POST /api/v1/admin/users/:id/api-keys":             "CreateForUser",
 	"GET /api/v1/admin/groups/:id/effective-models":     "GetEffectiveModels",
+	"GET /api/v1/admin/groups/:id/failure-policy":       "GetGroupFailurePolicy",
+	"PUT /api/v1/admin/groups/:id/failure-policy":       "UpdateGroupFailurePolicy",
 	"GET /api/v1/admin/ops/capabilities":                "GetCapabilities",
 	"DELETE /api/v1/admin/ops/errors":                   "DeleteErrorLogs",
 	"GET /api/v1/admin/usage/filter-options":            "GetFilterOptions",
@@ -199,7 +201,7 @@ func TestApplicationCustomRoutesPreserveOrderMiddlewareAndNativeSurface(t *testi
 	for _, adjacent := range [][]string{
 		{"GET /api/v1/admin/roles/operator/permissions", "PUT /api/v1/admin/roles/operator/permissions", "GET /api/v1/admin/compliance"},
 		{"POST /api/v1/admin/users/:id/auth-identities", "POST /api/v1/admin/users/:id/api-keys", "POST /api/v1/admin/users"},
-		{"GET /api/v1/admin/groups/:id/model-allowlist-candidates", "GET /api/v1/admin/groups/:id/effective-models", "GET /api/v1/admin/groups/:id/composite-routes"},
+		{"GET /api/v1/admin/groups/:id/model-allowlist-candidates", "GET /api/v1/admin/groups/:id/effective-models", "GET /api/v1/admin/groups/:id/failure-policy", "PUT /api/v1/admin/groups/:id/failure-policy", "GET /api/v1/admin/groups/:id/composite-routes"},
 		{"GET /api/v1/admin/ops/capabilities", "GET /api/v1/admin/ops/concurrency"},
 		{"GET /api/v1/admin/ops/errors", "DELETE /api/v1/admin/ops/errors", "GET /api/v1/admin/ops/errors/:id"},
 		{"GET /api/v1/admin/usage/search-api-keys", "GET /api/v1/admin/usage/filter-options", "GET /api/v1/admin/usage/cleanup-tasks"},
@@ -222,7 +224,7 @@ func TestApplicationCustomRoutesPreserveOrderMiddlewareAndNativeSurface(t *testi
 		require.NotContains(t, empty, route, "omitting the composition must be observable")
 		delete(routes, route)
 	}
-	require.Equal(t, empty, routes, "empty custom must remove only the 16 fork routes")
+	require.Equal(t, empty, routes, "empty custom must remove only the 18 fork routes")
 	for _, route := range []string{
 		"GET /api/v1/admin/prompt-audit/config", "GET /api/v1/admin/prompt-audit/events",
 		"POST /v1/images/batches", "GET /v1/images/batches", "GET /v1/images/batches/models",

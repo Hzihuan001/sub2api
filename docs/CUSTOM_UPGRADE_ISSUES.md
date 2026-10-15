@@ -1,5 +1,11 @@
 # 定制升级问题记录
 
+## 2026-10-15 — 新定制路由必须同步实际应用契约
+
+- 新分组策略已在 composition/variation 测试登记 18 条，但 `custom_bootstrap_test.go` 的真实应用清单仍只有旧 16 条，且邻接顺序跳过新增接口；开发时仅按 GroupFailure 等名字选测未包含此测试。
+- 将 GET/PUT failure-policy 一起纳入精确 handler、鉴权、中间件、注册邻接与空定制层对照，未放松断言；单独运行 `TestApplicationCustomRoutesPreserveOrderMiddlewareAndNativeSurface` 通过（Go 1.27.2，package 0.442s）。完整 `backend-host` 清单本来已选中 Application，此后新增路由应同时核对这两个宿主层测试，不能只看局部 feature 用例。
+- 容器验收客户端原生命令使用显式 `docker.exe`，避免 PowerShell 函数同名递归/参数截获；冻结脚本离线 stdin/数组/参数检查后只执行一轮。日志整理第一次把 JSON 自动解析出的 DateTime 直接传入 `docker logs --since` 格式错误，改用原 ISO 时间后采集成功；业务测试没有重发。
+
 ## 2026-10-15 — Workflow 必须测试真实 Shell，而不只看 YAML 存在
 
 - 双引号报告内的 Markdown 反引号会被 Bash 解释成命令替换；改成单引号格式串配合 `printf`，并验证 tag/SHA/分支文本原样保留。
