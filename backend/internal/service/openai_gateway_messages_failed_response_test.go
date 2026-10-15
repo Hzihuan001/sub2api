@@ -155,7 +155,7 @@ func TestForwardAsAnthropic_StreamingBareErrorBeforeOutputFailsOver(t *testing.T
 	require.Empty(t, rec.Body.String(), "failover path must not commit downstream output")
 }
 
-func TestForwardAsAnthropic_StreamingGenericBareErrorBeforeOutputIsNotHiddenByFailover(t *testing.T) {
+func TestForwardAsAnthropic_StreamingGenericBareErrorBeforeOutputFailsOver(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	body := []byte(`{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":true}`)
@@ -178,8 +178,13 @@ func TestForwardAsAnthropic_StreamingGenericBareErrorBeforeOutputIsNotHiddenByFa
 
 	require.Error(t, err)
 	var failoverErr *UpstreamFailoverError
-	require.False(t, errors.As(err, &failoverErr))
-	require.Contains(t, rec.Body.String(), "mixed tools failed")
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Contains(t, string(failoverErr.ResponseBody), "mixed tools failed")
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	require.False(t, c.Writer.Written(), "pre-output server failure must leave the handler able to select another account")
+	require.Empty(t, rec.Body.String())
+	require.Len(t, upstream.requests, 1, "the forwarding call must not replay the current account")
 }
 
 func TestForwardAsAnthropic_BufferedResponseFailed_Failover(t *testing.T) {

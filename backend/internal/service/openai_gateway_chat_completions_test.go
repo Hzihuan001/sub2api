@@ -455,13 +455,12 @@ func TestForwardAsChatCompletions_StructuredInputRejectionDoesNotRetryIneligible
 			}
 			require.True(t, strings.HasSuffix(upstream.requests[0].URL.Path, endpoint))
 			var failover *UpstreamFailoverError
-			if status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusTooManyRequests {
-				require.ErrorAs(t, err, &failover)
-				require.Equal(t, status, failover.StatusCode)
-			} else {
-				require.False(t, errors.As(err, &failover))
-				require.True(t, c.Writer.Written())
-			}
+			// A concrete invalid_type rejection takes precedence over an auth or
+			// rate-limit HTTP wrapper: neither payload fallback nor account replay.
+			require.False(t, errors.As(err, &failover))
+			require.True(t, c.Writer.Written())
+			require.Equal(t, status, rec.Code, "the concrete request rejection must preserve its upstream HTTP status")
+			require.NotEmpty(t, gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
 		})
 	}
 }

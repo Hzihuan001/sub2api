@@ -218,7 +218,7 @@ func TestOpenAIFailoverSideEffects_401FollowsTempUnschedScope(t *testing.T) {
 		{name: "缺省 池模式 保持跳过", scopes: []string{""}, poolMode: true},
 		{name: "显式模型级 token_revoked 走认证错误处理", scopes: []string{TempUnschedScopeModel}, body: tempUnschedScopeRevoked401Body, wantSetError: true, wantBlocked: true},
 		{name: "显式模型级 detail Unauthorized 走认证错误处理", scopes: []string{TempUnschedScopeModel}, body: tempUnschedScopeDetail401Body, wantSetError: true, wantBlocked: true},
-		{name: "显式模型级 token_revoked 池模式 保持跳过", scopes: []string{TempUnschedScopeModel}, body: tempUnschedScopeRevoked401Body, poolMode: true},
+		{name: "显式模型级 token_revoked 池模式 仍禁用已撤销凭据", scopes: []string{TempUnschedScopeModel}, body: tempUnschedScopeRevoked401Body, poolMode: true, wantSetError: true, wantBlocked: true},
 		{name: "显式模型级 OAuth 走刷新窗口", scopes: []string{TempUnschedScopeModel}, oauth: true, wantTemp: true, wantBlocked: true},
 	}
 	for _, tc := range cases {
@@ -244,8 +244,15 @@ func TestOpenAIFailoverSideEffects_401FollowsTempUnschedScope(t *testing.T) {
 				Header:     http.Header{},
 			}, account, body, "gpt-5.4")
 
-			require.Equal(t, tc.wantTemp, repo.tempCalls == 1, "SetTempUnschedulable=%d", repo.tempCalls)
-			require.Equal(t, tc.wantSetError, repo.errorCalls == 1, "SetError=%d", repo.errorCalls)
+			wantTempCalls, wantErrorCalls := 0, 0
+			if tc.wantTemp {
+				wantTempCalls = 1
+			}
+			if tc.wantSetError {
+				wantErrorCalls = 1
+			}
+			require.Equal(t, wantTempCalls, repo.tempCalls, "SetTempUnschedulable must happen exactly once or not at all")
+			require.Equal(t, wantErrorCalls, repo.errorCalls, "SetError must happen exactly once or not at all")
 			require.Equal(t, tc.wantBlocked, gateway.isOpenAIAccountRuntimeBlocked(account))
 			if tc.wantModel {
 				require.Len(t, repo.modelRateLimitCalls, 1)

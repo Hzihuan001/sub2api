@@ -33,9 +33,14 @@ const astraProSuccessResponse = `{"id":"resp_astra","model":"gpt-6-astra","statu
 	`"usage":{"input_tokens":1,"output_tokens":2},` +
 	`"reasoning":{"mode":"pro","effort":"max"}}`
 
-// astraProForbiddenResponse: a plain upstream 403 that stays failover-eligible but
-// is not reclassified as access-state/credential failure nor a silent refusal.
+// .5 treats an explicit forbidden code as a request rejection. It must not be
+// replayed on another account, even when a successful standby is available.
 const astraProForbiddenResponse = `{"error":{"type":"forbidden_error","code":"forbidden","message":"Forbidden"}}`
+
+// A structured credential signal remains eligible for account failover under .5.
+const astraProCredential403Response = `{"error":{"type":"permission_error","code":"invalid_api_key","message":"Credential rejected"}}`
+
+const astraProAccessState403Response = `{"error":{"code":"workspace_suspended","message":"Workspace suspended; token=must-not-leak"}}`
 
 // astraProCapturedUpstream records URL/accountID/body per forwarded attempt.
 type astraProCapturedUpstream struct {
@@ -98,11 +103,11 @@ func newAstraProFailoverContext(t *testing.T, body string) (*gin.Context, *httpt
 	return c, rec
 }
 
-func astra403() *http.Response {
+func astra403(body string) *http.Response {
 	return &http.Response{
 		StatusCode: http.StatusForbidden,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(bytes.NewBufferString(astraProForbiddenResponse)),
+		Body:       io.NopCloser(bytes.NewBufferString(body)),
 	}
 }
 
@@ -137,12 +142,12 @@ func assertAstraProAccountSwitch(t *testing.T, accountIDs []int64) {
 	require.ElementsMatch(t, []int64{1, 2}, accountIDs, "both OAuth accounts must be reached")
 }
 
-// 403 then a second OAuth account succeeding: wire bodies keep pro+max/model and the
+// Credential 403 then a second OAuth account succeeding: wire bodies keep pro+max/model and the
 // winning account's structured reasoning.mode=pro reaches the client unchanged.
-func TestOpenAIGatewayHandlerResponses_AstraProFirst403SecondSucceeds(t *testing.T) {
+func TestOpenAIGatewayHandlerResponses_AstraProCredential403SecondSucceeds(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	upstream := newAstraProCapturedUpstream(astra403(), astra200())
+	upstream := newAstraProCapturedUpstream(astra403(astraProCredential403Response), astra200())
 	handler := newOpenAIResponsesFailoverTestHandler(t, upstream)
 	c, rec := newAstraProFailoverContext(t, astraProRequestBody)
 
@@ -157,12 +162,12 @@ func TestOpenAIGatewayHandlerResponses_AstraProFirst403SecondSucceeds(t *testing
 	require.Equal(t, "max", gjson.GetBytes(rec.Body.Bytes(), "reasoning.effort").String())
 }
 
-// both OAuth accounts 403: exhausted keeps every wire body pro+max/model, is not 200,
-// and surfaces the existing-policy 502 upstream_error (unchanged 403-masking policy).
-func TestOpenAIGatewayHandlerResponses_AstraProBoth403NoDowngrade(t *testing.T) {
+// Structured account-state 403s may fail over. Exhaustion must keep every wire
+// body pro+max/model and return the typed safe response without upstream detail.
+func TestOpenAIGatewayHandlerResponses_AstraProBothAccessState403NoDowngrade(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	upstream := newAstraProCapturedUpstream(astra403(), astra403())
+	upstream := newAstraProCapturedUpstream(astra403(astraProAccessState403Response), astra403(astraProAccessState403Response))
 	handler := newOpenAIResponsesFailoverTestHandler(t, upstream)
 	c, rec := newAstraProFailoverContext(t, astraProRequestBody)
 
@@ -174,6 +179,37 @@ func TestOpenAIGatewayHandlerResponses_AstraProBoth403NoDowngrade(t *testing.T) 
 	require.NotEqual(t, http.StatusOK, rec.Code, "all-403 must never surface a 200 to the client")
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 	require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+	require.Equal(t, "Upstream access is temporarily unavailable, please retry later", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+	require.NotContains(t, rec.Body.String(), "must-not-leak")
+	require.NotContains(t, rec.Body.String(), "Workspace suspended")
+}
+
+func TestOpenAIGatewayHandlerResponses_AstraProRequestForbiddenDoesNotReplay(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, tt := range []struct {
+		name    string
+		standby *http.Response
+	}{
+		{name: "standby_would_succeed", standby: astra200()},
+		{name: "standby_would_also_reject", standby: astra403(astraProForbiddenResponse)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := newAstraProCapturedUpstream(astra403(astraProForbiddenResponse), tt.standby)
+			handler := newOpenAIResponsesFailoverTestHandler(t, upstream)
+			c, rec := newAstraProFailoverContext(t, astraProRequestBody)
+
+			handler.Responses(c)
+
+			urls, accountIDs, bodies := upstream.snapshot()
+			assertAstraProWire(t, urls, bodies)
+			require.Equal(t, []int64{1}, accountIDs, "request permission failures must never reach the standby account")
+			require.Equal(t, http.StatusBadGateway, rec.Code, "keep the existing upstream 403 masking policy")
+			require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+			require.Equal(t, "Upstream access forbidden, please contact administrator", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+			require.NotContains(t, rec.Body.String(), "resp_astra", "the unused success response must not escape")
+		})
+	}
 }
 
 // passthrough -> non-passthrough drops only the encrypted *input* reasoning item;

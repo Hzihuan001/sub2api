@@ -276,14 +276,17 @@ func TestOpenAIStreamCredentialFailureHonorsErrorStatusAlias(t *testing.T) {
 	require.False(t, openAIStreamCredentialAuthFailure([]byte(`{"type":"response.failed","response":{"error":{"code":"server_error","status":500,"message":"transient upstream failure"}}}`)))
 }
 
-// 上游把 status 报成 5xx 时仍然是通用上游故障：既不改账号状态，也不冒充认证/限流。
-func TestOpenAIStreamErrorStatusAliasKeepsGeneric5xxUnclassified(t *testing.T) {
+// .5 preserves explicit 5xx status for recoverable failure handling without
+// promoting a transient server failure to credential or rate-limit evidence.
+func TestOpenAIStreamErrorStatusAliasPreservesGeneric5xx(t *testing.T) {
 	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error","status":500,"type":"server_error","message":"rv_shape_invalid: temporary response validation failure after partial output; retry your request if your client can recover partial output."},"id":"resp_0","object":"response","status":"failed"},"sequence_number":80}`)
 	message := extractOpenAISSEErrorMessage(payload)
 
-	require.Equal(t, http.StatusBadGateway, openAIStreamFailureStatus(payload, message))
+	require.Equal(t, http.StatusInternalServerError, openAIStreamFailureStatus(payload, message))
+	require.Equal(t, openAIGatewayFailureUnknown, classifyOpenAIGatewayFailure(0, payload, message))
 	require.False(t, openAIStreamCredentialAuthFailure(payload))
 	require.True(t, openAIStreamFailedEventShouldFailover(payload, message))
+	require.True(t, openAIStreamErrorEventShouldFailover(payload, message))
 }
 
 func TestOpenAIStreamBareErrorUsesSemanticFailover(t *testing.T) {
@@ -296,29 +299,35 @@ func TestOpenAIStream403FailoverRequiresStructuredAccountCredentialSignal(t *tes
 		name    string
 		payload string
 		want    bool
+		status  int
 	}{
 		{
 			name:    "ordinary permission error",
 			payload: `{"type":"response.failed","response":{"error":{"type":"permission_error","code":"forbidden","message":"access denied for this request"}}}`,
+			status:  http.StatusForbidden,
 		},
 		{
 			name:    "explicit 403 request status",
 			payload: `{"type":"error","error":{"type":"permission_error","code":"forbidden","status_code":403,"message":"forbidden content"}}`,
+			status:  http.StatusForbidden,
 		},
 		{
 			name:    "structured access state",
 			payload: `{"type":"response.failed","response":{"error":{"code":"workspace_suspended","message":"workspace is suspended"}}}`,
 			want:    true,
+			status:  http.StatusForbidden,
 		},
 		{
 			name:    "explicit credential auth code",
 			payload: `{"type":"error","error":{"type":"permission_error","code":"invalid_api_key","status_code":403,"message":"credential rejected"}}`,
 			want:    true,
+			status:  http.StatusUnauthorized,
 		},
 		{
 			name:    "explicit authentication type",
 			payload: `{"type":"error","error":{"type":"authentication_error","status_code":403,"message":"credential rejected"}}`,
 			want:    true,
+			status:  http.StatusUnauthorized,
 		},
 	}
 
@@ -326,7 +335,7 @@ func TestOpenAIStream403FailoverRequiresStructuredAccountCredentialSignal(t *tes
 		t.Run(tt.name, func(t *testing.T) {
 			payload := []byte(tt.payload)
 			message := extractOpenAISSEErrorMessage(payload)
-			require.Equal(t, http.StatusForbidden, openAIStreamFailureStatus(payload, message))
+			require.Equal(t, tt.status, openAIStreamFailureStatus(payload, message))
 			require.Equal(t, tt.want, openAIStreamFailedEventShouldFailover(payload, message))
 			require.Equal(t, tt.want, openAIStreamErrorEventShouldFailover(payload, message))
 		})
@@ -357,7 +366,9 @@ func TestOpenAIStream403ExplicitCredentialAuthAppliesAccountSideEffects(t *testi
 
 	status, disabled := svc.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, "credential rejected", nil)
 
-	require.Equal(t, http.StatusForbidden, status)
+	// .5 routes explicit credential signals through the 401 credential owner,
+	// even when the provider wraps them in a permission_error/status_code=403.
+	require.Equal(t, http.StatusUnauthorized, status)
 	require.True(t, disabled)
 	require.Equal(t, 1, repo.setErrorCalls)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))

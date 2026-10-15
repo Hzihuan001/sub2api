@@ -192,21 +192,21 @@ func TestProxyResponsesWebSocketFromClient_MarksCyberPolicyBeforeEarlyReturn(t *
 		name          string
 		upstreamEvent []byte
 		wantFailover  bool
-		wantClientMsg bool
+		wantEventType string
 		wantInput     int
 		wantOutput    int
 	}{
 		{
-			name:          "error_before_rate_limit_failover",
+			name:          "cyber_policy_overrides_rate_limit_without_failover",
 			upstreamEvent: []byte(`{"type":"error","error":{"type":"rate_limit_error","code":"cyber_policy","message":"rate limit exceeded by cyber policy"},"usage":{"input_tokens":5,"output_tokens":1}}`),
-			wantFailover:  true,
+			wantEventType: "error",
 			wantInput:     5,
 			wantOutput:    1,
 		},
 		{
 			name:          "response_failed_terminal",
 			upstreamEvent: []byte(`{"type":"response.failed","response":{"id":"resp_cyber","status":"failed","error":{"code":"cyber_policy","message":"blocked by cyber policy"},"usage":{"input_tokens":9,"output_tokens":2}}}`),
-			wantClientMsg: true,
+			wantEventType: "response.failed",
 			wantInput:     9,
 			wantOutput:    2,
 		},
@@ -280,12 +280,13 @@ func TestProxyResponsesWebSocketFromClient_MarksCyberPolicyBeforeEarlyReturn(t *
 			cancelWrite()
 			require.NoError(t, err)
 
-			if tt.wantClientMsg {
+			if tt.wantEventType != "" {
 				readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
 				_, message, readErr := clientConn.Read(readCtx)
 				cancelRead()
 				require.NoError(t, readErr)
-				require.Equal(t, "response.failed", gjson.GetBytes(message, "type").String())
+				require.Equal(t, tt.wantEventType, gjson.GetBytes(message, "type").String())
+				require.JSONEq(t, string(tt.upstreamEvent), string(message), "the safety error must be visible to the client unchanged")
 			}
 
 			select {

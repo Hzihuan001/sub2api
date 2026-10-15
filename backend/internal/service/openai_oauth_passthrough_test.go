@@ -1606,7 +1606,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 			accountType:    AccountTypeOAuth,
 			statusCode:     http.StatusBadGateway,
 			body:           `{"error":{"message":"bad gateway","type":"server_error"}}`,
-			expectFailover: false,
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
 				require.Empty(t, repo.overloadCalls)
@@ -1617,7 +1617,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 			accountType:    AccountTypeOAuth,
 			statusCode:     http.StatusServiceUnavailable,
 			body:           `{"error":{"message":"service unavailable","type":"server_error"}}`,
-			expectFailover: false,
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
 				require.Empty(t, repo.overloadCalls)
@@ -1628,7 +1628,7 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 			accountType:    AccountTypeOAuth,
 			statusCode:     http.StatusGatewayTimeout,
 			body:           `{"error":{"message":"gateway timeout","type":"server_error"}}`,
-			expectFailover: false,
+			expectFailover: true,
 			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
 				require.Empty(t, repo.rateLimitCalls)
 				require.Empty(t, repo.overloadCalls)
@@ -1702,12 +1702,20 @@ func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover
 			if tc.expectFailover {
 				require.ErrorAs(t, err, &failoverErr)
 				require.Equal(t, tc.statusCode, failoverErr.StatusCode)
+				require.True(t, failoverErr.ShouldRetryNextAccount())
 				require.False(t, c.Writer.Written(), "retryable passthrough 错误应返回 failover 错误给上层换号，而不是直接向客户端写响应")
+				if tc.accountType == AccountTypeOAuth && tc.statusCode >= 500 && tc.statusCode <= 504 {
+					// .5 permits OAuth 5xx failover, with no same-account recovery window.
+					require.False(t, failoverErr.RetryableOnSameAccount)
+					require.True(t, failoverErr.SameAccountRetryDeadline.IsZero())
+					require.Zero(t, failoverErr.SameAccountRetryDelay)
+				}
 			} else {
 				require.False(t, errors.As(err, &failoverErr))
 				require.True(t, c.Writer.Written(), "非 failover 的 passthrough http 错误应直接写回客户端")
 				require.Equal(t, tc.statusCode, rec.Code)
 			}
+			require.Len(t, upstream.requests, 1)
 
 			v, ok := c.Get(OpsUpstreamErrorsKey)
 			require.True(t, ok)
