@@ -17,8 +17,8 @@ import (
 )
 
 // Exercise the real relay and service executor, not just the state object's
-// methods. Passthrough keeps .5's acknowledged-turn boundary; no claim is made
-// here about missing response.created or uncorrelated late cross-turn frames.
+// methods. Each paired frame identifies the acknowledged response; missing
+// response.created and anonymous late frames have separate regression coverage.
 func TestGatewayFailureAttemptPassthroughCountsPairedFramesAndNextAcknowledgedTurn(t *testing.T) {
 	t.Run("response_created_boundary", func(t *testing.T) {
 		gin.SetMode(gin.TestMode)
@@ -52,7 +52,7 @@ func TestGatewayFailureAttemptPassthroughCountsPairedFramesAndNextAcknowledgedTu
 			_, err := readPassthroughLifecycleFrame(t, client, time.Second)
 			require.NoError(t, err)
 			for i := 0; i < 2; i++ {
-				upstream.Send(`{"type":"error","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`)
+				upstream.Send(fmt.Sprintf(`{"type":"error","response_id":"r%d","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`, turn))
 			}
 			upstream.Send(fmt.Sprintf(`{"type":"response.failed","response":{"id":"r%d","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`, turn))
 			for i := 0; i < 3; i++ {

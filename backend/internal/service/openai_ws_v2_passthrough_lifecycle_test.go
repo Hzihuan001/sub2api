@@ -242,7 +242,7 @@ func TestPassthroughLifecycle_LaterTurnPreOutputRateLimitRequestsReconnect(t *te
 	require.Equal(t, "response.create", gjson.GetBytes(secondRequest, "type").String())
 
 	resetAt := time.Now().Add(90 * time.Minute).Unix()
-	upstream.Send(fmt.Sprintf(`{"type":"error","error":{"code":"rate_limit_exceeded","type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":%d}}`, resetAt))
+	upstream.Send(fmt.Sprintf(`{"type":"error","response_id":"resp_second","error":{"code":"rate_limit_exceeded","type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":%d}}`, resetAt))
 	_, err = readPassthroughLifecycleFrame(t, clientConn, time.Second)
 	var websocketCloseErr coderws.CloseError
 	require.ErrorAs(t, err, &websocketCloseErr)
@@ -874,6 +874,7 @@ func TestPassthroughLifecycle_SecondTurnTimeoutIsNotFailoverSafe(t *testing.T) {
 	clientConn := dialPassthroughLifecycleClient(t, server)
 	defer func() { _ = clientConn.CloseNow() }()
 
+	requirePassthroughUpstreamWrite(t, upstream, time.Second)
 	completed, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
@@ -881,6 +882,7 @@ func TestPassthroughLifecycle_SecondTurnTimeoutIsNotFailoverSafe(t *testing.T) {
 	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","previous_response_id":"resp_first"}`))
 	cancelWrite()
 	require.NoError(t, err)
+	requirePassthroughUpstreamWrite(t, upstream, time.Second)
 	upstream.Send(`{"type":"response.created","response":{"id":"resp_second","model":"gpt-5.1"}}`)
 
 	created, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)

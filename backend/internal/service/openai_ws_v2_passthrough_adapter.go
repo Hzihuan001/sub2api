@@ -361,6 +361,7 @@ type openAIWSPassthroughFirstOutputFrameConn struct {
 	inner             openaiwsv2.FrameConn
 	resolveDeadline   func(payload []byte) openAIWSPassthroughFirstOutputDeadline
 	activeReadTimeout time.Duration
+	identity          *openAIWSPassthroughResponseIdentity
 
 	mu              sync.Mutex
 	state           openAIWSPassthroughFirstOutputDeadlineState
@@ -373,6 +374,11 @@ func (c *openAIWSPassthroughFirstOutputFrameConn) ReadFrame(ctx context.Context)
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if c.identity != nil && c.identity.readError != nil {
+		// The preceding ambiguous frame has already been forwarded. End the
+		// connection before accepting another result, without retrying it.
+		return coderws.MessageText, nil, c.identity.readError
 	}
 
 	type readResult struct {
@@ -426,7 +432,12 @@ func (c *openAIWSPassthroughFirstOutputFrameConn) ReadFrame(ctx context.Context)
 		select {
 		case result := <-readResultCh:
 			if result.err == nil {
-				c.observeUpstreamActivity(result.msgType, result.payload)
+				if c.identity != nil {
+					c.identity.observe(result.msgType, result.payload)
+				}
+				if c.ShouldObserveLastFrame() {
+					c.observeUpstreamActivity(result.msgType, result.payload)
+				}
 			}
 			return result.msgType, result.payload, result.err
 		case <-c.deadlineChanged:
@@ -461,14 +472,37 @@ func (c *openAIWSPassthroughFirstOutputFrameConn) WriteFrame(ctx context.Context
 		return errOpenAIWSConnClosed
 	}
 	generation := uint64(0)
-	if msgType == coderws.MessageText && strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
-		generation = c.armDeadline(payload)
+	if (msgType == coderws.MessageText || msgType == coderws.MessageBinary) && strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
+		if c.identity != nil {
+			// Install identity before the write so an immediate upstream reply
+			// cannot race it. A failed write exits the relay; no failure/usage is
+			// counted unless an actual upstream response was observed.
+			if err := c.identity.beginAttempt(); err != nil {
+				return err
+			}
+		}
+		// Preserve the text-only semantic-output deadline; binary responses
+		// remain opaque to the existing semantic-output observer.
+		if msgType == coderws.MessageText {
+			generation = c.armDeadline(payload)
+		}
 	}
 	if err := c.inner.WriteFrame(ctx, msgType, payload); err != nil {
 		c.disarmDeadline(generation)
 		return err
 	}
 	return nil
+}
+
+func (c *openAIWSPassthroughFirstOutputFrameConn) ShouldObserveLastFrame() bool {
+	return c == nil || c.identity.shouldObserveLastFrame()
+}
+
+func (c *openAIWSPassthroughFirstOutputFrameConn) LastFrameAttempt() uint64 {
+	if c == nil || c.identity == nil || !c.identity.lastFrame.observe || c.identity.lastFrame.attempt == nil {
+		return 0
+	}
+	return c.identity.lastFrame.attempt.sequence
 }
 
 func (c *openAIWSPassthroughFirstOutputFrameConn) Close() error {
@@ -503,6 +537,16 @@ func (c *openAIWSPassthroughFirstOutputFrameConn) armDeadline(payload []byte) ui
 func (c *openAIWSPassthroughFirstOutputFrameConn) observeUpstreamActivity(msgType coderws.MessageType, payload []byte) {
 	if c == nil {
 		return
+	}
+	if c.identity != nil {
+		// Identity observation can finish a turn before this deadline update.
+		// Keep the attempt stable through the update: the writer either starts
+		// afterward, or this frame can no longer touch its newer deadline.
+		c.identity.mu.Lock()
+		defer c.identity.mu.Unlock()
+		if !c.identity.lastFrame.observe || c.identity.lastFrame.attempt != c.identity.current {
+			return
+		}
 	}
 	if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
 		c.disarmDeadline(0)
@@ -595,6 +639,7 @@ func openAIWSPassthroughIsTerminalOutput(payload []byte) bool {
 
 var _ openaiwsv2.FrameConn = (*openAIWSClientFrameConn)(nil)
 var _ openaiwsv2.FrameConn = (*openAIWSPassthroughFirstOutputFrameConn)(nil)
+var _ openaiwsv2.FrameObservationPolicy = (*openAIWSPassthroughFirstOutputFrameConn)(nil)
 
 func (c *openAIWSClientFrameConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
 	if c == nil || c.conn == nil {
@@ -924,6 +969,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	relayUpstreamFrameConn := &openAIWSPassthroughFirstOutputFrameConn{
 		inner:             upstreamFrameConn,
 		activeReadTimeout: s.openAIWSPassthroughIdleTimeout(),
+		identity:          &openAIWSPassthroughResponseIdentity{},
 		deadlineChanged:   make(chan struct{}, 1),
 		resolveDeadline: func(payload []byte) openAIWSPassthroughFirstOutputDeadline {
 			reasoningEffort := ""
@@ -1173,10 +1219,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if hooks != nil {
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 	}
-	// Preserve the published passthrough boundary: response.created starts a
-	// new observed turn. Missing acknowledgements and cross-turn late frames
-	// need protocol identity handling, not a reset from the concurrent writer.
-	var failureAttempt openAIFailureAttemptEffects
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
 		ClientConn:         policyClientConn,
@@ -1290,9 +1332,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					return nil
 				}
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
-				if eventType == "response.created" {
-					failureAttempt = openAIFailureAttemptEffects{}
-				}
+				failureAttempt := relayUpstreamFrameConn.identity.failureEffects()
 				if (eventType == "error" || eventType == "response.failed") && markOpenAIWSV2PassthroughCyberPolicy(c, payload) {
 					return nil
 				}

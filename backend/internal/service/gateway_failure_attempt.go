@@ -83,8 +83,8 @@ func decideOpenAIFailureReplay(facts openAIFailureReplayFacts, state openAIFailu
 
 // openAIFailureAttemptEffects belongs to a transport-owned observation scope.
 // The pooled WS and HTTP bridge scope is one real upstream send/read loop;
-// passthrough retains its existing response.created scope until response-ID
-// correlation can safely distinguish missing acknowledgements and late frames.
+// passthrough supplies the corresponding write-owned scope after correlating
+// the response identity and excluding frames from already completed turns.
 // An error frame followed by response.failed observes account state only once
 // within that scope; the next scope starts with a new value. Observed is
 // deliberately different from "account disabled": the first overload below

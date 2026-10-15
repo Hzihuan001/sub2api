@@ -24,6 +24,17 @@ type FrameConn interface {
 	Close() error
 }
 
+// FrameObservationPolicy lets a transport forward a known late frame without
+// attributing its usage, health effects, or lifecycle to a different turn. The
+// serialized reader queries it immediately after ReadFrame; absent means the
+// existing observe-every-frame behavior. It never suppresses the wire payload.
+type FrameObservationPolicy interface {
+	ShouldObserveLastFrame() bool
+	// LastFrameAttempt identifies the real upstream send for an observed
+	// frame. Zero means the transport does not correlate attempts.
+	LastFrameAttempt() uint64
+}
+
 type Usage struct {
 	InputTokens              int
 	ImageInputTokens         int
@@ -116,6 +127,7 @@ type relayState struct {
 	turnTimingByID          map[string]*relayTurnTiming
 	activeTurn              *relayTurnTiming
 	pendingBareError        *observedUpstreamEvent
+	pendingBareErrorAttempt uint64
 }
 
 type relayExitSignal struct {
@@ -570,8 +582,16 @@ func runUpstreamToClient(
 			}
 			return
 		}
-		markActivity()
-		if beforeWriteClient != nil {
+		observeFrame := true
+		frameAttempt := uint64(0)
+		if policy, ok := upstreamConn.(FrameObservationPolicy); ok {
+			observeFrame = policy.ShouldObserveLastFrame()
+			frameAttempt = policy.LastFrameAttempt()
+		}
+		if observeFrame {
+			markActivity()
+		}
+		if observeFrame && beforeWriteClient != nil {
 			wroteDownstreamInTurn := wroteDownstream
 			if state != nil {
 				wroteDownstreamInTurn = state.turnWroteDownstream.Load()
@@ -594,21 +614,32 @@ func runUpstreamToClient(
 			}
 		}
 		observedEvent := observedUpstreamEvent{}
-		switch msgType {
-		case coderws.MessageText:
-			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
-			if shouldFinalizePendingBareError(state, payload, eventType) {
-				emitTurnComplete(onTurnComplete, state, finalizePendingBareError(state, nowFn()))
-			}
-			observedEvent = observeUpstreamMessage(state, payload, startAt, nowFn, onUsageParseFailure)
-		case coderws.MessageBinary:
-			// Binary frames remain opaque for usage/result observation, but a JSON
-			// terminal still settles relay lifecycle. Otherwise the pending-turn
-			// disconnect guard would turn an already-delivered terminal into a false
-			// missing-terminal failure when the upstream closes normally.
-			if isTerminalEvent(strings.TrimSpace(gjson.GetBytes(payload, "type").String())) {
-				state.consumePendingTurnStartedAt()
-				openAIWSRelayDiscardActiveTurnTiming(state)
+		if observeFrame {
+			switch msgType {
+			case coderws.MessageText:
+				eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+				if shouldFinalizePendingBareError(state, payload, eventType, frameAttempt) {
+					emitTurnComplete(onTurnComplete, state, finalizePendingBareError(state, nowFn()))
+				}
+				observedEvent = observeUpstreamMessage(state, payload, startAt, nowFn, onUsageParseFailure)
+				if state.pendingBareError != nil {
+					if eventType == "error" {
+						state.pendingBareErrorAttempt = frameAttempt
+					} else if eventType == "response.created" && frameAttempt != 0 && frameAttempt == state.pendingBareErrorAttempt && observedEvent.responseID != "" {
+						// A first-turn anonymous error can acquire its response ID
+						// from a delayed acknowledgement of the same real send.
+						state.pendingBareError.responseID = observedEvent.responseID
+					}
+				}
+			case coderws.MessageBinary:
+				// Binary frames remain opaque for usage/result observation, but a JSON
+				// terminal still settles relay lifecycle. Otherwise the pending-turn
+				// disconnect guard would turn an already-delivered terminal into a false
+				// missing-terminal failure when the upstream closes normally.
+				if isTerminalEvent(strings.TrimSpace(gjson.GetBytes(payload, "type").String())) {
+					state.consumePendingTurnStartedAt()
+					openAIWSRelayDiscardActiveTurnTiming(state)
+				}
 			}
 		}
 		emitTurnComplete(onTurnComplete, state, observedEvent)
@@ -631,14 +662,16 @@ func runUpstreamToClient(
 				}
 				return
 			}
-			markActivity()
+			if observeFrame {
+				markActivity()
+			}
 			continue
 		}
-		if beforeClientWrite != nil {
+		if observeFrame && beforeClientWrite != nil {
 			beforeClientWrite(msgType, payload)
 		}
 		writeErr := writeClient(msgType, payload)
-		if afterClientWrite != nil {
+		if observeFrame && afterClientWrite != nil {
 			afterClientWrite(msgType, payload, writeErr)
 		}
 		if writeErr != nil {
@@ -654,7 +687,7 @@ func runUpstreamToClient(
 			return
 		}
 		wroteDownstream = true
-		if state != nil {
+		if observeFrame && state != nil {
 			state.turnWroteDownstream.Store(true)
 		}
 		if afterWriteClient != nil {
@@ -663,7 +696,9 @@ func runUpstreamToClient(
 		if forwardedFrames != nil {
 			forwardedFrames.Add(1)
 		}
-		markActivity()
+		if observeFrame {
+			markActivity()
+		}
 	}
 }
 
@@ -763,7 +798,7 @@ func observeUpstreamMessage(
 		responseID = strings.TrimSpace(values[2].String())
 	}
 	// 仅 terminal 事件兜底读取顶层 id，避免把 event_id 当成 response_id 关联到 turn。
-	if responseID == "" && isTerminalEvent(eventType) {
+	if responseID == "" && eventType != "error" && isTerminalEvent(eventType) {
 		responseID = strings.TrimSpace(values[3].String())
 	}
 	now := nowFn()
@@ -819,12 +854,24 @@ func observeUpstreamMessage(
 	return finalizeObservedRelayTerminal(state, observed, now)
 }
 
-func shouldFinalizePendingBareError(state *relayState, payload []byte, eventType string) bool {
+func shouldFinalizePendingBareError(state *relayState, payload []byte, eventType string, frameAttempt uint64) bool {
 	if state == nil || state.pendingBareError == nil {
 		return false
 	}
 	eventType = strings.TrimSpace(eventType)
 	if eventType == "" || eventType == "error" || eventType == "response.failed" {
+		return false
+	}
+	if eventType == "response.created" && frameAttempt != 0 && frameAttempt == state.pendingBareErrorAttempt {
+		return false
+	}
+	responseID := strings.TrimSpace(gjson.GetBytes(payload, "response.id").String())
+	if responseID == "" {
+		responseID = strings.TrimSpace(gjson.GetBytes(payload, "response_id").String())
+	}
+	if eventType == "response.created" && responseID != "" && responseID == state.pendingBareError.responseID {
+		// A delayed acknowledgement of this same response does not begin a
+		// new turn or settle its pending error before authoritative usage.
 		return false
 	}
 	if isTerminalEvent(eventType) || eventType == "response.created" {
@@ -833,7 +880,6 @@ func shouldFinalizePendingBareError(state *relayState, payload []byte, eventType
 	// Auxiliary provider frames may be interleaved between error and its
 	// authoritative response.failed. Only a response event identifying a
 	// different turn closes the pending error.
-	responseID := strings.TrimSpace(gjson.GetBytes(payload, "response.id").String())
 	if responseID == "" || state.pendingBareError.responseID == "" {
 		return false
 	}
