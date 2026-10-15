@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -110,20 +112,35 @@ func (r *usageBillingRepository) claimUsageBillingRequest(ctx context.Context, t
 }
 
 func (r *usageBillingRepository) ReserveBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, reserveUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, batchImageBalanceReserve, reserveUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) CaptureBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, captureUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, batchImageBalanceCapture, captureUsageBillingBatchImageBalance)
 }
 
 func (r *usageBillingRepository) ReleaseBatchImageBalance(ctx context.Context, cmd *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error) {
-	return r.applyBatchImageBalanceHold(ctx, cmd, releaseUsageBillingBatchImageBalance)
+	return r.applyBatchImageBalanceHold(ctx, cmd, batchImageBalanceRelease, releaseUsageBillingBatchImageBalance)
 }
+
+type batchImageBalanceOperation uint8
+
+const (
+	batchImageBalanceReserve batchImageBalanceOperation = iota
+	batchImageBalanceCapture
+	batchImageBalanceRelease
+)
+
+var (
+	errBatchImageBalanceAlreadyCaptured = errors.New("batch image balance hold was already captured")
+	errBatchImageBalanceAlreadyReleased = errors.New("batch image balance hold was already released")
+	errBatchImageBalanceNotReserved     = errors.New("batch image balance hold was never reserved")
+)
 
 func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	ctx context.Context,
 	cmd *service.BatchImageBalanceHoldCommand,
+	operation batchImageBalanceOperation,
 	apply func(context.Context, *sql.Tx, *service.BatchImageBalanceHoldCommand) (*service.BatchImageBalanceHoldResult, error),
 ) (_ *service.BatchImageBalanceHoldResult, err error) {
 	if cmd == nil {
@@ -136,6 +153,17 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	if cmd.RequestID == "" {
 		return nil, service.ErrUsageBillingRequestIDRequired
 	}
+	// These stable IDs also identify the other terminal operation. Accepting an
+	// arbitrary ID here would let it bypass both cross-operation checks.
+	expectedRequestID := service.BatchImageHoldRequestID(cmd.BatchID)
+	if operation == batchImageBalanceCapture {
+		expectedRequestID = service.BatchImageCaptureRequestID(cmd.BatchID)
+	} else if operation == batchImageBalanceRelease {
+		expectedRequestID = service.BatchImageReleaseRequestID(cmd.BatchID)
+	}
+	if cmd.BatchID == "" || cmd.RequestID != expectedRequestID {
+		return nil, errors.New("invalid batch image balance operation request ID")
+	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -147,12 +175,26 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 		}
 	}()
 
+	// Capture and release have different dedup IDs, so their individual claims
+	// cannot serialize each other. A transaction lock covers the terminal checks
+	// and balance mutation, including the first reservation for this batch.
+	lockCtx, cancelLock := context.WithTimeout(ctx, 5*time.Second)
+	_, lockErr := tx.ExecContext(lockCtx, "SELECT pg_advisory_xact_lock($1)",
+		advisoryLockHash(fmt.Sprintf("batch_image_balance:%d:%s", cmd.APIKeyID, cmd.BatchID)))
+	cancelLock()
+	if lockErr != nil {
+		return nil, lockErr
+	}
+
 	applied, err := r.claimUsageBillingRequest(ctx, tx, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint)
 	if err != nil {
 		return nil, err
 	}
 	if !applied {
 		return &service.BatchImageBalanceHoldResult{Applied: false}, nil
+	}
+	if err := validateBatchImageBalanceOperation(ctx, tx, cmd, operation); err != nil {
+		return nil, err
 	}
 
 	result, err := apply(ctx, tx, cmd)
@@ -169,6 +211,39 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 	}
 	tx = nil
 	return result, nil
+}
+
+func validateBatchImageBalanceOperation(ctx context.Context, tx *sql.Tx, cmd *service.BatchImageBalanceHoldCommand, operation batchImageBalanceOperation) error {
+	if operation != batchImageBalanceRelease {
+		released, err := batchImageBalanceClaimExists(ctx, tx, service.BatchImageReleaseRequestID(cmd.BatchID), cmd.APIKeyID)
+		if err != nil {
+			return err
+		}
+		if released {
+			return errBatchImageBalanceAlreadyReleased
+		}
+	}
+	if operation != batchImageBalanceCapture {
+		captured, err := batchImageBalanceClaimExists(ctx, tx, service.BatchImageCaptureRequestID(cmd.BatchID), cmd.APIKeyID)
+		if err != nil {
+			return err
+		}
+		if captured {
+			// Do not use ErrUsageBillingRequestConflict: the release service
+			// treats that older same-request fingerprint error as success.
+			return errBatchImageBalanceAlreadyCaptured
+		}
+	}
+	if operation == batchImageBalanceCapture && cmd.HoldAmount > 0 {
+		held, err := batchImageBalanceClaimExists(ctx, tx, service.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
+		if err != nil {
+			return err
+		}
+		if !held {
+			return errBatchImageBalanceNotReserved
+		}
+	}
+	return nil
 }
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
@@ -338,7 +413,7 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	}
 	// 释放前校验该 job 确实预留过 hold（hold request id 已被 claim），
 	// 防止从未成功冻结的 job 触发"幻影释放"，从其他用户的冻结资金池中凭空生成余额。
-	held, heldErr := batchImageHoldClaimExists(ctx, tx, service.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
+	held, heldErr := batchImageBalanceClaimExists(ctx, tx, service.BatchImageHoldRequestID(cmd.BatchID), cmd.APIKeyID)
 	if heldErr != nil {
 		return nil, heldErr
 	}
@@ -369,15 +444,14 @@ func releaseUsageBillingBatchImageBalance(ctx context.Context, tx *sql.Tx, cmd *
 	return nil, errors.New("batch image frozen balance is insufficient")
 }
 
-// batchImageHoldClaimExists 检查 hold request id 是否已在 dedup（或归档）表中被 claim，
-// 即该 batch 的冻结操作确实成功提交过。
-func batchImageHoldClaimExists(ctx context.Context, tx *sql.Tx, holdRequestID string, apiKeyID int64) (bool, error) {
+// batchImageBalanceClaimExists checks committed operations in both dedup stores.
+func batchImageBalanceClaimExists(ctx context.Context, tx *sql.Tx, requestID string, apiKeyID int64) (bool, error) {
 	var exists int
 	err := tx.QueryRowContext(ctx, `
 		SELECT 1
 		FROM usage_billing_dedup
 		WHERE request_id = $1 AND api_key_id = $2
-	`, holdRequestID, apiKeyID).Scan(&exists)
+	`, requestID, apiKeyID).Scan(&exists)
 	if err == nil {
 		return true, nil
 	}
@@ -388,7 +462,7 @@ func batchImageHoldClaimExists(ctx context.Context, tx *sql.Tx, holdRequestID st
 		SELECT 1
 		FROM usage_billing_dedup_archive
 		WHERE request_id = $1 AND api_key_id = $2
-	`, holdRequestID, apiKeyID).Scan(&exists)
+	`, requestID, apiKeyID).Scan(&exists)
 	if err == nil {
 		return true, nil
 	}
