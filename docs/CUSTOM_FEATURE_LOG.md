@@ -1,13 +1,14 @@
 # 定制功能日志
 
-### 2026-10-16 — 分组切换规则改为按状态码配置（本地验收完成，待发布）
+### 2026-10-16 — 分组切换规则改为按状态码配置（已发布 custom.9）
 
-- 分组规则编辑器正在从固定四类错误改为“添加规则”列表。每条规则填写状态码（支持半角/全角逗号分隔多个 `100–599` 状态码）、累计次数、统计窗口（秒）和暂停时长（秒）；同一条规则中的多个状态码分别计数，任一状态码达到自己的阈值才暂停账号。
+- 分组规则编辑器已从固定四类错误改为“添加规则”列表。每条规则填写状态码（支持半角/全角逗号分隔多个 `100–599` 状态码）、累计次数、统计窗口（秒）和暂停时长（秒）；同一条规则中的多个状态码分别计数，任一状态码达到自己的阈值才暂停账号。
 - 状态码不能出现在多条规则中，前端输入和后端 API 都校验重复及范围；规则旁提供 `?` 悬停说明常见 HTTP/上游状态。新规则默认 `3/60/600`（次数/窗口秒/暂停秒），空规则可用于清除已保存配置。
 - API 新载荷为 `{ "rules": [{ "status_codes": [502, 503], "threshold": 5, "window_seconds": 60, "cooldown_seconds": 600 }] }`。读取端兼容已保存的旧四类 kind 映射，管理 API 返回规范化状态码数组；请求失败分类和账号全局暂停语义继续沿用现有冷却机制。
 - 流式响应超时也以 HTTP `504` 进入同一状态码规则链；未配置 `504` 时继续保留原有 timeout 规则和平台处理，不会因为新增状态码规则而改变旧配置行为。
 - 尚未配置规则时管理 API 返回 `{ "rules": [] }`，不自动写入默认规则；未命中任何自定义状态码的错误继续交给原有平台错误处理。旧 kind 映射只在读取时转换为对应的标准状态码集合，保存后才转换为新数组。
-- 本地已通过：后端 `go test -tags=unit ./internal/service ./internal/handler/admin`，前端状态码规则/组件/分组入口共 30 项 Vitest，`vue-tsc`、定向 ESLint、`scripts/custom_contracts.py` 和 `git diff --check`。代码仍未推送、构建镜像或生产部署，需单独获得发布授权后执行。
+- 本地已通过：后端 `go test -tags=unit -count=1 ./internal/service ./internal/handler/admin`，前端状态码规则/组件/分组入口共 30 项 Vitest，`vue-tsc`、定向 ESLint、`scripts/custom_contracts.py`、生产构建和 `git diff --check`。提交 `51732a2d93ebcebf2dde5e127e305da5273c0556`、标签 `custom-0.2.16.9` 已推送；GHCR 镜像 `ghcr.io/hzihuan001/sub2api:0.2.16-custom.9` 的不可变 digest 为 `sha256:26a27d9793baf2bf074d73efc57b76ddc1c65852489b84578bd854cac0640db3`。
+- 三站已按主站→L1→COS 顺序仅重建应用容器，均 healthy、restart 0；本地与公网 `/health` 均返回 `{"status":"ok"}`，OpenResty 配置检查通过，最近日志未发现 panic/fatal/migration/database/redis 错误。发布前备份位于 `/opt/sub2api-backups/v0.2.16-custom.9-20261016T014500Z`，数据库、Redis、网络、卷和反代配置未重建。GitHub Actions 因仓库级禁用未运行，本次使用本地构建并推送 GHCR。
 
 ### 2026-10-16 — 公共文档移植及 Key 提示删除已部署 `.8`
 
