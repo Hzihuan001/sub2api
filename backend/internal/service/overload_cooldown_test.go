@@ -194,7 +194,7 @@ func TestSetOverloadCooldownSettings_AcceptsBoundaries(t *testing.T) {
 // RateLimitService: handle529 behaviour
 // ===========================================================================
 
-func TestHandle529_EnabledFromDB_PausesAccount(t *testing.T) {
+func TestHandle529_EnabledFromDB_DoesNotPauseAccount(t *testing.T) {
 	accountRepo := &overloadAccountRepoStub{}
 	settingRepo := newMockSettingRepo()
 	data, _ := json.Marshal(OverloadCooldownSettings{Enabled: true, CooldownMinutes: 15})
@@ -205,12 +205,9 @@ func TestHandle529_EnabledFromDB_PausesAccount(t *testing.T) {
 	svc.SetSettingService(settingSvc)
 
 	account := &Account{ID: 42, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
-	before := time.Now()
 	svc.handle529(context.Background(), account)
 
-	require.Equal(t, 1, accountRepo.overloadCalls)
-	require.Equal(t, int64(42), accountRepo.lastOverloadID)
-	require.WithinDuration(t, before.Add(15*time.Minute), accountRepo.lastOverloadEnd, 2*time.Second)
+	require.Zero(t, accountRepo.overloadCalls)
 }
 
 func TestHandle529_DisabledFromDB_SkipsAccount(t *testing.T) {
@@ -229,7 +226,7 @@ func TestHandle529_DisabledFromDB_SkipsAccount(t *testing.T) {
 	require.Equal(t, 0, accountRepo.overloadCalls, "should NOT pause when disabled")
 }
 
-func TestHandle529_NilSettingService_FallsBackToConfig(t *testing.T) {
+func TestHandle529_NilSettingService_DoesNotPauseAccount(t *testing.T) {
 	accountRepo := &overloadAccountRepoStub{}
 	cfg := &config.Config{}
 	cfg.RateLimit.OverloadCooldownMinutes = 20
@@ -237,26 +234,22 @@ func TestHandle529_NilSettingService_FallsBackToConfig(t *testing.T) {
 	// NOT calling SetSettingService — remains nil
 
 	account := &Account{ID: 77, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
-	before := time.Now()
 	svc.handle529(context.Background(), account)
 
-	require.Equal(t, 1, accountRepo.overloadCalls)
-	require.WithinDuration(t, before.Add(20*time.Minute), accountRepo.lastOverloadEnd, 2*time.Second)
+	require.Zero(t, accountRepo.overloadCalls)
 }
 
-func TestHandle529_NilSettingService_ZeroConfig_DefaultsTen(t *testing.T) {
+func TestHandle529_NilSettingService_ZeroConfig_DoesNotPauseAccount(t *testing.T) {
 	accountRepo := &overloadAccountRepoStub{}
 	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
 
 	account := &Account{ID: 88, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
-	before := time.Now()
 	svc.handle529(context.Background(), account)
 
-	require.Equal(t, 1, accountRepo.overloadCalls)
-	require.WithinDuration(t, before.Add(10*time.Minute), accountRepo.lastOverloadEnd, 2*time.Second)
+	require.Zero(t, accountRepo.overloadCalls)
 }
 
-func TestHandle529_DBReadError_FallsBackToConfig(t *testing.T) {
+func TestHandle529_DBReadError_DoesNotPauseAccount(t *testing.T) {
 	accountRepo := &overloadAccountRepoStub{}
 	errRepo := &errSettingRepo{readErr: context.DeadlineExceeded}
 	errRepo.data = make(map[string]string)
@@ -268,11 +261,9 @@ func TestHandle529_DBReadError_FallsBackToConfig(t *testing.T) {
 	svc.SetSettingService(settingSvc)
 
 	account := &Account{ID: 99, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
-	before := time.Now()
 	svc.handle529(context.Background(), account)
 
-	require.Equal(t, 1, accountRepo.overloadCalls)
-	require.WithinDuration(t, before.Add(7*time.Minute), accountRepo.lastOverloadEnd, 2*time.Second)
+	require.Zero(t, accountRepo.overloadCalls)
 }
 
 func TestHandleUpstreamError_529RespectsAccountPolicies(t *testing.T) {

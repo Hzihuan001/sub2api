@@ -147,7 +147,7 @@ func TestProxyResponsesWebSocketFromClient_CountsOverloadOncePerUpstreamTurn(t *
 						require.False(t, got.cooling)
 						require.Equal(t, turn, got.modelFailures, "paired/repeated 5xx frames count as one model failure per send")
 					} else {
-						require.Equal(t, turn == 3, got.cooling, "paired frames count once; a new upstream turn must count again")
+						require.False(t, got.cooling, "without an explicit group rule, paired overload frames must remain request-local")
 					}
 				case <-time.After(3 * time.Second):
 					t.Fatal("waiting for overload turn observation timed out")
@@ -156,7 +156,7 @@ func TestProxyResponsesWebSocketFromClient_CountsOverloadOncePerUpstreamTurn(t *
 			if tc.generic {
 				require.Zero(t, repo.overloadCalls.Load())
 			} else {
-				require.Equal(t, int32(1), repo.overloadCalls.Load())
+				require.Zero(t, repo.overloadCalls.Load())
 			}
 			_ = clientConn.Close(coderws.StatusNormalClosure, "done")
 			select {

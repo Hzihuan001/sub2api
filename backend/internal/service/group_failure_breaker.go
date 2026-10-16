@@ -86,7 +86,7 @@ func (s *RateLimitService) ApplyGroupFailurePolicy(ctx context.Context, account 
 	cancel()
 	if err != nil {
 		slog.Warn("group_failure_policy_load_failed", "group_id", group.ID, "error", err)
-		return false, time.Time{} // No valid override: retain existing protection.
+		return false, time.Time{} // A failed/absent policy must not create a system pause.
 	}
 	if policy == nil {
 		return false, time.Time{}

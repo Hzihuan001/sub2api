@@ -256,8 +256,8 @@ func TestGatewayService_Forward_PreOutputSSEOverloadedErrorUsesSemantic529(t *te
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, 529, failoverErr.StatusCode)
 	require.JSONEq(t, errorJSON, string(failoverErr.ResponseBody))
-	require.Equal(t, 1, repo.overloadCalls, "synthetic 529 must apply global overload cooldown")
-	require.Empty(t, repo.modelRateLimitCalls, "global 529 cooldown must take precedence over custom model rules")
+	require.Zero(t, repo.overloadCalls, "synthetic 529 without a group rule must not apply a global overload cooldown")
+	require.Empty(t, repo.modelRateLimitCalls, "a request-scoped 529 must not create a model or account pause")
 	require.Empty(t, rec.Body.String(), "pre-output overload must remain eligible for account failover")
 }
 

@@ -154,8 +154,29 @@ describe('AccountStatusIndicator', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('admin.accounts.status.schedulingPaused')
+    expect(wrapper.text()).toContain('admin.accounts.status.schedulingStopped')
+    expect(wrapper.text()).toContain('admin.accounts.status.schedulingStoppedAt')
     expect(wrapper.text()).not.toContain('admin.accounts.status.paused')
+  })
+
+  it('错误状态仍优先显示错误，不被停止调度标签覆盖', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 8,
+          status: 'error',
+          schedulable: false
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('admin.accounts.status.error')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.schedulingStopped')
   })
 
   it('模型限流 + overages 启用 + 无 AICredits key → 显示 ⚡ (credits_active)', () => {

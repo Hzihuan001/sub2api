@@ -323,10 +323,12 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 		}
 		return ErrorPolicySkipped
 	}
-	// The global overload cooldown is the default for ordinary accounts. Explicit
-	// account policies above retain precedence over this fallback.
+	// A bare 529 is only an upstream signal. Account pausing is controlled by an
+	// explicit group status-code rule (handled before this method) or by an
+	// explicit account error-code rule above; there is no implicit global
+	// overload cooldown.
 	if statusCode == 529 {
-		return ErrorPolicyMatched
+		return ErrorPolicyNone
 	}
 	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
 		return ErrorPolicyTempUnscheduled
@@ -394,7 +396,10 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			s.handleCustomErrorCode(ctx, account, statusCode, extractUpstreamErrorMessage(responseBody))
 			return true
 		}
-		s.handle529(ctx, account)
+		// Do not create an account-wide cooldown for a bare 529. If the active
+		// group explicitly configured 529, applyGroupHTTPFailure above already
+		// handled it; otherwise this is request-local and remains failover-eligible.
+		slog.Info("account_529_ignored", "account_id", account.ID, "reason", "no_explicit_group_rule")
 		return false
 	}
 
@@ -2065,45 +2070,14 @@ func persistOpenAI429PlanType(ctx context.Context, repo AccountRepository, accou
 	slog.Info("openai_429_plan_type_synced", "account_id", account.ID, "previous_plan_type", current, "plan_type", planType)
 }
 
-// handle529 处理529过载错误
-// 根据配置决定是否暂停账号调度及冷却时长
+// handle529 is retained as a compatibility shim for older call sites.  A bare
+// 529 never pauses an account: only an explicit group status-code rule (or an
+// explicit account custom-error rule) may change scheduling state.
 func (s *RateLimitService) handle529(ctx context.Context, account *Account) {
-	var settings *OverloadCooldownSettings
-	if s.settingService != nil {
-		var err error
-		settings, err = s.settingService.GetOverloadCooldownSettings(ctx)
-		if err != nil {
-			slog.Warn("overload_settings_read_failed", "account_id", account.ID, "error", err)
-			settings = nil
-		}
-	}
-	// 回退到配置文件
-	if settings == nil {
-		cooldown := s.cfg.RateLimit.OverloadCooldownMinutes
-		if cooldown <= 0 {
-			cooldown = 10
-		}
-		settings = &OverloadCooldownSettings{Enabled: true, CooldownMinutes: cooldown}
-	}
-
-	if !settings.Enabled {
-		slog.Info("account_529_ignored", "account_id", account.ID, "reason", "overload_cooldown_disabled")
+	if account == nil {
 		return
 	}
-
-	cooldownMinutes := settings.CooldownMinutes
-	if cooldownMinutes <= 0 {
-		cooldownMinutes = 10
-	}
-
-	until := time.Now().Add(time.Duration(cooldownMinutes) * time.Minute)
-	s.notifyAccountSchedulingBlocked(account, until, "529")
-	if err := s.accountRepo.SetOverloaded(ctx, account.ID, until); err != nil {
-		slog.Warn("overload_set_failed", "account_id", account.ID, "error", err)
-		return
-	}
-
-	slog.Info("account_overloaded", "account_id", account.ID, "until", until)
+	slog.Info("account_529_ignored", "account_id", account.ID, "reason", "no_explicit_group_rule")
 }
 
 // UpdateSessionWindow 从成功响应更新5h窗口状态

@@ -109,17 +109,15 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 		scheduleOpenCodeGoUsageActivity(s.deferredService, account)
 	}
-	// A single capacity shed remains request-local. Repeated explicit overloads
-	// across requests temporarily remove this account from scheduling, including
-	// pool accounts and failures received after downstream output has started.
+	// A capacity shed remains request-local unless the active group's explicit
+	// status-code policy handles it.  The old process-wide overload breaker
+	// (three overloads in five minutes) is intentionally not used here: account
+	// pausing is governed only by the configured group failure rules.  This keeps
+	// an empty group policy from silently changing scheduling state.
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
 		if s != nil && s.rateLimitService != nil {
 			if handled, until := s.rateLimitService.applyGroupHTTPFailure(ctx, account, statusCode, headers, responseBody, firstNonEmpty(canonicalModel...)); handled {
 				return !until.IsZero()
-			}
-			if until := s.rateLimitService.RecordAccountOverload(ctx, account); !until.IsZero() {
-				s.BlockAccountScheduling(account, until, "repeated_overload")
-				return true
 			}
 		}
 		return false

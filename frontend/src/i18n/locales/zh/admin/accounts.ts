@@ -453,6 +453,8 @@ export default {
         cooldown: '冷却中',
         paused: '暂停',
         schedulingPaused: '暂停调度',
+        schedulingStopped: '停止调度',
+        schedulingStoppedAt: '停止时间：{time}',
         limited: '限流',
         rateLimited: '限流中',
         overloaded: '过载中',
@@ -992,7 +994,7 @@ export default {
       customErrorCodes429Warning:
         '429 已有内置的限流处理机制。添加到自定义错误码后，将直接停止调度而非临时限流。确定要添加吗？',
       customErrorCodes529Warning:
-        '529 已有内置的过载处理机制。添加到自定义错误码后，将直接停止调度而非临时标记过载。确定要添加吗？',
+        '529 不再触发系统级自动停号。只有分组中明确配置了 529 规则，或本账号明确选择了 529，才会停止调度。',
       selectedErrorCodes: '已选择',
       noneSelectedUsesDefault: '未选择（使用默认策略）',
       enterErrorCode: '输入错误码 (100-599)',

@@ -18,6 +18,17 @@
       <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ overloadCountdown }}</span>
     </div>
 
+    <!-- Manual scheduling stop.  Rate-limit/overload/temp cooldowns above take
+         precedence and expose their own expected recovery time.  A manually
+         stopped account has no expiry, so show the account update time as the
+         best available audit timestamp. -->
+    <div v-else-if="isManuallyUnschedulable" class="flex flex-col items-center gap-1">
+      <span class="badge text-xs badge-gray">{{ t('admin.accounts.status.schedulingStopped') }}</span>
+      <span class="text-[11px] text-gray-400 dark:text-gray-500">
+        {{ t('admin.accounts.status.schedulingStoppedAt', { time: formatDateTime(account.updated_at) }) }}
+      </span>
+    </div>
+
     <!-- Main Status Badge (shown when not rate limited/overloaded) -->
     <template v-else>
       <div v-if="isTempUnschedulable" class="flex flex-col items-center gap-1">
@@ -284,6 +295,19 @@ const isOverloaded = computed(() => {
 const isTempUnschedulable = computed(() => {
   if (!props.account.temp_unschedulable_until) return false
   return new Date(props.account.temp_unschedulable_until) > new Date()
+})
+
+// A false schedulable flag without an active, time-bounded runtime state is a
+// manual/explicit stop.  Keep this separate from temporary cooldowns so the
+// list can show a stable "停止调度" state and timestamp.
+const isManuallyUnschedulable = computed(() => {
+  return (
+    props.account.status === 'active' &&
+    !props.account.schedulable &&
+    !isRateLimited.value &&
+    !isOverloaded.value &&
+    !isTempUnschedulable.value
+  )
 })
 
 // Computed: has error status

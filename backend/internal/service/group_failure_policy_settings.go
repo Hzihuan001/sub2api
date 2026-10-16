@@ -64,7 +64,9 @@ func (r GroupFailureRule) Revision() string {
 }
 
 // GroupFailurePolicy contains only explicit overrides. The public form uses a
-// status-code rule array; an empty array restores the system behavior.
+// status-code rule array; an empty array means that no group status-code rule
+// pauses accounts. Other independent protections (authentication, quota,
+// model availability, and manual suspension) remain unchanged.
 type GroupFailurePolicy struct {
 	// Rules is the pre-status-code representation. Keep it for source and
 	// storage compatibility with the first version of this feature.

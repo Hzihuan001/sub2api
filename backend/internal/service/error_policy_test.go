@@ -67,7 +67,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 			expected:   ErrorPolicySkipped,
 		},
 		{
-			name: "custom_error_codes_excluding_529_skip_global_cooldown",
+			name: "custom_error_codes_excluding_529_do_not_pause",
 			account: &Account{
 				ID:       33,
 				Type:     AccountTypeAPIKey,
@@ -82,7 +82,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 			expected:   ErrorPolicySkipped,
 		},
 		{
-			name: "pool_mode_skips_global_529_cooldown",
+			name: "pool_mode_529_does_not_pause",
 			account: &Account{
 				ID:       34,
 				Type:     AccountTypeAPIKey,
@@ -96,7 +96,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 			expected:   ErrorPolicySkipped,
 		},
 		{
-			name: "ordinary_account_uses_global_529_cooldown",
+			name: "ordinary_account_without_group_rule_returns_none",
 			account: &Account{
 				ID:       35,
 				Type:     AccountTypeAPIKey,
@@ -104,7 +104,7 @@ func TestCheckErrorPolicy(t *testing.T) {
 			},
 			statusCode: 529,
 			body:       []byte(`{"error":{"message":"overloaded"}}`),
-			expected:   ErrorPolicyMatched,
+			expected:   ErrorPolicyNone,
 		},
 		{
 			name: "custom_error_codes_including_529_take_precedence",

@@ -201,7 +201,7 @@ func TestForwardSystemOneAppliesExistingAccountStatePolicy(t *testing.T) {
 	}{
 		{name: "unauthorized", status: http.StatusUnauthorized, wantError: 1},
 		{name: "rate limited", status: http.StatusTooManyRequests, wantRateLimited: 1},
-		{name: "overloaded", status: 529, wantOverloaded: 1},
+		{name: "overloaded without group rule", status: 529, wantOverloaded: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			account := &Account{ID: 10, Platform: PlatformTypeSafe, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "http://typesafe.test", "api_key": "ts-secret"}}

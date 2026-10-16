@@ -41,32 +41,22 @@ func newOverloadGatewayFixture() (*OpenAIGatewayService, *overloadGatewayRepo, *
 	return svc, repo, account
 }
 
-func TestOpenAIRepeatedOverloadAcrossHTTPRequestsStopsSameAccountRetry(t *testing.T) {
+func TestOpenAIRepeatedOverloadWithoutGroupRuleDoesNotPauseAccount(t *testing.T) {
 	svc, repo, account := newOverloadGatewayFixture()
 	for attempt := 1; attempt <= 4; attempt++ {
 		// Each invocation represents a different incoming request; no handler
-		// request-local retry map is shared across these failures.
+		// request-local retry map is shared across these failures. Without an
+		// explicit group status rule, repeated overloads remain request-local.
 		blocked := svc.handleOpenAIAccountUpstreamError(context.Background(), account, 503, nil, []byte(overloadGatewayPayload))
 		err := svc.newOpenAIAccountFailoverError(account, 503, nil, []byte(overloadGatewayPayload), "", blocked, true)
-		require.Equal(t, attempt >= 3, blocked)
-		require.Equal(t, attempt < 3, err.RetryableOnSameAccount)
+		require.False(t, blocked)
+		require.True(t, err.RetryableOnSameAccount)
 		require.True(t, err.ShouldRetryNextAccount())
 		require.True(t, err.RequestScopedTransient)
 	}
-	require.Equal(t, 1, repo.overloadCalls, "in-flight failures must not continually extend cooldown")
+	require.Zero(t, repo.overloadCalls, "no implicit account overload cooldown")
 	require.Nil(t, account.OverloadUntil, "do not mutate the shared scheduler account snapshot")
-	require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"), "an older snapshot cannot clear the new overload block")
-
-	// Preserve the existing priority-based fallback, excluding the cooled
-	// primary even if a stale snapshot still marks it schedulable.
-	backup := *account
-	backup.ID, backup.Priority = 15, 1
-	lowerPriority := backup
-	lowerPriority.ID, lowerPriority.Priority = 16, 2
-	selected, _, _ := svc.selectBestAccount(context.Background(), nil, PlatformOpenAI,
-		[]Account{lowerPriority, *account, backup}, "gpt-test", nil, false, "", false)
-	require.NotNil(t, selected)
-	require.Equal(t, backup.ID, selected.ID)
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"))
 }
 
 func TestOpenAIRepeatedOverloadIgnoresGenericErrorsAndEchoedContent(t *testing.T) {
@@ -121,12 +111,12 @@ func TestOpenAIRepeatedOverloadAcrossStreams(t *testing.T) {
 							require.Contains(t, rec.Body.String(), "partial")
 						} else {
 							require.ErrorAs(t, err, &failoverErr)
-							require.Equal(t, attempt < 3, failoverErr.RetryableOnSameAccount)
+							require.True(t, failoverErr.RetryableOnSameAccount, "without a group rule, repeated overload must not disable same-account retry")
 							require.Equal(t, ":\n\n", rec.Body.String(), "failed attempt must not leak generated content")
 						}
-						require.Equal(t, attempt >= 3, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"))
+						require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"))
 					}
-					require.Equal(t, 1, repo.overloadCalls)
+					require.Zero(t, repo.overloadCalls)
 				})
 			}
 		}

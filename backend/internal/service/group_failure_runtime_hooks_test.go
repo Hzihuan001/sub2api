@@ -126,7 +126,7 @@ func TestGroupFailureRuntimeNativeHTTPAndStreamTimeout(t *testing.T) {
 	require.Equal(t, 1, repo.overloads)
 }
 
-func TestGroupFailureRuntimeNoGroupAndInheritedKindKeepLegacy(t *testing.T) {
+func TestGroupFailureRuntimeNoExplicitRuleDoesNotPause(t *testing.T) {
 	for _, noGroup := range []bool{false, true} {
 		ctx, svc, repo, account := newGroupRuntimeFixture(t, map[GroupFailureKind]GroupFailureRule{
 			GroupFailureTimeout: {Threshold: 1, WindowSeconds: 60, CooldownSeconds: 120},
@@ -135,10 +135,10 @@ func TestGroupFailureRuntimeNoGroupAndInheritedKindKeepLegacy(t *testing.T) {
 			ctx = context.Background()
 		}
 		for attempt := 1; attempt <= 3; attempt++ {
-			require.Equal(t, attempt == 3, svc.handleOpenAIAccountUpstreamError(ctx, account, 503, nil, []byte(overloadGatewayPayload)))
+			require.False(t, svc.handleOpenAIAccountUpstreamError(ctx, account, 503, nil, []byte(overloadGatewayPayload)))
 		}
-		require.Equal(t, 1, repo.overloads)
-		require.WithinDuration(t, time.Now().Add(10*time.Minute), repo.until, 2*time.Second)
+		require.Zero(t, repo.overloads)
+		require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"))
 	}
 }
 

@@ -250,6 +250,19 @@
               >
                 {{ accountDisplayEmail(row) }}
               </span>
+              <span
+                v-if="hasActiveAccountSchedulingPause(row)"
+                data-testid="account-scheduling-state"
+                class="inline-flex flex-wrap items-center gap-1 text-xs text-amber-700 dark:text-amber-300"
+              >
+                <span>{{ t('admin.accounts.status.schedulingStopped') }}</span>
+                <span
+                  data-testid="account-scheduling-stop-time"
+                  class="text-[11px] text-gray-500 dark:text-gray-400"
+                >
+                  · {{ formatDateTime(accountSchedulingPauseTime(row)) }}
+                </span>
+              </span>
             </div>
           </template>
           <template #cell-notes="{ value }">
@@ -1719,6 +1732,30 @@ function getAntigravityTierLabel(row: any): string | null {
 // 供名称单元格 v-if/标题/文本三处共用,避免同一回退链在模板里重复三次。
 function accountDisplayEmail(row: any): string {
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
+}
+
+// A paused account can expose a bounded recovery timestamp from one of the
+// runtime protections. Prefer those fields so the list tells the operator when
+// it is expected to resume. Manual stops have no dedicated timestamp; the
+// account update time is the authoritative timestamp for the toggle operation.
+function accountSchedulingPauseTime(row: Pick<AccountListItem, 'overload_until' | 'temp_unschedulable_until' | 'rate_limit_reset_at' | 'updated_at'>): string {
+  const now = Date.now()
+  for (const candidate of [row.overload_until, row.temp_unschedulable_until, row.rate_limit_reset_at]) {
+    if (!candidate) continue
+    const timestamp = Date.parse(candidate)
+    if (Number.isFinite(timestamp) && timestamp > now) return candidate
+  }
+  return row.updated_at
+}
+
+function hasActiveAccountSchedulingPause(row: Pick<AccountListItem, 'schedulable' | 'overload_until' | 'temp_unschedulable_until' | 'rate_limit_reset_at'>): boolean {
+  if (!row.schedulable) return true
+  const now = Date.now()
+  return [row.overload_until, row.temp_unschedulable_until, row.rate_limit_reset_at].some(value => {
+    if (!value) return false
+    const timestamp = Date.parse(value)
+    return Number.isFinite(timestamp) && timestamp > now
+  })
 }
 
 function accountHomepageUrl(row: Account): string {

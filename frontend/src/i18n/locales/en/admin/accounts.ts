@@ -250,6 +250,8 @@ export default {
         cooldown: 'Cooldown',
         paused: 'Paused',
         schedulingPaused: 'Scheduling paused',
+        schedulingStopped: 'Scheduling stopped',
+        schedulingStoppedAt: 'Stopped at {time}',
         limited: 'Limited',
         rateLimited: 'Rate Limited',
         overloaded: 'Overloaded',
@@ -889,7 +891,7 @@ export default {
       customErrorCodes429Warning:
         '429 already has built-in rate limit handling. Adding it to custom error codes will disable the account instead of temporary rate limiting. Are you sure?',
       customErrorCodes529Warning:
-        '529 already has built-in overload handling. Adding it to custom error codes will disable the account instead of temporary overload marking. Are you sure?',
+        '529 no longer triggers a system-wide automatic pause. Scheduling stops only when the group explicitly includes 529 or this account explicitly selects 529.',
       selectedErrorCodes: 'Selected',
       noneSelectedUsesDefault: 'None selected (uses default policy)',
       enterErrorCode: 'Enter error code (100-599)',

@@ -66,6 +66,7 @@ const DataTableStub = defineComponent({
   template: `
     <div>
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
+        <slot name="cell-name" :row="row" :value="row.name" />
         <slot name="cell-groups" :row="row" />
         <slot name="cell-actions" :row="row" />
       </div>
@@ -144,6 +145,10 @@ const listRow = {
   concurrency: 2,
   priority: 1,
   group_ids: [7],
+  updated_at: '2026-10-16T08:00:00Z',
+  overload_until: null,
+  temp_unschedulable_until: null,
+  rate_limit_reset_at: null,
   extra: {},
   credentials: {}
 }
@@ -194,6 +199,35 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="account-groups"]').text()).toBe('codex')
+    wrapper.unmount()
+  })
+
+  it('shows stopped scheduling and the preferred recovery timestamp in the account column', async () => {
+    const pausedRow = {
+      ...listRow,
+      overload_until: '2099-10-16T09:00:00Z'
+    }
+    listAccounts.mockResolvedValueOnce({ items: [pausedRow], total: 1, page: 1, page_size: 20, pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="account-scheduling-state"]').text()).toContain('admin.accounts.status.schedulingStopped')
+    expect(wrapper.get('[data-testid="account-scheduling-stop-time"]').text()).toContain('2099')
+    wrapper.unmount()
+  })
+
+  it('falls back to updated_at for a manually stopped account', async () => {
+    const pausedRow = {
+      ...listRow,
+      schedulable: false
+    }
+    listAccounts.mockResolvedValueOnce({ items: [pausedRow], total: 1, page: 1, page_size: 20, pages: 1 })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="account-scheduling-stop-time"]').text()).toContain('2026')
     wrapper.unmount()
   })
 
