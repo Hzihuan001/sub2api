@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -63,8 +64,18 @@ func (c *tempUnschedCache) RecordAccountGroupFailure(ctx context.Context, accoun
 		window < time.Second || window > time.Hour || cooldown < time.Second || cooldown > 2*time.Hour {
 		return time.Time{}, false, fmt.Errorf("invalid group failure counter arguments")
 	}
-	switch kind {
-	case "overload", "server_error", "timeout", "rate_limit":
+	switch {
+	case kind == "overload", kind == "server_error", kind == "timeout", kind == "rate_limit":
+		// Legacy semantic rule kinds remain supported for stored settings and
+		// older callers.
+	case strings.HasPrefix(kind, "status_"):
+		// Status-code rules use one Redis field per exact HTTP status. Keep the
+		// validation strict so malformed input cannot create unbounded fields or
+		// collide with the legacy namespace.
+		status, err := strconv.Atoi(strings.TrimPrefix(kind, "status_"))
+		if err != nil || status < 100 || status > 599 {
+			return time.Time{}, false, fmt.Errorf("invalid group failure status kind")
+		}
 	default:
 		return time.Time{}, false, fmt.Errorf("invalid group failure kind")
 	}

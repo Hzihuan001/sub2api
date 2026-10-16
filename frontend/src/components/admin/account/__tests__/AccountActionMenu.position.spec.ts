@@ -110,6 +110,45 @@ describe('AccountActionMenu viewport positioning', () => {
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
+  it('shows recovery for an automatically paused overload account', async () => {
+    const wrapper = mount(AccountActionMenu, {
+      props: {
+        show: true,
+        anchorRect: new DOMRect(500, 100, 32, 24),
+        account: {
+          ...account,
+          rate_limit_reset_at: null,
+          overload_until: '2099-01-01T00:00:00Z'
+        }
+      },
+      global: { stubs: { Icon: true } }
+    })
+    await flushPromises()
+
+    expect(getMenu().textContent).toContain('admin.accounts.recoverState')
+    expect(wrapper.emitted('recover-state')).toBeUndefined()
+  })
+
+  it('does not show recovery for a healthy schedulable account', async () => {
+    const wrapper = mount(AccountActionMenu, {
+      props: {
+        show: true,
+        anchorRect: new DOMRect(500, 100, 32, 24),
+        account: {
+          ...account,
+          rate_limit_reset_at: null,
+          overload_until: null,
+          temp_unschedulable_until: null
+        }
+      },
+      global: { stubs: { Icon: true } }
+    })
+    await flushPromises()
+
+    expect(getMenu().textContent).not.toContain('admin.accounts.recoverState')
+    expect(wrapper.emitted('recover-state')).toBeUndefined()
+  })
+
   it('repositions when menu content grows', async () => {
     await mountMenu()
     menuHeight = 420

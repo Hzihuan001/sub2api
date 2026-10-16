@@ -120,6 +120,44 @@ describe('AccountStatusIndicator', () => {
     expect(wrapper.text()).not.toContain('admin.accounts.status.tempUnschedulable')
   })
 
+  it('账号处于过载冷却时在列表明确显示暂停调度', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 6,
+          overload_until: '2099-07-11T13:00:00Z'
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('admin.accounts.status.overloaded')
+    expect(wrapper.text()).toContain('admin.accounts.status.schedulingPaused')
+  })
+
+  it('手动关闭调度的账号显示暂停调度而不是普通暂停', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 7,
+          schedulable: false
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('admin.accounts.status.schedulingPaused')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.paused')
+  })
+
   it('模型限流 + overages 启用 + 无 AICredits key → 显示 ⚡ (credits_active)', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {

@@ -158,6 +158,23 @@ type SettingService struct {
 
 	channelMonitorRuntimeListenersMu sync.Mutex
 	channelMonitorRuntimeListeners   []func()
+
+	// groupFailurePolicyResetter is installed after RateLimitService is wired.
+	// Keeping this as a narrow callback avoids coupling settings persistence to
+	// the request-time rate-limit service while allowing a deleted policy to
+	// release its already-persisted scheduling state.
+	groupFailurePolicyResetter func(context.Context, int64) error
+}
+
+// SetGroupFailurePolicyResetter connects the optional runtime cleanup used
+// when an administrator removes every rule from a group. It is deliberately
+// a setter so SettingService can still be constructed in isolation by tests
+// and by tools that do not run the gateway stack.
+func (s *SettingService) SetGroupFailurePolicyResetter(reset func(context.Context, int64) error) {
+	if s == nil {
+		return
+	}
+	s.groupFailurePolicyResetter = reset
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）

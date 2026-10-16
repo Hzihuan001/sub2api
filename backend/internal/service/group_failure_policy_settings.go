@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -216,6 +217,16 @@ func validateGroupFailureRule(name string, rule GroupFailureRule) error {
 	return nil
 }
 
+func groupFailurePolicyHasRules(policy *GroupFailurePolicy) bool {
+	if policy == nil {
+		return false
+	}
+	if policy.StatusRules != nil {
+		return len(policy.StatusRules) > 0
+	}
+	return len(policy.Rules) > 0
+}
+
 func (s *SettingService) validateGroupFailurePolicyGroup(ctx context.Context, groupID int64) error {
 	if groupID <= 0 {
 		return infraerrors.BadRequest("GROUP_FAILURE_POLICY_INVALID", "group ID must be a positive integer")
@@ -270,6 +281,17 @@ func (s *SettingService) UpdateGroupFailurePolicy(ctx context.Context, groupID i
 	if err := validateGroupFailurePolicy(policy); err != nil {
 		return nil, err
 	}
+	// Keep track of whether this PUT actually removes an existing policy. A
+	// newly created empty policy should not disturb unrelated account state,
+	// while deleting the last rule must release any cooldown created by the
+	// deleted policy.
+	hadRules := false
+	if raw, readErr := s.settingRepo.GetValue(ctx, groupFailurePolicySettingPrefix+strconv.FormatInt(groupID, 10)); readErr == nil {
+		var previous GroupFailurePolicy
+		if decodeErr := json.Unmarshal([]byte(raw), &previous); decodeErr == nil {
+			hadRules = groupFailurePolicyHasRules(&previous)
+		}
+	}
 	copyPolicy := &GroupFailurePolicy{}
 	if policy.StatusRules != nil {
 		copyPolicy.StatusRules = make([]GroupFailureStatusRule, len(policy.StatusRules))
@@ -289,6 +311,14 @@ func (s *SettingService) UpdateGroupFailurePolicy(ctx context.Context, groupID i
 	}
 	if err := s.settingRepo.Set(ctx, groupFailurePolicySettingPrefix+strconv.FormatInt(groupID, 10), string(data)); err != nil {
 		return nil, fmt.Errorf("save group failure policy: %w", err)
+	}
+	if hadRules && !groupFailurePolicyHasRules(copyPolicy) && s.groupFailurePolicyResetter != nil {
+		if err := s.groupFailurePolicyResetter(ctx, groupID); err != nil {
+			// The policy has already been persisted. Do not report a failed PUT
+			// that would cause the admin UI to retry and overwrite the setting;
+			// the runtime cleanup is best effort and is safe to retry manually.
+			slog.Warn("group_failure_policy_runtime_reset_failed", "group_id", groupID, "error", err)
+		}
 	}
 	return copyPolicy, nil
 }

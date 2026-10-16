@@ -2489,6 +2489,24 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 	return nil
 }
 
+// ClearOverload clears only the account-wide overload cooldown. It is kept
+// separate from ClearRateLimit because deleting a group failure policy must
+// not erase an unrelated provider rate-limit state.
+func (r *accountRepository) ClearOverload(ctx context.Context, id int64) error {
+	_, err := r.client.Account.Update().
+		Where(dbaccount.IDEQ(id)).
+		ClearOverloadUntil().
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear overload failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return nil
+}
+
 func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	result, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts

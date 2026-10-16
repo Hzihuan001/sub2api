@@ -14,7 +14,7 @@ func TestGroupFailureCacheIsolationRecoveryAndSharedCooldown(t *testing.T) {
 	ctx := context.Background()
 	revision := "0123456789abcdef"
 	for _, g := range []int64{7, 8} {
-		for _, kind := range []string{"overload", "timeout"} {
+		for _, kind := range []string{"overload", "timeout", "status_502"} {
 			until, claim, err := cache.RecordAccountGroupFailure(ctx, 49, g, kind, revision, time.Minute, 2, time.Minute)
 			require.NoError(t, err)
 			require.False(t, claim)
@@ -64,6 +64,10 @@ func TestGroupFailureCacheRollingWindowRevisionAndOtherAccounts(t *testing.T) {
 func TestGroupFailureCacheValidation(t *testing.T) {
 	_, cache, _ := newAccountOverloadCacheTest(t)
 	for _, kind := range []string{"credential", "safety", "unknown"} {
+		_, _, err := cache.RecordAccountGroupFailure(context.Background(), 49, 7, kind, "0123456789abcdef", time.Minute, 2, time.Minute)
+		require.Error(t, err)
+	}
+	for _, kind := range []string{"status_99", "status_600", "status_bad"} {
 		_, _, err := cache.RecordAccountGroupFailure(context.Background(), 49, 7, kind, "0123456789abcdef", time.Minute, 2, time.Minute)
 		require.Error(t, err)
 	}

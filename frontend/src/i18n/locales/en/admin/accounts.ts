@@ -249,6 +249,7 @@ export default {
         error: 'Error',
         cooldown: 'Cooldown',
         paused: 'Paused',
+        schedulingPaused: 'Scheduling paused',
         limited: 'Limited',
         rateLimited: 'Rate Limited',
         overloaded: 'Overloaded',

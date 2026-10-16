@@ -2,13 +2,19 @@
   <div class="flex items-center gap-2">
     <!-- Rate Limit Display (429) - Two-line layout -->
     <div v-if="isRateLimited" class="flex flex-col items-center gap-1">
-      <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rateLimited') }}</span>
+      <div class="flex flex-wrap items-center justify-center gap-1">
+        <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rateLimited') }}</span>
+        <span class="badge text-xs badge-gray">{{ t('admin.accounts.status.schedulingPaused') }}</span>
+      </div>
       <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ rateLimitResumeText }}</span>
     </div>
 
     <!-- Overload Display (529) - Two-line layout -->
     <div v-else-if="isOverloaded" class="flex flex-col items-center gap-1">
-      <span class="badge text-xs badge-danger">{{ t('admin.accounts.status.overloaded') }}</span>
+      <div class="flex flex-wrap items-center justify-center gap-1">
+        <span class="badge text-xs badge-danger">{{ t('admin.accounts.status.overloaded') }}</span>
+        <span class="badge text-xs badge-gray">{{ t('admin.accounts.status.schedulingPaused') }}</span>
+      </div>
       <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ overloadCountdown }}</span>
     </div>
 
@@ -23,6 +29,7 @@
         >
           {{ statusText }}
         </button>
+        <span class="badge text-xs badge-gray">{{ t('admin.accounts.status.schedulingPaused') }}</span>
         <span class="max-w-[180px] text-center text-[11px] leading-4 text-gray-500 dark:text-gray-400">
           {{ tempUnschedRecoveryText }}
         </span>
@@ -351,7 +358,7 @@ const statusText = computed(() => {
     return t('admin.accounts.status.quotaExceeded')
   }
   if (!props.account.schedulable) {
-    return t('admin.accounts.status.paused')
+    return t('admin.accounts.status.schedulingPaused')
   }
   return t(`admin.accounts.status.${props.account.status}`)
 })

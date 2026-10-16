@@ -98,6 +98,26 @@ func TestGroupFailurePolicySettingsRoundTripAndIsolation(t *testing.T) {
 	require.Equal(t, `{"rules":{}}`, repo.values[groupFailurePolicySettingPrefix+"1"])
 }
 
+func TestGroupFailurePolicyDeletionResetsRuntimeState(t *testing.T) {
+	repo := &groupFailurePolicySettingRepo{}
+	svc := groupFailurePolicyTestService(repo)
+	var resetGroupID int64
+	svc.SetGroupFailurePolicyResetter(func(_ context.Context, groupID int64) error {
+		resetGroupID = groupID
+		return nil
+	})
+
+	_, err := svc.UpdateGroupFailurePolicy(context.Background(), 1, &GroupFailurePolicy{StatusRules: []GroupFailureStatusRule{{
+		StatusCodes: []int{502}, Threshold: 2, WindowSeconds: 60, CooldownSeconds: 600,
+	}}})
+	require.NoError(t, err)
+	require.Zero(t, resetGroupID, "adding the first rule must not reset accounts")
+
+	_, err = svc.UpdateGroupFailurePolicy(context.Background(), 1, &GroupFailurePolicy{StatusRules: []GroupFailureStatusRule{}})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), resetGroupID)
+}
+
 func TestGroupFailurePolicySettingsValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

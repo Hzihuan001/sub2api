@@ -530,6 +530,13 @@ func ProvideRateLimitService(
 	svc.SetTimeoutCounterCache(timeoutCounterCache)
 	svc.SetOpenAI403CounterCache(openAI403CounterCache)
 	svc.SetSettingService(settingService)
+	// A group policy update is persisted by SettingService, while the
+	// account-wide cooldown/counter state lives in RateLimitService. Wire a
+	// narrow callback after both services exist so deleting the last rule can
+	// immediately release stale pauses without introducing a dependency cycle.
+	if settingService != nil {
+		settingService.SetGroupFailurePolicyResetter(svc.ResetGroupFailurePolicy)
+	}
 	svc.SetTokenCacheInvalidator(tokenCacheInvalidator)
 	svc.SetOllamaCloudUsageProbeScheduler(ollamaCloudUsage)
 	return svc

@@ -20,6 +20,59 @@ type AccountGroupFailureCache interface {
 	ClearAccountGroupFailures(context.Context, int64) error
 }
 
+// accountOverloadOnlyClearer is implemented by the production account
+// repository. It deliberately remains optional so the broad AccountRepository
+// test doubles and older integrations do not need a breaking interface change.
+type accountOverloadOnlyClearer interface {
+	ClearOverload(context.Context, int64) error
+}
+
+// ResetGroupFailurePolicy clears stale state left by a policy whose last rule
+// was deleted. Group failure pauses are stored in the account-wide overload
+// field, so the reset intentionally clears the account's overload cooldown as
+// well as the rolling counters. It does not clear rate-limit or model-limit
+// fields. The scheduler snapshot is refreshed by the repository and the
+// runtime blocker is released in the same operation.
+func (s *RateLimitService) ResetGroupFailurePolicy(ctx context.Context, groupID int64) error {
+	if s == nil || s.accountRepo == nil || groupID <= 0 {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("list accounts for group failure policy reset: %w", err)
+	}
+	var firstErr error
+	for i := range accounts {
+		accountID := accounts[i].ID
+		if accountID <= 0 {
+			continue
+		}
+		operation := s.accountOverloadOperationLock(accountID)
+		operation.Lock()
+
+		if clearErr := s.clearAccountGroupFailures(ctx, accountID); clearErr != nil && firstErr == nil {
+			firstErr = clearErr
+		}
+		s.overloadFailures.mu.Lock()
+		delete(s.overloadFailures.entries, accountID)
+		s.overloadFailures.mu.Unlock()
+
+		if clearer, ok := s.accountRepo.(accountOverloadOnlyClearer); ok {
+			if clearErr := clearer.ClearOverload(ctx, accountID); clearErr != nil && firstErr == nil {
+				firstErr = clearErr
+			}
+		}
+		if s.runtimeBlocker != nil {
+			s.runtimeBlocker.ClearAccountSchedulingBlock(accountID)
+		}
+		operation.Unlock()
+	}
+	return firstErr
+}
+
 func (s *RateLimitService) ApplyGroupFailurePolicy(ctx context.Context, account *Account, kind GroupFailureKind) (bool, time.Time) {
 	if s == nil || s.settingService == nil || ctx == nil || account == nil || account.ID <= 0 {
 		return false, time.Time{}

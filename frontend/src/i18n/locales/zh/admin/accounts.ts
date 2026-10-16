@@ -452,6 +452,7 @@ export default {
         error: '错误',
         cooldown: '冷却中',
         paused: '暂停',
+        schedulingPaused: '暂停调度',
         limited: '限流',
         rateLimited: '限流中',
         overloaded: '过载中',
