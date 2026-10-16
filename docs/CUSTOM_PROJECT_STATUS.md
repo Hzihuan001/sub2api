@@ -1,7 +1,7 @@
 # 定制项目状态与官方升级说明
 
 > 本文是给后续维护会话、代码审查者和自动化工具使用的项目交接说明。
-> 先读本文，再读 [`本轮发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM9_20261016.md)、
+> 先读本文，再读 [`本轮发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM11_20261016.md)、
 > [`UPSTREAM_SYNC.md`](UPSTREAM_SYNC.md) 和
 > [`custom/manifest.yml`](../custom/manifest.yml)。
 >
@@ -9,18 +9,18 @@
 
 ## 1. 当前快照
 
-### 2026-10-16 — 账号列停止调度状态展示（本地待发布）
+### 2026-10-16 — custom.11 已部署 — 账号列停止调度状态展示
 
 - 账号列表名称列在 `schedulable=false` 或有效限流/过载/临时不可调度冷却时显示“停止调度”；自动状态优先显示预计恢复时间，手动停止回退显示 `updated_at`。
 - `AccountStatusIndicator` 的状态列仍保留原有原因、恢复和恢复操作；本次没有新增后端字段、迁移或调度行为。
-- 18 项相关 Vitest、`vue-tsc`、定向 ESLint 和 `git diff --check` 已通过；未提交、推送或部署。
+- 18 项相关 Vitest、`vue-tsc`、定向 ESLint 和 `git diff --check` 已通过。源码提交 `0bb65a1087bbe38cb1fa8e88b09e6c2b6f15cc43`，标签 `custom-0.2.16.11`，GHCR digest `sha256:022704b184874c61ecd50587252867ad109f943afa75eed2b670fd3409aa916d`。主站、L1、COS 已仅重建应用容器，均 healthy、restart 0，公网 `/health` 全部返回 `{"status":"ok"}`；无数据库迁移。详见 [`CUSTOM_RELEASE_0_2_16_CUSTOM11_20261016.md`](CUSTOM_RELEASE_0_2_16_CUSTOM11_20261016.md)。
 
-### 2026-10-16 — 系统级过载自动停号已移除（本地开发，待发布）
+### 2026-10-16 — custom.11 已部署 — 系统级过载自动停号已移除
 
 - 当前工作树已移除旧的全局过载熔断和裸 `529` 默认冷却：没有分组状态码规则时，重复 `502/503/529/504` 不会写入 `overload_until`，也不会暂停账号；请求级 failover 仍可继续工作。
 - 只有分组显式状态码规则才会按账号、状态码、时间窗和阈值暂停调度；删除分组规则会清理对应计数/过载冷却。认证失效、配额/模型限制、账号自定义错误码及手动暂停仍是独立保护。
 - 已隐藏设置页中不再生效的全局“529 过载冷却”开关，并更新错误码提示。后端兼容配置接口暂留，不参与运行时调度。
-- 定向 Go 服务测试、SettingsView 52 项 Vitest、`vue-tsc`、受影响 ESLint 和 `git diff --check` 已通过；完整 service 单测仍有既有 `gateway_failure_attempt_*` 基线失败，与本轮无关，未将其隐瞒为全绿。本变更尚未推送、构建镜像或部署生产；生产现行版本仍为 `0.2.16-custom.10`。
+- 定向 Go 服务测试、受影响前端 Vitest、`vue-tsc`、受影响 ESLint、生产构建和 `git diff --check` 已通过；完整 service 单测仍有既有 `gateway_failure_attempt_*` 基线失败，与本轮无关，未将其隐瞒为全绿。本变更已随 `0.2.16-custom.11` 推送并部署三站；生产当前版本为 `0.2.16-custom.11`。
 
 ### 2026-10-16 — 暂停调度展示与规则删除清理已部署 custom.10
 
