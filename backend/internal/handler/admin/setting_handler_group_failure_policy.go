@@ -22,7 +22,7 @@ func (h *SettingHandler) GetGroupFailurePolicy(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, policy)
+	response.Success(c, policy.Public())
 }
 
 // UpdateGroupFailurePolicy handles PUT /api/v1/admin/groups/:id/failure-policy.
@@ -48,5 +48,5 @@ func (h *SettingHandler) UpdateGroupFailurePolicy(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, updated)
+	response.Success(c, updated.Public())
 }

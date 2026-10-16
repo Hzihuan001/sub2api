@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -38,16 +39,61 @@ func (s *RateLimitService) ApplyGroupFailurePolicy(ctx context.Context, account 
 		return false, time.Time{}
 	}
 	rule, configured := policy.Rules[kind]
+	// A status-code policy must never fall back to the semantic kind. Doing so
+	// would make 502 and 503 share a counter even when only one was configured.
+	if policy.StatusRules != nil {
+		return false, time.Time{}
+	}
 	if !configured {
+		return false, time.Time{}
+	}
+	return s.applyGroupFailureRule(ctx, account, group.ID, kind, rule)
+}
+
+// ApplyGroupFailurePolicyStatus applies a rule selected by the exact
+// upstream HTTP status. Each status code gets its own counter, even when
+// several codes are listed on the same rule.
+func (s *RateLimitService) ApplyGroupFailurePolicyStatus(ctx context.Context, account *Account, status int) (bool, time.Time) {
+	if s == nil || s.settingService == nil || ctx == nil || account == nil || account.ID <= 0 || status < 100 || status > 599 {
+		return false, time.Time{}
+	}
+	group, _ := ctx.Value(ctxkey.Group).(*Group)
+	if group == nil || group.ID <= 0 {
+		return false, time.Time{}
+	}
+	loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	policy, err := s.settingService.GetGroupFailurePolicy(loadCtx, group.ID)
+	cancel()
+	if err != nil {
+		slog.Warn("group_failure_policy_load_failed", "group_id", group.ID, "error", err)
+		return false, time.Time{}
+	}
+	if policy == nil {
+		return false, time.Time{}
+	}
+	for _, candidate := range policy.StatusRules {
+		for _, code := range candidate.StatusCodes {
+			if code == status {
+				rule := GroupFailureRule{Threshold: candidate.Threshold, WindowSeconds: candidate.WindowSeconds, CooldownSeconds: candidate.CooldownSeconds}
+				return s.applyGroupFailureRule(ctx, account, group.ID, GroupFailureKind("status_"+strconv.Itoa(status)), rule)
+			}
+		}
+	}
+	return false, time.Time{}
+}
+
+func (s *RateLimitService) applyGroupFailureRule(ctx context.Context, account *Account, groupID int64, kind GroupFailureKind, rule GroupFailureRule) (bool, time.Time) {
+	if s == nil || account == nil || groupID <= 0 {
 		return false, time.Time{}
 	}
 	operation := s.accountOverloadOperationLock(account.ID)
 	operation.Lock()
 	defer operation.Unlock()
 	now := time.Now()
+	var err error
 	cooldown := time.Duration(rule.CooldownSeconds) * time.Second
 	window := time.Duration(rule.WindowSeconds) * time.Second
-	key := groupFailureLocalKey{account.ID, group.ID, kind, rule.Revision()}
+	key := groupFailureLocalKey{account.ID, groupID, kind, rule.Revision()}
 	cache, _ := s.tempUnschedCache.(AccountGroupFailureCache)
 	ack, _ := s.tempUnschedCache.(AccountOverloadFailureCache)
 	until := s.overloadFailures.coolingUntil(account.ID, now)
@@ -60,10 +106,10 @@ func (s *RateLimitService) ApplyGroupFailurePolicy(ctx context.Context, account 
 	} else {
 		if cache != nil {
 			cacheCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
-			until, claim, err = cache.RecordAccountGroupFailure(cacheCtx, account.ID, group.ID, string(kind), key.revision, window, rule.Threshold, cooldown)
+			until, claim, err = cache.RecordAccountGroupFailure(cacheCtx, account.ID, groupID, string(kind), key.revision, window, rule.Threshold, cooldown)
 			stop()
 			if err != nil {
-				slog.Warn("group_failure_counter_failed", "account_id", account.ID, "group_id", group.ID, "error", err)
+				slog.Warn("group_failure_counter_failed", "account_id", account.ID, "group_id", groupID, "error", err)
 				cache = nil
 			}
 		}
@@ -95,7 +141,7 @@ func (s *RateLimitService) ApplyGroupFailurePolicy(ctx context.Context, account 
 			if err != nil {
 				slog.Warn("group_failure_cooldown_persist_failed", "account_id", account.ID, "error", err)
 			} else {
-				slog.Info("group_failure_cooldown_started", "account_id", account.ID, "group_id", group.ID, "kind", kind,
+				slog.Info("group_failure_cooldown_started", "account_id", account.ID, "group_id", groupID, "kind", kind,
 					"threshold", rule.Threshold, "window_seconds", rule.WindowSeconds, "until", until)
 			}
 		}

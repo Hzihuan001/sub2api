@@ -22,6 +22,12 @@ func (s *RateLimitService) applyGroupHTTPFailure(ctx context.Context, account *A
 	if tempUnschedRulesApply(account, status, body, model) && len(matchTempUnschedulableRules(account, status, body)) > 0 {
 		return false, time.Time{}
 	}
+	// New policies are keyed by the exact upstream status. This check runs
+	// before the legacy semantic classifier so one configured status code can
+	// be counted independently from other codes sharing the same kind.
+	if handled, until := s.ApplyGroupFailurePolicyStatus(ctx, account, status); handled {
+		return true, until
+	}
 	kind, ok := groupHTTPFailureKind(account, status, headers, body, model)
 	if !ok {
 		return false, time.Time{}
@@ -106,6 +112,9 @@ func (s *RateLimitService) applyGroupTransportTimeout(ctx context.Context, accou
 	}
 	var timeout net.Error
 	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout()) {
+		if handled, _ := s.ApplyGroupFailurePolicyStatus(ctx, account, http.StatusGatewayTimeout); handled {
+			return
+		}
 		s.ApplyGroupFailurePolicy(ctx, account, GroupFailureTimeout)
 	}
 }

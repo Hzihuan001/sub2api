@@ -2972,6 +2972,12 @@ func (s *RateLimitService) HandleStreamTimeout(ctx context.Context, account *Acc
 	if account == nil {
 		return false
 	}
+	// Status-code rules use 504 as the canonical stream/transport timeout.
+	// Keep this before the legacy semantic rule so a status-code policy does
+	// not accidentally share a counter with another timeout source.
+	if handled, until := s.ApplyGroupFailurePolicyStatus(ctx, account, http.StatusGatewayTimeout); handled {
+		return !until.IsZero()
+	}
 	if handled, until := s.ApplyGroupFailurePolicy(ctx, account, GroupFailureTimeout); handled {
 		return !until.IsZero()
 	}

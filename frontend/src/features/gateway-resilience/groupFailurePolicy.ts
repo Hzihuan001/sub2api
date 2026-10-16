@@ -1,56 +1,71 @@
 import { apiClient } from '@/api/client'
 
-export const failureKinds = ['overload', 'server_error', 'timeout', 'rate_limit'] as const
-export type FailureKind = typeof failureKinds[number]
-
+/** One status-code rule shared by every code listed in status_codes. */
 export interface GroupFailureRule {
+  status_codes: number[]
   threshold: number
   window_seconds: number
   cooldown_seconds: number
 }
 
 export interface GroupFailurePolicy {
-  rules: Partial<Record<FailureKind, GroupFailureRule>>
+  rules: GroupFailureRule[]
 }
 
-// Editor defaults are persisted explicitly on save, never by opening the editor.
-// Keep the API compatible with older partial policies; missing kinds are filled
-// only in the draft so an unsaved visit does not change runtime behavior.
-export const ruleDefaults: Record<FailureKind, GroupFailureRule> = {
-  overload: { threshold: 3, window_seconds: 300, cooldown_seconds: 600 },
-  server_error: { threshold: 3, window_seconds: 60, cooldown_seconds: 60 },
-  timeout: { threshold: 2, window_seconds: 60, cooldown_seconds: 60 },
-  rate_limit: { threshold: 3, window_seconds: 60, cooldown_seconds: 60 }
-}
+/** Values used when an administrator adds a new rule. */
+export const ruleDefaults = {
+  threshold: 3,
+  window_seconds: 60,
+  cooldown_seconds: 600
+} as const
 
-export const ruleLimits = { threshold: 100, window_seconds: 3600, cooldown_seconds: 7200 } as const
+export const ruleLimits = {
+  status_code: { min: 100, max: 599 },
+  status_codes: { max: 20 },
+  threshold: { min: 1, max: 100 },
+  window_seconds: { min: 1, max: 3600 },
+  cooldown_seconds: { min: 1, max: 7200 }
+} as const
+
+export function isValidStatusCode(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) >= ruleLimits.status_code.min && Number(value) <= ruleLimits.status_code.max
+}
 
 export function isValidRule(rule: GroupFailureRule): boolean {
-  return Object.entries(ruleLimits).every(([field, max]) => {
-    const value = rule[field as keyof GroupFailureRule]
-    return Number.isInteger(value) && value >= 1 && value <= max
-  })
+  return Array.isArray(rule.status_codes)
+    && rule.status_codes.length > 0
+    && rule.status_codes.length <= ruleLimits.status_codes.max
+    && new Set(rule.status_codes).size === rule.status_codes.length
+    && rule.status_codes.every(isValidStatusCode)
+    && Number.isInteger(rule.threshold) && rule.threshold >= ruleLimits.threshold.min && rule.threshold <= ruleLimits.threshold.max
+    && Number.isInteger(rule.window_seconds) && rule.window_seconds >= ruleLimits.window_seconds.min && rule.window_seconds <= ruleLimits.window_seconds.max
+    && Number.isInteger(rule.cooldown_seconds) && rule.cooldown_seconds >= ruleLimits.cooldown_seconds.min && rule.cooldown_seconds <= ruleLimits.cooldown_seconds.max
 }
 
-/** Refuse incomplete or newer payload shapes rather than silently overwriting them. */
+/** Validate the response before it reaches the editor. Duplicate codes are rejected. */
 export function parseGroupFailurePolicy(value: unknown): GroupFailurePolicy {
   if (!value || typeof value !== 'object' || !('rules' in value)) throw new Error('Invalid failure policy')
-  const rules = value.rules
-  if (!rules || typeof rules !== 'object' || Array.isArray(rules)) throw new Error('Invalid failure rules')
-  const result: GroupFailurePolicy = { rules: {} }
-  for (const [kind, candidate] of Object.entries(rules)) {
-    if (!failureKinds.includes(kind as FailureKind) || !candidate || typeof candidate !== 'object') {
-      throw new Error('Unsupported failure rule')
+  const rawRules = (value as { rules?: unknown }).rules
+  if (!Array.isArray(rawRules)) throw new Error('Invalid failure rules')
+  const seen = new Set<number>()
+  const result: GroupFailureRule[] = []
+  for (const candidate of rawRules) {
+    if (!candidate || typeof candidate !== 'object') throw new Error('Invalid failure rule')
+    const raw = candidate as Partial<GroupFailureRule>
+    const rule: GroupFailureRule = {
+      status_codes: Array.isArray(raw.status_codes) ? raw.status_codes.map(Number) : [],
+      threshold: Number(raw.threshold),
+      window_seconds: Number(raw.window_seconds),
+      cooldown_seconds: Number(raw.cooldown_seconds)
     }
-    const rule = candidate as GroupFailureRule
     if (!isValidRule(rule)) throw new Error('Invalid failure rule values')
-    result.rules[kind as FailureKind] = {
-      threshold: rule.threshold,
-      window_seconds: rule.window_seconds,
-      cooldown_seconds: rule.cooldown_seconds
+    for (const code of rule.status_codes) {
+      if (seen.has(code)) throw new Error('Duplicate failure status code')
+      seen.add(code)
     }
+    result.push(rule)
   }
-  return result
+  return { rules: result }
 }
 
 export async function getGroupFailurePolicy(groupId: number, signal: AbortSignal): Promise<GroupFailurePolicy> {

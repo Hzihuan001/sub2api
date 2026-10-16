@@ -84,14 +84,14 @@ func groupFailurePolicyHandlerRequest(router *gin.Engine, method, id, role, body
 func TestGroupFailurePolicyHandlerRoundTripAndGroupIsolation(t *testing.T) {
 	repo := &groupFailurePolicyHandlerRepo{}
 	router, _ := groupFailurePolicyHandlerRouter(repo)
-	const payload = `{"rules":{"overload":{"threshold":3,"window_seconds":300,"cooldown_seconds":600}}}`
+	const payload = `{"rules":[{"status_codes":[502,503],"threshold":3,"window_seconds":300,"cooldown_seconds":600}]}`
 	for _, tc := range []struct{ method, id, body, expected string }{
-		{http.MethodGet, "1", "", `{"rules":{}}`},
+		{http.MethodGet, "1", "", `{"rules":[]}`},
 		{http.MethodPut, "1", payload, payload},
 		{http.MethodGet, "1", "", payload},
-		{http.MethodGet, "2", "", `{"rules":{}}`},
-		{http.MethodPut, "1", `{"rules":{}}`, `{"rules":{}}`},
-		{http.MethodGet, "1", "", `{"rules":{}}`},
+		{http.MethodGet, "2", "", `{"rules":[]}`},
+		{http.MethodPut, "1", `{"rules":[]}`, `{"rules":[]}`},
+		{http.MethodGet, "1", "", `{"rules":[]}`},
 	} {
 		rec := groupFailurePolicyHandlerRequest(router, tc.method, tc.id, service.RoleAdmin, tc.body)
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -106,7 +106,10 @@ func TestGroupFailurePolicyHandlerRoundTripAndGroupIsolation(t *testing.T) {
 
 func TestGroupFailurePolicyHandlerRejectsInvalidJSONAndRules(t *testing.T) {
 	for _, body := range []string{
-		"", "null", "{}", `{"rules":null}`, `{"rules":[]}`, `{"rules":{},"enabled":true}`,
+		"", "null", "{}", `{"rules":null}`, `{"rules":{},"enabled":true}`,
+		`{"rules":[{"status_codes":[],"threshold":1,"window_seconds":1,"cooldown_seconds":1}]}`,
+		`{"rules":[{"status_codes":[502,503],"threshold":1,"window_seconds":1,"cooldown_seconds":1},{"status_codes":[503,504],"threshold":1,"window_seconds":1,"cooldown_seconds":1}]}`,
+		`{"rules":[{"status_codes":[99],"threshold":1,"window_seconds":1,"cooldown_seconds":1}]}`,
 		`{"rules":{"other":{"threshold":1,"window_seconds":1,"cooldown_seconds":1}}}`,
 		`{"rules":{"overload":{"threshold":1,"window_seconds":1,"cooldown_seconds":1,"enabled":true}}}`,
 		`{"rules":{"overload":{"threshold":1.5,"window_seconds":1,"cooldown_seconds":1}}}`,
