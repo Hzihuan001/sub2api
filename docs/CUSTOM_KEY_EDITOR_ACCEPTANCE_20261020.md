@@ -1,8 +1,25 @@
 # 密钥编辑交互对齐及本地验收（2026-10-20）
 
-> 发布状态更新：用户已针对三站发布确认回复继续，正式准备 `0.2.16-custom.12`。以下 g 本地证据保持原样，不能当作正式 GHCR 或生产验收；准确发布坐标见 [custom.12 发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)。
+> 当前状态：`0.2.16-custom.12` 已推送并部署主站/L1/COS。以下 g/d 的失败与补验证据保持原样；正式 digest 单轮验收和生产发布独立记录在本节及 [custom.12 发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)，不倒写历史。
 
-## 最新扩展：TTFT、SLA 与 Key 模型限制（g 本地验证完成，待用户验收，未发布）
+## 正式发布产物验收与当前本地环境
+
+- 运行 `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4`，标签 `custom-0.2.16.12`，三站同一 `ghcr.io/hzihuan001/sub2api@sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610`（linux/amd64）。
+- 发布前完整 service（含最后工具 guard）17,311 项/关键后端 137 项通过；正式 GHCR 拉回后单轮本地主站 **13/13** HTTP/SSE/TTFT/模型准入与账务场景通过，报告 `D:/projects/custom12-published-gateway-20261020/evidence.json`。10 次成功均单条 usage/dedup、实际组扣费；已输出/已有用量不重发、最后组不截断、拒绝场景零调用。报告 `passed-with-findings` 的已知项为目录仍主组，非备用并集。
+- 三个本地应用均为该正式镜像，healthy、restart 0，六个数据服务未重建；保留 9001/9002 的同库 custom.11 主应用启动健康回退/恢复通过，不能据此声称模型限制权限等价。
+- 生产主站→L1→COS 已完成 app-only 更新；2026-10-20 06:26:50 有限复核健康、版本/commit/digest、公共 JS 与源站一致及关键日志 0。无生产付费模型、没有生产全角色登录矩阵；L1/COS 本地完整管理矩阵仍未执行，不代本人合规确认。Actions 实际 dispatch 422，无 CI run。
+- 本地入口仍为 `http://127.0.0.1:18180/keys`、L1 `18181`、COS `18182`。保留验收数据；若本人完成本地合规后补测 L1/COS，用当前 digest 的 `-ExpectedImageId`，不使用下文历史 d/g ID。
+
+停止当前验收环境（保留数据卷）：
+
+```powershell
+$env:SUB2API_IMAGE = 'ghcr.io/hzihuan001/sub2api@sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610'
+docker compose -p moshu-reseller-acceptance-c -f deploy/acceptance/docker-compose.isolation.yml stop
+```
+
+不要使用 `down -v`。下文 g/d 的关闭参数和补测 ID 仅代表历史阶段，当前以上述正式坐标为准。
+
+## 历史 g 扩展：TTFT、SLA 与 Key 模型限制（当时本地验证完成、未发布）
 
 用户继续要求完成参考站的密钥编辑功能后，本轮补齐了以下真实后端能力，而非只加 UI 选项。最终 g 容器复验结果见下一节；后文 d 镜像证据保留为历史，不能代替新后端验证。
 
@@ -69,7 +86,7 @@ L1/COS 使用同一 g 镜像且健康，但管理功能矩阵仍受用户本人�
 - 桌面 1280×960 和手机 390×844 真实检查；手机弹窗外层宽度/scrollWidth 均 390，规则可换行、底部取消/更新可访问；没有把底层官方表格称作整页零横向溢出。临时视口已恢复，最终 browser console error `[]`。
 - 截图：`D:/projects/key-editor-g-defaults-20261020.png`、`D:/projects/key-editor-g-desktop-20261020.png`、`D:/projects/key-editor-g-mobile-20261020.png`。页面已保留供用户验收。
 
-**交付状态**：本地候选已备好，待用户验收；没有提交、推送、发布镜像或修改生产。不是宣称所有万模内部实现均完全一致，范围及已知边界以上文为准。
+**当时交付状态（g 阶段）**：本地候选已备好，尚未推送或部署；后续已获批准并发布 custom.12，以上方正式坐标为准。不是宣称所有万模内部实现均完全一致，范围及已知边界仍保留。
 
 ## d 镜像阶段结论与范围（历史）
 

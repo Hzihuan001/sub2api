@@ -1,7 +1,7 @@
 # 定制项目状态与官方升级说明
 
 > 本文是给后续维护会话、代码审查者和自动化工具使用的项目交接说明。
-> 先读本文，再读 [`本轮发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM11_20261016.md)、
+> 先读本文，再读 [`本轮发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)、
 > [`UPSTREAM_SYNC.md`](UPSTREAM_SYNC.md) 和
 > [`custom/manifest.yml`](../custom/manifest.yml)。
 >
@@ -9,12 +9,13 @@
 
 ## 1. 当前快照
 
-### 2026-10-20 — custom.12 发布准备（用户已批准三站发布，尚未部署）
+### 2026-10-20 — custom.12 已发布三站（当前状态）
 
-- 用户在明确的“本地验收通过后推送部署主站、L1、COS”确认问题后回复继续；本轮进入正式发布，不再处于等待本地验收授权阶段。
-- 拟发布 `0.2.16-custom.12`，以本活动树已验收 g 源码为底，正式重建并写入准确版本/提交信息。已核对 `origin/custom/integration` 是当前 HEAD 祖先，未遗漏其他已提交定制。
-- 逐站备份、不可变 GHCR 镜像拉回验收、主站→L1→COS 应用更新正在准备；不得把准备状态写成已完成。正式坐标与结果见 [`custom.12 发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)。
-- 下方 g“待用户验收/未发布”及更早阶段均为历史状态。L1/COS 本地完整管理矩阵未执行、模型目录只含主组等边界仍保留，不因授权发布而改写测试事实。
+- 版本 `0.2.16-custom.12`，运行提交 `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4`，标签 `custom-0.2.16.12`；三站同一 GHCR digest `sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610`。
+- 独立 Key 主备编辑器、TTFT/SLA/故障规则、模型限制和安全重放已纳入发布；不重新引入自定义全局账号停号。原生调度/计费复用，按实际完成请求的分组结算。
+- 最终完整 service 17,311 项（含子测试）/关键 137 项、前端 147 项通过；正式 digest 拉回后本地主站单轮 13/13 路由账务场景通过，三应用健康及保留新表的 custom.11 启动回退/恢复通过。主站→L1→COS 于 06:23–06:25 顺序仅重建应用；06:26:50 复核 healthy/restart 0、关键日志 0、公共 JS 与源站一致，配置/数据服务不变，仅增迁移 9001/9002。
+- Actions 本次实际 dispatch 仍返回 422，未产生运行；沿用已批准本地 GHCR 发布，不称 CI 成功。精确证据/备份/回滚见 [`custom.12 发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)。发布/集成分支包含运行提交，收尾文档单独提交；实际 ref 以 Git 核验，不移动运行标签。
+- 下方 g“待用户验收/未发布”及更早阶段均为历史状态。L1/COS 本地完整管理矩阵未执行、模型目录只含主组、进程内计数重启清零等边界仍保留。没有付费生产调用或全角色生产登录验证。
 
 ### 2026-10-20 — Key 编辑能力扩展：TTFT/SLA/模型限制（最新 g，本地验证完成，待用户验收，未发布）
 
@@ -272,27 +273,27 @@
 - **当前状态 / 下一步**：本次修复及三站部署完成。后续另行恢复 GitHub Actions，并核对其他功能会话后推进落后的集成分支；恢复前不能认为定时升级可用，不能从旧集成引用丢失 `.3`/`.4` 修复。
 - **验证范围**：复用已通过的相关单元/真实 PostgreSQL/前端检查；正式 GHCR 镜像拉回确认 digest 一致，Docker 三图结算/参考图/下载验收通过。生产只重建应用，未发起付费生图，未重建数据库、Redis、网络或卷。
 
-### 当前发布快照（2026-10-16）
+### 当前发布快照（2026-10-20）
 
 本表为本轮实际核验的生产/发布坐标，历史过程以页首说明和发布报告区分。
 
 | 项目 | 最近发布记录 |
 | --- | --- |
-| 记录日期 | 2026-10-16 |
+| 记录日期 | 2026-10-20 |
 | 官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
-| 当前定制版本 | `0.2.16-custom.9`（包含状态码化分组切换规则） |
-| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.9` |
-| 最新已发布基线 | `custom-0.2.16.9` / `51732a2d93ebcebf2dde5e127e305da5273c0556` |
+| 当前定制版本 | `0.2.16-custom.12`（Key 独立故障规则/TTFT/SLA/模型限制） |
+| 最近生产版本 | 主站、L1、COS 均为 `0.2.16-custom.12` |
+| 最新已发布基线 | `custom-0.2.16.12` / `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4` |
 | 发布分支 | `codex/group-failover-rules-v0.2.16` |
 | 升级工作树 | `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` |
 | 官方合并 / 生图移植提交 | `d3b78cf8c` / `2c007ec6a`；运行代码修复 `e42db1f11`，验收脚本 `f17cae568` |
-| 长期集成基线 | 发布分支与 `origin/custom/integration` 已包含 `.8` 运行提交 `46083426af6cf993b0dfd86767fc35df9977dd22`；文档收尾的实际 ref 由 Git 核验 |
+| 长期集成基线 | 发布分支与 `origin/custom/integration` 同步 `.12` 运行提交与本轮文档；实际 ref 由 Git 核验，不从旧根检出发布 |
 | 历史隔离改造 PR | 草稿 PR #1（状态待另行核验）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 主站生产镜像 digest | `sha256:26a27d9793baf2bf074d73efc57b76ddc1c65852489b84578bd854cac0640db3` |
-| L1/COS 生产镜像 digest | `sha256:26a27d9793baf2bf074d73efc57b76ddc1c65852489b84578bd854cac0640db3` |
-| 当前发布状态 | `.9` 三站部署及快速验收通过，`.8` 为本轮回退目标；未触发生产回滚 |
+| 主站生产镜像 digest | `sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610` |
+| L1/COS 生产镜像 digest | `sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610` |
+| 当前发布状态 | `.12` 三站健康/快速验收通过，`.11` 为有权限约束的回退目标；未触发生产回滚 |
 
 生产健康检查最近确认通过的入口：
 
@@ -302,7 +303,7 @@
 
 2026-10-12 两个下游入口切换到 Moshu 子域名并开启 Cloudflare 代理；旧 `tokenpulse.top` 入口保留。OVH OpenResty 继续使用 HTTPS、10 小时读写超时和关闭响应缓冲。域名运维记录见功能日志。
 
-本次三站统一使用上述 `.9` digest；备份及回退 `.8` 的说明见 [发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM9_20261016.md)。本次无新增数据库迁移，无需恢复旧数据库；回退只切换应用镜像，不覆盖上线后的新业务数据。
+本次三站统一使用上述 `.12` digest；备份及回退 `.11` 的说明见 [发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)。本次新增 9001/9002，旧迁移全行不变；回退不恢复旧数据库覆盖上线后业务数据。旧镜像忽略新模型限制，启用受限 Key 后不得自动回退，必须先处理权限安全。
 
 ### 批量无额外折扣（2026-10-14，deployed）
 
@@ -347,8 +348,8 @@
 | `image-studio` | 生图工作台、批量任务、应用层拆分、参考图、单张/ZIP 下载 | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、用户生图视图 | 保留并受测试保护 |
 | `branding` | 对客品牌和公共文案统一为 Moshu，隐藏不应出现在对客界面的上游项目名称 | `frontend/src/i18n`、公共页面和品牌处理逻辑 | 保留；每次升级需做文案扫描 |
 | `usage-extras` | 管理员使用记录增强，例如缓存命中率、分页和 API Key 管理辅助能力 | 管理员使用记录 handler/view 及对应测试 | 保留；管理员侧可见，用户侧按权限隐藏 |
-| `gateway-resilience` | 分组错误累计、全分组账号冷却/恢复、安全重试及四类规则显式默认值编辑 | `group_failure_*`、`overload_failure_breaker`、Redis/网关窄入口、前端 `features/gateway-resilience` | 后端规则随 `.6` 发布；默认值编辑器随 `.7` 已部署 |
-| `key-routing` | 1 主＋最多 4 备，发送前按模型/可调度性选组，按实际组计费，共享 Key 额度，无跨组重播 | `internal/keyrouting`、service/readiness、middleware、扩展仓储、前端 `features/key-routing` | `.7` 已部署；首期限 standard 无资源绑定文本 HTTP/SSE，图片/WS/目录仍主组 |
+| `gateway-resilience` | 保留分组规则配置适配与原生安全重试；自定义规则不再全局暂停账号，官方认证/限流保护与人工恢复仍保留 | `group_failure_*`、网关窄适配、前端 `features/gateway-resilience` | `.12` 采用 Key 范围冷却，不恢复历史系统过载停号 |
+| `key-routing` | 1 主＋最多 4 备，模型/调度选组，Key 独立 TTFT/SLA/失败/状态码冷却和模型限制，按实际组原生计费；内容/已知用量/副作用后不重放 | 纯 `internal/keyrouting`、薄 service/handler、独立扩展仓储、前端 `features/key-routing` | `.12` 已部署；跨组限安全文本 HTTP/SSE，图片/WS/后台固定主组，目录非并集；9000/9001/9002、缓存 v28 |
 
 历史代理商/分站运行时功能已从当前定制层移除，不应在后续官方升级时被旧分支或旧 PR 自动带回。历史代理商阶段只在
 [`CUSTOM_FEATURE_LOG.md`](CUSTOM_FEATURE_LOG.md) 中留作变更记录。

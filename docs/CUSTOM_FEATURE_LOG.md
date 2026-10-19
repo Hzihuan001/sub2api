@@ -1,11 +1,14 @@
 # 定制功能日志
 
-### 2026-10-20 — custom.12 正式发布准备（已获三站发布授权）
+### 2026-10-20 — custom.12 已发布三站：Key 编辑器及独立故障规则
 
-- 用户针对明确的三站发布确认回复继续，开始提交、正式镜像、备份与逐站发布流程；本条不表示生产已经更新。
+- 用户针对明确的三站发布确认回复继续后，已完成本地门禁、提交推送、正式镜像、回拉、备份及主站→L1→COS 发布。三站均为 `0.2.16-custom.12`，运行 `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4`，标签 `custom-0.2.16.12`，digest `sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610`。
 - 纳入已验收的独立 Key 路由/规则/模型限制及编辑交互全部源文件和迁移 9001/9002，不只提交已跟踪文件。
 - 继续保持无内容/无已知用量的安全重放、实际分组原生计费、不按自定义规则全局停号。旧镜像能读新增结构，但无法执行新模型限制，不能称作权限等价回退。
-- 测试与部署精确结果集中记录在 [`custom.12 发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)，下方未发布阶段记录保留追溯。
+- 最终完整 service 17,311（含子测试）与关键 137、前端 147 项通过；正式 digest 单轮本地主站 13/13 路由/账务场景通过，三应用健康及 custom.11 保留新表回退/恢复通过。生产 06:23–06:25 顺序更新，06:26:50 复核 healthy/restart 0、关键日志 0、公共 JS 匹配源站，数据服务及配置未变，仅增 9001/9002。
+- 修复架构门禁只认 9000 的旧命名限制，允许 9000–9999 定制追加迁移，已执行迁移不可改/删仍严格校验；10 项回归通过。部署排空补齐实时槽位、账号等待及异步图片 processing 检查。
+- Actions 真实 dispatch 422，无 CI run；沿用已批准本地 GHCR 路径。没有付费生产调用；L1/COS 完整登录功能矩阵未执行。模型目录仍主组，计数器仍为有界进程内状态。
+- 精确证据、备份和回滚集中在 [`custom.12 发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)；下方未发布阶段保留追溯，收尾文档另提交，不改变运行标签。
 
 ### 2026-10-20 — Key TTFT/SLA 与模型限制补齐（最新 g，本地验证完成，待用户验收，未发布）
 
@@ -419,13 +422,13 @@
 
 | Feature ID | 当前行为 | 代码/测试边界 | 迁移要求 |
 | --- | --- | --- | --- |
-| `operator` | operator 认证、默认拒绝的管理路由、角色权限配置、菜单和页面守卫；admin 仍保留严格超级管理员语义 | `backend/internal/authz`、`backend/internal/server/middleware`、`frontend/src/authz`、角色/权限测试 | 已有迁移保持不变；新增迁移只能使用 `9000_custom_` 前缀 |
+| `operator` | operator 认证、默认拒绝的管理路由、角色权限配置、菜单和页面守卫；admin 仍保留严格超级管理员语义 | `backend/internal/authz`、`backend/internal/server/middleware`、`frontend/src/authz`、角色/权限测试 | 已有迁移不可改/删；新增定制迁移使用 `9000–9999_custom_<feature>.sql` |
 | `prompt-audit` | `off`、`capture_only`、`async_audit`、`blocking`；捕获事件、类型筛选、详情、导出、删除和保留策略 | `backend/internal/securityaudit`、`frontend/src/features/prompt-audit`、对应后端/前端测试 | 追加式；不得修改已发布迁移 |
 | `image-studio` | Moshu 生图工作台、批量任务、应用层单图拆分、队列、参考图、单张下载和 ZIP 下载；默认生图尺寸为 2K | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、用户工作台视图、批量测试 | 追加式；对象/任务数据需兼容旧镜像 |
 | `branding` | 对客页面、公共文案和图片工作台统一使用 Moshu，避免把上游项目名暴露给用户 | `frontend/src/i18n`、品牌工具、公共页面测试 | 无独立数据迁移 |
 | `usage-extras` | 管理员使用记录显示缓存命中率、分页跳转等增强；用户侧不显示管理员专属字段 | 管理员使用记录 handler/view 与前端测试 | 无破坏性迁移 |
-| `gateway-resilience` | 分组错误累计、全分组账号冷却/恢复、安全重试；四类规则显式默认值编辑 | `group_failure_*`、overload/Redis/网关窄入口、前端 `features/gateway-resilience` | 复用 settings，无本功能新增迁移 |
-| `key-routing` | 1 主＋最多 4 备，发送前按模型/可调度性选组，按实际组计费，共享 Key 额度，不跨组重播 | `internal/keyrouting`、readiness/认证入口、扩展仓储、前端 `features/key-routing` 与宿主测试 | 新增 `9000_custom_api_key_routes.sql`；旧镜像不得编辑多组 Key 主组/解绑 |
+| `gateway-resilience` | 分组配置保留适配，原生安全重试/认证/限流保护和人工恢复不移除；自定义规则不再写账号全局暂停 | `group_failure_*`、网关窄适配、前端 `features/gateway-resilience` | 复用 settings，旧系统过载停号不恢复 |
+| `key-routing` | 1 主＋最多 4 备，Key 独立 TTFT/SLA/失败/状态码冷却与模型限制；安全前内容切组、实际组原生计费、共享 Key 额度；内容/已知用量/副作用后不重放 | 纯 `internal/keyrouting`、薄 service/handler、独立扩展仓储、前端 `features/key-routing` 与宿主测试 | 9000/9001/9002、认证缓存 v28；旧镜像忽略模型限制，启用受限 Key 后禁止无审核回退 |
 
 ## 版本与功能时间线
 
@@ -576,7 +579,7 @@
 - **官方基线**：官方 tag、commit；若是定制迭代，注明基于哪个 custom tag
 - **实现边界**：列出新增/修改文件夹、API、页面和配置；不要把整仓库写成影响范围
 - **用户可见行为**：
-- **数据库/迁移**：无；或列出新增迁移文件（必须是 `9000_custom_<name>.sql`）
+- **数据库/迁移**：无；或列出新增迁移文件（编号为 9000–9999，命名 `9xxx_custom_<name>.sql`；已发布文件不可改删）
 - **测试**：单元、集成、前端、Docker 验收的明确结果
 - **提交/PR**：commit、PR URL；若未推送写“仅本地”
 - **发布镜像**：tag、immutable digest；未发布写“无”
