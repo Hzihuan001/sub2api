@@ -1027,6 +1027,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				return payload, nil, nil
 			}
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
+			if err := CheckKeyModelPolicyWSFrame(c, payload, usageMeta.requestModelForFrame(payload)); err != nil {
+				return payload, nil, err
+			}
 			isResponseCreate := eventType == "response.create"
 			responseCreateAt := time.Time{}
 			acceptedTurn := false

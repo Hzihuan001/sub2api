@@ -54,22 +54,24 @@ type AdminUser struct {
 }
 
 type APIKey struct {
-	ID             int64      `json:"id"`
-	UserID         int64      `json:"user_id"`
-	Key            string     `json:"key"`
-	Name           string     `json:"name"`
-	GroupID        *int64     `json:"group_id"`
-	BackupGroupIDs []int64    `json:"backup_group_ids"`
-	Status         string     `json:"status"`
-	IPWhitelist    []string   `json:"ip_whitelist"`
-	IPBlacklist    []string   `json:"ip_blacklist"`
-	LastUsedAt     *time.Time `json:"last_used_at"`
-	LastUsedIP     *string    `json:"last_used_ip"`
-	Quota          float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
-	QuotaUsed      float64    `json:"quota_used"` // Used quota amount in USD
-	ExpiresAt      *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID                    int64                          `json:"id"`
+	UserID                int64                          `json:"user_id"`
+	Key                   string                         `json:"key"`
+	Name                  string                         `json:"name"`
+	GroupID               *int64                         `json:"group_id"`
+	BackupGroupIDs        []int64                        `json:"backup_group_ids"`
+	KeyRouteFailurePolicy *service.KeyRouteFailurePolicy `json:"key_route_failure_policy,omitempty"`
+	KeyModelPolicy        *service.KeyModelPolicy        `json:"key_model_policy"`
+	Status                string                         `json:"status"`
+	IPWhitelist           []string                       `json:"ip_whitelist"`
+	IPBlacklist           []string                       `json:"ip_blacklist"`
+	LastUsedAt            *time.Time                     `json:"last_used_at"`
+	LastUsedIP            *string                        `json:"last_used_ip"`
+	Quota                 float64                        `json:"quota"`      // Quota limit in USD (0 = unlimited)
+	QuotaUsed             float64                        `json:"quota_used"` // Used quota amount in USD
+	ExpiresAt             *time.Time                     `json:"expires_at"` // Expiration time (nil = never expires)
+	CreatedAt             time.Time                      `json:"created_at"`
+	UpdatedAt             time.Time                      `json:"updated_at"`
 	// CurrentConcurrency is the real-time active request count for this API key.
 	CurrentConcurrency int `json:"current_concurrency"`
 
@@ -92,13 +94,14 @@ type APIKey struct {
 }
 
 type Group struct {
-	ID             int64   `json:"id"`
-	Name           string  `json:"name"`
-	Description    string  `json:"description"`
-	Platform       string  `json:"platform"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
-	Status         string  `json:"status"`
+	ID              int64    `json:"id"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	Platform        string   `json:"platform"`
+	RateMultiplier  float64  `json:"rate_multiplier"`
+	IsExclusive     bool     `json:"is_exclusive"`
+	Status          string   `json:"status"`
+	ModelCandidates []string `json:"model_candidates,omitempty"`
 
 	// I18n 名称与描述的各语言译文。只有管理端输出；用户侧接口经 Localized 把
 	// name/description 换成请求语言的版本后清空本字段。

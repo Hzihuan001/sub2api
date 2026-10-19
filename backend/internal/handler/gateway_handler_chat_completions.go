@@ -200,7 +200,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				reqLog.Info("gateway.cc.account_select_aborted_client_disconnected", zap.Error(err))
 				return
 			}
-			if len(fs.FailedAccountIDs) == 0 {
+			if len(fs.FailedAccountIDs) == 0 && tryKeyRouteSelectionUnavailable(c, err) {
+				return
+			}
+			if len(fs.FailedAccountIDs) == 0 || (keyRoutingRequestActive(c.Request.Context()) && !errors.Is(err, service.ErrNoAvailableAccounts)) {
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, groupPlatform)
 				cls = classifySelectionFailureError(err, cls)
 				if !cls.ModelNotFound {
@@ -224,10 +227,20 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				if fs.LastFailoverErr != nil {
 					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 				} else {
+					if tryKeyRouteSelectionUnavailable(c, err) {
+						return
+					}
 					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "All available accounts exhausted")
 				}
 				return
 			}
+		}
+		if selection == nil || selection.Account == nil {
+			if tryKeyRouteUnavailable(c) {
+				return
+			}
+			h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+			return
 		}
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -321,6 +334,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			accountReleaseFunc()
 		}
 
+		if keyRouteFirstContentInterrupted(c, result, err) {
+			return
+		}
+		err = keyRouteFirstContentNormalizeError(c, err)
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
@@ -340,6 +357,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 					return
 				}
 			}
+			recordKeyRouteForwardFailure(c, err)
 			upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 			wroteFallback := false
 			if !upstreamErrorAlreadyCommunicated {
@@ -355,6 +373,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 
 		// 6. Record usage
+		recordKeyRouteSuccess(c)
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
@@ -404,6 +423,9 @@ func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int
 
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.
 func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
+	if tryFinalKeyRouteFailover(c, lastErr) {
+		return
+	}
 	if streamStarted {
 		return
 	}

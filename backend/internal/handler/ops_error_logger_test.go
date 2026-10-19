@@ -340,6 +340,7 @@ func TestOpsErrorLoggerMiddleware_RecordsRecoveredUpstreamTelemetryOutsideFailur
 	router := gin.New()
 	router.Use(OpsErrorLoggerMiddleware(ops))
 	router.POST("/v1/responses", func(c *gin.Context) {
+		c.Request = c.Request.WithContext(service.WithOpsRouteSwitchLabel(c.Request.Context(), "备用分组"))
 		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
 			UpstreamStatusCode: http.StatusTooManyRequests,
 			Message:            "earlier attempt was rate limited",
@@ -367,7 +368,9 @@ func TestOpsErrorLoggerMiddleware_RecordsRecoveredUpstreamTelemetryOutsideFailur
 	require.Equal(t, http.StatusOK, persisted.StatusCode, "recovered telemetry must remain outside failed-request SLA")
 	require.Equal(t, "upstream", persisted.ErrorPhase)
 	require.Equal(t, "upstream_error", persisted.ErrorType)
-	require.Equal(t, "Recovered upstream error 429: earlier attempt was rate limited", persisted.ErrorMessage)
+	require.Equal(t, "Recovered upstream error 429: earlier attempt was rate limited · 切换备用分组：备用分组", persisted.ErrorMessage)
+	require.Contains(t, persisted.ErrorMessage, "切换备用分组：备用分组")
+	require.Equal(t, "切换备用分组：备用分组", persisted.RouteSwitchLabel)
 	require.NotNil(t, persisted.UpstreamErrorsJSON)
 	persistedEvents, err := service.ParseOpsUpstreamErrors(*persisted.UpstreamErrorsJSON)
 	require.NoError(t, err)

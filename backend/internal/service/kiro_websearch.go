@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
+	"github.com/tidwall/gjson"
 )
 
 const kiroMaxWebSearchIterations = 5
@@ -405,6 +406,11 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 		req, err := newKiroJSONRequest(ctx, endpoint, payload, currentToken, accountKey, buildKiroMachineID(account), "", account)
 		if err != nil {
 			return nil, currentToken, err
+		}
+		// Both synchronous and streaming emulation execute hosted searches here.
+		// Tool-list prefetch and local cooldown rejection remain replayable.
+		if gjson.GetBytes(payload, "method").String() == "tools/call" {
+			preventKeyRouteHostedToolReplay(ctx)
 		}
 		resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 		if err != nil {

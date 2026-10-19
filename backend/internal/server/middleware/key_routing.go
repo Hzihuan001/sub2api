@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/keyrouting"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -71,8 +72,9 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 			return nil, false
 		}
 	}
-	// Native remote compaction and image generation have independent lifecycle
-	// and pricing rules. They do not participate in text backup routing.
+	// Native remote compaction, media and provider-executed tools have an
+	// independent lifecycle. A provider may execute a tool before emitting any
+	// visible content, so these requests must never be replayed to a backup.
 	if service.IsExplicitImageGenerationIntent(c.Request.URL.Path, model.String(), body) || keyRoutingHasPrimaryOnlyIntent(body) {
 		return key, true
 	}
@@ -101,6 +103,22 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 		AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_UNAVAILABLE", "Invalid routing result")
 		return nil, false
 	}
+	primaryGroupID := int64(0)
+	if key.GroupID != nil {
+		primaryGroupID = *key.GroupID
+	}
+	routingCtx := context.WithValue(c.Request.Context(), ctxkey.KeyRoutingActive, true)
+	if primaryGroupID > 0 {
+		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingPrimaryGroupID, primaryGroupID)
+	}
+	c.Request = c.Request.WithContext(routingCtx)
+	// Retain the immutable ingress snapshot before platform/model/pricing
+	// adapters add group-specific context. A backup dispatch must start from
+	// this snapshot, never from a previous group's forwarding context.
+	c.Set("custom.key_route_base_context", routingCtx)
+	c.Set("custom.key_route_body", append([]byte(nil), body...))
+	c.Set("custom.key_route_request", service.KeyRoutingRequest{Model: strings.TrimSpace(model.String()), Endpoint: endpoint})
+	c.Set("custom.key_routing_selector", selector)
 	c.Set("custom.key_route", plan)
 	if key.GroupID != nil && *effective.GroupID != *key.GroupID {
 		slog.InfoContext(c.Request.Context(), "key_route_selected", "api_key_id", key.ID, "primary_group_id", *key.GroupID, "selected_group_id", *effective.GroupID, "reason", plan.Reason)
@@ -134,31 +152,97 @@ func keyRoutingHasPrimaryOnlyIntent(body []byte) bool {
 		switch {
 		case strings.EqualFold(field.String(), "context_management"):
 			primaryOnly = true
-		case strings.EqualFold(field.String(), "tools") && value.IsArray():
-			value.ForEach(func(_, tool gjson.Result) bool {
-				primaryOnly = keyRoutingIsImageGenerationTool(tool)
-				return !primaryOnly
-			})
+		case strings.EqualFold(field.String(), "web_search_options"), strings.EqualFold(field.String(), "mcp_servers"):
+			// Chat search and the Anthropic MCP connector can enable provider
+			// execution outside the tools array.
+			primaryOnly = value.Type != gjson.Null
+		case strings.EqualFold(field.String(), "tools"):
+			if value.IsArray() {
+				value.ForEach(func(_, tool gjson.Result) bool {
+					primaryOnly = keyRoutingToolRequiresPrimary(tool)
+					return !primaryOnly
+				})
+			} else {
+				primaryOnly = value.Type != gjson.Null
+			}
 		case strings.EqualFold(field.String(), "tool_choice"):
-			primaryOnly = keyRoutingIsImageGenerationTool(value)
+			primaryOnly = keyRoutingToolChoiceRequiresPrimary(value)
 		}
 		return !primaryOnly
 	})
 	return primaryOnly
 }
 
-func keyRoutingIsImageGenerationTool(tool gjson.Result) bool {
+// Only client-executed tool declarations are replay-safe. Unknown future
+// provider tool types fail closed, without needing a constantly growing list
+// of web_search, code_interpreter, computer, MCP, image and other built-ins.
+// Never inspect a function's schema or arguments for tool-like field names.
+func keyRoutingToolRequiresPrimary(tool gjson.Result) bool {
 	if !tool.IsObject() {
+		return true
+	}
+	toolType, hasType := keyRoutingToolType(tool)
+	if hasType {
+		return toolType != "function" && toolType != "custom"
+	}
+	// Anthropic custom tools omit type and use name + input_schema. Restrict
+	// this exception to the known declaration shape; unknown wrappers could
+	// describe a provider-executed tool and must stay on the primary group.
+	hasName, hasSchema, unknownField := false, false, false
+	tool.ForEach(func(field, value gjson.Result) bool {
+		switch strings.ToLower(field.String()) {
+		case "name":
+			hasName = value.Type == gjson.String && strings.TrimSpace(value.String()) != ""
+		case "input_schema":
+			hasSchema = value.IsObject()
+		case "description", "cache_control", "strict", "defer_loading", "input_examples", "eager_input_streaming":
+		default:
+			unknownField = true
+		}
+		return !unknownField
+	})
+	return !hasName || !hasSchema || unknownField
+}
+
+func keyRoutingToolChoiceRequiresPrimary(choice gjson.Result) bool {
+	if choice.Type == gjson.Null {
 		return false
 	}
-	imageGeneration := false
-	tool.ForEach(func(field, value gjson.Result) bool {
-		if strings.EqualFold(field.String(), "type") && value.Type == gjson.String && strings.TrimSpace(value.String()) == "image_generation" {
-			imageGeneration = true
+	if choice.Type == gjson.String {
+		switch strings.TrimSpace(choice.String()) {
+		case "auto", "none", "required":
+			return false
+		default:
+			return true
 		}
-		return !imageGeneration
+	}
+	if !choice.IsObject() {
+		return true
+	}
+	toolType, hasType := keyRoutingToolType(choice)
+	if !hasType {
+		return true
+	}
+	switch toolType {
+	case "function", "custom", "auto", "any", "none", "tool":
+		return false
+	default:
+		return true
+	}
+}
+
+func keyRoutingToolType(tool gjson.Result) (toolType string, hasType bool) {
+	tool.ForEach(func(field, value gjson.Result) bool {
+		if strings.EqualFold(field.String(), "type") {
+			hasType = true
+			if value.Type == gjson.String {
+				toolType = strings.TrimSpace(value.String())
+			}
+			return false
+		}
+		return true
 	})
-	return imageGeneration
+	return toolType, hasType
 }
 
 func keyRoutingHasBoundState(body []byte) bool {

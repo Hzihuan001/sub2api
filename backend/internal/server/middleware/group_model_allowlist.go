@@ -32,11 +32,10 @@ import (
 func GroupModelAllowlist() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		apiKey, ok := GetAPIKeyFromContext(c)
-		if !ok || apiKey == nil || apiKey.Group == nil || !apiKey.Group.ModelAllowlistEnabled() {
+		if !ok || apiKey == nil || (!apiKey.KeyModelPolicyEnabled() && (apiKey.Group == nil || !apiKey.Group.ModelAllowlistEnabled())) {
 			c.Next()
 			return
 		}
-		allowlist := apiKey.Group.ModelAllowlist
 		if c.Request == nil {
 			c.Next()
 			return
@@ -44,6 +43,16 @@ func GroupModelAllowlist() gin.HandlerFunc {
 
 		if isResponsesWebSocketRoute(c) {
 			// Responses WS 长连接由 ResponsesWebSocket 校验首帧与每个 response.create。
+			c.Next()
+			return
+		}
+		if apiKey.KeyModelPolicyEnabled() && keyModelPolicyUnverifiableSession(c) {
+			rejectKeyModelPolicy(c, "This session endpoint cannot enforce the API key model policy")
+			return
+		}
+		if apiKey.KeyModelPolicyEnabled() && c.Request.Method == http.MethodPost && !keyModelPolicyRequiresModel(c) {
+			// Cancellation of an owned batch is not a new model invocation and
+			// commonly has no body at all. Keep it independent from new policy.
 			c.Next()
 			return
 		}
@@ -70,6 +79,23 @@ func GroupModelAllowlist() gin.HandlerFunc {
 			}
 		}
 
+		if apiKey.KeyModelPolicyEnabled() {
+			if len(models) == 0 && keyModelPolicyRequiresModel(c) {
+				rejectKeyModelPolicy(c, "An explicit model is required by the API key model policy")
+				return
+			}
+			for _, candidate := range models {
+				if !apiKey.AllowsPublicModel(candidate) {
+					rejectKeyModelPolicy(c, fmt.Sprintf("Model %q is not available for this API key", candidate))
+					return
+				}
+			}
+		}
+		if apiKey.Group == nil || !apiKey.Group.ModelAllowlistEnabled() {
+			c.Next()
+			return
+		}
+		allowlist := apiKey.Group.ModelAllowlist
 		blocked := ""
 		for _, candidate := range models {
 			if !allowlist.Allows(candidate) {
@@ -125,6 +151,14 @@ func groupModelAllowlistModelsFromBody(c *gin.Context) ([]string, bool) {
 		return nil, false
 	}
 	requestmodel.ResetRequestBody(c.Request, body)
+	if apiKey, ok := GetAPIKeyFromContext(c); ok && apiKey.KeyModelPolicyEnabled() {
+		models, policyErr := service.KeyModelPolicyBodyCandidates(c.GetHeader("Content-Type"), body)
+		if policyErr != nil {
+			rejectKeyModelPolicy(c, policyErr.Error())
+			return nil, false
+		}
+		return models, true
+	}
 	return requestmodel.FromBodyCandidates(c.FullPath(), c.GetHeader("Content-Type"), body), true
 }
 

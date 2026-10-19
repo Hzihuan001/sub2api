@@ -98,3 +98,56 @@ func TestCustomAPIKeyRoutesRepositoryReadFailureDoesNotDowngrade(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, got)
 }
+
+func TestCustomAPIKeyRoutePoliciesRepositoryRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	repo, client := newAPIKeyRepoSQLite(t)
+	_, err := client.ExecContext(ctx, `CREATE TABLE custom_api_key_route_policies (
+		api_key_id INTEGER PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
+		policy TEXT NOT NULL
+	)`)
+	require.NoError(t, err)
+	owner := mustCreateAPIKeyRepoUser(t, ctx, client, "route-policies@example.com")
+	legacy := &service.KeyRouteFailurePolicy{Rules: []service.KeyRouteFailureRule{{StatusCodes: []int{502, 503}, Threshold: 3, WindowSeconds: 60, CooldownSeconds: 600}}}
+	key := &service.APIKey{UserID: owner.ID, Key: "sk-route-policy", Name: "route policy", Status: service.StatusActive, KeyRouteFailurePolicy: legacy}
+	require.NoError(t, repo.Create(ctx, key))
+	for _, get := range []func() (*service.APIKey, error){
+		func() (*service.APIKey, error) { return repo.GetByID(ctx, key.ID) },
+		func() (*service.APIKey, error) { return repo.GetByKey(ctx, key.Key) },
+		func() (*service.APIKey, error) { return repo.GetByKeyForAuth(ctx, key.Key) },
+	} {
+		got, err := get()
+		require.NoError(t, err)
+		require.Equal(t, legacy, got.KeyRouteFailurePolicy)
+	}
+	key.KeyRouteFailurePolicy = &service.KeyRouteFailurePolicy{Rules: []service.KeyRouteFailureRule{
+		{Type: "consecutive_failures", Threshold: 3, CooldownSeconds: 120},
+		{Type: "timeout", Threshold: 3, SampleSize: 20, CooldownSeconds: 120},
+		{Type: "rate_limit", Threshold: 3, SampleSize: 20, CooldownSeconds: 120},
+	}}
+	require.NoError(t, repo.Update(ctx, key, service.APIKeyUpdateFields{KeyRouteFailurePolicy: true}))
+	got, err := repo.GetByID(ctx, key.ID)
+	require.NoError(t, err)
+	require.Equal(t, key.KeyRouteFailurePolicy, got.KeyRouteFailurePolicy)
+	key.KeyRouteFailurePolicy = &service.KeyRouteFailurePolicy{Rules: []service.KeyRouteFailureRule{}}
+	require.NoError(t, repo.Update(ctx, key, service.APIKeyUpdateFields{KeyRouteFailurePolicy: true}))
+	got, err = repo.GetByID(ctx, key.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.KeyRouteFailurePolicy)
+	require.NotNil(t, got.KeyRouteFailurePolicy.Rules)
+	require.Empty(t, got.KeyRouteFailurePolicy.Rules)
+	key.KeyRouteFailurePolicy = nil
+	require.NoError(t, repo.Update(ctx, key, service.APIKeyUpdateFields{KeyRouteFailurePolicy: true}))
+	got, err = repo.GetByID(ctx, key.ID)
+	require.NoError(t, err)
+	require.Nil(t, got.KeyRouteFailurePolicy)
+	// Validation and persistence share the same contract. An invalid policy
+	// must roll back the primary-key row edit in the same transaction.
+	key.Name = "must roll back"
+	key.KeyRouteFailurePolicy = &service.KeyRouteFailurePolicy{Rules: []service.KeyRouteFailureRule{{Type: "timeout", Threshold: 21, SampleSize: 20, CooldownSeconds: 120}}}
+	require.Error(t, repo.Update(ctx, key, service.APIKeyUpdateFields{Name: true, KeyRouteFailurePolicy: true}))
+	got, err = repo.GetByID(ctx, key.ID)
+	require.NoError(t, err)
+	require.Equal(t, "route policy", got.Name)
+	require.Nil(t, got.KeyRouteFailurePolicy)
+}

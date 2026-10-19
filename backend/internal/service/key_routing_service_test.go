@@ -112,6 +112,72 @@ func TestKeyRoutingServiceNoAccountsFallsThroughButRecoversPrimaryOnNextRequest(
 	require.EqualValues(t, 1, plan.SelectedGroupID)
 }
 
+func TestKeyRoutingServiceRouteCooldownOnlySkipsWhenBackupExists(t *testing.T) {
+	policyRepo := &groupFailurePolicySettingRepo{}
+	settings := groupFailurePolicyTestService(policyRepo)
+	policy := &GroupFailurePolicy{StatusRules: []GroupFailureStatusRule{{
+		StatusCodes: []int{502}, Threshold: 1, WindowSeconds: 60, CooldownSeconds: 600,
+	}}}
+	_, err := settings.UpdateGroupFailurePolicy(context.Background(), 1, policy)
+	require.NoError(t, err)
+
+	for _, withBackup := range []bool{false, true} {
+		t.Run(fmt.Sprintf("with_backup_%t", withBackup), func(t *testing.T) {
+			svc, key, _, groups, _ := newKeyRoutingFixture()
+			svc.settings = settings
+			if withBackup {
+				key.BackupGroupIDs = []int64{2}
+			} else {
+				key.BackupGroupIDs = nil
+			}
+			routePolicy := keyrouting.RouteFailurePolicy{Rules: []keyrouting.RouteFailureRule{{
+				StatusCodes: []int{502}, Threshold: 1, WindowSeconds: 60, CooldownSeconds: 600,
+			}}}
+			svc.failures.Record(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: 1, Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}, 502, routePolicy)
+			effective, plan, err := svc.Select(context.Background(), key, KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions})
+			require.NoError(t, err)
+			wantGroup := int64(1)
+			if withBackup {
+				wantGroup = 2
+			}
+			require.Equal(t, wantGroup, plan.SelectedGroupID)
+			require.Equal(t, wantGroup, *effective.GroupID)
+			require.Equal(t, wantGroup, effective.Group.ID)
+			require.NotNil(t, groups.groups[wantGroup])
+		})
+	}
+}
+
+func TestKeyRoutingServiceKeyPolicyOverridesGroupPolicy(t *testing.T) {
+	policyRepo := &groupFailurePolicySettingRepo{}
+	settings := groupFailurePolicyTestService(policyRepo)
+	require.NoError(t, func() error {
+		_, err := settings.UpdateGroupFailurePolicy(context.Background(), 1, &GroupFailurePolicy{StatusRules: []GroupFailureStatusRule{{
+			StatusCodes: []int{502}, Threshold: 1, WindowSeconds: 60, CooldownSeconds: 600,
+		}}})
+		return err
+	}())
+	svc, key, _, _, _ := newKeyRoutingFixture()
+	svc.settings = settings
+	key.KeyRouteFailurePolicy = &KeyRouteFailurePolicy{Rules: []KeyRouteFailureRule{{
+		StatusCodes: []int{503}, Threshold: 1, WindowSeconds: 60, CooldownSeconds: 600,
+	}}}
+	request := KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}
+	result, err := svc.RecordFailure(context.Background(), key, request, 1, 502)
+	require.NoError(t, err)
+	require.False(t, result.Triggered)
+	result, err = svc.RecordFailure(context.Background(), key, request, 1, 503)
+	require.NoError(t, err)
+	require.True(t, result.Triggered)
+
+	// An explicitly empty key policy disables group rules instead of falling
+	// back to the group setting.
+	key.KeyRouteFailurePolicy = &KeyRouteFailurePolicy{Rules: []KeyRouteFailureRule{}}
+	result, err = svc.RecordFailure(context.Background(), key, request, 1, 503)
+	require.NoError(t, err)
+	require.False(t, result.Triggered)
+}
+
 func TestKeyRoutingServiceFailsClosedForUnauthorizedAndUnavailableDependencies(t *testing.T) {
 	for _, tc := range []string{"unauthorized", "subscription", "group-error", "account-error", "rpm-error", "simple-mode"} {
 		t.Run(tc, func(t *testing.T) {
@@ -251,4 +317,185 @@ func TestKeyRoutingServiceChannelMappingReadErrorFailsClosed(t *testing.T) {
 			require.NotContains(t, accounts.calls, int64(3))
 		})
 	}
+}
+
+func keyRoutingCooldownPolicy() *KeyRouteFailurePolicy {
+	return &KeyRouteFailurePolicy{Rules: []KeyRouteFailureRule{{StatusCodes: []int{502}, Threshold: 1, WindowSeconds: 60, CooldownSeconds: 600}}}
+}
+
+func coolKeyRouteGroups(t *testing.T, svc *KeyRoutingService, key *APIKey, request KeyRoutingRequest, groupIDs ...int64) {
+	t.Helper()
+	for _, groupID := range groupIDs {
+		result, err := svc.RecordFailure(context.Background(), key, request, groupID, 502)
+		require.NoError(t, err)
+		require.True(t, result.Triggered)
+	}
+}
+
+func TestKeyRoutingServiceKeyOverrideCooldownWorksWithoutSettings(t *testing.T) {
+	svc, key, accounts, _, _ := newKeyRoutingFixture()
+	key.KeyRouteFailurePolicy = keyRoutingCooldownPolicy()
+	request := KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}
+	coolKeyRouteGroups(t, svc, key, request, 1)
+	effective, plan, err := svc.Select(context.Background(), key, request)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, *effective.GroupID)
+	require.EqualValues(t, 2, plan.SelectedGroupID)
+	require.Equal(t, []int64{1, 2}, accounts.calls)
+}
+
+func TestKeyRoutingServiceAllCoolingUsesLastReadyGroupOnceAndRetainsCooldown(t *testing.T) {
+	svc, key, accounts, _, _ := newKeyRoutingFixture()
+	key.KeyRouteFailurePolicy = keyRoutingCooldownPolicy()
+	request := KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}
+	coolKeyRouteGroups(t, svc, key, request, 1, 2, 3)
+	for attempt := 0; attempt < 2; attempt++ {
+		accounts.calls = nil
+		effective, plan, err := svc.Select(context.Background(), key, request)
+		require.NoError(t, err)
+		require.EqualValues(t, 3, *effective.GroupID)
+		require.EqualValues(t, 3, plan.SelectedGroupID)
+		require.Equal(t, []int64{1, 2, 3, 3}, accounts.calls, "only the last ready cooled candidate receives one native recheck")
+		require.Len(t, plan.Attempts, 4)
+		for _, id := range []int64{1, 2, 3} {
+			cooling, _ := svc.failures.IsCooling(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: id, Model: request.Model, Endpoint: request.Endpoint}, *key.KeyRouteFailurePolicy)
+			require.True(t, cooling, "one request-local fallback must not release the route cooldown")
+		}
+	}
+}
+
+func TestKeyRoutingServiceCooldownFallbackNeverBypassesNativeReadiness(t *testing.T) {
+	for _, allDisabled := range []bool{false, true} {
+		t.Run(fmt.Sprint(allDisabled), func(t *testing.T) {
+			svc, key, accounts, _, _ := newKeyRoutingFixture()
+			key.KeyRouteFailurePolicy = keyRoutingCooldownPolicy()
+			request := KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}
+			coolKeyRouteGroups(t, svc, key, request, 1, 2, 3)
+			accounts.accounts[3][0].Schedulable = false
+			if allDisabled {
+				accounts.accounts[1][0].Schedulable = false
+				accounts.accounts[2][0].Schedulable = false
+			}
+			effective, plan, err := svc.Select(context.Background(), key, request)
+			if allDisabled {
+				require.ErrorIs(t, err, keyrouting.ErrNoSchedulableAccounts)
+				require.Nil(t, effective)
+				require.Equal(t, []int64{1, 2, 3}, accounts.calls)
+				return
+			}
+			require.NoError(t, err)
+			require.EqualValues(t, 2, plan.SelectedGroupID)
+			require.EqualValues(t, 2, *effective.GroupID)
+			require.Equal(t, []int64{1, 2, 3, 2}, accounts.calls)
+		})
+	}
+}
+
+func TestKeyRoutingServiceCooldownFallbackDoesNotBypassAuthorization(t *testing.T) {
+	svc, key, accounts, groups, _ := newKeyRoutingFixture()
+	key.KeyRouteFailurePolicy = keyRoutingCooldownPolicy()
+	request := KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}
+	coolKeyRouteGroups(t, svc, key, request, 1, 2, 3)
+	groups.groups[3].IsExclusive = true
+	effective, _, err := svc.Select(context.Background(), key, request)
+	require.ErrorIs(t, err, keyrouting.ErrNotAuthorized)
+	require.Nil(t, effective)
+	require.Equal(t, []int64{1, 2}, accounts.calls, "revoked access must fail closed, not use a cooled group")
+}
+
+func TestKeyRoutingServiceSelectNextCooldownFallbackNeverWraps(t *testing.T) {
+	svc, key, accounts, _, _ := newKeyRoutingFixture()
+	key.KeyRouteFailurePolicy = keyRoutingCooldownPolicy()
+	request := KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}
+	coolKeyRouteGroups(t, svc, key, request, 1, 2, 3)
+	effective, plan, err := svc.SelectNext(context.Background(), key, request, 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, plan.SelectedGroupID)
+	require.EqualValues(t, 3, *effective.GroupID)
+	require.Equal(t, []int64{2, 3, 3}, accounts.calls)
+	accounts.calls = nil
+	effective, _, err = svc.SelectNext(context.Background(), key, request, 3)
+	require.Error(t, err)
+	require.Nil(t, effective)
+	require.Empty(t, accounts.calls)
+	effective, _, err = svc.SelectNext(context.Background(), key, request, 99)
+	require.ErrorIs(t, err, keyrouting.ErrInvalidConfig)
+	require.Nil(t, effective)
+	require.Empty(t, accounts.calls)
+}
+
+func TestKeyRoutingServiceDisabledFailureRulesStillAllowsCapabilityFallback(t *testing.T) {
+	for _, noModel := range []bool{false, true} {
+		t.Run(fmt.Sprint(noModel), func(t *testing.T) {
+			svc, key, accounts, groups, _ := newKeyRoutingFixture()
+			key.KeyRouteFailurePolicy = &KeyRouteFailurePolicy{Rules: []KeyRouteFailureRule{}}
+			if noModel {
+				groups.groups[1].ModelAllowlist = GroupModelAllowlist{Enabled: true, Models: []string{"other-model"}}
+			} else {
+				accounts.accounts[1] = nil
+			}
+			effective, plan, err := svc.Select(context.Background(), key, KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions})
+			require.NoError(t, err)
+			require.EqualValues(t, 2, *effective.GroupID)
+			require.EqualValues(t, 2, plan.SelectedGroupID)
+		})
+	}
+}
+
+func TestKeyRoutingServiceRecordOutcomePreservesSemanticPolicy(t *testing.T) {
+	svc, key, _, _, _ := newKeyRoutingFixture()
+	key.KeyRouteFailurePolicy = &KeyRouteFailurePolicy{Rules: []KeyRouteFailureRule{{Type: keyrouting.FailureRuleConsecutiveFailures, Threshold: 2, CooldownSeconds: 600}}}
+	request := KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}
+	for _, outcome := range []keyrouting.RouteOutcomeKind{keyrouting.OutcomeFailure, keyrouting.OutcomeSuccess, keyrouting.OutcomeFailure} {
+		result, err := svc.RecordOutcome(context.Background(), key, request, 1, outcome)
+		require.NoError(t, err)
+		require.False(t, result.Triggered)
+	}
+	result, err := svc.RecordOutcome(context.Background(), key, request, 1, keyrouting.OutcomeTimeout)
+	require.NoError(t, err)
+	require.True(t, result.Triggered)
+	policy, err := svc.loadRouteFailurePolicy(context.Background(), key, 1)
+	require.NoError(t, err)
+	require.Equal(t, keyrouting.FailureRuleConsecutiveFailures, policy.Rules[0].Type)
+	require.Empty(t, policy.Rules[0].StatusCodes)
+}
+
+type keyRoutingCompositeRoutes struct {
+	CompositeModelRouteRepository
+	err error
+}
+
+func (r keyRoutingCompositeRoutes) ListByGroup(_ context.Context, groupID int64, _ bool) ([]CompositeModelRoute, error) {
+	return []CompositeModelRoute{{ID: 9, GroupID: groupID, Enabled: true, MatchType: CompositeRouteMatchExact, PublicModel: "alias", UpstreamModel: "deepseek-upstream", TargetPlatform: PlatformDeepseek, Endpoint: CompositeRouteEndpointChatCompletions}}, r.err
+}
+
+func TestKeyRoutingServicePrepareRouteContextUsesSelectedGroup(t *testing.T) {
+	svc, key, _, _, _ := newKeyRoutingFixture()
+	request := KeyRoutingRequest{Model: "gpt-named-alias", Endpoint: CompositeRouteEndpointChatCompletions}
+	ctx, model, err := svc.PrepareRouteContext(context.Background(), key, request)
+	require.NoError(t, err)
+	require.Equal(t, request.Model, model)
+	platform, ok := ResolvedTargetPlatformFromContext(ctx)
+	require.True(t, ok)
+	require.Equal(t, PlatformDeepseek, platform, "model name must not override a concrete group's platform")
+
+	key.Group.Platform = PlatformComposite
+	svc.composite = NewCompositeRouteResolver(keyRoutingCompositeRoutes{})
+	request.Model = "alias"
+	ctx, model, err = svc.PrepareRouteContext(context.Background(), key, request)
+	require.NoError(t, err)
+	require.Equal(t, "deepseek-upstream", model)
+	platform, ok = ResolvedTargetPlatformFromContext(ctx)
+	require.True(t, ok)
+	require.Equal(t, PlatformDeepseek, platform)
+	public, ok := RequestedPublicModelFromContext(ctx)
+	require.True(t, ok)
+	require.Equal(t, "alias", public)
+
+	request.Model = "unknown-alias"
+	_, _, err = svc.PrepareRouteContext(context.Background(), key, request)
+	require.ErrorIs(t, err, keyrouting.ErrModelUnavailable)
+	svc.composite = NewCompositeRouteResolver(keyRoutingCompositeRoutes{err: errors.New("route storage unavailable")})
+	_, _, err = svc.PrepareRouteContext(context.Background(), key, request)
+	require.ErrorContains(t, err, "route storage unavailable")
 }

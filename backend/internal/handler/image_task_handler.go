@@ -88,6 +88,16 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
 	}
+	if apiKey.KeyModelPolicyEnabled() {
+		models, policyErr := service.KeyModelPolicyBodyCandidates(c.GetHeader("Content-Type"), body)
+		if policyErr != nil {
+			imageTaskJSONError(c, http.StatusNotFound, "invalid_request_error", policyErr.Error())
+			return
+		}
+		if !checkKeyModelCreation(c, apiKey, models) {
+			return
+		}
+	}
 	if asyncImageRequestStreams(c.GetHeader("Content-Type"), body) {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "streaming image requests cannot be submitted as asynchronous tasks")
 		return

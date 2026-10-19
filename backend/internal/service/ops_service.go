@@ -484,6 +484,12 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 		entry.ErrorType = "api_error"
 	}
 
+	// Route-switch annotations are kept in the existing ops error message so
+	// the admin error list/detail can show them without changing usage-log or
+	// ops table schemas.  This is idempotent for callers that already applied
+	// the label while constructing the request-scoped entry.
+	ApplyOpsRouteSwitchLabel(entry, entry.RouteSwitchLabel)
+
 	// Credential acquisition is a gateway/account-auth stage, not an inference
 	// HTTP attempt. Enforce that ownership at the persistence boundary so an
 	// earlier inference attempt cannot leak its status or text into top-level

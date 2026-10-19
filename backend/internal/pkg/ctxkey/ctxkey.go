@@ -63,6 +63,15 @@ const (
 	// 供 service 层执行用户级策略，不能使用客户端请求体中的 user 标识替代。
 	UserID Key = "ctx_user_id"
 
+	// KeyRoutingActive marks a request that entered the custom primary/backup
+	// group router. Gateway failover uses it to avoid account-state side effects
+	// and to permit only pre-first-byte group switching.
+	KeyRoutingActive Key = "ctx_key_routing_active"
+
+	// KeyRoutingPrimaryGroupID keeps the authenticated key's configured primary
+	// group when the request-local effective key is a backup group.
+	KeyRoutingPrimaryGroupID Key = "ctx_key_routing_primary_group_id"
+
 	// IsMaxTokensOneHaikuRequest 标识当前请求是否为 max_tokens=1 + haiku 模型的探测请求
 	// 用于 ClaudeCodeOnly 验证绕过（绕过 system prompt 检查，但仍需验证 User-Agent）
 	IsMaxTokensOneHaikuRequest Key = "ctx_is_max_tokens_one_haiku"
@@ -81,4 +90,10 @@ const (
 
 	// ClaudeCodeVersion stores the extracted Claude Code version from User-Agent (e.g. "2.1.22")
 	ClaudeCodeVersion Key = "ctx_claude_code_version"
+
+	// OpsRouteSwitchLabel is a short, request-scoped label written to the
+	// existing operations error record when a request crosses to a backup
+	// group.  It is deliberately kept in the request context so the gateway
+	// routing adapter does not need to change the usage-log schema.
+	OpsRouteSwitchLabel Key = "ctx_ops_route_switch_label"
 )

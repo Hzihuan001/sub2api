@@ -164,6 +164,10 @@ type SettingService struct {
 	// the request-time rate-limit service while allowing a deleted policy to
 	// release its already-persisted scheduling state.
 	groupFailurePolicyResetter func(context.Context, int64) error
+	// groupFailurePolicyChanged invalidates request-routing snapshots after a
+	// successful admin update. It is intentionally narrower than the runtime
+	// reset callback and keeps settings persistence independent of the gateway.
+	groupFailurePolicyChanged func(int64)
 }
 
 // SetGroupFailurePolicyResetter connects the optional runtime cleanup used
@@ -175,6 +179,16 @@ func (s *SettingService) SetGroupFailurePolicyResetter(reset func(context.Contex
 		return
 	}
 	s.groupFailurePolicyResetter = reset
+}
+
+// SetGroupFailurePolicyChangedListener connects the optional request-routing
+// cache invalidation hook. The setter keeps isolated SettingService tests and
+// non-gateway tools independent from key routing.
+func (s *SettingService) SetGroupFailurePolicyChangedListener(listener func(int64)) {
+	if s == nil {
+		return
+	}
+	s.groupFailurePolicyChanged = listener
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）

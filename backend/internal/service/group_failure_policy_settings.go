@@ -229,6 +229,30 @@ func groupFailurePolicyHasRules(policy *GroupFailurePolicy) bool {
 	return len(policy.Rules) > 0
 }
 
+// cloneGroupFailurePolicy makes API-key route overrides safe to retain in
+// request/cache snapshots without sharing mutable rule slices with handlers.
+func cloneGroupFailurePolicy(policy *GroupFailurePolicy) *GroupFailurePolicy {
+	if policy == nil {
+		return nil
+	}
+	out := &GroupFailurePolicy{}
+	if policy.StatusRules != nil {
+		out.StatusRules = make([]GroupFailureStatusRule, len(policy.StatusRules))
+		for i, rule := range policy.StatusRules {
+			out.StatusRules[i] = rule
+			out.StatusRules[i].StatusCodes = append([]int(nil), rule.StatusCodes...)
+		}
+		return out
+	}
+	if policy.Rules != nil {
+		out.Rules = make(map[GroupFailureKind]GroupFailureRule, len(policy.Rules))
+		for kind, rule := range policy.Rules {
+			out.Rules[kind] = rule
+		}
+	}
+	return out
+}
+
 func (s *SettingService) validateGroupFailurePolicyGroup(ctx context.Context, groupID int64) error {
 	if groupID <= 0 {
 		return infraerrors.BadRequest("GROUP_FAILURE_POLICY_INVALID", "group ID must be a positive integer")
@@ -247,7 +271,8 @@ func (s *SettingService) validateGroupFailurePolicyGroup(ctx context.Context, gr
 }
 
 // GetGroupFailurePolicy reads overrides on the failure path or in the admin
-// API. Callers must not invoke it on the normal request scheduling path.
+// API. The key-routing adapter may call it only on a short-TTL cache miss;
+// ordinary scheduling paths must continue to use their existing snapshots.
 func (s *SettingService) GetGroupFailurePolicy(ctx context.Context, groupID int64) (*GroupFailurePolicy, error) {
 	if err := s.validateGroupFailurePolicyGroup(ctx, groupID); err != nil {
 		return nil, err
@@ -313,6 +338,9 @@ func (s *SettingService) UpdateGroupFailurePolicy(ctx context.Context, groupID i
 	}
 	if err := s.settingRepo.Set(ctx, groupFailurePolicySettingPrefix+strconv.FormatInt(groupID, 10), string(data)); err != nil {
 		return nil, fmt.Errorf("save group failure policy: %w", err)
+	}
+	if s.groupFailurePolicyChanged != nil {
+		s.groupFailurePolicyChanged(groupID)
 	}
 	if hadRules && !groupFailurePolicyHasRules(copyPolicy) && s.groupFailurePolicyResetter != nil {
 		if err := s.groupFailurePolicyResetter(ctx, groupID); err != nil {

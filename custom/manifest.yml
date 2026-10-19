@@ -11,9 +11,10 @@ upstream:
 features:
   - id: key-routing
     owner: custom/key-routing
-    description: Ordered API key backup groups, read-only preflight and effective-group billing on stateless text requests; no upstream replay.
+    description: Ordered API key backup groups, independent per-key failure/SLA/TTFT/status rules, model admission and metadata filtering, bounded safe pre-output dispatch, and effective-group native billing on stateless text requests.
     tests:
       - backend/internal/keyrouting
+      - backend/internal/keyrouting/failure_tracker_test.go
       - backend/internal/service/key_routing_service_test.go
       - backend/internal/service/key_routing_readiness_test.go
       - backend/internal/service/custom_api_key_routes_test.go
@@ -22,11 +23,26 @@ features:
       - backend/internal/server/middleware/key_routing_test.go
       - backend/internal/server/middleware/key_routing_json_test.go
       - backend/internal/server/routes/key_routing_test.go
+      - backend/internal/handler/key_route_failover_test.go
+      - backend/internal/handler/key_route_dispatch_test.go
+      - backend/internal/handler/key_route_first_content_writer_test.go
+      - backend/internal/handler/key_route_first_content_sample_test.go
+      - backend/internal/service/key_route_hosted_tools_test.go
+      - backend/internal/service/key_route_hosted_tools_unit_test.go
+      - backend/internal/handler/key_model_listing_test.go
+      - backend/internal/server/middleware/key_model_policy_test.go
+      - backend/internal/service/key_model_admission_test.go
+      - backend/internal/service/key_model_policy_crud_unit_test.go
+      - backend/internal/handler/key_route_unavailable_test.go
+      - backend/internal/service/key_route_failure_policy_test.go
+      - backend/migrations/9000_custom_api_key_routes.sql
+      - backend/migrations/9001_custom_api_key_route_policies.sql
+      - backend/migrations/9002_custom_api_key_model_policies.sql
       - frontend/src/features/key-routing
       - frontend/src/views/user/__tests__/KeysView.spec.ts
   - id: gateway-resilience
     owner: custom/gateway-resilience
-    description: Shared failure classification, status-code based per-group rules, recoverable account-wide cooldown and safe pre-output failover. Legacy kind-based settings remain readable and are exposed as canonical status-code rules.
+    description: Shared failure classification and native protections. Group status-code rules are defaults for key-local backup routing, not custom account-wide stops; legacy account cooldown cleanup remains supported.
     tests:
       - backend/internal/service/overload_failure_breaker_test.go
       - backend/internal/service/openai_overload_failover_test.go
@@ -39,6 +55,7 @@ features:
       - backend/internal/service/group_failure_status_rule_test.go
       - backend/internal/service/group_failure_runtime_hooks_test.go
       - backend/internal/service/group_failure_native_scheduling_test.go
+      - backend/internal/service/ops_route_switch_label_test.go
       - backend/internal/service/group_failure_recovery_test.go
       - backend/internal/repository/group_failure_cache_test.go
       - backend/internal/handler/admin/setting_handler_group_failure_policy_test.go

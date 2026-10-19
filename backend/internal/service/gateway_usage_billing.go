@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/keyrouting"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -575,6 +576,9 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 	if ctx == nil {
 		return context.Background(), func() {}
 	}
+	if guard := keyrouting.GetFirstContentGuard(ctx); guard != nil {
+		return guard.Detach(ctx), func() {}
+	}
 	if !stream {
 		return ctx, func() {}
 	}
@@ -584,6 +588,9 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 func detachUpstreamContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {}
+	}
+	if guard := keyrouting.GetFirstContentGuard(ctx); guard != nil {
+		return guard.Detach(ctx), func() {}
 	}
 	return context.WithoutCancel(ctx), func() {}
 }

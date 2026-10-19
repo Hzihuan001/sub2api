@@ -54,7 +54,7 @@ func newGroupNativeSchedulingFixture(t *testing.T, platform string) (context.Con
 	return context.WithValue(context.Background(), ctxkey.Group, &Group{ID: 1}), svc, repo, settingsRepo
 }
 
-func TestGroupFailureNativeSelectionKeepsLocalCooldownAfterPersistenceFailure(t *testing.T) {
+func TestGroupFailureNativeSelectionIsNotChangedByRoutingRules(t *testing.T) {
 	for _, provider := range []struct{ platform, model string }{
 		{PlatformAnthropic, "claude-sonnet-4-5"},
 		{PlatformGemini, "gemini-2.5-pro"},
@@ -67,20 +67,20 @@ func TestGroupFailureNativeSelectionKeepsLocalCooldownAfterPersistenceFailure(t 
 				require.NoError(t, err)
 				require.Equal(t, primary.ID, selected.ID)
 
-				require.True(t, svc.rateLimitService.HandleUpstreamError(ctx, primary, http.StatusServiceUnavailable, nil, []byte(`{"error":{"message":"upstream unavailable"}}`)))
-				require.Equal(t, 1, repo.overloadWrites)
-				require.Nil(t, primary.OverloadUntil, "failed persistence leaves scheduler snapshots stale")
+				require.False(t, svc.rateLimitService.HandleUpstreamError(ctx, primary, http.StatusServiceUnavailable, nil, []byte(`{"error":{"message":"upstream unavailable"}}`)))
+				require.Zero(t, repo.overloadWrites)
+				require.Nil(t, primary.OverloadUntil)
 				require.True(t, primary.IsSchedulable())
 				failureReads := settingsRepo.reads
 
-				// Both the ordinary candidate loop and the sticky-session model gate
-				// must reject this stale snapshot in another authenticated group.
+				// Group routing evidence must not leak into another key or group
+				// through account-wide native scheduling state.
 				otherGroup := context.WithValue(context.Background(), ctxkey.Group, &Group{ID: 2})
 				selected, err = svc.selectAccountForModelWithPlatform(otherGroup, nil, session, provider.model, nil, provider.platform)
 				require.NoError(t, err)
-				require.Equal(t, int64(902), selected.ID)
-				require.False(t, svc.isAccountSchedulableForSelection(primary))
-				require.False(t, svc.isAccountSchedulableForModelSelection(otherGroup, primary, provider.model))
+				require.Equal(t, primary.ID, selected.ID)
+				require.True(t, svc.isAccountSchedulableForSelection(primary))
+				require.True(t, svc.isAccountSchedulableForModelSelection(otherGroup, primary, provider.model))
 				require.Equal(t, failureReads, settingsRepo.reads, "selection adds no settings read")
 
 				require.NoError(t, svc.rateLimitService.ClearAccountOverload(ctx, primary.ID))
@@ -99,8 +99,11 @@ func TestGroupFailureNativeCooldownIsNotClearedByKiroPoolRecovery(t *testing.T) 
 	ctx, svc, repo, _ := newGroupNativeSchedulingFixture(t, PlatformKiro)
 	account := repo.accountsByID[901]
 	handled, until := svc.rateLimitService.ApplyGroupFailurePolicy(ctx, account, GroupFailureTimeout)
-	require.True(t, handled)
-	require.False(t, until.IsZero())
+	require.False(t, handled)
+	require.True(t, until.IsZero())
+	// Existing native/manual/legacy scheduling blocks still remain effective.
+	now := time.Now()
+	svc.rateLimitService.overloadFailures.rememberCooldown(account.ID, now, now.Add(time.Minute))
 	store := &stubKiroCooldownStore{state: &kirocooldown.State{
 		Active: true, Reason: kirocooldown.CooldownReason429,
 		CooldownUntil: time.Now().Add(time.Minute), Remaining: time.Minute,

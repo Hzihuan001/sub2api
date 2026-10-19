@@ -23,6 +23,18 @@ http.createServer(async (req, res) => {
   const [scenario, slot] = key.split(':')
   requests.push({ scenario, slot, path: req.url, stream: body.stream })
   const emit = value => res.write(`data: ${JSON.stringify(value)}\n\n`)
+  if (scenario?.startsWith('slow_')) {
+    let heartbeat
+    if (body.stream && scenario !== 'slow_headers') {
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
+      emit({ type: 'response.created', response: { id: 'resp_slow', status: 'in_progress', ...(scenario === 'slow_usage' ? { usage: { input_tokens: 10, output_tokens: 0 } } : {}) } })
+      if (scenario === 'slow_content') emit({ type: 'response.output_text.delta', delta: 'already-output' })
+      heartbeat = setInterval(() => { if (!res.destroyed) res.write(': ping\n\n') }, 1000)
+    }
+    await new Promise(resolve => setTimeout(resolve, 7000))
+    clearInterval(heartbeat)
+    if (res.destroyed) return
+  }
   if (slot === 'primary') {
     const errors = {
       overload: [503, 'server_is_overloaded'], quota: [429, 'insufficient_quota'],
@@ -51,7 +63,7 @@ http.createServer(async (req, res) => {
     usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 }
   }
   if (!body.stream) return json(res, 200, value)
-  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
+  if (!res.headersSent) res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
   emit({ type: 'response.output_text.delta', response_id: value.id, output_index: 0, content_index: 0, delta: 'backup-ok' })
   emit({ type: 'response.completed', response: value })
   res.end()

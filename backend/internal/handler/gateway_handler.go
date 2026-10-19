@@ -393,7 +393,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					reqLog.Info("gateway.account_select_aborted_client_disconnected", zap.Error(err))
 					return
 				}
-				if len(fs.FailedAccountIDs) == 0 {
+				if len(fs.FailedAccountIDs) == 0 && tryKeyRouteSelectionUnavailable(c, err) {
+					return
+				}
+				if len(fs.FailedAccountIDs) == 0 || (keyRoutingRequestActive(c.Request.Context()) && !errors.Is(err, service.ErrNoAvailableAccounts)) {
 					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformGemini)
 					if !cls.ModelNotFound {
 						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -425,10 +428,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
 					} else {
+						if tryKeyRouteSelectionUnavailable(c, err) {
+							return
+						}
 						h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 					}
 					return
 				}
+			}
+			if selection == nil || selection.Account == nil {
+				if tryKeyRouteUnavailable(c) {
+					return
+				}
+				h.handleFailoverExhaustedSimple(c, http.StatusServiceUnavailable, streamStarted)
+				return
 			}
 			account := selection.Account
 			setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -555,6 +568,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
 			}
+			if keyRouteFirstContentInterrupted(c, result, err) {
+				return
+			}
+			err = keyRouteFirstContentNormalizeError(c, err)
 			if err != nil {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
@@ -575,6 +592,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 				}
+				recordKeyRouteForwardFailure(c, err)
 				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
@@ -611,6 +629,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 
+			recordKeyRouteSuccess(c)
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
@@ -727,7 +746,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					reqLog.Info("gateway.account_select_aborted_client_disconnected", zap.Error(err))
 					return
 				}
-				if len(fs.FailedAccountIDs) == 0 {
+				if len(fs.FailedAccountIDs) == 0 && tryKeyRouteSelectionUnavailable(c, err) {
+					return
+				}
+				if len(fs.FailedAccountIDs) == 0 || (keyRoutingRequestActive(c.Request.Context()) && !errors.Is(err, service.ErrNoAvailableAccounts)) {
 					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, currentAPIKey, reqModel, reqModel, platform)
 					if !cls.ModelNotFound {
 						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -760,10 +782,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, platform, streamStarted)
 					} else {
+						if tryKeyRouteSelectionUnavailable(c, err) {
+							return
+						}
 						h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 					}
 					return
 				}
+			}
+			if selection == nil || selection.Account == nil {
+				if tryKeyRouteUnavailable(c) {
+					return
+				}
+				h.handleFailoverExhaustedSimple(c, http.StatusServiceUnavailable, streamStarted)
+				return
 			}
 			account := selection.Account
 			setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -981,6 +1013,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				accountReleaseFunc()
 			}
 
+			if keyRouteFirstContentInterrupted(c, result, err) {
+				return
+			}
+			err = keyRouteFirstContentNormalizeError(c, err)
 			// 提交 usage 记录。成功路径与"流中断但 Forward 已观测到 usage 的部分结果"
 			// 错误路径共用：后者若不入账，上游已计量的请求会完全漏记漏计费（#5148）。
 			submitForwardUsage := func(result *service.ForwardResult) {
@@ -1123,6 +1159,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 				}
+				recordKeyRouteForwardFailure(c, err)
 				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
@@ -1180,6 +1217,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			submitForwardUsage(result)
 			// 转发成功，会话槽保持既有空闲超时语义
+			recordKeyRouteSuccess(c)
 			upstreamServedSession = true
 			return
 		}
@@ -1293,13 +1331,10 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 		return
 	}
 	etag := service.CodexModelsManifestETag(body)
-	c.Header("ETag", etag)
-	if service.CodexModelsManifestETagMatches(c.GetHeader("If-None-Match"), etag) {
-		c.Status(http.StatusNotModified)
-		c.Writer.WriteHeaderNow()
-		return
-	}
-	c.Data(http.StatusOK, "application/json", body)
+	writeOpenAIModelsResponse(c, &service.OpenAIModelsResponse{
+		Body: body, ETag: etag,
+		NotModified: !keyModelListingRestricted(c) && service.CodexModelsManifestETagMatches(c.GetHeader("If-None-Match"), etag),
+	})
 }
 
 func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *service.Group, platformOverride string) []string {
@@ -1968,6 +2003,9 @@ func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotT
 }
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
+	if tryFinalKeyRouteFailover(c, failoverErr) {
+		return
+	}
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {

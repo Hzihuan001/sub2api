@@ -75,7 +75,7 @@ func groupRuntimeRules(threshold int) map[GroupFailureKind]GroupFailureRule {
 	return rules
 }
 
-func TestGroupFailureRuntimeHTTPThresholdReplacesLegacyCooldown(t *testing.T) {
+func TestGroupFailureRuntimeHTTPRulesDoNotPauseAccounts(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		status int
@@ -89,24 +89,14 @@ func TestGroupFailureRuntimeHTTPThresholdReplacesLegacyCooldown(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, svc, repo, account := newGroupRuntimeFixture(t, groupRuntimeRules(2))
 			for attempt := 1; attempt <= 3; attempt++ {
-				blocked := svc.handleOpenAIAccountUpstreamError(ctx, account, tc.status, nil, []byte(tc.body), "gpt-test")
-				require.Equal(t, attempt >= 2, blocked)
-				require.Equal(t, attempt >= 2, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"))
-				failure := svc.newOpenAIAccountFailoverError(account, tc.status, nil, []byte(tc.body), "", blocked, true)
-				if blocked {
-					require.False(t, failure.RetryableOnSameAccount)
-				}
+				svc.handleOpenAIAccountUpstreamError(ctx, account, tc.status, nil, []byte(tc.body), "gpt-test")
 			}
-			require.Equal(t, 1, repo.overloads)
-			require.Zero(t, repo.rateLimits)
-			require.WithinDuration(t, time.Now().Add(120*time.Second), repo.until, 2*time.Second)
+			require.Zero(t, repo.overloads)
+			require.False(t, svc.rateLimitService.IsAccountOverloadCooling(account.ID, time.Now()))
+			require.Empty(t, svc.rateLimitService.groupFailures.entries)
 			require.Nil(t, account.OverloadUntil, "shared scheduling snapshots stay immutable")
-			backup := *account
-			backup.ID, backup.Priority = 802, 1
-			otherGroup := context.WithValue(context.Background(), ctxkey.Group, &Group{ID: 2})
-			selected, _, _ := svc.selectBestAccount(otherGroup, nil, PlatformOpenAI, []Account{*account, backup}, "gpt-test", nil, false, "", false)
-			require.NotNil(t, selected)
-			require.Equal(t, backup.ID, selected.ID, "cooldown excludes the account from another group too")
+			// Native account-model transient protection and provider quota
+			// handling may still act, but no custom global overload is written.
 		})
 	}
 }
@@ -116,14 +106,14 @@ func TestGroupFailureRuntimeNativeHTTPAndStreamTimeout(t *testing.T) {
 		ctx, svc, repo, account := newGroupRuntimeFixture(t, groupRuntimeRules(2))
 		account.Platform = PlatformAnthropic
 		account.Credentials = nil
-		require.False(t, svc.rateLimitService.HandleUpstreamError(ctx, account, status, nil, []byte(`{"error":{"message":"temporary failure"}}`)))
-		require.True(t, svc.rateLimitService.HandleUpstreamError(ctx, account, status, nil, []byte(`{"error":{"message":"temporary failure"}}`)))
-		require.Equal(t, 1, repo.overloads)
+		svc.rateLimitService.HandleUpstreamError(ctx, account, status, nil, []byte(`{"error":{"message":"temporary failure"}}`))
+		svc.rateLimitService.HandleUpstreamError(ctx, account, status, nil, []byte(`{"error":{"message":"temporary failure"}}`))
+		require.Zero(t, repo.overloads)
 	}
 	ctx, svc, repo, account := newGroupRuntimeFixture(t, groupRuntimeRules(2))
 	require.False(t, svc.rateLimitService.HandleStreamTimeout(ctx, account, "gpt-test"))
-	require.True(t, svc.rateLimitService.HandleStreamTimeout(ctx, account, "gpt-test"))
-	require.Equal(t, 1, repo.overloads)
+	require.False(t, svc.rateLimitService.HandleStreamTimeout(ctx, account, "gpt-test"))
+	require.Zero(t, repo.overloads)
 }
 
 func TestGroupFailureRuntimeNoExplicitRuleDoesNotPause(t *testing.T) {
@@ -221,9 +211,9 @@ func TestGroupFailureRuntimeSSEPairedFramesCountOnceAndDoNotReplayPartialOutput(
 			require.Error(t, err)
 			var failover *UpstreamFailoverError
 			require.False(t, errors.As(err, &failover), "partial output cannot be replayed")
-			require.Equal(t, attempt == 2, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"))
+			require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"))
 		}
-		require.Equal(t, 1, repo.overloads)
+		require.Zero(t, repo.overloads)
 	}
 }
 
@@ -244,9 +234,9 @@ func TestGroupFailureRuntimeWSHTTPBridgeCountsOneFailurePerAttempt(t *testing.T)
 		result, err := svc.proxyOpenAIWSHTTPBridgeTurn(ctx, c, account, "sk-test", payload, len(payload), "gpt-test", "", "", "", "", turn, func([]byte) error { return nil })
 		require.NoError(t, err)
 		require.Equal(t, "response.failed", result.UpstreamTerminalEvent)
-		require.Equal(t, turn == 2, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"))
+		require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-test"))
 	}
-	require.Equal(t, 1, repo.overloads)
+	require.Zero(t, repo.overloads)
 }
 
 type groupRuntimeTimeoutError struct{}
@@ -274,6 +264,6 @@ func TestGroupFailureRuntimeTransportTimeoutExcludesClientCancellation(t *testin
 		require.ErrorIs(t, invoke(canceled, context.Canceled), context.Canceled)
 		require.Zero(t, repo.overloads)
 		require.Error(t, invoke(ctx, groupRuntimeTimeoutError{}))
-		require.Equal(t, 1, repo.overloads)
+		require.Zero(t, repo.overloads)
 	}
 }

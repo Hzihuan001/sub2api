@@ -208,6 +208,83 @@ func TestKeyRoutingIngressDoesNotTreatToolSchemasAsPrimaryOnlyIntent(t *testing.
 	require.Equal(t, 1, calls)
 }
 
+func TestKeyRoutingProviderToolsStayOnPrimary(t *testing.T) {
+	for _, tc := range []struct{ name, fields string }{
+		{"web_search", `"tools":[{"type":"web_search"}]`},
+		{"web_search_preview", `"tools":[{"type":"web_search_preview"}]`},
+		{"anthropic_web_search", `"tools":[{"type":"web_search_20250305","name":"web_search"}]`},
+		{"code_interpreter", `"tools":[{"type":"code_interpreter","container":"auto"}]`},
+		{"file_search", `"tools":[{"type":"file_search"}]`},
+		{"computer", `"tools":[{"type":"computer_use_preview"}]`},
+		{"mcp", `"tools":[{"type":"mcp","server_url":"https://example.invalid"}]`},
+		{"shell", `"tools":[{"type":"shell"}]`},
+		{"unknown_future_tool", `"tools":[{"type":"future_provider_tool"}]`},
+		{"unknown_wrapper", `"tools":[{"googleSearch":{}}]`},
+		{"mixed_tools", `"tools":[{"type":"function","name":"safe"},{"Type":"web_search"}]`},
+		{"forced_builtin", `"tool_choice":{"Type":"web_search_preview"}`},
+		{"forced_unknown", `"tool_choice":{"type":"future_provider_tool"}`},
+		{"disabled_builtin", `"tools":[{"type":"code_interpreter"}],"tool_choice":"none"`},
+		{"chat_search", `"Web_Search_Options":{}`},
+		{"anthropic_mcp_connector", `"MCP_Servers":[{"type":"url","url":"https://example.invalid","name":"connector"}]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"model":"primary-only",` + tc.fields + `}`
+			selector := keyRouteSelectorFunc(func(context.Context, *service.APIKey, service.KeyRoutingRequest) (*service.APIKey, keyrouting.Plan, error) {
+				t.Fatal("provider-executed or unknown tool reached backup routing")
+				return nil, keyrouting.Plan{}, nil
+			})
+			for _, path := range []string{"/v1/responses", "/v1/chat/completions", "/v1/messages"} {
+				router := keyRouteTestRouter(t, routeTestKey(), selector, "POST", path, func(c *gin.Context) {
+					key, ok := GetAPIKeyFromContext(c)
+					require.True(t, ok)
+					require.EqualValues(t, 1, *key.GroupID)
+					require.Nil(t, c.Request.Context().Value(ctxkey.KeyRoutingActive))
+					_, routed := c.Get("custom.key_route")
+					require.False(t, routed)
+					gotBody, err := io.ReadAll(c.Request.Body)
+					require.NoError(t, err)
+					require.Equal(t, body, string(gotBody))
+					c.Status(http.StatusOK)
+				})
+				require.Equal(t, http.StatusOK, sendKeyRouteRequest(router, "POST", path, body).Code)
+			}
+		})
+	}
+}
+
+func TestKeyRoutingClientToolsRemainRoutable(t *testing.T) {
+	for _, tc := range []struct{ name, fields string }{
+		{"function", `"tools":[{"type":"function","name":"web_search","parameters":{"type":"object"}}],"tool_choice":{"type":"function","name":"web_search"}`},
+		{"chat_function", `"tools":[{"type":"function","function":{"name":"code_interpreter","parameters":{"type":"object"}}}],"tool_choice":"required"`},
+		{"custom", `"tools":[{"type":"custom","name":"shell","format":{"type":"text"}}],"tool_choice":{"type":"custom","name":"shell"}`},
+		{"anthropic", `"tools":[{"name":"web_search","input_schema":{"type":"object","properties":{"type":{"const":"mcp"}}}}],"tool_choice":{"type":"tool","name":"web_search"}`},
+		{"anthropic_any", `"tools":[{"name":"run","description":"code_interpreter","input_schema":{"type":"object"},"cache_control":{"type":"ephemeral"}}],"tool_choice":{"type":"any"}`},
+		{"anthropic_auto", `"tool_choice":{"type":"auto"}`},
+		{"anthropic_none", `"tool_choice":{"type":"none"}`},
+		{"auto", `"tools":[],"tool_choice":"auto"`},
+		{"none", `"tool_choice":"none"`},
+		{"null", `"tools":null,"tool_choice":null`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"model":"primary-only",` + tc.fields + `}`
+			calls := 0
+			selector := keyRouteSelectorFunc(func(_ context.Context, key *service.APIKey, _ service.KeyRoutingRequest) (*service.APIKey, keyrouting.Plan, error) {
+				calls++
+				return key, keyrouting.Plan{SelectedGroupID: 1}, nil
+			})
+			router := keyRouteTestRouter(t, routeTestKey(), selector, "POST", "/v1/responses", func(c *gin.Context) {
+				require.Equal(t, true, c.Request.Context().Value(ctxkey.KeyRoutingActive))
+				gotBody, err := io.ReadAll(c.Request.Body)
+				require.NoError(t, err)
+				require.Equal(t, body, string(gotBody))
+				c.Status(http.StatusOK)
+			})
+			require.Equal(t, http.StatusOK, sendKeyRouteRequest(router, "POST", "/v1/responses", body).Code)
+			require.Equal(t, 1, calls)
+		})
+	}
+}
+
 func TestKeyRoutingErrorsNeverForwardOrRetry(t *testing.T) {
 	for _, tc := range []struct {
 		err    error

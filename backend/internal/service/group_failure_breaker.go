@@ -3,18 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"strconv"
 	"sync"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
-// Counters are per group/account/error/rule revision, but cooldown is account
-// wide, intentionally using the existing durable overload field and scheduler.
-// Only failed upstream attempts call this adapter; successful requests and
-// account selection never load settings or add a remote query.
+// AccountGroupFailureCache is retained only to clear state written by older
+// releases. New group failure rules affect key-local routing, never accounts.
 type AccountGroupFailureCache interface {
 	RecordAccountGroupFailure(context.Context, int64, int64, string, string, time.Duration, int, time.Duration) (time.Time, bool, error)
 	ClearAccountGroupFailures(context.Context, int64) error
@@ -73,137 +67,18 @@ func (s *RateLimitService) ResetGroupFailurePolicy(ctx context.Context, groupID 
 	return firstErr
 }
 
-func (s *RateLimitService) ApplyGroupFailurePolicy(ctx context.Context, account *Account, kind GroupFailureKind) (bool, time.Time) {
-	if s == nil || s.settingService == nil || ctx == nil || account == nil || account.ID <= 0 {
-		return false, time.Time{}
-	}
-	group, _ := ctx.Value(ctxkey.Group).(*Group)
-	if group == nil || group.ID <= 0 {
-		return false, time.Time{}
-	}
-	loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-	policy, err := s.settingService.GetGroupFailurePolicy(loadCtx, group.ID)
-	cancel()
-	if err != nil {
-		slog.Warn("group_failure_policy_load_failed", "group_id", group.ID, "error", err)
-		return false, time.Time{} // A failed/absent policy must not create a system pause.
-	}
-	if policy == nil {
-		return false, time.Time{}
-	}
-	rule, configured := policy.Rules[kind]
-	// A status-code policy must never fall back to the semantic kind. Doing so
-	// would make 502 and 503 share a counter even when only one was configured.
-	if policy.StatusRules != nil {
-		return false, time.Time{}
-	}
-	if !configured {
-		return false, time.Time{}
-	}
-	return s.applyGroupFailureRule(ctx, account, group.ID, kind, rule)
-}
-
-// ApplyGroupFailurePolicyStatus applies a rule selected by the exact
-// upstream HTTP status. Each status code gets its own counter, even when
-// several codes are listed on the same rule.
-func (s *RateLimitService) ApplyGroupFailurePolicyStatus(ctx context.Context, account *Account, status int) (bool, time.Time) {
-	if s == nil || s.settingService == nil || ctx == nil || account == nil || account.ID <= 0 || status < 100 || status > 599 {
-		return false, time.Time{}
-	}
-	group, _ := ctx.Value(ctxkey.Group).(*Group)
-	if group == nil || group.ID <= 0 {
-		return false, time.Time{}
-	}
-	loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-	policy, err := s.settingService.GetGroupFailurePolicy(loadCtx, group.ID)
-	cancel()
-	if err != nil {
-		slog.Warn("group_failure_policy_load_failed", "group_id", group.ID, "error", err)
-		return false, time.Time{}
-	}
-	if policy == nil {
-		return false, time.Time{}
-	}
-	for _, candidate := range policy.StatusRules {
-		for _, code := range candidate.StatusCodes {
-			if code == status {
-				rule := GroupFailureRule{Threshold: candidate.Threshold, WindowSeconds: candidate.WindowSeconds, CooldownSeconds: candidate.CooldownSeconds}
-				return s.applyGroupFailureRule(ctx, account, group.ID, GroupFailureKind("status_"+strconv.Itoa(status)), rule)
-			}
-		}
-	}
+// ApplyGroupFailurePolicy is a compatibility seam for existing native error
+// hooks. Group rules are now interpreted only by KeyRoutingService; they must
+// not write account-wide overload state, including for single-group keys.
+// Returning unhandled preserves the caller's native credential/quota rules.
+func (s *RateLimitService) ApplyGroupFailurePolicy(_ context.Context, _ *Account, _ GroupFailureKind) (bool, time.Time) {
 	return false, time.Time{}
 }
 
-func (s *RateLimitService) applyGroupFailureRule(ctx context.Context, account *Account, groupID int64, kind GroupFailureKind, rule GroupFailureRule) (bool, time.Time) {
-	if s == nil || account == nil || groupID <= 0 {
-		return false, time.Time{}
-	}
-	operation := s.accountOverloadOperationLock(account.ID)
-	operation.Lock()
-	defer operation.Unlock()
-	now := time.Now()
-	var err error
-	cooldown := time.Duration(rule.CooldownSeconds) * time.Second
-	window := time.Duration(rule.WindowSeconds) * time.Second
-	key := groupFailureLocalKey{account.ID, groupID, kind, rule.Revision()}
-	cache, _ := s.tempUnschedCache.(AccountGroupFailureCache)
-	ack, _ := s.tempUnschedCache.(AccountOverloadFailureCache)
-	until := s.overloadFailures.coolingUntil(account.ID, now)
-	claim, persisted := false, false
-	if !until.IsZero() {
-		_, persisted = s.overloadFailures.persistedCooldown(account.ID, now)
-		if !persisted {
-			until, claim = s.overloadFailures.record(account.ID, now, cooldown)
-		}
-	} else {
-		if cache != nil {
-			cacheCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
-			until, claim, err = cache.RecordAccountGroupFailure(cacheCtx, account.ID, groupID, string(kind), key.revision, window, rule.Threshold, cooldown)
-			stop()
-			if err != nil {
-				slog.Warn("group_failure_counter_failed", "account_id", account.ID, "group_id", groupID, "error", err)
-				cache = nil
-			}
-		}
-		if cache == nil {
-			if !s.groupFailures.observe(key, now, window, rule.Threshold) {
-				return true, time.Time{}
-			}
-			until, claim = now.Add(cooldown).Truncate(time.Millisecond), true
-		} else if until.IsZero() {
-			s.groupFailures.observe(key, now, window, rule.Threshold)
-			return true, time.Time{}
-		}
-		persisted = s.overloadFailures.rememberCooldown(account.ID, now, until)
-		if cache == nil && s.overloadFailures.coolingUntil(account.ID, now).IsZero() {
-			// Match the existing bounded fallback: without Redis or room to retain
-			// a fixed deadline, do not persist a new, endlessly extendable cooldown.
-			slog.Warn("group_failure_local_capacity_reached", "account_id", account.ID)
-			return true, time.Time{}
-		}
-		s.groupFailures.clear(account.ID)
-	}
-	s.notifyAccountSchedulingBlocked(account, until, "group_failure_"+string(kind))
-	if claim && !persisted {
-		if s.accountRepo != nil {
-			persistCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-			err = s.accountRepo.SetOverloaded(persistCtx, account.ID, until)
-			stop()
-			persisted = err == nil
-			if err != nil {
-				slog.Warn("group_failure_cooldown_persist_failed", "account_id", account.ID, "error", err)
-			} else {
-				slog.Info("group_failure_cooldown_started", "account_id", account.ID, "group_id", groupID, "kind", kind,
-					"threshold", rule.Threshold, "window_seconds", rule.WindowSeconds, "until", until)
-			}
-		}
-		s.overloadFailures.complete(account.ID, until, persisted)
-	}
-	if ack != nil && (claim || persisted) {
-		s.completeAccountOverloadCache(ctx, ack, account.ID, until, persisted)
-	}
-	return true, until
+// ApplyGroupFailurePolicyStatus retains the narrow legacy call contract while
+// preventing an HTTP routing rule from globally pausing an upstream account.
+func (s *RateLimitService) ApplyGroupFailurePolicyStatus(_ context.Context, _ *Account, _ int) (bool, time.Time) {
+	return false, time.Time{}
 }
 
 // Caller holds the same account operation lock used by observations.

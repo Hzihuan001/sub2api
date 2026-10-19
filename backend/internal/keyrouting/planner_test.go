@@ -152,6 +152,23 @@ func TestPlannerPlan(t *testing.T) {
 	}
 }
 
+func TestPlannerPlanFromMarksPostFailureSelection(t *testing.T) {
+	request := Request{Model: "text-model", Endpoint: "/v1/responses"}
+	planner := Planner{Evaluator: EvaluatorFunc(func(_ context.Context, groupID int64, _ Request) (CandidateState, error) {
+		if groupID == 30 {
+			return CandidateState{Authorized: true, Enabled: true, SupportsModel: true, SupportsEndpoint: true, HasSchedulableAccounts: true}, nil
+		}
+		return CandidateState{Authorized: true, Enabled: true, SupportsModel: false}, nil
+	})}
+	plan, err := planner.PlanFrom(context.Background(), Config{PrimaryGroupID: 10, BackupGroupIDs: []int64{20, 30}}, request, 1)
+	if err != nil {
+		t.Fatalf("PlanFrom error = %v", err)
+	}
+	if plan.SelectedGroupID != 30 || plan.Reason != ReasonModelUnavailable {
+		t.Fatalf("PlanFrom selection = (%d, %q), want backup group with post-failure reason", plan.SelectedGroupID, plan.Reason)
+	}
+}
+
 func TestPlannerInvalidConfigDoesNotEvaluate(t *testing.T) {
 	tests := []struct {
 		name   string

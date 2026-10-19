@@ -106,6 +106,14 @@ type Planner struct {
 // fail closed immediately, even when later groups might otherwise be usable.
 // Disabled groups may fall through, just like groups without available accounts.
 func (p Planner) Plan(ctx context.Context, config Config, request Request) (Plan, error) {
+	return p.PlanFrom(ctx, config, request, 0)
+}
+
+// PlanFrom evaluates the configured group list from startIndex. It is used by
+// request-level failover after the current group has already produced a
+// pre-first-byte failure. Keeping the cursor in the planner avoids teaching
+// gateway handlers about group ordering or eligibility semantics.
+func (p Planner) PlanFrom(ctx context.Context, config Config, request Request, startIndex int) (Plan, error) {
 	var plan Plan
 	if err := ctx.Err(); err != nil {
 		return plan, err
@@ -117,10 +125,21 @@ func (p Planner) Plan(ctx context.Context, config Config, request Request) (Plan
 	if p.Evaluator == nil {
 		return plan, fmt.Errorf("%w: evaluator is required", ErrInvalidConfig)
 	}
+	if startIndex < 0 || startIndex > len(groupIDs) {
+		return plan, fmt.Errorf("%w: invalid start index", ErrInvalidConfig)
+	}
 
+	// A PlanFrom call is already a post-failure traversal.  Keep the
+	// diagnostic reason accurate even though callers currently only use the
+	// selected group and attempts; this avoids presenting a backup as if it
+	// were the original primary selection.
 	primaryReason := ReasonPrimary
+	if startIndex > 0 {
+		primaryReason = ReasonNoSchedulableAccounts
+	}
 	hasUnavailableCapacity := false
-	for index, groupID := range groupIDs {
+	for index := startIndex; index < len(groupIDs); index++ {
+		groupID := groupIDs[index]
 		if err := ctx.Err(); err != nil {
 			return plan, err
 		}
@@ -147,11 +166,11 @@ func (p Planner) Plan(ctx context.Context, config Config, request Request) (Plan
 			return plan, fmt.Errorf("%w: group %d", ErrNotAuthorized, groupID)
 		case DecisionDisabled, DecisionNoSchedulableAccounts:
 			hasUnavailableCapacity = true
-			if index == 0 {
+			if index == startIndex {
 				primaryReason = ReasonNoSchedulableAccounts
 			}
 		case DecisionUnsupportedModel, DecisionUnsupportedEndpoint:
-			if index == 0 {
+			if index == startIndex {
 				primaryReason = ReasonModelUnavailable
 			}
 		}

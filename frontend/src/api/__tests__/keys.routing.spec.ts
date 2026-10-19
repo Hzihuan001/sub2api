@@ -30,4 +30,18 @@ describe('API key routing payloads', () => {
       ['/keys/1', { backup_group_ids: [5, 3] }]
     ])
   })
+
+  it('sends exact model policies and preserves omitted versus explicit null updates', async () => {
+    const policy = { enabled: true, models: ['model-a'] }
+    await create('Restricted', 2, undefined, undefined, undefined, undefined, undefined, undefined, [], null, policy)
+    expect(post).toHaveBeenLastCalledWith('/keys', { name: 'Restricted', group_id: 2, backup_group_ids: [], key_model_policy: policy })
+    await update(1, { name: 'Rename' })
+    await update(1, { key_model_policy: null })
+    await update(1, { key_model_policy: policy })
+    expect(put.mock.calls).toEqual([
+      ['/keys/1', { name: 'Rename' }],
+      ['/keys/1', { key_model_policy: null }],
+      ['/keys/1', { key_model_policy: policy }]
+    ])
+  })
 })

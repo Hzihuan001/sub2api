@@ -43,12 +43,21 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 }
 
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
-	if len(key.BackupGroupIDs) > 0 {
+	if len(key.BackupGroupIDs) > 0 || key.KeyRouteFailurePolicy != nil || key.KeyModelPolicy != nil {
 		return r.withAPIKeyRoutesTx(ctx, func(txCtx context.Context) error {
 			if err := r.create(txCtx, key); err != nil {
 				return err
 			}
-			return r.replaceAPIKeyRoutes(txCtx, key.ID, key.BackupGroupIDs)
+			if err := r.replaceAPIKeyRoutes(txCtx, key.ID, key.BackupGroupIDs); err != nil {
+				return err
+			}
+			if err := r.replaceAPIKeyRoutePolicy(txCtx, key.ID, key.KeyRouteFailurePolicy); err != nil {
+				return err
+			}
+			if key.KeyModelPolicy != nil {
+				return r.replaceAPIKeyModelPolicy(txCtx, key.ID, key.KeyModelPolicy)
+			}
+			return nil
 		})
 	}
 	return r.create(ctx, key)
@@ -255,13 +264,25 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
-	if fields.BackupGroupIDs || fields.GroupID {
+	if fields.BackupGroupIDs || fields.GroupID || fields.KeyRouteFailurePolicy || fields.KeyModelPolicy {
 		return r.withAPIKeyRoutesTx(ctx, func(txCtx context.Context) error {
 			if err := r.update(txCtx, key, fields); err != nil {
 				return err
 			}
 			if fields.BackupGroupIDs {
-				return r.replaceAPIKeyRoutes(txCtx, key.ID, key.BackupGroupIDs)
+				if err := r.replaceAPIKeyRoutes(txCtx, key.ID, key.BackupGroupIDs); err != nil {
+					return err
+				}
+			}
+			if fields.KeyRouteFailurePolicy {
+				if err := r.replaceAPIKeyRoutePolicy(txCtx, key.ID, key.KeyRouteFailurePolicy); err != nil {
+					return err
+				}
+			}
+			if fields.KeyModelPolicy {
+				if err := r.replaceAPIKeyModelPolicy(txCtx, key.ID, key.KeyModelPolicy); err != nil {
+					return err
+				}
 			}
 			return r.checkAPIKeyRoutePrimary(txCtx, key.ID)
 		})

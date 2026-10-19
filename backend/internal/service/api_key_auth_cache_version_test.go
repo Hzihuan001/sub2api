@@ -59,3 +59,18 @@ func TestAPIKeyService_RejectsV15AuthSnapshotWithoutReasoningEffortPolicy(t *tes
 		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)
 	}
 }
+
+func TestAPIKeyServiceRejectsV26SnapshotBeforeIndependentKeyRules(t *testing.T) {
+	svc := &APIKeyService{}
+	key, ok, err := svc.applyAuthCacheEntry("legacy-key-rules", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{
+			Version: 26,
+			KeyRouteFailurePolicy: &KeyRouteFailurePolicy{Rules: []KeyRouteFailureRule{{
+				StatusCodes: []int{502}, Threshold: 3, WindowSeconds: 60, CooldownSeconds: 600,
+			}}},
+		},
+	})
+	if err != nil || ok || key != nil {
+		t.Fatalf("v26 must be refreshed rather than sharing old rule semantics: key=%v ok=%v err=%v", key, ok, err)
+	}
+}

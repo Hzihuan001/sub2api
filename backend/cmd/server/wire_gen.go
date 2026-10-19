@@ -340,7 +340,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	optionalJWTAuthMiddleware := middleware.NewOptionalJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService, auditLogService)
-	keyRoutingService := service.NewKeyRoutingService(groupRepository, userGroupRateRepository, gatewayService, openAIGatewayService, compositeRouteResolver, configConfig)
+	keyRoutingService := service.NewKeyRoutingService(groupRepository, userGroupRateRepository, gatewayService, openAIGatewayService, compositeRouteResolver, configConfig, settingService)
 	apiKeyAuthMiddleware := middleware.ProvideAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig, keyRoutingService)
 	auditLogMiddleware := middleware.NewAuditLogMiddleware(auditLogService)
 	stepUpAuthMiddleware := middleware.NewStepUpAuthMiddleware(totpService, userService, settingService)

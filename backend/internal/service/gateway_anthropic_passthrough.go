@@ -173,6 +173,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	if resp == nil || resp.Body == nil {
 		return nil, errors.New("upstream request failed: empty response")
 	}
+	protectKeyRouteUsageResponse(ctx, resp)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {

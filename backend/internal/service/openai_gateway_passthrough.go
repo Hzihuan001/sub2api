@@ -739,6 +739,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if err := applyMappedGPT55LiteCompatibility(req, account, body); err != nil {
 		return nil, err
 	}
+	protectKeyRouteHostedTools(ctx, body)
 	return req, nil
 }
 

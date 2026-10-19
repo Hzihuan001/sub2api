@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +16,24 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+// Attempt identity and terminal-frame handling must remain correct without
+// reviving the removed implicit account-wide overload suspension policy.
+type gatewayFailureAttemptRepo struct {
+	openAIWSIngressOverloadRepo
+	tempUnschedCalls atomic.Int32
+}
+
+func (r *gatewayFailureAttemptRepo) SetTempUnschedulable(context.Context, int64, time.Time, string) error {
+	r.tempUnschedCalls.Add(1)
+	return nil
+}
+
+func (r *gatewayFailureAttemptRepo) assertNoGlobalPause(t *testing.T) {
+	t.Helper()
+	require.Zero(t, r.overloadCalls.Load(), "transient attempt failures must not globally overload the account")
+	require.Zero(t, r.tempUnschedCalls.Load(), "transient attempt failures must not globally suspend the account")
+}
 
 // Exercise the real relay and service executor, not just the state object's
 // methods. Each paired frame identifies the acknowledged response; missing
@@ -28,7 +47,7 @@ func TestGatewayFailureAttemptPassthroughCountsPairedFramesAndNextAcknowledgedTu
 		cfg := passthroughLifecycleConfig()
 		svc := newPassthroughLifecycleService(cfg, upstream)
 		account := passthroughLifecycleAccount()
-		repo := &openAIWSIngressOverloadRepo{}
+		repo := &gatewayFailureAttemptRepo{}
 		limiter := NewRateLimitService(repo, nil, cfg, nil, nil)
 		svc.accountRepo, svc.rateLimitService = repo, limiter
 		limiter.SetAccountRuntimeBlocker(svc)
@@ -64,12 +83,13 @@ func TestGatewayFailureAttemptPassthroughCountsPairedFramesAndNextAcknowledgedTu
 			}
 			select {
 			case cooling := <-observed:
-				require.Equal(t, turn == 3, cooling, "paired frames count once, every acknowledged turn counts")
+				require.False(t, cooling, "even repeated acknowledged overload turns must not globally pause the account")
+				repo.assertNoGlobalPause(t)
 			case <-time.After(time.Second):
 				t.Fatal("turn did not complete")
 			}
 		}
-		require.Equal(t, int32(1), repo.overloadCalls.Load())
+		repo.assertNoGlobalPause(t)
 		upstream.Fail(io.EOF)
 		_ = client.Close(coderws.StatusNormalClosure, "done")
 		select {
@@ -84,7 +104,7 @@ func TestGatewayFailureAttemptPassthroughCountsPairedFramesAndNextAcknowledgedTu
 func TestGatewayFailureAttemptHTTPBridgeCountsOneFailurePerSend(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := newOpenAIWSV2TestConfig()
-	repo := &openAIWSIngressOverloadRepo{}
+	repo := &gatewayFailureAttemptRepo{}
 	limiter := NewRateLimitService(repo, nil, cfg, nil, nil)
 	upstream := &httpUpstreamRecorder{}
 	svc := &OpenAIGatewayService{cfg: cfg, accountRepo: repo, rateLimitService: limiter, httpUpstream: upstream}
@@ -113,9 +133,10 @@ func TestGatewayFailureAttemptHTTPBridgeCountsOneFailurePerSend(t *testing.T) {
 		require.NotNil(t, result)
 		require.Equal(t, "response.failed", result.UpstreamTerminalEvent)
 		require.Equal(t, 2, writes, "bare error frames stay deferred to the authoritative failure")
-		require.Equal(t, turn == 3, limiter.IsAccountOverloadCooling(account.ID, time.Now()))
+		require.False(t, limiter.IsAccountOverloadCooling(account.ID, time.Now()), "repeated bridge failures must not globally pause the account")
+		repo.assertNoGlobalPause(t)
 	}
-	require.Equal(t, int32(1), repo.overloadCalls.Load())
+	repo.assertNoGlobalPause(t)
 }
 
 func TestGatewayFailureSemanticStatusAdaptersPreservePublishedPolicy(t *testing.T) {

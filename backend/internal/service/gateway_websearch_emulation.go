@@ -229,6 +229,7 @@ func doWebSearch(ctx context.Context, account *Account, query string) (*websearc
 	if mgr == nil {
 		return nil, "", fmt.Errorf("web search emulation: manager not initialized")
 	}
+	preventKeyRouteHostedToolReplay(ctx)
 	resp, providerName, err := mgr.SearchWithBestProvider(ctx, websearch.SearchRequest{
 		Query: query, MaxResults: webSearchDefaultMaxResults, ProxyURL: proxyURL,
 	})

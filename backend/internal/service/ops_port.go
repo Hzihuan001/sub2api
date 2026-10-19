@@ -98,6 +98,10 @@ type OpsInsertErrorLogInput struct {
 
 	ErrorMessage string
 	ErrorBody    string
+	// RouteSwitchLabel is a transient diagnostic annotation. It is rendered in
+	// ErrorMessage by the ops pipeline and is intentionally not persisted as a
+	// separate usage-log field or column.
+	RouteSwitchLabel string
 
 	ErrorSource string
 	ErrorOwner  string

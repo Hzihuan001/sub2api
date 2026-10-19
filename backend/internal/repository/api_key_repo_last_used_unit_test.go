@@ -38,6 +38,11 @@ func newAPIKeyRepoSQLite(t *testing.T) (*apiKeyRepository, *dbent.Client) {
 		PRIMARY KEY (api_key_id, position), UNIQUE (api_key_id, group_id)
 	)`)
 	require.NoError(t, err)
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS custom_api_key_model_policies (
+		api_key_id INTEGER PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
+		policy TEXT NOT NULL
+	)`)
+	require.NoError(t, err)
 
 	return &apiKeyRepository{client: client, sql: db}, client
 }

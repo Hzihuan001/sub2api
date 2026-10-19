@@ -110,11 +110,15 @@ type routedUpstream struct {
 	service.HTTPUpstream
 	stream, interrupted bool
 	accountIDs          []int64
+	failures            map[int64]int
 }
 
 func (u *routedUpstream) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
 	u.accountIDs = append(u.accountIDs, accountID)
 	_, _ = io.Copy(io.Discard, req.Body)
+	if status := u.failures[accountID]; status > 0 {
+		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"type":"server_error","message":"synthetic upstream unavailable"}}`))}, nil
+	}
 	header := http.Header{"Content-Type": {"application/json"}, "X-Request-Id": {"routed-upstream"}}
 	var body io.ReadCloser = io.NopCloser(strings.NewReader(`{"id":"chatcmpl-route","object":"chat.completion","model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"routed answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120}}`))
 	if u.stream {

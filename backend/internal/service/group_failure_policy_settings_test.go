@@ -118,6 +118,22 @@ func TestGroupFailurePolicyDeletionResetsRuntimeState(t *testing.T) {
 	require.Equal(t, int64(1), resetGroupID)
 }
 
+func TestGroupFailurePolicyUpdateNotifiesRouteCacheImmediately(t *testing.T) {
+	repo := &groupFailurePolicySettingRepo{}
+	svc := groupFailurePolicyTestService(repo)
+	var changed []int64
+	svc.SetGroupFailurePolicyChangedListener(func(groupID int64) {
+		changed = append(changed, groupID)
+	})
+	_, err := svc.UpdateGroupFailurePolicy(context.Background(), 1, &GroupFailurePolicy{StatusRules: []GroupFailureStatusRule{{
+		StatusCodes: []int{502}, Threshold: 1, WindowSeconds: 60, CooldownSeconds: 60,
+	}}})
+	require.NoError(t, err)
+	_, err = svc.UpdateGroupFailurePolicy(context.Background(), 1, &GroupFailurePolicy{StatusRules: []GroupFailureStatusRule{}})
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 1}, changed)
+}
+
 func TestGroupFailurePolicySettingsValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

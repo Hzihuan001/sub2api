@@ -89,7 +89,7 @@
               </button>
             </div>
           </div>
-          <button @click="showCreateModal = true" class="btn btn-primary" data-tour="keys-create-btn">
+          <button @click="openCreateModal" :disabled="submitting" class="btn btn-primary" data-tour="keys-create-btn">
             <Icon name="plus" size="md" class="mr-2" />
             {{ t('keys.createKey') }}
           </button>
@@ -177,7 +177,7 @@
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
                 }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectGroup') }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ row.group ? t('custom.keyRouting.editGroup') : t('custom.keyRouting.selectPrimary') }}</span>
                 <svg
                   class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
                   fill="none"
@@ -198,6 +198,7 @@
                 class="mt-1 text-xs text-primary-600 hover:underline dark:text-primary-400"
                 :title="t('custom.keyRouting.billing')"
                 data-test="edit-key-backups"
+                data-test-route-summary
                 @click="editKey(row)"
               >{{ t('custom.keyRouting.summary', { count: row.backup_group_ids.length }) }}</button>
             </div>
@@ -455,7 +456,7 @@
               :title="t('keys.noKeysYet')"
               :description="t('keys.createFirstKey')"
               :action-text="t('keys.createKey')"
-              @action="showCreateModal = true"
+              @action="openCreateModal"
             />
           </template>
         </DataTable>
@@ -477,7 +478,9 @@
     <BaseDialog
       :show="showCreateModal || showEditModal"
       :title="showEditModal ? t('keys.editKey') : t('keys.createKey')"
-      width="normal"
+      :close-on-escape="!submitting"
+      :show-close-button="!submitting"
+      width="wide"
       @close="closeModals"
     >
       <form id="key-form" @submit.prevent="handleSubmit" class="space-y-5">
@@ -487,105 +490,11 @@
             v-model="formData.name"
             type="text"
             required
+            :disabled="submitting"
             class="input"
             :placeholder="t('keys.namePlaceholder')"
             data-tour="key-form-name"
           />
-        </div>
-
-        <fieldset v-if="!showEditModal" data-tour="key-form-provider">
-          <legend class="input-label">{{ t('keys.providerLabel') }}</legend>
-          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <label
-              v-for="provider in createProviderOptions"
-              :key="provider.value"
-              class="relative min-w-0"
-              :class="provider.count === 0 ? 'cursor-not-allowed' : 'cursor-pointer'"
-            >
-              <input
-                type="radio"
-                name="key-provider"
-                :value="provider.value"
-                :checked="createProvider === provider.value"
-                :disabled="provider.count === 0"
-                class="peer sr-only"
-                @change="selectCreateProvider(provider.value)"
-              />
-              <span
-                class="flex h-full flex-col items-center gap-2 rounded-xl border border-gray-200 bg-white px-2 py-3 text-center transition-colors peer-checked:border-primary-500 peer-checked:bg-primary-50/60 peer-checked:ring-1 peer-checked:ring-primary-500 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary-500 peer-disabled:opacity-40 dark:border-dark-600 dark:bg-dark-800 dark:peer-checked:border-primary-500 dark:peer-checked:bg-primary-500/10"
-                :class="provider.count > 0 && 'hover:border-primary-300 dark:hover:border-primary-700'"
-              >
-                <span class="flex h-8 items-center justify-center gap-1.5" aria-hidden="true">
-                  <span
-                    v-for="platform in KEY_GROUP_PROVIDER_ICONS[provider.value]"
-                    :key="platform"
-                    class="flex h-8 w-8 items-center justify-center rounded-lg"
-                    :class="platformBadgeLightClass(platform)"
-                  >
-                    <PlatformIcon :platform="platform" size="lg" />
-                  </span>
-                </span>
-                <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ provider.label }}</span>
-              </span>
-              <span
-                v-if="createProvider === provider.value"
-                class="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-white"
-                aria-hidden="true"
-              >
-                <Icon name="check" size="xs" :stroke-width="3" />
-              </span>
-            </label>
-          </div>
-          <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400" aria-live="polite">
-            {{ groups.length === 0 ? t('common.noGroupsAvailable') : t(`keys.providerHints.${createProvider}`) }}
-          </p>
-        </fieldset>
-
-        <div>
-          <label class="input-label" for="key-form-group">{{ t('keys.groupLabel') }}</label>
-          <Select
-            :key="showEditModal ? 'edit' : createProvider"
-            id="key-form-group"
-            :aria-label="t('keys.groupLabel')"
-            v-model="formData.group_id"
-            :options="formGroupOptions"
-            :placeholder="t('keys.selectGroup')"
-            :empty-text="t('common.noGroupsAvailable')"
-            :searchable="true"
-            :search-placeholder="t('keys.searchGroup')"
-            data-tour="key-form-group"
-          >
-            <template #selected="{ option }">
-              <GroupBadge
-                v-if="option"
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                :peak-start="(option as unknown as GroupOption).peakStart"
-                :peak-end="(option as unknown as GroupOption).peakEnd"
-                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-              />
-              <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
-            </template>
-            <template #option="{ option, selected }">
-              <GroupOptionItem
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                :peak-start="(option as unknown as GroupOption).peakStart"
-                :peak-end="(option as unknown as GroupOption).peakEnd"
-                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-                :description="(option as unknown as GroupOption).description"
-                :selected="selected"
-              />
-            </template>
-          </Select>
         </div>
 
         <KeyBackupGroupsEditor
@@ -594,8 +503,28 @@
           :groups="groups"
           :user-group-rates="userGroupRates"
           :disabled="submitting"
+          @update:primary-group-id="setPrimaryGroup"
         />
 
+        <KeyRouteFailureRulesEditor
+          v-if="formData.backup_group_ids.length > 0"
+          v-model="formData.key_route_failure_policy"
+          :disabled="submitting"
+        />
+
+        <div v-if="showEditModal">
+          <label class="input-label">{{ t('keys.statusLabel') }}</label>
+          <Select
+            v-model="formData.status"
+            :options="statusOptions"
+            :placeholder="t('keys.selectStatus')"
+            :disabled="submitting"
+          />
+        </div>
+
+        <KeyAdvancedSettings :key="selectedKey?.id ?? 'create'" :summary="advancedSettingsSummary" :disabled="submitting">
+        <fieldset :disabled="submitting" class="space-y-5">
+        <KeyModelPolicyEditor v-model="formData.key_model_policy" :models="keyModelCandidates" :disabled="submitting" />
         <!-- Custom Key Section (only for create) -->
         <div v-if="!showEditModal" class="space-y-3">
           <div class="flex items-center justify-between">
@@ -627,15 +556,6 @@
             <p v-if="customKeyError" class="mt-1 text-sm text-red-500">{{ customKeyError }}</p>
             <p v-else class="input-hint">{{ t('keys.customKeyHint') }}</p>
           </div>
-        </div>
-
-        <div v-if="showEditModal">
-          <label class="input-label">{{ t('keys.statusLabel') }}</label>
-          <Select
-            v-model="formData.status"
-            :options="statusOptions"
-            :placeholder="t('keys.selectStatus')"
-          />
         </div>
 
         <!-- IP Restriction Section -->
@@ -996,10 +916,12 @@
             </div>
           </div>
         </div>
+        </fieldset>
+        </KeyAdvancedSettings>
       </form>
       <template #footer>
         <div class="flex justify-end gap-3">
-          <button @click="closeModals" type="button" class="btn btn-secondary">
+          <button @click="closeModals" type="button" :disabled="submitting" class="btn btn-secondary">
             {{ t('common.cancel') }}
           </button>
           <button
@@ -1215,7 +1137,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, reactive, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+	import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
 	import { useOnboardingStore } from '@/stores/onboarding'
@@ -1228,7 +1150,11 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 import KeyBackupGroupsEditor from '@/features/key-routing/KeyBackupGroupsEditor.vue'
-import { validateKeyRouting } from '@/features/key-routing/keyRouting'
+import KeyRouteFailureRulesEditor from '@/features/key-routing/KeyRouteFailureRulesEditor.vue'
+import KeyAdvancedSettings from '@/features/key-routing/KeyAdvancedSettings.vue'
+import KeyModelPolicyEditor from '@/features/key-routing/KeyModelPolicyEditor.vue'
+import { cloneKeyModelPolicy, normalizeKeyModelPolicy, validateKeyModelPolicy } from '@/features/key-routing/keyModelPolicy'
+import { validateKeyRouteFailurePolicy, validateKeyRouting } from '@/features/key-routing/keyRouting'
 	import DataTable from '@/components/common/DataTable.vue'
 	import Pagination from '@/components/common/Pagination.vue'
 	import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1241,14 +1167,11 @@ import { validateKeyRouting } from '@/features/key-routing/keyRouting'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
+import type { ApiKey, Group, KeyRouteFailurePolicy, KeyModelPolicy, PublicSettings, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
-import PlatformIcon from '@/components/common/PlatformIcon.vue'
-import { platformBadgeLightClass } from '@/utils/platformColors'
-import { KEY_GROUP_PROVIDERS, KEY_GROUP_PROVIDER_ICONS, getKeyGroupProvider, type KeyGroupProvider } from '@/utils/keyGroupProviders'
 import {
   CC_SWITCH_USAGE_SCRIPT,
   buildCcSwitchImportDeeplink,
@@ -1261,20 +1184,6 @@ const formatDateTimeLocal = (isoDate: string): string => {
   const date = new Date(isoDate)
   const pad = (n: number) => n.toString().padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-interface GroupOption {
-  value: number
-  label: string
-  description: string | null
-  rate: number
-  userRate: number | null
-  peakRateEnabled: boolean
-  peakStart: string
-  peakEnd: string
-  peakRateMultiplier: number
-  subscriptionType: SubscriptionType
-  platform: GroupPlatform
 }
 
 const appStore = useAppStore()
@@ -1452,6 +1361,8 @@ const formData = ref({
   name: '',
   group_id: null as number | null,
   backup_group_ids: [] as number[],
+  key_route_failure_policy: null as KeyRouteFailurePolicy | null,
+  key_model_policy: null as KeyModelPolicy | null,
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
   custom_key: '',
@@ -1469,6 +1380,21 @@ const formData = ref({
   enable_expiration: false,
   expiration_preset: '30' as '7' | '30' | '90' | 'custom',
   expiration_date: ''
+})
+
+const advancedSettingsSummary = computed(() => {
+  const form = formData.value
+  const count = Number(form.enable_ip_restriction) + Number(Number(form.quota) > 0)
+    + Number(form.enable_rate_limit) + Number(form.enable_expiration) + Number(form.use_custom_key) + Number(form.key_model_policy?.enabled ?? false)
+  return count ? t('custom.keyRouting.advancedConfigured', { count }) : t('custom.keyRouting.advancedUnlimited')
+})
+
+// Only explicit public IDs in the user's selected groups are candidates.
+// Wildcard rules are not invented into a fake remote model catalog.
+const keyModelCandidates = computed(() => {
+  const selected = new Set([formData.value.group_id, ...formData.value.backup_group_ids])
+  return [...new Set(groups.value.filter((group) => selected.has(group.id))
+    .flatMap((group) => group.model_candidates ?? []))]
 })
 
 // 自定义Key验证
@@ -1547,34 +1473,9 @@ const groupOptions = computed(() =>
   }))
 )
 
-const createProvider = ref<KeyGroupProvider>('anthropic')
-const createProviderOptions = computed(() => KEY_GROUP_PROVIDERS.map((value) => ({
-  value,
-  label: t(`keys.providers.${value}`),
-  count: groups.value.filter((group) => getKeyGroupProvider(group.platform) === value).length
-})))
-
-const formGroupOptions = computed(() => showEditModal.value
-  ? groupOptions.value
-  : groupOptions.value.filter((group) => getKeyGroupProvider(group.platform) === createProvider.value)
-)
-
-const selectCreateProvider = (provider: KeyGroupProvider) => {
-  if (createProvider.value === provider) return
-  createProvider.value = provider
-  formData.value.group_id = null
+const setPrimaryGroup = (groupId: number | null) => {
+  formData.value.group_id = groupId
 }
-
-// Also handles groups arriving after the create dialog has already opened.
-watch([showCreateModal, createProviderOptions], ([isOpen, providers], [wasOpen]) => {
-  if (!isOpen) return
-  if (!wasOpen || !providers.some((provider) => provider.value === createProvider.value && provider.count > 0)) {
-    selectCreateProvider(providers.find((provider) => provider.count > 0)?.value ?? 'anthropic')
-  }
-  if (!formGroupOptions.value.some((group) => group.value === formData.value.group_id)) {
-    formData.value.group_id = null
-  }
-})
 
 // Group dropdown search
 const groupSearchQuery = ref('')
@@ -1713,7 +1614,13 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadApiKeys()
 }
 
+const openCreateModal = () => {
+  if (submitting.value) return
+  showCreateModal.value = true
+}
+
 const editKey = (key: ApiKey) => {
+  if (submitting.value) return
   selectedKey.value = key
   const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
   const hasExpiration = !!key.expires_at
@@ -1721,6 +1628,8 @@ const editKey = (key: ApiKey) => {
     name: key.name,
     group_id: key.group_id,
     backup_group_ids: [...(key.backup_group_ids ?? [])],
+    key_route_failure_policy: key.key_route_failure_policy ? JSON.parse(JSON.stringify(key.key_route_failure_policy)) : null,
+    key_model_policy: cloneKeyModelPolicy(key.key_model_policy),
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
     custom_key: '',
@@ -1825,6 +1734,7 @@ const confirmDelete = (key: ApiKey) => {
 }
 
 const handleSubmit = async () => {
+  if (submitting.value) return
   // Validate group_id is required
   if (formData.value.group_id === null) {
     appStore.showError(t('keys.groupRequired'))
@@ -1836,6 +1746,19 @@ const handleSubmit = async () => {
     appStore.showError(t(`custom.keyRouting.${routingError}`))
     return
   }
+  const effectiveKeyRouteFailurePolicy = formData.value.backup_group_ids.length > 0
+    ? formData.value.key_route_failure_policy
+    : null
+  const keyRoutePolicyError = validateKeyRouteFailurePolicy(effectiveKeyRouteFailurePolicy)
+  if (keyRoutePolicyError) {
+    appStore.showError(t(keyRoutePolicyError === 'duplicate' ? 'custom.keyRouting.keyRulesDuplicate' : 'custom.keyRouting.keyRulesValidation'))
+    return
+  }
+  if (!validateKeyModelPolicy(formData.value.key_model_policy)) {
+    appStore.showError(t('custom.keyRouting.modelPolicyValidation'))
+    return
+  }
+  const keyModelPolicy = normalizeKeyModelPolicy(formData.value.key_model_policy)
 
   // Validate custom key if enabled
   if (!showEditModal.value && formData.value.use_custom_key) {
@@ -1891,6 +1814,8 @@ const handleSubmit = async () => {
         name: formData.value.name,
         group_id: formData.value.group_id,
         backup_group_ids: [...formData.value.backup_group_ids],
+        key_route_failure_policy: effectiveKeyRouteFailurePolicy,
+        key_model_policy: keyModelPolicy,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1915,7 +1840,9 @@ const handleSubmit = async () => {
         quota,
         expiresInDays,
         rateLimitData,
-        [...formData.value.backup_group_ids]
+        [...formData.value.backup_group_ids],
+        effectiveKeyRouteFailurePolicy,
+        keyModelPolicy
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1923,7 +1850,7 @@ const handleSubmit = async () => {
         onboardingStore.nextStep(500)
       }
     }
-    closeModals()
+    resetKeyForm()
     loadApiKeys()
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToSave')
@@ -1955,6 +1882,14 @@ const handleDelete = async () => {
 }
 
 const closeModals = () => {
+  if (submitting.value) return
+  resetKeyForm()
+}
+
+// Only the completed save may reset a locked editor. User close/reopen
+// actions are ignored until that request settles, so a late response cannot
+// close a different key's unsaved form.
+const resetKeyForm = () => {
   showCreateModal.value = false
   showEditModal.value = false
   selectedKey.value = null
@@ -1962,6 +1897,8 @@ const closeModals = () => {
     name: '',
     group_id: null,
     backup_group_ids: [],
+    key_route_failure_policy: null,
+    key_model_policy: null,
     status: 'active',
     use_custom_key: false,
     custom_key: '',

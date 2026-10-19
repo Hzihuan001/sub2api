@@ -212,6 +212,7 @@ func (s *GatewayService) ForwardAsResponses(
 			})
 		}
 	}
+	protectKeyRouteUsageResponse(ctx, resp)
 	defer func() { _ = resp.Body.Close() }()
 	// Use the final Anthropic body for billing. The bridge maps Responses
 	// xhigh to Anthropic max; a bare thinking flag is not an explicit effort.

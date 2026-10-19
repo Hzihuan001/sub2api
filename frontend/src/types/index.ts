@@ -581,6 +581,7 @@ export interface Group {
   id: number
   name: string
   description: string | null
+  model_candidates?: string[]
   platform: GroupPlatform
   rate_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
@@ -752,6 +753,8 @@ export interface ApiKey {
   name: string
   group_id: number | null
   backup_group_ids?: number[] // Ordered fallback groups; absent on older responses
+  key_route_failure_policy?: KeyRouteFailurePolicy | null // null/absent inherits group rules
+  key_model_policy?: KeyModelPolicy | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
@@ -778,10 +781,33 @@ export interface ApiKey {
   reset_7d_at: string | null
 }
 
+export type KeyRouteFailureRuleType = 'status_code' | 'consecutive_failures' | 'timeout' | 'rate_limit' | 'sla_success_rate' | 'ttft'
+
+export interface KeyRouteFailureRule {
+  type?: KeyRouteFailureRuleType // absent in legacy rules means status_code
+  status_codes?: number[]
+  threshold: number
+  window_seconds?: number
+  sample_size?: number
+  first_content_seconds?: number
+  cooldown_seconds: number
+}
+
+export interface KeyRouteFailurePolicy {
+  rules: KeyRouteFailureRule[]
+}
+
+export interface KeyModelPolicy {
+  enabled: boolean
+  models: string[]
+}
+
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
   backup_group_ids?: number[]
+  key_route_failure_policy?: KeyRouteFailurePolicy
+  key_model_policy?: KeyModelPolicy | null
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -796,6 +822,8 @@ export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
   backup_group_ids?: number[] // Omitted preserves the route; [] clears backup groups
+  key_route_failure_policy?: KeyRouteFailurePolicy | null // null restores inheritance from group rules
+  key_model_policy?: KeyModelPolicy | null // omitted preserves; null or disabled removes restriction
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]

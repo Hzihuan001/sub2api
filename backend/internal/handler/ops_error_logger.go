@@ -406,7 +406,7 @@ func estimateOpsErrorLogJobBytes(entry *service.OpsInsertErrorLogInput) int64 {
 		len(entry.RequestedModel) + len(entry.UpstreamModel) + len(entry.UserAgent) +
 		len(entry.ErrorPhase) + len(entry.ErrorType) + len(entry.Severity) +
 		len(entry.ErrorMessage) + len(entry.ErrorBody) + len(entry.ErrorSource) +
-		len(entry.ErrorOwner) + len(entry.APIKeyPrefix)
+		len(entry.ErrorOwner) + len(entry.APIKeyPrefix) + len(entry.RouteSwitchLabel)
 	if entry.UpstreamErrorMessage != nil {
 		size += len(*entry.UpstreamErrorMessage)
 	}
@@ -462,6 +462,17 @@ func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int
 		c.Set(opsUpstreamModelKey, upstreamModel)
 	}
 	c.Set(opsRequestTypeKey, requestType)
+}
+
+// applyOpsRouteSwitchLabelFromContext copies the request-scoped backup-group
+// annotation into an existing ops error input.  The annotation is deliberately
+// attached only to ops errors; usage records and gateway response payloads are
+// untouched.
+func applyOpsRouteSwitchLabelFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
+	if c == nil || entry == nil || c.Request == nil {
+		return
+	}
+	service.ApplyOpsRouteSwitchLabel(entry, service.OpsRouteSwitchLabel(c.Request.Context()))
 }
 
 func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
@@ -1249,6 +1260,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 			CreatedAt: time.Now(),
 		}
+		applyOpsRouteSwitchLabelFromContext(c, entry)
 		applyOpsLatencyFieldsFromContext(c, entry)
 		applyOpsUpstreamFieldsFromContext(c, entry)
 		if parsed.StreamFailure {
@@ -1374,6 +1386,7 @@ func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatu
 	entry.InboundEndpoint = GetInboundEndpoint(c)
 	entry.UpstreamModel = c.GetString(opsUpstreamModelKey)
 	entry.RequestType = opsRequestTypeFromContext(c)
+	applyOpsRouteSwitchLabelFromContext(c, entry)
 
 	apiKey := getOpsAPIKey(c)
 	fallbackPlatform := guessPlatformFromPath(entry.RequestPath)
@@ -1563,6 +1576,7 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 
 		CreatedAt: time.Now(),
 	}
+	applyOpsRouteSwitchLabelFromContext(c, entry)
 	applyOpsLatencyFieldsFromContext(c, entry)
 	if !streamErr.RequestScoped {
 		applyOpsUpstreamFieldsFromContext(c, entry)

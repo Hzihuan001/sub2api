@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import GroupFailurePolicyModal from '../GroupFailurePolicyModal.vue'
 import { ruleDefaults } from '../groupFailurePolicy'
-import { zh } from '../messages'
+import { en, zh } from '../messages'
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(), put: vi.fn(), success: vi.fn(), can: vi.fn((_permission: string) => true)
@@ -40,7 +40,12 @@ describe('group failover status-code rule editor', () => {
     const wrapper = open(); await flushPromises()
     expect(mocks.get).toHaveBeenCalledWith('/admin/groups/1/failure-policy', expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(wrapper.text()).toContain('尚未添加规则')
-    expect(wrapper.text()).toContain('暂停对该账号关联的所有分组生效')
+    expect(wrapper.text()).toContain('仅供未独立覆盖故障规则的多分组 Key 继承')
+    expect(wrapper.text()).toContain('按 Key、分组、模型和接口独立统计最终失败')
+    expect(wrapper.text()).toContain('不会全局暂停账号')
+    expect(wrapper.text()).toContain('单组 Key 不受这些自定义规则暂停')
+    expect(wrapper.text()).toContain('平台原生身份、额度、限流和手动限制仍生效')
+    expect(wrapper.text()).not.toContain('恢复状态')
     expect(wrapper.get<HTMLButtonElement>('[data-testid="failure-policy-save"]').element.disabled).toBe(true)
     expect(mocks.put).not.toHaveBeenCalled()
   })
@@ -48,6 +53,10 @@ describe('group failover status-code rule editor', () => {
   it('adds a rule with documented defaults and saves comma-separated codes', async () => {
     const wrapper = open(); await flushPromises()
     await wrapper.get('[data-testid="failure-policy-add"]').trigger('click')
+    expect(wrapper.text()).toContain('冷却时长（秒）')
+    expect(wrapper.text()).not.toContain('暂停时长')
+    expect(wrapper.get('[data-testid="failure-status-help"]').attributes('title')).toContain('503 服务过载或暂时不可用')
+    expect(wrapper.get('[data-testid="failure-status-help"]').attributes('title')).toContain('529 部分上游使用的服务过载状态码')
     expect(wrapper.get<HTMLInputElement>('[data-testid="failure-rule-0-threshold"]').element.value).toBe(String(ruleDefaults.threshold))
     expect(wrapper.get<HTMLInputElement>('[data-testid="failure-rule-0-window_seconds"]').element.value).toBe(String(ruleDefaults.window_seconds))
     expect(wrapper.get<HTMLInputElement>('[data-testid="failure-rule-0-cooldown_seconds"]').element.value).toBe(String(ruleDefaults.cooldown_seconds))
@@ -55,6 +64,18 @@ describe('group failover status-code rule editor', () => {
     await wrapper.get('[data-testid="failure-policy-save"]').trigger('click'); await flushPromises()
     expect(mocks.put).toHaveBeenCalledWith('/admin/groups/1/failure-policy', { rules: [{ status_codes: [502, 503], ...ruleDefaults }] }, expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(wrapper.emitted('success')).toHaveLength(1); expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+
+  it('keeps English routing scope and native restrictions aligned', () => {
+    expect(en.accountScope).toContain('Only multi-group keys without their own fault-rule override')
+    expect(en.accountScope).toContain('key, group, model and endpoint')
+    expect(en.accountScope).toContain('accounts are not paused globally')
+    expect(en.safety).toContain('do not pause single-group keys')
+    expect(en.safety).toContain('Native authentication, quota, rate-limit and manual restrictions still apply')
+    expect(en.cooldown).toBe('Cooldown duration (seconds)')
+    expect(en.statusCodeHelp).toContain('503 overloaded')
+    expect(en.statusCodeHelp).toContain('529 overload on some upstream providers')
+    expect(en.accountScope).not.toContain('Restore status')
   })
 
   it('accepts full-width commas and normalizes the displayed status code list', async () => {

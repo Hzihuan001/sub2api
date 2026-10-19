@@ -35,9 +35,14 @@ type APIKey struct {
 	GroupID *int64
 	// BackupGroupIDs are tried in order after GroupID; they never replace the primary binding.
 	BackupGroupIDs []int64
-	Status         string
-	IPWhitelist    []string
-	IPBlacklist    []string
+	// KeyRouteFailurePolicy is an optional per-key override for automatic
+	// backup-group failover. A non-nil empty policy explicitly disables the
+	// group policy for this key; nil preserves the group policy fallback.
+	KeyRouteFailurePolicy *KeyRouteFailurePolicy
+	KeyModelPolicy        *KeyModelPolicy
+	Status                string
+	IPWhitelist           []string
+	IPBlacklist           []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`

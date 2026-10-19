@@ -43,6 +43,10 @@ func (h *BatchImageHandler) Submit(c *gin.Context) {
 		batchImageError(c, infraerrors.New(http.StatusUnauthorized, "API_KEY_REQUIRED", "API key is required"))
 		return
 	}
+	apiKey, _ := middleware.GetAPIKeyFromContext(c)
+	if !checkKeyModelCreation(c, apiKey, []string{req.Model}) {
+		return
+	}
 	if !h.checkSecurityAuditBeforeSubmit(c, &req) {
 		return
 	}
@@ -151,7 +155,23 @@ func (h *BatchImageHandler) Models(c *gin.Context) {
 	if apiKey, ok := middleware.GetAPIKeyFromContext(c); ok && apiKey != nil && apiKey.Group != nil {
 		got.Data = filterBatchImageModelsByAllowlist(got.Data, apiKey.Group.ModelAllowlist)
 	}
+	if apiKey, ok := middleware.GetAPIKeyFromContext(c); ok {
+		got.Data = filterBatchImageModelsByKeyPolicy(got.Data, apiKey)
+	}
 	c.JSON(http.StatusOK, got)
+}
+
+func filterBatchImageModelsByKeyPolicy(models []service.BatchImagePublicModel, apiKey *service.APIKey) []service.BatchImagePublicModel {
+	if !apiKey.KeyModelPolicyEnabled() {
+		return models
+	}
+	filtered := make([]service.BatchImagePublicModel, 0, len(models))
+	for _, model := range models {
+		if apiKey.AllowsPublicModel(model.ID) {
+			filtered = append(filtered, model)
+		}
+	}
+	return filtered
 }
 
 // filterBatchImageModelsByAllowlist 按分组模型白名单过滤批量生图模型列表。

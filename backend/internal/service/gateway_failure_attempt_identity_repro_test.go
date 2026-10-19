@@ -25,8 +25,8 @@ func TestGatewayFailureAttemptPassthroughMustCountNextTurnWithoutCreated(t *test
 		h.sendAndRead(t, gatewayFailureIdentityFailedFrame(turn))
 		got := h.nextCompleted(t)
 		require.Equal(t, fmt.Sprintf("r%d", turn), got.requestID)
-		require.Equal(t, turn == 3, got.cooling,
-			"each real upstream send must count even when response.created is omitted")
+		require.False(t, got.cooling,
+			"each real upstream send remains independent without implicitly pausing the account")
 	}
 }
 
@@ -143,7 +143,7 @@ func testGatewayFailureAttemptPassthroughDelayedCreated(t *testing.T, firstAnony
 		h.sendAndRead(t, gatewayFailureIdentityFailedFrame(turn))
 		got := h.nextCompleted(t)
 		require.Equal(t, fmt.Sprintf("r%d", turn), got.requestID)
-		require.Equal(t, turn == 3, got.cooling)
+		require.False(t, got.cooling, "delayed acknowledgement must not revive global overload suspension")
 		require.Equal(t, 1, got.inputTokens, "only the authoritative failure usage must be settled")
 		require.Equal(t, 1, got.outputTokens)
 		select {
@@ -217,6 +217,7 @@ type gatewayFailureIdentityHarness struct {
 	client    *coderws.Conn
 	completed chan gatewayFailureIdentityCompletion
 	isCooling func() bool
+	repo      *gatewayFailureAttemptRepo
 }
 
 func newGatewayFailureIdentityHarness(t *testing.T) *gatewayFailureIdentityHarness {
@@ -227,13 +228,14 @@ func newGatewayFailureIdentityHarness(t *testing.T) *gatewayFailureIdentityHarne
 	cfg := passthroughLifecycleConfig()
 	svc := newPassthroughLifecycleService(cfg, upstream)
 	account := passthroughLifecycleAccount()
-	repo := &openAIWSIngressOverloadRepo{}
+	repo := &gatewayFailureAttemptRepo{}
 	limiter := NewRateLimitService(repo, nil, cfg, nil, nil)
 	svc.accountRepo, svc.rateLimitService = repo, limiter
 	limiter.SetAccountRuntimeBlocker(svc)
 	h := &gatewayFailureIdentityHarness{
 		ctx: ctx, upstream: upstream, completed: make(chan gatewayFailureIdentityCompletion, 16),
 		isCooling: func() bool { return limiter.IsAccountOverloadCooling(account.ID, time.Now()) },
+		repo:      repo,
 	}
 	hooks := &OpenAIWSIngressHooks{AfterTurn: func(_ int, result *OpenAIForwardResult, err error) {
 		if err == nil && result != nil {
@@ -257,6 +259,7 @@ func newGatewayFailureIdentityHarness(t *testing.T) *gatewayFailureIdentityHarne
 			t.Error("passthrough relay did not stop after test cleanup")
 		}
 		server.Close()
+		repo.assertNoGlobalPause(t)
 	})
 	return h
 }
@@ -279,12 +282,14 @@ func (h *gatewayFailureIdentityHarness) sendAndRead(t *testing.T, payload string
 	actual, err := readPassthroughLifecycleFrame(t, h.client, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, payload, string(actual), "identity observation must preserve raw frames")
+	h.repo.assertNoGlobalPause(t)
 }
 
 func (h *gatewayFailureIdentityHarness) nextCompleted(t *testing.T) gatewayFailureIdentityCompletion {
 	t.Helper()
 	select {
 	case got := <-h.completed:
+		h.repo.assertNoGlobalPause(t)
 		return got
 	case <-time.After(time.Second):
 		t.Fatal("expected terminal completion callback")

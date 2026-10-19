@@ -229,7 +229,8 @@ const mountView = async () => {
         DataTable: DataTableStub,
         Pagination: PaginationStub,
         BaseDialog: {
-          props: ['show', 'title'],
+          name: 'BaseDialog',
+          props: ['show', 'title', 'closeOnEscape', 'showCloseButton'],
           emits: ['close'],
           template: '<div v-if="show" role="dialog"><button data-test="close-dialog" @click="$emit(\'close\')">Close</button><slot /><slot name="footer" /></div>',
         },
@@ -264,6 +265,16 @@ const getButtonByText = (wrapper: VueWrapper, text: string) => {
     throw new Error(`Button not found: ${text}`)
   }
   return button
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 describe('user KeysView column settings', () => {
@@ -548,10 +559,151 @@ describe('user KeysView column settings', () => {
     )
   })
 
+  describe('key editor save locking', () => {
+    const routeGroups = [1, 2, 3].map((id) => ({ id, name: `Group ${id}`, platform: 'openai', status: 'active', subscription_type: 'standard', rate_multiplier: 1 }))
+
+    beforeEach(() => getAvailableGroups.mockResolvedValue(routeGroups))
+
+    it.each(['create', 'edit'] as const)('submits a pending %s only once even if the form emits submit repeatedly', async (mode) => {
+      const key = { ...createApiKey(), group_id: 1 }
+      listKeys.mockResolvedValue({ items: [key], total: 1, pages: 1 })
+      const pending = deferred<ApiKey>()
+      if (mode === 'edit') updateKey.mockReturnValueOnce(pending.promise)
+      else vi.mocked(keysAPI.create).mockReturnValueOnce(pending.promise)
+      const wrapper = await mountView()
+      if (mode === 'edit') await getButtonByText(wrapper, 'common.edit').trigger('click')
+      else {
+        await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+        await wrapper.get('[data-tour="key-form-name"]').setValue('Pending creation')
+        wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).vm.$emit('update:primaryGroupId', 1)
+        await nextTick()
+      }
+
+      await wrapper.get('#key-form').trigger('submit')
+      await wrapper.get('#key-form').trigger('submit')
+      expect(mode === 'edit' ? updateKey : keysAPI.create).toHaveBeenCalledTimes(1)
+      expect(wrapper.get<HTMLButtonElement>('[data-tour="key-form-submit"]').element.disabled).toBe(true)
+      pending.resolve(key)
+      await flushPromises()
+      expect(wrapper.find('#key-form').exists()).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('locks the current key while saving so close or another edit cannot replace the pending draft', async () => {
+      const first = { ...createApiKey(), name: 'Key A', group_id: 1 }
+      const second = { ...createApiKey(), id: 2, name: 'Key B', group_id: 2 }
+      listKeys.mockResolvedValue({ items: [first, second], total: 2, pages: 1 })
+      const pending = deferred<ApiKey>()
+      updateKey.mockReturnValueOnce(pending.promise)
+      const wrapper = await mountView()
+      const editButtons = () => wrapper.findAll('button').filter((button) => button.text().includes('common.edit'))
+      await editButtons()[0].trigger('click')
+      await wrapper.get('[data-tour="key-form-name"]').setValue('A pending draft')
+      await wrapper.get('#key-form').trigger('submit')
+
+      await getButtonByText(wrapper, 'common.cancel').trigger('click')
+      await wrapper.get('[data-test="close-dialog"]').trigger('click')
+      const dialog = wrapper.findAllComponents({ name: 'BaseDialog' }).find((component) => component.find('#key-form').exists())!
+      expect(dialog.props('closeOnEscape')).toBe(false)
+      expect(dialog.props('showCloseButton')).toBe(false)
+      await editButtons()[1].trigger('click')
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      expect(wrapper.get<HTMLInputElement>('[data-tour="key-form-name"]').element.value).toBe('A pending draft')
+      expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'A pending draft' }))
+
+      pending.resolve({ ...first, name: 'A pending draft' })
+      await flushPromises()
+      expect(wrapper.find('#key-form').exists()).toBe(false)
+      await editButtons()[1].trigger('click')
+      await wrapper.get('[data-tour="key-form-name"]').setValue('B new draft')
+      await flushPromises()
+      expect(wrapper.get<HTMLInputElement>('[data-tour="key-form-name"]').element.value).toBe('B new draft')
+      wrapper.unmount()
+    })
+
+    it('keeps the edited name and routing policy after a failed save and unlocks the form for retry', async () => {
+      const key = { ...createApiKey(), group_id: 1, backup_group_ids: [2] }
+      listKeys.mockResolvedValue({ items: [key], total: 1, pages: 1 })
+      const pending = deferred<ApiKey>()
+      updateKey.mockReturnValueOnce(pending.promise)
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      await wrapper.get('[data-tour="key-form-name"]').setValue('Keep this draft')
+      const policy = { rules: [{ type: 'consecutive_failures', threshold: 7, cooldown_seconds: 360 }] }
+      wrapper.findComponent({ name: 'KeyRouteFailureRulesEditor' }).vm.$emit('update:modelValue', policy)
+      await wrapper.get('#key-form').trigger('submit')
+      pending.reject({ response: { data: { detail: 'Temporary save failure' } } })
+      await flushPromises()
+
+      expect(showError).toHaveBeenCalledWith('Temporary save failure')
+      expect(wrapper.get<HTMLInputElement>('[data-tour="key-form-name"]').element.value).toBe('Keep this draft')
+      expect(wrapper.findComponent({ name: 'KeyRouteFailureRulesEditor' }).props('modelValue')).toEqual(policy)
+      expect(wrapper.get<HTMLButtonElement>('[data-tour="key-form-submit"]').element.disabled).toBe(false)
+      updateKey.mockResolvedValueOnce(key)
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenCalledTimes(2)
+      expect(updateKey).toHaveBeenLastCalledWith(1, expect.objectContaining({ name: 'Keep this draft', key_route_failure_policy: policy }))
+      expect(wrapper.find('#key-form').exists()).toBe(false)
+      wrapper.unmount()
+    })
+  })
+
   describe('backup group integration', () => {
     const routeGroups = [1, 2, 3, 4].map((id) => ({ id, name: `Group ${id}`, platform: 'openai', status: 'active', subscription_type: 'standard', rate_multiplier: 1 }))
 
     beforeEach(() => getAvailableGroups.mockResolvedValue(routeGroups))
+
+    it('round-trips exact model restrictions, retains failed drafts, and explicitly clears restrictions', async () => {
+      const original = { enabled: true, models: ['original-model'] }
+      const key = { ...createApiKey(), group_id: 1, backup_group_ids: [2], key_model_policy: original }
+      listKeys.mockResolvedValue({ items: [key], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      const editor = wrapper.findComponent({ name: 'KeyModelPolicyEditor' })
+      expect(editor.props('modelValue')).toEqual(original)
+      editor.vm.$emit('update:modelValue', { enabled: true, models: [' custom-a ', 'custom-a', 'CUSTOM-A'] })
+      await nextTick()
+      expect(original.models).toEqual(['original-model'])
+      updateKey.mockRejectedValueOnce({ response: { data: { detail: 'Temporary save failure' } } })
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(editor.props('modelValue').models).toEqual([' custom-a ', 'custom-a', 'CUSTOM-A'])
+      expect(editor.props('disabled')).toBe(false)
+      expect(wrapper.find('#key-form').exists()).toBe(true)
+
+      const savedPolicy = { enabled: true, models: ['custom-a', 'CUSTOM-A'] }
+      const saved = { ...key, key_model_policy: savedPolicy }
+      updateKey.mockResolvedValue(saved)
+      listKeys.mockResolvedValue({ items: [saved], total: 1, pages: 1 })
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenLastCalledWith(key.id, expect.objectContaining({ key_model_policy: savedPolicy }))
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      const reopened = wrapper.findComponent({ name: 'KeyModelPolicyEditor' })
+      expect(reopened.props('modelValue')).toEqual(savedPolicy)
+      reopened.vm.$emit('update:modelValue', null)
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenLastCalledWith(key.id, expect.objectContaining({ key_model_policy: null }))
+      wrapper.unmount()
+    })
+
+    it('blocks enabled empty or wildcard model restrictions before saving', async () => {
+      listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1 }], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      const editor = wrapper.findComponent({ name: 'KeyModelPolicyEditor' })
+      for (const models of [[], ['gpt-*']]) {
+        editor.vm.$emit('update:modelValue', { enabled: true, models })
+        await nextTick()
+        await wrapper.get('#key-form').trigger('submit')
+        expect(updateKey).not.toHaveBeenCalled()
+        expect(showError).toHaveBeenLastCalledWith('custom.keyRouting.modelPolicyValidation')
+      }
+      wrapper.unmount()
+    })
 
     it('loads existing order, preserves it on edit, and explicitly clears it on removal', async () => {
       listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1, backup_group_ids: [3, 2] }], total: 1, pages: 1 })
@@ -585,15 +737,15 @@ describe('user KeysView column settings', () => {
       listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1, backup_group_ids: [3, 2] }], total: 1, pages: 1 })
       const wrapper = await mountView()
       await getButtonByText(wrapper, 'common.edit').trigger('click')
-      const primarySelect = wrapper.findComponent('[data-tour="key-form-group"]')
-      primarySelect.vm.$emit('update:modelValue', 2)
+      const editor = wrapper.findComponent({ name: 'KeyBackupGroupsEditor' })
+      editor.vm.$emit('update:primaryGroupId', 2)
       await nextTick()
       await wrapper.get('#key-form').trigger('submit')
       expect(updateKey).not.toHaveBeenCalled()
       expect(showError).toHaveBeenCalledWith('custom.keyRouting.duplicate')
       expect(wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).props('modelValue')).toEqual([3, 2])
 
-      primarySelect.vm.$emit('update:modelValue', 4)
+      editor.vm.$emit('update:primaryGroupId', 4)
       await nextTick()
       await wrapper.get('#key-form').trigger('submit')
       await flushPromises()
@@ -627,7 +779,7 @@ describe('user KeysView column settings', () => {
       const wrapper = await mountView()
       await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
       await wrapper.get('[data-tour="key-form-name"]').setValue('Routed key')
-      wrapper.findComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 1)
+      wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).vm.$emit('update:primaryGroupId', 1)
       wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).vm.$emit('update:modelValue', [3, 2])
       await nextTick()
       await wrapper.get('#key-form').trigger('submit')
@@ -658,99 +810,248 @@ describe('user KeysView column settings', () => {
     })
   })
 
-  describe('create provider selection', () => {
-    const platforms = ['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'gemini', 'grok', 'antigravity', 'composite', 'opencode_go']
-    const availableGroups = platforms.map((platform, index) => ({
-      id: index + 1,
-      // Deliberately ambiguous names: classification must follow the platform.
-      name: `Shared group ${index + 1}`,
-      platform,
-      rate_multiplier: 1,
-      subscription_type: 'standard',
-    }))
-    const groupSelect = (wrapper: VueWrapper) => wrapper.findComponent('[data-tour="key-form-group"]')
-    const optionIds = (wrapper: VueWrapper) => groupSelect(wrapper).props('options').map((option: { value: number }) => option.value)
-    const chooseProvider = (wrapper: VueWrapper, value: string) => wrapper.get(`input[name="key-provider"][value="${value}"]`).setValue()
-    const openCreate = async () => {
-      const wrapper = await mountView()
-      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
-      return wrapper
-    }
+  describe('advanced settings integration', () => {
+    const advancedKey = (): ApiKey => ({
+      ...createApiKey(),
+      group_id: 1,
+      ip_whitelist: ['203.0.113.10', '198.51.100.0/24'],
+      ip_blacklist: ['192.0.2.5'],
+      quota: 25.5,
+      rate_limit_5h: 2.5,
+      rate_limit_1d: 7.5,
+      rate_limit_7d: 30,
+      expires_at: '2030-01-02T03:04:00.000Z',
+    })
 
     beforeEach(() => {
-      getAvailableGroups.mockResolvedValue(availableGroups)
+      getAvailableGroups.mockResolvedValue([{ id: 1, name: 'Group 1', platform: 'openai', status: 'active', subscription_type: 'standard', rate_multiplier: 1 }])
+      updateKey.mockResolvedValue(advancedKey())
     })
 
-    it('classifies all configured platforms and retains the complete table filter', async () => {
-      const wrapper = await openCreate()
-      expect(wrapper.findAll('input[name="key-provider"]')).toHaveLength(4)
-      expect(optionIds(wrapper)).toEqual([1])
-      await chooseProvider(wrapper, 'openai')
-      expect(optionIds(wrapper)).toEqual([2])
-      await chooseProvider(wrapper, 'domestic')
-      expect(optionIds(wrapper)).toEqual([3, 4, 5, 6])
-      await chooseProvider(wrapper, 'other')
-      // The custom selector groups by platform catalog order, not creation time.
-      expect(optionIds(wrapper)).toEqual([7, 9, 8, 11, 10])
-      expect(wrapper.findAllComponents({ name: 'Select' })[0].props('options')).toHaveLength(13)
-    })
-
-    it('clears the previous group on provider change and submits only the newly selected group', async () => {
-      const wrapper = await openCreate()
-      await wrapper.get('[data-tour="key-form-name"]').setValue('My key')
-      await groupSelect(wrapper).vm.$emit('update:modelValue', 1)
-      await chooseProvider(wrapper, 'domestic')
-      expect(groupSelect(wrapper).props('modelValue')).toBeNull()
-      await wrapper.get('#key-form').trigger('submit')
-      expect(keysAPI.create).not.toHaveBeenCalled()
-      expect(showError).toHaveBeenCalledWith('keys.groupRequired')
-
-      await groupSelect(wrapper).vm.$emit('update:modelValue', 5)
-      vi.mocked(keysAPI.create).mockResolvedValue({ ...createApiKey(), group_id: 5 })
-      await wrapper.get('#key-form').trigger('submit')
-      await flushPromises()
-      expect(keysAPI.create).toHaveBeenCalledOnce()
-      expect(vi.mocked(keysAPI.create).mock.calls[0].slice(0, 2)).toEqual(['My key', 5])
-    })
-
-    it('defaults to a provider with available groups and disables empty categories', async () => {
-      getAvailableGroups.mockResolvedValue([availableGroups[5]])
-      const wrapper = await openCreate()
-      expect(wrapper.get<HTMLInputElement>('input[value="domestic"]').element.checked).toBe(true)
-      expect(wrapper.get<HTMLInputElement>('input[value="anthropic"]').element.disabled).toBe(true)
-      expect(optionIds(wrapper)).toEqual([6])
-    })
-
-    it('shows the empty state when no groups are available', async () => {
-      getAvailableGroups.mockResolvedValue([])
-      const wrapper = await openCreate()
-      expect(wrapper.get('[data-tour="key-form-provider"]').text()).toContain('common.noGroupsAvailable')
-      expect(optionIds(wrapper)).toEqual([])
-      expect(wrapper.findAll<HTMLInputElement>('input[name="key-provider"]').every((input) => input.element.disabled)).toBe(true)
-    })
-
-    it('selects an available provider when groups arrive after opening', async () => {
-      let resolveGroups!: (value: typeof availableGroups) => void
-      getAvailableGroups.mockReturnValue(new Promise((resolve) => { resolveGroups = resolve }))
-      const wrapper = await openCreate()
-      resolveGroups([availableGroups[1]])
-      await flushPromises()
-      expect(wrapper.get<HTMLInputElement>('input[value="openai"]').element.checked).toBe(true)
-      expect(optionIds(wrapper)).toEqual([2])
-    })
-
-    it('resets provider and group when reopening create, and preserves edit options', async () => {
-      const wrapper = await openCreate()
-      await chooseProvider(wrapper, 'domestic')
-      await groupSelect(wrapper).vm.$emit('update:modelValue', 5)
-      await wrapper.get('[data-test="close-dialog"]').trigger('click')
+    it('starts create with advanced settings collapsed and retains drafts across folding', async () => {
+      const wrapper = await mountView()
       await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
-      expect(optionIds(wrapper)).toEqual([1])
-      expect(groupSelect(wrapper).props('modelValue')).toBeNull()
-      await wrapper.get('[data-test="close-dialog"]').trigger('click')
+      const toggle = wrapper.get('[data-test="key-advanced-settings-toggle"]')
+      const content = wrapper.get('[data-test="key-advanced-settings-content"]')
+      const quota = wrapper.get<HTMLInputElement>('[placeholder="keys.quotaAmountPlaceholder"]')
+      const originalInput = quota.element
+      expect(toggle.attributes('aria-expanded')).toBe('false')
+      expect(content.attributes('style')).toContain('display: none')
+      expect(quota.element.value).toBe('')
+
+      await toggle.trigger('click')
+      await quota.setValue('12.5')
+      await toggle.trigger('click')
+      expect(content.attributes('style')).toContain('display: none')
+      expect(quota.element).toBe(originalInput)
+      await toggle.trigger('click')
+      expect(quota.element.value).toBe('12.5')
+
+      await wrapper.get('[data-tour="key-form-name"]').setValue('Quota draft')
+      wrapper.findComponent({ name: 'KeyBackupGroupsEditor' }).vm.$emit('update:primaryGroupId', 1)
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(vi.mocked(keysAPI.create).mock.calls[0][5]).toBe(12.5)
+      wrapper.unmount()
+    })
+
+    it('preserves existing IP, quota, rate and expiration values when saved without expanding', async () => {
+      const key = advancedKey()
+      listKeys.mockResolvedValue({ items: [key], total: 1, pages: 1 })
+      const wrapper = await mountView()
       await getButtonByText(wrapper, 'common.edit').trigger('click')
+      expect(wrapper.get('[data-test="key-advanced-settings-toggle"]').attributes('aria-expanded')).toBe('false')
+      expect(wrapper.get('[data-test="key-advanced-settings-content"]').attributes('style')).toContain('display: none')
+      expect(wrapper.get<HTMLTextAreaElement>('[placeholder="keys.ipWhitelistPlaceholder"]').element.value).toBe(key.ip_whitelist.join('\n'))
+      expect(wrapper.get<HTMLTextAreaElement>('[placeholder="keys.ipBlacklistPlaceholder"]').element.value).toBe(key.ip_blacklist.join('\n'))
+      expect(wrapper.get<HTMLInputElement>('[placeholder="keys.quotaAmountPlaceholder"]').element.value).toBe('25.5')
+      expect(wrapper.findAll<HTMLInputElement>('input[placeholder="0"]').map((input) => input.element.value)).toEqual(['2.5', '7.5', '30'])
+      expect(new Date(wrapper.get<HTMLInputElement>('input[type="datetime-local"]').element.value).toISOString()).toBe(key.expires_at)
+
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenCalledWith(key.id, expect.objectContaining({
+        ip_whitelist: key.ip_whitelist,
+        ip_blacklist: key.ip_blacklist,
+        quota: key.quota,
+        rate_limit_5h: key.rate_limit_5h,
+        rate_limit_1d: key.rate_limit_1d,
+        rate_limit_7d: key.rate_limit_7d,
+        expires_at: key.expires_at,
+      }))
+      wrapper.unmount()
+    })
+
+    it('allows expanded advanced fields to be edited and serializes the retained values after folding', async () => {
+      const key = advancedKey()
+      listKeys.mockResolvedValue({ items: [key], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      const toggle = wrapper.get('[data-test="key-advanced-settings-toggle"]')
+      await toggle.trigger('click')
+      expect(toggle.attributes('aria-expanded')).toBe('true')
+      await wrapper.get('[placeholder="keys.ipWhitelistPlaceholder"]').setValue(' 203.0.113.11 \n\n198.51.100.0/25')
+      await wrapper.get('[placeholder="keys.ipBlacklistPlaceholder"]').setValue('192.0.2.7')
+      await wrapper.get('[placeholder="keys.quotaAmountPlaceholder"]').setValue('48.25')
+      const rateInputs = wrapper.findAll<HTMLInputElement>('input[placeholder="0"]')
+      await rateInputs[0].setValue('4.5')
+      await rateInputs[1].setValue('10')
+      await rateInputs[2].setValue('50')
+      const expiration = '2030-03-04T12:34'
+      await wrapper.get('input[type="datetime-local"]').setValue(expiration)
+      await toggle.trigger('click')
+      await toggle.trigger('click')
+      expect(wrapper.get<HTMLInputElement>('[placeholder="keys.quotaAmountPlaceholder"]').element.value).toBe('48.25')
+      expect(wrapper.findAll<HTMLInputElement>('input[placeholder="0"]').map((input) => input.element.value)).toEqual(['4.5', '10', '50'])
+
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(updateKey).toHaveBeenCalledWith(key.id, expect.objectContaining({
+        ip_whitelist: ['203.0.113.11', '198.51.100.0/25'],
+        ip_blacklist: ['192.0.2.7'],
+        quota: 48.25,
+        rate_limit_5h: 4.5,
+        rate_limit_1d: 10,
+        rate_limit_7d: 50,
+        expires_at: new Date(expiration).toISOString(),
+      }))
+      wrapper.unmount()
+    })
+  })
+
+  describe('Wanmo-style service group editor', () => {
+    const routeGroups = [1, 2, 3, 4].map((id) => ({ id, name: `Group ${id}`, platform: 'openai', status: 'active', subscription_type: 'standard', rate_multiplier: 1 }))
+
+    beforeEach(() => getAvailableGroups.mockResolvedValue(routeGroups))
+
+    it('uses one service-group editor for create and allows selecting a primary group', async () => {
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      const editor = wrapper.findComponent({ name: 'KeyBackupGroupsEditor' })
+      expect(editor.exists()).toBe(true)
+      editor.vm.$emit('update:primaryGroupId', 2)
+      await nextTick()
+      expect(editor.props('primaryGroupId')).toBe(2)
       expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
-      expect(optionIds(wrapper)).toHaveLength(11)
+      expect(wrapper.find('[data-tour="key-form-group"]').exists()).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('shows automatic failover only after adding a backup and hides it when the last backup is removed', async () => {
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      const editor = wrapper.findComponent({ name: 'KeyBackupGroupsEditor' })
+      expect(wrapper.find('[data-test="key-route-failure-rules"]').exists()).toBe(false)
+
+      editor.vm.$emit('update:primaryGroupId', 1)
+      await nextTick()
+      expect(wrapper.find('[data-test="key-route-failure-rules"]').exists()).toBe(false)
+
+      editor.vm.$emit('update:modelValue', [2])
+      await nextTick()
+      expect(wrapper.find('[data-test="key-route-failure-rules"]').exists()).toBe(true)
+
+      await wrapper.get('[data-test="backup-remove"]').trigger('click')
+      expect(wrapper.find('[data-test="key-route-failure-rules"]').exists()).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('shows automatic failover for an existing routed key but not for a single-group key', async () => {
+      listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1, backup_group_ids: [2] }], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      expect(wrapper.find('[data-test="key-route-failure-rules"]').exists()).toBe(true)
+
+      await wrapper.get('[data-test="backup-remove"]').trigger('click')
+      expect(wrapper.find('[data-test="key-route-failure-rules"]').exists()).toBe(false)
+      wrapper.unmount()
+
+      listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1 }], total: 1, pages: 1 })
+      const singleGroupWrapper = await mountView()
+      await getButtonByText(singleGroupWrapper, 'common.edit').trigger('click')
+      expect(singleGroupWrapper.find('[data-test="key-route-failure-rules"]').exists()).toBe(false)
+      singleGroupWrapper.unmount()
+    })
+
+    it.each(['create', 'edit'])('saves %s with no policy after removing the last backup despite an invalid hidden draft', async (mode) => {
+      if (mode === 'edit') {
+        listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1, backup_group_ids: [2] }], total: 1, pages: 1 })
+      }
+      const wrapper = await mountView()
+      if (mode === 'edit') {
+        await getButtonByText(wrapper, 'common.edit').trigger('click')
+      } else {
+        await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+        await wrapper.get('[data-tour="key-form-name"]').setValue('Single-group key')
+        const editor = wrapper.findComponent({ name: 'KeyBackupGroupsEditor' })
+        editor.vm.$emit('update:primaryGroupId', 1)
+        editor.vm.$emit('update:modelValue', [2])
+        await nextTick()
+      }
+      wrapper.findComponent({ name: 'KeyRouteFailureRulesEditor' }).vm.$emit('update:modelValue', {
+        rules: [{ status_codes: [], threshold: 0, window_seconds: 60, cooldown_seconds: 600 }]
+      })
+      await nextTick()
+      await wrapper.get('[data-test="backup-remove"]').trigger('click')
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+
+      expect(showError).not.toHaveBeenCalled()
+      if (mode === 'edit') {
+        expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ backup_group_ids: [], key_route_failure_policy: null }))
+      } else {
+        expect(vi.mocked(keysAPI.create).mock.calls[0][8]).toEqual([])
+        expect(vi.mocked(keysAPI.create).mock.calls[0][9]).toBeNull()
+      }
+      wrapper.unmount()
+    })
+
+    it('keeps the unsaved policy draft when the last backup is removed and added again', async () => {
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      const editor = wrapper.findComponent({ name: 'KeyBackupGroupsEditor' })
+      editor.vm.$emit('update:primaryGroupId', 1)
+      editor.vm.$emit('update:modelValue', [2])
+      await nextTick()
+      const policyDraft = { rules: [{ status_codes: [], threshold: 7, window_seconds: 120, cooldown_seconds: 300 }] }
+      wrapper.findComponent({ name: 'KeyRouteFailureRulesEditor' }).vm.$emit('update:modelValue', policyDraft)
+      await nextTick()
+
+      await wrapper.get('[data-test="backup-remove"]').trigger('click')
+      expect(wrapper.find('[data-test="key-route-failure-rules"]').exists()).toBe(false)
+      editor.vm.$emit('update:modelValue', [3])
+      await nextTick()
+      expect(wrapper.findComponent({ name: 'KeyRouteFailureRulesEditor' }).props('modelValue')).toEqual(policyDraft)
+      wrapper.unmount()
+    })
+
+    it('submits primary and backup order from the same editor', async () => {
+      const wrapper = await mountView()
+      await wrapper.get('[data-tour="keys-create-btn"]').trigger('click')
+      await wrapper.get('[data-tour="key-form-name"]').setValue('Routed key')
+      const editor = wrapper.findComponent({ name: 'KeyBackupGroupsEditor' })
+      editor.vm.$emit('update:primaryGroupId', 1)
+      editor.vm.$emit('update:modelValue', [3, 2])
+      await nextTick()
+      await wrapper.get('#key-form').trigger('submit')
+      await flushPromises()
+      expect(vi.mocked(keysAPI.create).mock.calls[0].slice(0, 2)).toEqual(['Routed key', 1])
+      expect(vi.mocked(keysAPI.create).mock.calls[0][8]).toEqual([3, 2])
+      wrapper.unmount()
+    })
+
+    it('allows a primary to be replaced without exposing a separate provider selector', async () => {
+      listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 1, backup_group_ids: [2] }], total: 1, pages: 1 })
+      const wrapper = await mountView()
+      await getButtonByText(wrapper, 'common.edit').trigger('click')
+      const editor = wrapper.findComponent({ name: 'KeyBackupGroupsEditor' })
+      editor.vm.$emit('update:primaryGroupId', 4)
+      await nextTick()
+      expect(editor.props('primaryGroupId')).toBe(4)
+      expect(wrapper.find('[data-tour="key-form-provider"]').exists()).toBe(false)
+      expect(wrapper.find('[data-tour="key-form-group"]').exists()).toBe(false)
+      wrapper.unmount()
     })
   })
 })

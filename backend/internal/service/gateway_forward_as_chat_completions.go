@@ -171,6 +171,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 			})
 		}
 	}
+	protectKeyRouteUsageResponse(ctx, resp)
 	defer func() { _ = resp.Body.Close() }()
 
 	// 12. Handle error response with failover

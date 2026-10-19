@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -20,6 +22,14 @@ type KeyRoutingRequest struct {
 	Endpoint string
 }
 
+func keyRoutingRequestActive(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	active, _ := ctx.Value(ctxkey.KeyRoutingActive).(bool)
+	return active
+}
+
 // KeyRoutingService adapts the independent planner to existing group policy
 // and schedulers. It does not forward, acquire slots, debit balances, or mutate
 // cached API keys. Single-group keys never enter this service.
@@ -30,13 +40,129 @@ type KeyRoutingService struct {
 	openai    *OpenAIGatewayService
 	composite *CompositeRouteResolver
 	cfg       *config.Config
+	settings  *SettingService
+	failures  *keyrouting.FailureTracker
+	policyMu  sync.RWMutex
+	policy    map[int64]cachedKeyRouteFailurePolicy
 }
 
-func NewKeyRoutingService(groups GroupRepository, rates UserGroupRateRepository, native *GatewayService, openai *OpenAIGatewayService, composite *CompositeRouteResolver, cfg *config.Config) *KeyRoutingService {
-	return &KeyRoutingService{groups: groups, rates: rates, native: native, openai: openai, composite: composite, cfg: cfg}
+type cachedKeyRouteFailurePolicy struct {
+	value     keyrouting.RouteFailurePolicy
+	expiresAt time.Time
+}
+
+const keyRouteFailurePolicyCacheTTL = 2 * time.Second
+
+func NewKeyRoutingService(groups GroupRepository, rates UserGroupRateRepository, native *GatewayService, openai *OpenAIGatewayService, composite *CompositeRouteResolver, cfg *config.Config, settings ...*SettingService) *KeyRoutingService {
+	var settingService *SettingService
+	if len(settings) > 0 {
+		settingService = settings[0]
+	}
+	service := &KeyRoutingService{groups: groups, rates: rates, native: native, openai: openai, composite: composite, cfg: cfg, settings: settingService, failures: keyrouting.NewFailureTracker(), policy: make(map[int64]cachedKeyRouteFailurePolicy)}
+	if settingService != nil {
+		settingService.SetGroupFailurePolicyChangedListener(service.InvalidateGroupFailurePolicy)
+	}
+	return service
+}
+
+// InvalidateGroupFailurePolicy immediately removes the cached policy and all
+// route-local counters for a group after an administrator changes its rules.
+// It never changes account scheduling state.
+func (s *KeyRoutingService) InvalidateGroupFailurePolicy(groupID int64) {
+	if s == nil || groupID <= 0 {
+		return
+	}
+	s.policyMu.Lock()
+	delete(s.policy, groupID)
+	s.policyMu.Unlock()
+	if s.failures != nil {
+		s.failures.ClearGroup(groupID)
+	}
 }
 
 func (s *KeyRoutingService) Select(ctx context.Context, key *APIKey, request KeyRoutingRequest) (*APIKey, keyrouting.Plan, error) {
+	return s.selectFrom(ctx, key, request, 0)
+}
+
+// SelectNext evaluates only groups after currentGroupID. It is used by the
+// gateway after a pre-first-byte upstream failure; the original key snapshot
+// remains untouched and the planner still applies the configured priority.
+func (s *KeyRoutingService) SelectNext(ctx context.Context, key *APIKey, request KeyRoutingRequest, currentGroupID int64) (*APIKey, keyrouting.Plan, error) {
+	start := -1
+	if key != nil && key.GroupID != nil {
+		ids := append([]int64{*key.GroupID}, key.BackupGroupIDs...)
+		for index, id := range ids {
+			if id == currentGroupID {
+				start = index + 1
+				break
+			}
+		}
+	}
+	if start < 0 {
+		return nil, keyrouting.Plan{}, fmt.Errorf("%w: current group is outside the configured route", keyrouting.ErrInvalidConfig)
+	}
+	return s.selectFrom(ctx, key, request, start)
+}
+
+// RecordFailure records a configured group rule without touching account or
+// scheduler state. It returns whether the current group should be skipped for
+// subsequent attempts and requests.
+func (s *KeyRoutingService) RecordFailure(ctx context.Context, key *APIKey, request KeyRoutingRequest, groupID, statusCode int64) (keyrouting.RouteFailureResult, error) {
+	result := keyrouting.RouteFailureResult{RuleIndex: -1}
+	if s == nil || s.failures == nil || key == nil || key.ID <= 0 || groupID <= 0 || statusCode < 100 || statusCode > 599 || (s.settings == nil && key.KeyRouteFailurePolicy == nil) {
+		return result, nil
+	}
+	routePolicy, err := s.loadRouteFailurePolicy(ctx, key, groupID)
+	if err != nil {
+		return result, err
+	}
+	return s.failures.Record(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: groupID, Model: request.Model, Endpoint: request.Endpoint}, int(statusCode), routePolicy), nil
+}
+
+// RecordOutcome observes a completed attempt without changing account state.
+// Semantic outcomes intentionally share the same key/group/model/endpoint
+// identity as exact-status rules, while the independent tracker owns counters.
+func (s *KeyRoutingService) RecordOutcome(ctx context.Context, key *APIKey, request KeyRoutingRequest, groupID int64, kind keyrouting.RouteOutcomeKind) (keyrouting.RouteFailureResult, error) {
+	result := keyrouting.RouteFailureResult{RuleIndex: -1}
+	if s == nil || s.failures == nil || key == nil || key.ID <= 0 || groupID <= 0 || (s.settings == nil && key.KeyRouteFailurePolicy == nil) {
+		return result, nil
+	}
+	policy, err := s.loadRouteFailurePolicy(ctx, key, groupID)
+	if err != nil {
+		return result, err
+	}
+	return s.failures.RecordOutcome(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: groupID, Model: request.Model, Endpoint: request.Endpoint}, kind, policy), nil
+}
+
+// PrepareRouteContext resolves the concrete destination for an already
+// selected request-local key. Callers provide the clean authentication context
+// before re-entering the native handler, which rebuilds its own pricing state.
+// A concrete group's platform is authoritative even for an ambiguous alias.
+func (s *KeyRoutingService) PrepareRouteContext(ctx context.Context, key *APIKey, request KeyRoutingRequest) (context.Context, string, error) {
+	if ctx == nil || key == nil || key.GroupID == nil || key.Group == nil || key.Group.ID != *key.GroupID || strings.TrimSpace(request.Model) == "" {
+		return ctx, "", keyrouting.ErrInvalidConfig
+	}
+	if key.Group.Platform != PlatformComposite {
+		return WithResolvedTargetPlatform(ctx, key.Group.Platform), request.Model, nil
+	}
+	if s == nil || s.composite == nil {
+		return ctx, "", fmt.Errorf("composite route resolver is unavailable")
+	}
+	decision, err := s.composite.Resolve(ctx, *key.GroupID, request.Model, request.Endpoint)
+	if err != nil {
+		return ctx, "", err
+	}
+	if !decision.Matched {
+		return ctx, "", keyrouting.ErrModelUnavailable
+	}
+	model := strings.TrimSpace(decision.UpstreamModel)
+	if model == "" {
+		model = request.Model
+	}
+	return WithCompositeRouteDecision(ctx, decision), model, nil
+}
+
+func (s *KeyRoutingService) selectFrom(ctx context.Context, key *APIKey, request KeyRoutingRequest, start int) (*APIKey, keyrouting.Plan, error) {
 	if key == nil || key.User == nil || key.GroupID == nil || request.Model == "" {
 		return nil, keyrouting.Plan{}, keyrouting.ErrInvalidConfig
 	}
@@ -44,6 +170,11 @@ func (s *KeyRoutingService) Select(ctx context.Context, key *APIKey, request Key
 		return nil, keyrouting.Plan{}, fmt.Errorf("key routing is unavailable in this configuration")
 	}
 	groups := make(map[int64]*Group, 1+len(key.BackupGroupIDs))
+	// A cooled candidate may be used only as a last-resort request-local
+	// fallback. Remember it only after native readiness succeeds, so ignoring
+	// route cooldown never bypasses permission, model, account or quota gates.
+	var lastCoolingGroupID int64
+	ignoreRouteCooldown := false
 	planner := keyrouting.Planner{Evaluator: keyrouting.EvaluatorFunc(func(ctx context.Context, groupID int64, req keyrouting.Request) (keyrouting.CandidateState, error) {
 		state := keyrouting.CandidateState{Authorized: true}
 		group, err := s.groups.GetByIDLite(ctx, groupID)
@@ -111,9 +242,31 @@ func (s *KeyRoutingService) Select(ctx context.Context, key *APIKey, request Key
 			candidateCtx = s.native.withGatewayProfitControlGate(candidateCtx, &groupID)
 			state.SupportsModel, state.HasSchedulableAccounts, err = s.native.keyRoutingNativeReadiness(candidateCtx, group, platform, model, req.Endpoint)
 		}
+		if err == nil && state.SupportsModel && state.HasSchedulableAccounts && !ignoreRouteCooldown && s.failures != nil && (s.settings != nil || key.KeyRouteFailurePolicy != nil) {
+			if policy, policyErr := s.loadRouteFailurePolicy(ctx, key, groupID); policyErr == nil {
+				if cooling, _ := s.failures.IsCooling(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: groupID, Model: req.Model, Endpoint: req.Endpoint}, policy); cooling {
+					lastCoolingGroupID = groupID
+					state.HasSchedulableAccounts = false
+				}
+			}
+		}
 		return state, err
 	})}
-	plan, err := planner.Plan(ctx, keyrouting.Config{PrimaryGroupID: *key.GroupID, BackupGroupIDs: key.BackupGroupIDs}, keyrouting.Request{Model: request.Model, Endpoint: request.Endpoint})
+	plan, err := planner.PlanFrom(ctx, keyrouting.Config{PrimaryGroupID: *key.GroupID, BackupGroupIDs: key.BackupGroupIDs}, keyrouting.Request{Model: request.Model, Endpoint: request.Endpoint}, start)
+	if errors.Is(err, keyrouting.ErrNoSchedulableAccounts) && lastCoolingGroupID > 0 {
+		// Retry only the last otherwise-eligible candidate from this traversal.
+		// SelectNext's cursor therefore cannot wrap to a previously attempted
+		// group. The cooldown itself is retained for all subsequent requests.
+		ignoreRouteCooldown = true
+		fallback, fallbackErr := planner.Plan(ctx, keyrouting.Config{PrimaryGroupID: lastCoolingGroupID}, keyrouting.Request{Model: request.Model, Endpoint: request.Endpoint})
+		plan.Attempts = append(plan.Attempts, fallback.Attempts...)
+		if fallbackErr != nil {
+			return nil, plan, fallbackErr
+		}
+		plan.SelectedGroupID = fallback.SelectedGroupID
+		plan.Reason = keyrouting.ReasonNoSchedulableAccounts
+		err = nil
+	}
 	if err != nil {
 		return nil, plan, err
 	}
@@ -143,6 +296,54 @@ func (s *KeyRoutingService) Select(ctx context.Context, key *APIKey, request Key
 		}
 	}
 	return &effective, plan, nil
+}
+
+func (s *KeyRoutingService) loadRouteFailurePolicy(ctx context.Context, key *APIKey, groupID int64) (keyrouting.RouteFailurePolicy, error) {
+	policy := keyrouting.RouteFailurePolicy{}
+	// A non-nil key policy is an explicit override. An empty rules array
+	// therefore disables group rules for this key instead of falling back.
+	if key != nil && key.KeyRouteFailurePolicy != nil {
+		return cloneKeyRouteFailurePolicy(*key.KeyRouteFailurePolicy.Public()), nil
+	}
+	if s == nil || s.settings == nil {
+		return policy, nil
+	}
+	now := time.Now()
+	s.policyMu.RLock()
+	cached, ok := s.policy[groupID]
+	s.policyMu.RUnlock()
+	if ok && now.Before(cached.expiresAt) {
+		return cloneKeyRouteFailurePolicy(cached.value), nil
+	}
+	groupPolicy, err := s.settings.GetGroupFailurePolicy(ctx, groupID)
+	if err != nil {
+		return policy, err
+	}
+	if groupPolicy == nil {
+		return policy, nil
+	}
+	for _, rule := range groupPolicy.Public().StatusRules {
+		policy.Rules = append(policy.Rules, keyrouting.RouteFailureRule{
+			StatusCodes: append([]int(nil), rule.StatusCodes...), Threshold: rule.Threshold,
+			WindowSeconds: rule.WindowSeconds, CooldownSeconds: rule.CooldownSeconds,
+		})
+	}
+	s.policyMu.Lock()
+	if s.policy == nil {
+		s.policy = make(map[int64]cachedKeyRouteFailurePolicy)
+	}
+	s.policy[groupID] = cachedKeyRouteFailurePolicy{value: cloneKeyRouteFailurePolicy(policy), expiresAt: now.Add(keyRouteFailurePolicyCacheTTL)}
+	s.policyMu.Unlock()
+	return policy, nil
+}
+
+func cloneKeyRouteFailurePolicy(policy keyrouting.RouteFailurePolicy) keyrouting.RouteFailurePolicy {
+	clone := keyrouting.RouteFailurePolicy{Rules: make([]keyrouting.RouteFailureRule, len(policy.Rules))}
+	for i, rule := range policy.Rules {
+		clone.Rules[i] = rule
+		clone.Rules[i].StatusCodes = append([]int(nil), rule.StatusCodes...)
+	}
+	return clone
 }
 
 // Match the model passed to SelectAccountWithSchedulerForCapability by each

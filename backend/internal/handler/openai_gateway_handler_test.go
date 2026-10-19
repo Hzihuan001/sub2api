@@ -1932,7 +1932,9 @@ type openAIResponsesWSUsageLogCase struct {
 	accountModelMapping       map[string]any
 	afterFirstUpstreamRequest func(channelSvc *service.ChannelService) error
 	// group 覆盖 apiKey.Group（分组级模型白名单测试用）；nil 保持原有无分组行为。
-	group *service.Group
+	group                 *service.Group
+	keyModelPolicy        *service.KeyModelPolicy
+	midFrameCloseExpected bool
 	// apiKeyService 非 nil 时模拟 API Key 认证中间件：连接认证快照经它按
 	// apiKeyCredential 取得，并把其分组放入请求 ctx；handler 也使用它。
 	apiKeyService    *service.APIKeyService
@@ -3081,6 +3083,9 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	if tc.group != nil {
 		apiKey.Group = tc.group
 	}
+	if tc.keyModelPolicy != nil {
+		apiKey.KeyModelPolicy = tc.keyModelPolicy
+	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
@@ -3156,6 +3161,20 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
 		_, event, readErr := clientConn.Read(readCtx)
 		cancelRead()
+		if tc.midFrameCloseExpected {
+			var closeErr coderws.CloseError
+			require.ErrorAs(t, readErr, &closeErr)
+			require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+			require.Contains(t, closeErr.Reason, tc.closeReason)
+			_ = clientConn.CloseNow()
+			select {
+			case <-upstreamErrCh:
+			case <-time.After(3 * time.Second):
+				t.Fatal("upstream did not close after rejected session update")
+			}
+			require.Len(t, upstreamPayloadCh, 1, "rejected session.update must never reach upstream")
+			return openAIResponsesWSUsageLogResult{}
+		}
 		require.NoError(t, readErr)
 		require.Equal(t, "session.updated", gjson.GetBytes(event, "type").String())
 		require.Equal(t, gjson.Get(tc.midPayload, "session.model").String(), gjson.GetBytes(event, "session.model").String())

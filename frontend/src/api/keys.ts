@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from './client'
-import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
+import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, KeyRouteFailurePolicy, KeyModelPolicy, PaginatedResponse } from '@/types'
 
 /**
  * List all API keys for current user
@@ -56,6 +56,7 @@ export async function getById(id: number): Promise<ApiKey> {
  * @param expiresInDays - Optional days until expiry (undefined = never expires)
  * @param rateLimitData - Optional rate limit fields
  * @param backupGroupIds - Ordered backup group IDs (defaults to no backups)
+ * @param keyRouteFailurePolicy - Optional key-specific failure policy
  * @returns Created API key
  */
 export async function create(
@@ -67,9 +68,15 @@ export async function create(
   quota?: number,
   expiresInDays?: number,
   rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
-  backupGroupIds: number[] = []
+  backupGroupIds: number[] = [],
+  keyRouteFailurePolicy?: KeyRouteFailurePolicy | null,
+  keyModelPolicy?: KeyModelPolicy | null
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name, backup_group_ids: [...backupGroupIds] }
+  if (keyModelPolicy !== undefined) payload.key_model_policy = keyModelPolicy
+  if (keyRouteFailurePolicy !== undefined && keyRouteFailurePolicy !== null) {
+    payload.key_route_failure_policy = keyRouteFailurePolicy
+  }
   if (groupId !== undefined) {
     payload.group_id = groupId
   }
