@@ -49,8 +49,41 @@ class MigrationIsolationTest(unittest.TestCase):
         )
 
     def test_new_custom_sql_still_requires_custom_namespace(self):
-        with self.assertRaisesRegex(isolation.CheckFailure, "must match 9000_custom"):
-            self.check_changes([("A", "backend/migrations/999_batch_image.sql")])
+        for filename in (
+            "999_batch_image.sql",
+            "9001_api_key_route_policies.sql",
+            "9002_api_key_model_policies.sql",
+        ):
+            with self.subTest(filename=filename):
+                with self.assertRaisesRegex(isolation.CheckFailure, "must match"):
+                    self.check_changes([("A", f"backend/migrations/{filename}")])
+
+    def test_new_custom_sql_accepts_reserved_range_and_existing_policy_names(self):
+        self.check_changes(
+            [("A", f"backend/migrations/{filename}") for filename in (
+                "9000_custom_existing.sql",
+                "9001_custom_api_key_route_policies.sql",
+                "9002_custom_api_key_model_policies.sql",
+                "9999_custom_last_extension.sql",
+            )]
+        )
+
+    def test_new_custom_sql_rejects_numbers_outside_reserved_range(self):
+        for number in (8999, 10000, 90001):
+            with self.subTest(number=number):
+                with self.assertRaisesRegex(isolation.CheckFailure, "must match"):
+                    self.check_changes([("A", f"backend/migrations/{number}_custom_feature.sql")])
+
+    def test_new_range_does_not_allow_modifying_or_deleting_published_policies(self):
+        for filename in (
+            "9001_custom_api_key_route_policies.sql",
+            "9002_custom_api_key_model_policies.sql",
+        ):
+            path = f"backend/migrations/{filename}"
+            for status, message in (("M", "cannot be modified"), ("D", "cannot be deleted")):
+                with self.subTest(filename=filename, status=status):
+                    with self.assertRaisesRegex(isolation.CheckFailure, message):
+                        self.check_changes([(status, path)], base_paths=(path,))
 
     def test_new_official_sql_can_keep_its_upstream_name(self):
         path = "backend/migrations/247_official_feature.sql"

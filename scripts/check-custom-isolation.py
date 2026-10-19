@@ -9,7 +9,7 @@ The check enforces four rules:
 
 * a clean checkout must remain clean after ``go generate ./...``;
 * already-published migration files are append-only;
-* a new custom migration uses the ``9000_custom_*.sql`` namespace (official
+* a new custom migration uses the ``9000``-``9999`` ``<number>_custom_*.sql`` namespace (official
   migrations present in the selected upstream ref are allowed to keep their
   upstream name); and
 * the backend feature manifest and the checked-in manifest have valid,
@@ -36,7 +36,7 @@ from custom_contracts import check as check_contracts, ContractError
 
 
 FEATURE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$")
-CUSTOM_MIGRATION_RE = re.compile(r"^9000_custom_[a-z0-9][a-z0-9_-]*\.sql$")
+CUSTOM_MIGRATION_RE = re.compile(r"^9[0-9]{3}_custom_[a-z0-9][a-z0-9_-]*\.sql$")
 CUSTOM_MANIFEST_MIRROR_RE = re.compile(r"^\s*mirror_branch:\s*(\S+)\s*$", re.MULTILINE)
 CUSTOM_MANIFEST_PROTECTED_PATHS_RE = re.compile(
     r"^protected_paths:\s*\n(?P<body>(?:^[ \t]+-\s+\S+\s*$\n?)+)",
@@ -207,7 +207,7 @@ def check_migrations(root: Path, base_ref: str | None, upstream_ref: str | None)
             if not exists_in_upstream and not CUSTOM_MIGRATION_RE.fullmatch(filename):
                 failures.append(
                     f"new migration {path} is not official and must match "
-                    "9000_custom_<feature>.sql"
+                    "9[0-9]{3}_custom_<feature>.sql (9000-9999)"
                 )
         elif status == "D":
             if existed_in_base:

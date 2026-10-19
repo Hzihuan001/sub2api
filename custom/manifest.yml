@@ -100,5 +100,6 @@ policies:
     - backend/ent
     - backend/cmd/server/wire_gen.go
   immutable_migrations: true
-  custom_migration_prefix: 9000_custom_
+  # Reserved custom numbering; already-published migrations remain immutable.
+  custom_migration_pattern: '^9[0-9]{3}_custom_[a-z0-9][a-z0-9_-]*\.sql$'
   production_deploy_from_sync_pr: false
