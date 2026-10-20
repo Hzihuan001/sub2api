@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -137,13 +138,13 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 		upstreamModel := resolveKiroUpstreamModel(mappedModel)
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, mappedModel, false)
 		if err != nil {
-			return nil, err
+			return keyAccountKiroNativeResult(resp, nil, err, originalModel, upstreamModel, true, startTime)
 		}
 		if streamResult.usage == nil {
 			streamResult.usage = &ClaudeUsage{}
 		}
 		requestID := buildKiroRequestID(resp)
-		return &ForwardResult{
+		return keyAccountKiroNativeResult(resp, &ForwardResult{
 			RequestID:        requestID,
 			Usage:            *streamResult.usage,
 			Model:            originalModel,
@@ -152,7 +153,7 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 			Duration:         time.Since(startTime),
 			FirstTokenMs:     streamResult.firstTokenMs,
 			ClientDisconnect: streamResult.clientDisconnect,
-		}, nil
+		}, nil, originalModel, upstreamModel, true, startTime)
 	}
 
 	token, tokenType, err := s.GetAccessToken(ctx, account)
@@ -240,11 +241,32 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 		return nil, s.handleKiroHTTPError(ctx, resp, c, account, mappedModel, body)
 	}
 
-	cacheUsage := s.buildKiroCacheEmulationUsage(ctx, account, parsed.Group, body, mappedModel, inputTokens)
+	protocol := observeKeyAccountKiroProtocol(resp, &requestCtx)
+	var cachePlan *kiroCacheEmulationPlan
+	var cacheUsage *kiroCacheEmulationUsage
+	if protocol != nil {
+		cachePlan = s.prepareKiroCacheEmulationUsage(ctx, account, parsed.Group, body, mappedModel, inputTokens)
+		cacheUsage = cachePlan.result()
+	} else {
+		cacheUsage = s.buildKiroCacheEmulationUsage(ctx, account, parsed.Group, body, mappedModel, inputTokens)
+	}
 	requestCtx.CacheEmulationUsage = cacheUsage.toKiroUsage()
 	requestCtx.EstimatedInputTokens = inputTokens
 	parseResult, err := kiropkg.ParseNonStreamingEventStreamWithContext(resp.Body, originalModel, requestCtx)
 	if err != nil {
+		if protocol != nil {
+			protocol.finish(err)
+			result, protocolErr := protocol.nativeResult(nil, err, originalModel, resolveKiroUpstreamModel(mappedModel), false, startTime)
+			if result != nil {
+				result.RequestID = buildKiroRequestID(resp)
+			}
+			var failover *UpstreamFailoverError
+			if errors.As(protocolErr, &failover) {
+				return result, protocolErr
+			}
+			c.JSON(http.StatusBadGateway, gin.H{"type": "error", "error": gin.H{"type": "api_error", "message": "Kiro upstream response failed"}})
+			return result, protocolErr
+		}
 		c.JSON(http.StatusBadGateway, gin.H{
 			"type": "error",
 			"error": gin.H{
@@ -253,6 +275,9 @@ func (s *GatewayService) forwardKiroMessages(ctx context.Context, c *gin.Context
 			},
 		})
 		return nil, err
+	}
+	if cachePlan != nil {
+		cachePlan.commit()
 	}
 
 	c.Header("Content-Type", "application/json")
@@ -329,8 +354,11 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	if plan == nil {
 		plan = s.prepareKiroCacheEmulationUsage(ctx, account, group, anthropicBody, mappedModel, inputTokens)
 	}
+	protocol := observeKeyAccountKiroProtocol(resp, &requestCtx)
 	// 请求已确认成功(2xx)，此时提交缓存前缀落盘才是安全的。
-	plan.commit()
+	if protocol == nil {
+		plan.commit()
+	}
 	requestCtx.CacheEmulationUsage = plan.result().toKiroUsage()
 
 	pr, pw := io.Pipe()
@@ -340,9 +368,21 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	wrappedHeaders.Set("x-request-id", claudeReqID)
 	wrappedHeaders.Set("request-id", claudeReqID)
 
+	producerDone := make(chan struct{})
 	go func() {
+		defer close(producerDone)
 		defer func() { _ = resp.Body.Close() }()
 		_, streamErr := kiropkg.StreamEventStreamAsAnthropicWithContext(upstreamCtx, resp.Body, pw, requestModel, inputTokens, requestCtx)
+		if protocol != nil {
+			protocol.finish(streamErr)
+			if streamErr != nil {
+				// Local error frames are not upstream proof. The wire observer
+				// already recorded genuine typed exceptions and partial usage.
+				_ = pw.CloseWithError(streamErr)
+				return
+			}
+			plan.commit()
+		}
 		if streamErr != nil {
 			_, _ = io.WriteString(pw, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"stream interrupted\"}}\n\n")
 			_ = pw.CloseWithError(streamErr)
@@ -351,10 +391,26 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 		_ = pw.Close()
 	}()
 
+	var responseBody io.ReadCloser = pr
+	if protocol != nil {
+		reader := bufio.NewReader(pr)
+		body := &keyAccountKiroStreamBody{ReadCloser: pr, reader: reader, state: protocol, closeUpstream: resp.Body.Close, done: producerDone}
+		// A pure immediate exception has no Anthropic prelude. Resolve it
+		// before native bridges commit a response or invent an empty success.
+		if _, readErr := reader.Peek(1); readErr != nil {
+			_, protocolErr := protocol.nativeResult(nil, readErr, requestModel, resolveKiroUpstreamModel(mappedModel), true, time.Now())
+			var failover *UpstreamFailoverError
+			if errors.As(protocolErr, &failover) {
+				_ = body.Close()
+				return nil, inputTokens, protocolErr
+			}
+		}
+		responseBody = body
+	}
 	return &http.Response{
 		StatusCode: resp.StatusCode,
 		Header:     wrappedHeaders,
-		Body:       pr,
+		Body:       responseBody,
 	}, inputTokens, nil
 }
 
@@ -404,7 +460,7 @@ func (s *GatewayService) executeKiroUpstreamWithParsed(ctx context.Context, acco
 			if err != nil {
 				return nil, requestCtx, err
 			}
-			resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
+			resp, err := KeyAccountInferenceDoWithTLS(s.httpUpstream, req, proxyURL, account, gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.modelId").String(), tlsProfile)
 			if err != nil {
 				if attempt < maxRetries {
 					if sleepErr := sleepKiroRetry(ctx, attempt); sleepErr != nil {

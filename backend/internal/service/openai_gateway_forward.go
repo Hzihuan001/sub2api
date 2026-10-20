@@ -908,6 +908,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if c != nil && c.Writer != nil && c.Writer.Written() {
 				break
 			}
+			if !keyAccountWSReplayAllowed(ctx) {
+				break
+			}
+			if scope := KeyAccountForwardScopeFromContext(ctx); scope != nil && scope.CurrentAttempt() != nil && scope.CurrentAttempt().Guard().Expired() {
+				break // Local TTFT selects a different legal account, not a reconnect.
+			}
+			var keyAccountWSFailure *UpstreamFailoverError
+			if KeyAccountForwardScopeFromContext(ctx) != nil && errors.As(wsErr, &keyAccountWSFailure) {
+				break // Native account/group coordinator owns this proven failure.
+			}
 			var taskRecoveredErr *agentIdentityTaskRecoveredError
 			if errors.As(wsErr, &taskRecoveredErr) {
 				continue
@@ -1013,6 +1023,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			return wsResult, nil
 		}
+		if scope := KeyAccountForwardScopeFromContext(ctx); scope != nil {
+			// The outer scope retains exact attempt provenance and performs the
+			// final native error write after deciding whether replay is safe.
+			if wsResult != nil {
+				wsResult.UpstreamModel = upstreamModel
+				if wsResult.BillingModel == "" {
+					wsResult.BillingModel = billingModel
+				}
+				if wsResult.ImageCount > 0 {
+					wsResult.ImageSize, wsResult.ImageInputSize, wsResult.BillingModel = imageSizeTier, imageInputSize, imageBillingModel
+				}
+			}
+			return wsResult, wsErr
+		}
 		s.writeOpenAIWSFallbackErrorResponse(c, account, wsErr)
 		return nil, wsErr
 	}
@@ -1061,7 +1085,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		// Send request
 		upstreamStart := time.Now()
-		resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+		resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account, keyAccountInferenceJSONModel(body))
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if headerGuard != nil && headerGuard.stopHeaderWait() {
 			if resp != nil && resp.Body != nil {

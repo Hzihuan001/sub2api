@@ -171,6 +171,8 @@ func TestKeyRoutingPrimaryOnlyIntentMatchesProtocolKeyCasing(t *testing.T) {
 		`{"model":"primary-only","TOOL_CHOICE":{"Type":"image_generation"}}`,
 		`{"model":"primary-only","Context_Management":{"compact_threshold":1000}}`,
 		`{"model":"primary-only","CONTEXT_MANAGEMENT":null}`,
+		`{"model":"primary-only","input":[{"type":"compaction_trigger"}]}`,
+		`{"model":"primary-only","Input":[{"Type":"compaction_trigger"}]}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			selector := keyRouteSelectorFunc(func(context.Context, *service.APIKey, service.KeyRoutingRequest) (*service.APIKey, keyrouting.Plan, error) {

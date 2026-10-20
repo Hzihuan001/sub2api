@@ -706,7 +706,8 @@ func partialStreamUsageResult(c *gin.Context, resp *http.Response, streamResult 
 	}
 }
 
-func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool) (*streamingResult, error) {
+func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool) (result *streamingResult, returnedErr error) {
+	proofContext := KeyAccountResponseContext(resp)
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -737,6 +738,12 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
+	defer func() {
+		if returnedErr != nil && keyAccountHasNativePartial(resp, usage) {
+			result = &streamingResult{usage: usage, firstTokenMs: firstTokenMs}
+			returnedErr = keyAccountKeepPartialError(returnedErr)
+		}
+	}()
 	scanner := bufio.NewScanner(resp.Body)
 	// 设置更大的buffer以处理长行
 	maxLineSize := defaultMaxLineSize
@@ -876,7 +883,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			}
 		}
 
+		observeKeyAccountProtocolPayload(proofContext, []byte(dataLine))
 		if eventName == "error" {
+			markKeyAccountAnthropicProtocolFailure(proofContext, []byte(dataLine))
 			return nil, dataLine, nil, &sseStreamErrorEventError{RawData: dataLine}
 		}
 
@@ -1436,6 +1445,7 @@ func (s *GatewayService) resolveCacheTTLUsageOverrideTarget(ctx context.Context,
 }
 
 func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
+	proofContext := KeyAccountResponseContext(resp)
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
@@ -1459,6 +1469,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
+	markKeyAccountAnthropicProtocolFailure(proofContext, body)
 
 	// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
 	cc5m := gjson.GetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens")

@@ -164,15 +164,22 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
 
 	maxAccountSwitches := h.maxAccountSwitches
-	switchCount := 0
-	profitVetoCount := 0
-	failedAccountIDs := make(map[int64]struct{})
-	sameAccountRetryCount := make(map[int64]int)
-	var lastFailoverErr *service.UpstreamFailoverError
-	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	retryState := keyAccountRetryState(c, maxAccountSwitches, false)
+	switchCount := retryState.Failover.SwitchCount
+	retryState.activeSwitchCount = &switchCount
+	profitVetoCount := retryState.ProfitVetoCount
+	failedAccountIDs := retryState.Failover.FailedAccountIDs
+	sameAccountRetryCount := retryState.Failover.SameAccountRetryCount
+	lastFailoverErr := retryState.Failover.LastFailoverErr
+	oauth429FailoverState := retryState.OAuth429
+	defer func() {
+		retryState.activeSwitchCount = nil
+		retryState.Failover.SwitchCount, retryState.Failover.LastFailoverErr = switchCount, lastFailoverErr
+		retryState.ProfitVetoCount, retryState.OAuth429 = profitVetoCount, oauth429FailoverState
+	}()
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
-	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	ccPricingCtx, pricingAt := keyAccountOpenAIRequestPricing(c, c.Request.Context(), apiKey.GroupID, h.gatewayService.WithOpenAIRequestPricingContext)
 	c.Request = c.Request.WithContext(ccPricingCtx)
 
 	for {
@@ -267,6 +274,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		// A raw Chat Completions stream may emit heartbeats before its first
 		// semantic chunk; those bytes must not disable account failover.
 		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
+		keyAccountForwardContext(c, c.Request.Context(), account)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -370,7 +378,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					// Pool mode: retry on the same account
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
-						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
+						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) && keyAccountSameAccountRetryAllowed(c.Request.Context(), account.ID) {
 							sameAccountRetryCount[account.ID]++
 							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
 							reqLog.Warn("openai_chat_completions.pool_mode_same_account_retry",
@@ -390,6 +398,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
+					keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)

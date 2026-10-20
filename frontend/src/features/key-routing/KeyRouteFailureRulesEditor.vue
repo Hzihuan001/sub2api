@@ -20,7 +20,7 @@
         </button>
       </div>
     </div>
-    <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('custom.keyRouting.keyRulesDescription') }}</p>
+    <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t(accountScoped ? 'custom.keyRouting.keyRulesAccountDescription' : 'custom.keyRouting.keyRulesDescription') }}</p>
 
     <button
       type="button"
@@ -36,14 +36,14 @@
 
     <template v-if="expanded && mode === 'inherit'">
       <p class="rounded-lg bg-gray-50 p-3 text-xs leading-5 text-gray-500 dark:bg-dark-800 dark:text-gray-400" data-test="key-route-rules-inherited-hint">
-        {{ t('custom.keyRouting.keyRulesInheritedHint') }}
+        {{ t(accountScoped ? 'custom.keyRouting.keyRulesAccountInheritedHint' : 'custom.keyRouting.keyRulesInheritedHint') }}
       </p>
     </template>
 
     <template v-if="expanded && mode !== 'inherit' && mode !== 'disabled'">
       <div v-for="(rule, index) in draftRules" :key="rule.id" class="space-y-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-600 dark:bg-dark-800/70" :data-rule="index">
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs text-gray-700 dark:text-gray-200">{{ t('custom.keyRouting.keyRulesRule', { value: index + 1 }) }}</span>
+          <span class="text-xs text-gray-700 dark:text-gray-200">{{ t(accountScoped ? 'custom.keyRouting.keyRulesAccountRule' : 'custom.keyRouting.keyRulesRule', { value: index + 1 }) }}</span>
           <button type="button" class="flex-shrink-0 text-xs text-gray-400 transition-colors hover:text-red-600 dark:hover:text-red-400" :disabled="disabled" :data-test="`key-route-rule-remove-${index}`" :data-rule-id="rule.id" @mousedown.prevent @click="removeRule(rule.id)">{{ t('custom.keyRouting.keyRulesRemove') }}</button>
         </div>
         <div class="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs text-gray-600 dark:text-gray-300">
@@ -51,10 +51,10 @@
           <label>
             <span class="sr-only">{{ t('custom.keyRouting.keyRulesType') }}</span>
             <select :value="rule.type" class="input h-8 w-44 px-2 py-1 text-xs" :disabled="disabled" :data-test="`key-route-rule-${index}-type`" @change="changeRuleType(rule, ($event.target as HTMLSelectElement).value)">
-              <option v-for="type in KEY_ROUTE_RULE_TYPES" :key="type" :value="type" :disabled="isTypeUsed(type, rule)">{{ t(`custom.keyRouting.keyRulesType_${type}`) }}</option>
+              <option v-for="type in KEY_ROUTE_RULE_TYPES" :key="type" :value="type" :disabled="isTypeUsed(type, rule)">{{ t(accountScoped && type === 'rate_limit' ? 'custom.keyRouting.keyRulesAccountRateLimit' : `custom.keyRouting.keyRulesType_${type}`) }}</option>
             </select>
           </label>
-          <button v-if="rule.type !== 'status_code'" type="button" class="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-400 dark:border-dark-500" :title="t(`custom.keyRouting.keyRulesHint_${rule.type}`)" :aria-label="t(`custom.keyRouting.keyRulesHint_${rule.type}`)">?</button>
+          <button v-if="rule.type !== 'status_code'" type="button" class="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-400 dark:border-dark-500" :title="ruleHelp(rule.type)" :aria-label="ruleHelp(rule.type)">?</button>
           <template v-if="rule.type === 'ttft'">
             <span>{{ t('custom.keyRouting.keyRulesGreaterThan') }}</span>
             <input v-model="rule.first_content_seconds" type="text" inputmode="numeric" class="input h-8 w-14 px-2 py-1 text-xs" :aria-label="t('custom.keyRouting.keyRulesFirstContentSeconds')" :data-test="`key-route-rule-${index}-first_content_seconds`" @blur="restoreEmptyField(rule, 'first_content_seconds')" />
@@ -100,8 +100,8 @@
         <span>{{ t('custom.keyRouting.keyRulesSeconds') }}</span>
       </div>
       <p v-if="mixedCooldown" class="text-xs text-gray-500 dark:text-gray-400" data-test="key-route-cooldown-mixed">{{ t('custom.keyRouting.keyRulesCooldownMixedHint') }}</p>
-      <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('custom.keyRouting.keyRulesScopeHint') }}</p>
-      <p v-if="draftRules.some(rule => rule.type === 'ttft')" class="text-xs leading-5 text-gray-500 dark:text-gray-400" data-test="key-route-ttft-safety">{{ t('custom.keyRouting.keyRulesTTFTSafety') }}</p>
+      <p class="text-xs text-gray-500 dark:text-gray-400">{{ t(accountScoped ? 'custom.keyRouting.keyRulesAccountScopeHint' : 'custom.keyRouting.keyRulesScopeHint') }}</p>
+      <p v-if="draftRules.some(rule => rule.type === 'ttft')" class="text-xs leading-5 text-gray-500 dark:text-gray-400" data-test="key-route-ttft-safety">{{ t(accountScoped ? 'custom.keyRouting.keyRulesAccountTTFTSafety' : 'custom.keyRouting.keyRulesTTFTSafety') }}</p>
     </template>
 
     <template v-if="expanded && mode === 'disabled'">
@@ -127,12 +127,14 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { KeyRouteFailurePolicy, KeyRouteFailureRule, KeyRouteFailureRuleType } from '@/types'
+import type { KeyRouteFailurePolicy, KeyRouteFailureRule, KeyRouteFailureRuleType, KeyRouteScope } from '@/types'
 import { KEY_ROUTE_RULE_DEFAULTS, KEY_ROUTE_RULE_LIMITS, KEY_ROUTE_RULE_TYPES, KEY_ROUTE_USER_RULE_DEFAULTS, parseKeyRouteStatusCodes, validateKeyRouteFailurePolicy } from './keyRouting'
 
-const props = withDefaults(defineProps<{ modelValue: KeyRouteFailurePolicy | null; disabled?: boolean }>(), { disabled: false })
+const props = withDefaults(defineProps<{ modelValue: KeyRouteFailurePolicy | null; disabled?: boolean; scope?: KeyRouteScope }>(), { disabled: false, scope: 'group_v1' })
 const emit = defineEmits<{ 'update:modelValue': [value: KeyRouteFailurePolicy | null] }>()
 const { t } = useI18n()
+const accountScoped = computed(() => props.scope === 'account_v2')
+const ruleHelp = (type: KeyRouteFailureRuleType) => t(`custom.keyRouting.${accountScoped.value ? 'keyRulesAccountHint' : 'keyRulesHint'}_${type}`)
 
 interface DraftRule {
   id: number

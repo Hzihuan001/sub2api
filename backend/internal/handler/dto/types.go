@@ -60,6 +60,8 @@ type APIKey struct {
 	Name                  string                         `json:"name"`
 	GroupID               *int64                         `json:"group_id"`
 	BackupGroupIDs        []int64                        `json:"backup_group_ids"`
+	KeyRouteScope         string                         `json:"key_route_scope"`
+	KeyRouteRevision      int64                          `json:"key_route_revision"`
 	KeyRouteFailurePolicy *service.KeyRouteFailurePolicy `json:"key_route_failure_policy,omitempty"`
 	KeyModelPolicy        *service.KeyModelPolicy        `json:"key_model_policy"`
 	Status                string                         `json:"status"`

@@ -135,6 +135,13 @@
           <p v-if="key.backup_group_ids?.length" class="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300" data-test="admin-key-backups">
             {{ t('custom.keyRouting.summary', { count: key.backup_group_ids.length }) }} · {{ t('custom.keyRouting.adminEditHint') }}
           </p>
+          <KeyRouteScopeNotice
+            v-if="key.backup_group_ids?.length"
+            class="mt-2"
+            :model-value="key.key_route_scope ?? 'group_v1'"
+            :disabled="props.readOnly || updatingKeyIds.has(key.id)"
+            @update:model-value="upgradeRouteScope(key, $event)"
+          />
         </div>
       </div>
     </div>
@@ -214,7 +221,8 @@ import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import { useClipboard } from '@/composables/useClipboard'
 import { formatDateTime } from '@/utils/format'
-import type { AdminUser, AdminGroup, ApiKey } from '@/types'
+import type { AdminUser, AdminGroup, ApiKey, KeyRouteScope } from '@/types'
+import KeyRouteScopeNotice from '@/features/key-routing/KeyRouteScopeNotice.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
@@ -342,6 +350,24 @@ const createApiKey = async () => {
 
 const copyApiKey = async (key: ApiKey) => {
   await copyToClipboard(key.key, t('admin.users.apiKeyCopied'))
+}
+
+const upgradeRouteScope = async (key: ApiKey, scope: KeyRouteScope) => {
+  if (props.readOnly || updatingKeyIds.value.has(key.id) || scope === (key.key_route_scope ?? 'group_v1')) return
+  const version = requestVersion
+  updatingKeyIds.value.add(key.id)
+  try {
+    const result = await adminAPI.apiKeys.updateApiKeyRouteScope(key.id, scope)
+    if (version !== requestVersion) return
+    const index = apiKeys.value.findIndex((item) => item.id === key.id)
+    if (index !== -1) apiKeys.value[index] = result.api_key
+    appStore.showSuccess(t('keys.keyUpdatedSuccess'))
+  } catch (error: any) {
+    if (version !== requestVersion) return
+    appStore.showError(error?.message || t('keys.failedToSave'))
+  } finally {
+    updatingKeyIds.value.delete(key.id)
+  }
 }
 
 const requestDelete = (key: ApiKey) => {

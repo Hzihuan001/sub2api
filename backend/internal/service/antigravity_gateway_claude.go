@@ -449,6 +449,11 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		// 客户端要求流式，直接透传转换
 		streamRes, err := s.handleClaudeStreamingResponse(c, resp, startTime, originalModel)
 		if err != nil {
+			if streamRes != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, streamRes.usage, streamRes.firstTokenMs, originalModel, billingModel, true, startTime, err); partial != nil {
+					return partial, partialErr
+				}
+			}
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_error error=%v", prefix, err)
 			return nil, err
 		}
@@ -459,6 +464,11 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		// 客户端要求非流式，收集流式响应后转换返回
 		streamRes, err := s.handleClaudeStreamToNonStreaming(c, resp, startTime, originalModel)
 		if err != nil {
+			if streamRes != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, streamRes.usage, streamRes.firstTokenMs, originalModel, billingModel, false, startTime, err); partial != nil {
+					return partial, partialErr
+				}
+			}
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_collect_error error=%v", prefix, err)
 			return nil, err
 		}

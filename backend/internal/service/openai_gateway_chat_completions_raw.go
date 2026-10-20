@@ -72,7 +72,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	body []byte,
 	defaultMappedModel string,
 	startTime time.Time,
-) (*OpenAIForwardResult, error) {
+) (result *OpenAIForwardResult, forwardErr error) {
 
 	// 1. Parse minimal fields needed for routing/billing
 	originalModel := gjson.GetBytes(body, "model").String()
@@ -85,6 +85,31 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	var bridgeUsage OpenAIUsage
+	parentScope := KeyAccountForwardScopeFromContext(ctx)
+	if parentScope != nil && account.Platform == PlatformGrok {
+		defer func() {
+			// Auxiliary work is native same-account usage, including when a
+			// later caption/main build, send or parser fails. Once a caption
+			// was dispatched this media chain is not automatically replayed.
+			if parentScope.hasAuxiliaryDispatch() {
+				// Capture native main-only usage before adding caption usage.
+				// Parent Finish sees the combined bill, not a per-wire sample.
+				if KeyAccountForwardResultHasUsage(result) {
+					if attempt := parentScope.CurrentAttempt(); attempt != nil {
+						attempt.ObserveUsage()
+					}
+				}
+				result = keyAccountGrokPartialResult(result, bridgeUsage, originalModel, billingModel, upstreamModel, clientStream)
+				if result != nil {
+					result.Duration = time.Since(startTime)
+				}
+				if forwardErr != nil {
+					forwardErr = errors.New(forwardErr.Error()) // Keep native partial-usage settlement, not retry classification.
+				}
+			}
+		}()
+	}
 	if err := validateGPT61SolCompatRequest(body, upstreamModel); err != nil {
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
@@ -147,9 +172,11 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 		return nil, fmt.Errorf("account %d missing %s credential", account.ID, tokenKind)
 	}
 
-	var bridgeUsage OpenAIUsage
 	if account.Platform == PlatformGrok {
 		bridgedBody, usage, bridged, bridgeErr := s.bridgeGrokComposerImageInputs(ctx, c, account, upstreamBody, token)
+		if parentScope != nil {
+			addOpenAIUsage(&bridgeUsage, usage)
+		}
 		if bridgeErr != nil {
 			var failoverErr *UpstreamFailoverError
 			if !errors.As(bridgeErr, &failoverErr) && c != nil && c.Writer != nil && !c.Writer.Written() {
@@ -159,7 +186,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 		}
 		if bridged {
 			upstreamBody = bridgedBody
-			addOpenAIUsage(&bridgeUsage, usage)
+			if parentScope == nil {
+				addOpenAIUsage(&bridgeUsage, usage)
+			}
 		}
 	}
 
@@ -266,15 +295,15 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	}
 
 	// 8. Forward response
-	var result *OpenAIForwardResult
-	var forwardErr error
 	if clientStream {
 		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 	} else {
 		result, forwardErr = s.bufferRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	if result != nil {
-		addOpenAIUsage(&result.Usage, bridgeUsage)
+		if parentScope == nil {
+			addOpenAIUsage(&result.Usage, bridgeUsage)
+		}
 		result.UpstreamEndpoint = grokChatRawEndpoint
 	}
 	return result, forwardErr

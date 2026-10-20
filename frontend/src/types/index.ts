@@ -753,6 +753,8 @@ export interface ApiKey {
   name: string
   group_id: number | null
   backup_group_ids?: number[] // Ordered fallback groups; absent on older responses
+  key_route_scope?: KeyRouteScope // absent on older responses means group_v1
+  key_route_revision?: number // server-managed; never accepted in write payloads
   key_route_failure_policy?: KeyRouteFailurePolicy | null // null/absent inherits group rules
   key_model_policy?: KeyModelPolicy | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
@@ -782,6 +784,7 @@ export interface ApiKey {
 }
 
 export type KeyRouteFailureRuleType = 'status_code' | 'consecutive_failures' | 'timeout' | 'rate_limit' | 'sla_success_rate' | 'ttft'
+export type KeyRouteScope = 'group_v1' | 'account_v2'
 
 export interface KeyRouteFailureRule {
   type?: KeyRouteFailureRuleType // absent in legacy rules means status_code
@@ -806,6 +809,7 @@ export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
   backup_group_ids?: number[]
+  key_route_scope?: KeyRouteScope // explicit opt-in; omission keeps legacy group_v1
   key_route_failure_policy?: KeyRouteFailurePolicy
   key_model_policy?: KeyModelPolicy | null
   custom_key?: string // Optional custom API Key
@@ -822,6 +826,7 @@ export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
   backup_group_ids?: number[] // Omitted preserves the route; [] clears backup groups
+  key_route_scope?: KeyRouteScope // omission preserves existing scope
   key_route_failure_policy?: KeyRouteFailurePolicy | null // null restores inheritance from group rules
   key_model_policy?: KeyModelPolicy | null // omitted preserves; null or disabled removes restriction
   status?: 'active' | 'inactive'

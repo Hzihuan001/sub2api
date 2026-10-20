@@ -101,41 +101,7 @@ func (r *apiKeyRepository) apiKeyWithRoutes(ctx context.Context, entity *dbent.A
 }
 
 func (r *apiKeyRepository) attachAPIKeyRoutes(ctx context.Context, keys []service.APIKey) error {
-	if len(keys) == 0 {
-		return nil
-	}
-	// Match the list with one query and preserve the configured position order.
-	indices := make(map[int64]int, len(keys))
-	args := make([]any, len(keys))
-	placeholders := make([]string, len(keys))
-	for i := range keys {
-		indices[keys[i].ID] = i
-		keys[i].BackupGroupIDs = nil
-		args[i] = keys[i].ID
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
-	}
-	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx,
-		"SELECT api_key_id, group_id FROM custom_api_key_routes WHERE api_key_id IN ("+strings.Join(placeholders, ",")+") ORDER BY api_key_id, position", args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var keyID, groupID int64
-		if err := rows.Scan(&keyID, &groupID); err != nil {
-			return err
-		}
-		if i, ok := indices[keyID]; ok {
-			keys[i].BackupGroupIDs = append(keys[i].BackupGroupIDs, groupID)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if err := r.attachAPIKeyRoutePolicies(ctx, keys); err != nil {
-		return err
-	}
-	return r.attachAPIKeyModelPolicies(ctx, keys)
+	return r.attachAPIKeyAccountRoutes(ctx, keys)
 }
 
 func (r *apiKeyRepository) attachAPIKeyRoutePolicies(ctx context.Context, keys []service.APIKey) error {

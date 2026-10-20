@@ -115,6 +115,10 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	if k.KeyRouteFailurePolicy != nil {
 		out.KeyRouteFailurePolicy = k.KeyRouteFailurePolicy.Public()
 	}
+	out.KeyRouteScope, out.KeyRouteRevision = k.KeyRouteScope, k.KeyRouteRevision
+	if out.KeyRouteScope == "" {
+		out.KeyRouteScope = service.KeyRouteScopeGroupV1
+	}
 	if k.Window5hStart != nil && !service.IsWindowExpired(k.Window5hStart, service.RateLimitWindow5h) {
 		t := k.Window5hStart.Add(service.RateLimitWindow5h)
 		out.Reset5hAt = &t

@@ -105,6 +105,9 @@ type ParseResult struct {
 }
 
 type KiroRequestContext struct {
+	// ObserveEvent opts in to strict typed-failure handling and exposes actual
+	// wire facts before estimated usage or client protocol conversion.
+	ObserveEvent             func(EventStreamObservation)
 	ToolNameMap              map[string]string
 	ThinkingEnabled          bool
 	CacheEmulationUsage      *Usage
@@ -228,8 +231,11 @@ type toolUseState struct {
 }
 
 type eventStreamMessage struct {
-	EventType string
-	Payload   []byte
+	EventType     string
+	MessageType   string
+	ExceptionType string
+	ErrorCode     string
+	Payload       []byte
 }
 
 type kiroSemanticEventType string
@@ -533,8 +539,13 @@ func BuildKiroPayloadWithContext(claudeBody []byte, modelID, profileArn, origin 
 }
 
 func ParseNonStreamingEventStreamWithContext(body io.Reader, model string, requestCtx KiroRequestContext) (*ParseResult, error) {
-	content, toolUses, usage, stopReason, err := parseEventStream(body)
+	content, toolUses, usage, stopReason, err := parseEventStreamObserved(body, requestCtx.ObserveEvent)
 	if err != nil {
+		if requestCtx.ObserveEvent != nil {
+			// Keep actual partial usage for native settlement, but do not build
+			// a successful message or fill estimated/cache-emulated usage.
+			return &ParseResult{Usage: usage, StopReason: stopReason}, err
+		}
 		return nil, err
 	}
 	if requestCtx.CacheEmulationUsage != nil {
@@ -584,6 +595,8 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 	stripThinkingLeadingNewline := false
 	currentMessageID := ""
 	var outputTextBuf strings.Builder
+	var observedUsage Usage
+	observedGeneration := false
 
 	writeEvent := func(event string, data any) error {
 		payload, err := json.Marshal(data)
@@ -1235,6 +1248,9 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 			return nil, err
 		}
 		if msg == nil || len(msg.Payload) == 0 {
+			if requestCtx.ObserveEvent != nil && msg != nil && (msg.MessageType == "exception" || msg.MessageType == "error") {
+				return &StreamResult{Usage: observedUsage, FirstDeltaDur: firstDelta}, fmt.Errorf("empty kiro typed exception envelope")
+			}
 			continue
 		}
 
@@ -1242,12 +1258,22 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		decoder := json.NewDecoder(bytes.NewReader(msg.Payload))
 		decoder.UseNumber()
 		if err := decoder.Decode(&event); err != nil {
+			if requestCtx.ObserveEvent != nil && (msg.MessageType == "exception" || msg.MessageType == "error") {
+				return &StreamResult{Usage: observedUsage, FirstDeltaDur: firstDelta}, fmt.Errorf("invalid kiro typed exception JSON: %w", err)
+			}
 			continue
 		}
 		var trailing any
 		if err := decoder.Decode(&trailing); err != io.EOF {
+			if requestCtx.ObserveEvent != nil && (msg.MessageType == "exception" || msg.MessageType == "error") {
+				return &StreamResult{Usage: observedUsage, FirstDeltaDur: firstDelta}, fmt.Errorf("invalid kiro typed exception trailing JSON")
+			}
 			continue
 		}
+		if err := observeDecodedEventStreamMessage(msg, event, &observedUsage, requestCtx.ObserveEvent); err != nil {
+			return &StreamResult{Usage: observedUsage, FirstDeltaDur: firstDelta}, err
+		}
+		observedGeneration = observedGeneration || isGenerationEvent(msg, event)
 
 		if kiroUpstreamTraceEnabled {
 			payloadPrefix := string(msg.Payload)
@@ -1277,6 +1303,9 @@ func StreamEventStreamAsAnthropicWithContext(ctx context.Context, body io.Reader
 		}
 	}
 
+	if requestCtx.ObserveEvent != nil && !observedGeneration {
+		return &StreamResult{Usage: observedUsage, FirstDeltaDur: firstDelta}, fmt.Errorf("kiro eventstream ended without a generation result")
+	}
 	if err := closeOpenStreamingTool(); err != nil {
 		return nil, err
 	}
@@ -2964,10 +2993,16 @@ func blockToMap(block gjson.Result) map[string]any {
 }
 
 func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, error) {
+	return parseEventStreamObserved(body, nil)
+}
+
+func parseEventStreamObserved(body io.Reader, observe func(EventStreamObservation)) (string, []KiroToolUse, Usage, string, error) {
 	reader := bufio.NewReader(body)
 	var content strings.Builder
 	var toolUses []KiroToolUse
 	var usage Usage
+	var observedUsage Usage
+	observedGeneration := false
 	stopReason := ""
 	processedIDs := make(map[string]bool)
 	var currentTool *toolUseState
@@ -2989,6 +3024,9 @@ func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, err
 			return "", nil, usage, stopReason, err
 		}
 		if msg == nil || len(msg.Payload) == 0 {
+			if observe != nil && msg != nil && (msg.MessageType == "exception" || msg.MessageType == "error") {
+				return content.String(), toolUses, usage, stopReason, fmt.Errorf("empty kiro typed exception envelope")
+			}
 			continue
 		}
 
@@ -2996,12 +3034,22 @@ func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, err
 		decoder := json.NewDecoder(bytes.NewReader(msg.Payload))
 		decoder.UseNumber()
 		if err := decoder.Decode(&event); err != nil {
+			if observe != nil && (msg.MessageType == "exception" || msg.MessageType == "error") {
+				return content.String(), toolUses, usage, stopReason, fmt.Errorf("invalid kiro typed exception JSON: %w", err)
+			}
 			continue
 		}
 		var trailing any
 		if err := decoder.Decode(&trailing); err != io.EOF {
+			if observe != nil && (msg.MessageType == "exception" || msg.MessageType == "error") {
+				return content.String(), toolUses, usage, stopReason, fmt.Errorf("invalid kiro typed exception trailing JSON")
+			}
 			continue
 		}
+		if err := observeDecodedEventStreamMessage(msg, event, &observedUsage, observe); err != nil {
+			return content.String(), toolUses, observedUsage, stopReason, err
+		}
+		observedGeneration = observedGeneration || isGenerationEvent(msg, event)
 		if sr := readStopReason(event); sr != "" {
 			stopReason = sr
 		}
@@ -3047,6 +3095,9 @@ func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, err
 		default:
 			updateUsageFromEvent(&usage, msg.EventType, event)
 		}
+	}
+	if observe != nil && !observedGeneration {
+		return content.String(), toolUses, observedUsage, stopReason, fmt.Errorf("kiro eventstream ended without a generation result")
 	}
 	closeReasoning()
 
@@ -3566,19 +3617,25 @@ func readEventStreamMessage(reader *bufio.Reader) (*eventStreamMessage, error) {
 	if _, err := io.ReadFull(reader, remaining); err != nil {
 		return nil, err
 	}
-	eventType := extractEventType(remaining[:headersLength])
+	headers := remaining[:headersLength]
+	message := &eventStreamMessage{
+		EventType: extractEventType(headers), MessageType: extractEventStringHeader(headers, ":message-type"),
+		ExceptionType: extractEventStringHeader(headers, ":exception-type"), ErrorCode: extractEventStringHeader(headers, ":error-code"),
+	}
 	payloadStart := headersLength
 	payloadEnd := uint32(len(remaining)) - 4
 	if payloadStart >= payloadEnd {
-		return &eventStreamMessage{EventType: eventType}, nil
+		return message, nil
 	}
-	return &eventStreamMessage{
-		EventType: eventType,
-		Payload:   remaining[payloadStart:payloadEnd],
-	}, nil
+	message.Payload = remaining[payloadStart:payloadEnd]
+	return message, nil
 }
 
 func extractEventType(headers []byte) string {
+	return extractEventStringHeader(headers, ":event-type")
+}
+
+func extractEventStringHeader(headers []byte, wanted string) string {
 	offset := 0
 	for offset < len(headers) {
 		nameLen := int(headers[offset])
@@ -3604,7 +3661,7 @@ func extractEventType(headers []byte) string {
 			}
 			value := string(headers[offset : offset+valueLen])
 			offset += valueLen
-			if name == ":event-type" {
+			if name == wanted {
 				return value
 			}
 			continue

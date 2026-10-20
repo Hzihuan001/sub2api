@@ -661,14 +661,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	requireCompact := legacyCompact
 
 	maxAccountSwitches := h.maxAccountSwitches
-	switchCount := 0
-	firstOutputTimeoutSwitchCount := 0
-	profitVetoCount := 0
-	failedAccountIDs := make(map[int64]struct{})
-	sameAccountRetryCount := make(map[int64]int)
-	var lastFailoverErr *service.UpstreamFailoverError
-	var oauth429FailoverState service.OpenAIOAuth429FailoverState
-	var passthroughFailoverState openAIPassthroughFailoverState
+	retryState := keyAccountRetryState(c, maxAccountSwitches, false)
+	switchCount := retryState.Failover.SwitchCount
+	retryState.activeSwitchCount = &switchCount
+	firstOutputTimeoutSwitchCount := retryState.FirstOutputTimeoutSwitches
+	profitVetoCount := retryState.ProfitVetoCount
+	failedAccountIDs := retryState.Failover.FailedAccountIDs
+	sameAccountRetryCount := retryState.Failover.SameAccountRetryCount
+	lastFailoverErr := retryState.Failover.LastFailoverErr
+	oauth429FailoverState := retryState.OAuth429
+	passthroughFailoverState := retryState.Passthrough
+	defer func() {
+		retryState.activeSwitchCount = nil
+		retryState.Failover.SwitchCount, retryState.Failover.LastFailoverErr = switchCount, lastFailoverErr
+		retryState.ProfitVetoCount, retryState.FirstOutputTimeoutSwitches = profitVetoCount, firstOutputTimeoutSwitchCount
+		retryState.OAuth429, retryState.Passthrough = oauth429FailoverState, passthroughFailoverState
+	}()
 
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
 	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
@@ -682,7 +690,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// D 与计费高峰因子，选号、槽位终检与全部 failover 重入共用同一门与阈值。
 	// 生图意图只影响能力路由与图片计费，不关门：混合 /v1/responses 请求的
 	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
-	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	pricingCtx, pricingAt := keyAccountOpenAIRequestPricing(c, c.Request.Context(), apiKey.GroupID, h.gatewayService.WithOpenAIRequestPricingContext)
 	c.Request = c.Request.WithContext(pricingCtx)
 
 	for {
@@ -819,6 +827,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
 		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
+		keyAccountForwardContext(c, c.Request.Context(), account)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -949,7 +958,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					// 池模式：同账号重试
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
-						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
+						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) && keyAccountSameAccountRetryAllowed(c.Request.Context(), account.ID) {
 							sameAccountRetryCount[account.ID]++
 							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
 							reqLog.Warn("openai.pool_mode_same_account_retry",
@@ -969,6 +978,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
+					keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
@@ -1325,16 +1335,23 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	}
 
 	maxAccountSwitches := h.maxAccountSwitches
-	switchCount := 0
-	profitVetoCount := 0
-	failedAccountIDs := make(map[int64]struct{})
-	sameAccountRetryCount := make(map[int64]int)
-	var lastFailoverErr *service.UpstreamFailoverError
-	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	retryState := keyAccountRetryState(c, maxAccountSwitches, false)
+	switchCount := retryState.Failover.SwitchCount
+	retryState.activeSwitchCount = &switchCount
+	profitVetoCount := retryState.ProfitVetoCount
+	failedAccountIDs := retryState.Failover.FailedAccountIDs
+	sameAccountRetryCount := retryState.Failover.SameAccountRetryCount
+	lastFailoverErr := retryState.Failover.LastFailoverErr
+	oauth429FailoverState := retryState.OAuth429
+	defer func() {
+		retryState.activeSwitchCount = nil
+		retryState.Failover.SwitchCount, retryState.Failover.LastFailoverErr = switchCount, lastFailoverErr
+		retryState.ProfitVetoCount, retryState.OAuth429 = profitVetoCount, oauth429FailoverState
+	}()
 	effectiveMappedModel := preferredMappedModel
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
-	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	msgPricingCtx, pricingAt := keyAccountOpenAIRequestPricing(c, c.Request.Context(), apiKey.GroupID, h.gatewayService.WithOpenAIRequestPricingContext)
 	c.Request = c.Request.WithContext(msgPricingCtx)
 
 	for {
@@ -1431,6 +1448,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
 		writerSizeBeforeForward := c.Writer.Size()
+		keyAccountForwardContext(c, c.Request.Context(), account)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -1536,7 +1554,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					// 池模式：同账号重试
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
-						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
+						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) && keyAccountSameAccountRetryAllowed(c.Request.Context(), account.ID) {
 							sameAccountRetryCount[account.ID]++
 							retryDelay := sameAccountRetryDelayFor(failoverErr, sameAccountRetryCount[account.ID])
 							reqLog.Warn("openai_messages.pool_mode_same_account_retry",
@@ -1556,6 +1574,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
+					keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)

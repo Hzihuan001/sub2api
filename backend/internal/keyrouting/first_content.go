@@ -32,12 +32,15 @@ func WithFirstContentGuard(ctx context.Context, guard *FirstContentGuard) contex
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return context.WithValue(ctx, firstContentGuardContextKey{}, guard)
+	return context.WithValue(withoutFirstContentGuardProvider(ctx), firstContentGuardContextKey{}, guard)
 }
 
 func GetFirstContentGuard(ctx context.Context) *FirstContentGuard {
 	if ctx == nil {
 		return nil
+	}
+	if provider := boundFirstContentGuardProvider(ctx); provider != nil {
+		return provider.CurrentFirstContentGuard()
 	}
 	guard, _ := ctx.Value(firstContentGuardContextKey{}).(*FirstContentGuard)
 	return guard

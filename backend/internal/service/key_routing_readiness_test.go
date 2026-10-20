@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -266,5 +267,116 @@ func TestKeyRoutingReadinessFreshSnapshotAvoidsDatabaseRead(t *testing.T) {
 	got, err := keyRoutingFreshAccount(context.Background(), &SchedulerSnapshotService{cache: cache, accountRepo: repo}, &account)
 	if err != nil || got == nil || got.Schedulable || repo.reads != 0 {
 		t.Fatalf("fresh snapshot must win without SQL: got=%+v error=%v reads=%d", got, err, repo.reads)
+	}
+}
+
+func TestKeyRoutingReadinessAccountHintsUseOneGroupEntry(t *testing.T) {
+	for _, platform := range []string{PlatformAnthropic, PlatformOpenAI} {
+		for _, tc := range []struct {
+			name           string
+			excluded       map[int64]struct{}
+			local          map[int64]struct{}
+			entryErr       error
+			candidateErr   error
+			wantCandidates []int64
+			wantReady      bool
+			wantErr        error
+		}{
+			{name: "scan hints", wantCandidates: []int64{1, 2}, wantReady: true},
+			{name: "snapshot excludes first", excluded: map[int64]struct{}{1: {}}, wantCandidates: []int64{2}, wantReady: true},
+			{name: "all cooled keeps model support", excluded: map[int64]struct{}{1: {}, 2: {}}},
+			{name: "soft outage retains local exclusion", local: map[int64]struct{}{1: {}}, entryErr: ErrKeyAccountSoftHealthUnavailable, candidateErr: ErrKeyAccountSoftHealthUnavailable, wantCandidates: []int64{2}, wantReady: true},
+			{name: "stale entry stops before pool read", entryErr: ErrKeyAccountRouteStale, wantErr: ErrKeyAccountRouteStale},
+		} {
+			t.Run(platform+"/"+tc.name, func(t *testing.T) {
+				first := keyRoutingReadyAccount(platform)
+				second := first
+				second.ID = 2
+				repo := &keyRoutingReadinessRepo{accounts: []Account{first, second}}
+				gate := &accountRouteCandidateGateTestStub{
+					accountRouteGateTestStub: accountRouteGateTestStub{excluded: tc.excluded, local: tc.local, err: tc.entryErr},
+					candidateAllowed:         map[int64]bool{2: true}, candidateErr: tc.candidateErr,
+				}
+				ctx := WithKeyAccountRouteGate(context.Background(), gate)
+				group := &Group{ID: 7, Platform: platform}
+				var supports, ready bool
+				var err error
+				if platform == PlatformOpenAI {
+					supports, ready, err = (&OpenAIGatewayService{accountRepo: repo}).keyRoutingOpenAIReadiness(ctx, group, platform, "text-model", CompositeRouteEndpointChatCompletions)
+				} else {
+					supports, ready, err = (&GatewayService{accountRepo: repo}).keyRoutingNativeReadiness(ctx, group, platform, "text-model", CompositeRouteEndpointMessages)
+				}
+				if !errors.Is(err, tc.wantErr) || ready != tc.wantReady || supports != (tc.wantErr == nil) {
+					t.Fatalf("readiness = (%v, %v, %v)", supports, ready, err)
+				}
+				wantReads := 1
+				if tc.wantErr != nil {
+					wantReads = 0
+				}
+				if gate.exclusionCalls != 1 || gate.finalCalls != 0 || !reflect.DeepEqual(gate.candidateAccounts, tc.wantCandidates) || repo.reads != wantReads {
+					t.Fatalf("wrong scan boundary: entries=%d finals=%d candidates=%v poolreads=%d", gate.exclusionCalls, gate.finalCalls, gate.candidateAccounts, repo.reads)
+				}
+			})
+		}
+	}
+}
+
+func TestKeyRoutingReadinessRuntimeBatchThenFreshFinalAdmission(t *testing.T) {
+	for _, platform := range []string{PlatformAnthropic, PlatformOpenAI} {
+		t.Run(platform, func(t *testing.T) {
+			session, revisions, store, lister, _, now := accountRuntimeFixture(t, accountRuntimeStatusPolicy())
+			batch := &accountRuntimeBatchStore{accountRuntimeStoreStub: store}
+			session.runtime.store = batch
+			accounts := make([]Account, 3)
+			for i, id := range []int64{41, 42, 43} {
+				accounts[i] = keyRoutingReadyAccount(platform)
+				accounts[i].ID = id
+				accounts[i].GroupIDs = []int64{1}
+				accounts[i].AccountGroups = []AccountGroup{{GroupID: 1}}
+			}
+			lister.accounts[1] = accounts
+			if err := session.ExcludeRequestAccount(1, 41); err != nil {
+				t.Fatal(err)
+			}
+			failed := accountRuntimeSample(t, session, 1, 42, "already-cooled", *now)
+			failed.Metadata.Platform = platform
+			if _, err := session.Observe(context.Background(), failed); err != nil {
+				t.Fatal(err)
+			}
+			ctx := WithKeyAccountRoutingSession(context.Background(), session)
+			group := &Group{ID: 1, Platform: platform}
+			repo := &keyRoutingReadinessRepo{accounts: accounts}
+			before := revisions.keyReads
+			var supports, ready bool
+			var err error
+			if platform == PlatformOpenAI {
+				supports, ready, err = (&OpenAIGatewayService{accountRepo: repo}).keyRoutingOpenAIReadiness(ctx, group, platform, session.request.Model, session.request.Endpoint)
+			} else {
+				supports, ready, err = (&GatewayService{accountRepo: repo}).keyRoutingNativeReadiness(ctx, group, platform, session.request.Model, session.request.Endpoint)
+			}
+			if err != nil || !supports || !ready || revisions.keyReads != before+1 || batch.batchCalls != 1 || store.getCalls != 0 || lister.calls != 1 || repo.reads != 1 {
+				t.Fatalf("scan repeated per-account SQL/Redis: supports=%v ready=%v err=%v revisionReads=%d batch=%d get=%d lists=%d pool=%d", supports, ready, err, revisions.keyReads-before, batch.batchCalls, store.getCalls, lister.calls, repo.reads)
+			}
+			// Another request cools the selected account while native slot
+			// acquisition waits. A cached candidate must not admit this send.
+			failed = accountRuntimeSample(t, session, 1, 43, "cooled-during-wait", *now)
+			failed.Metadata.Platform = platform
+			policy, _ := session.Policy(1)
+			healthAttempt, err := keyAccountRoutingHealthAttempt(failed)
+			if err != nil {
+				t.Fatalf("fixture attempt: %v", err)
+			}
+			if _, err = store.inner.Observe(context.Background(), session.identity(1, 43), policy.Policy, healthAttempt); err != nil {
+				t.Fatal(err)
+			}
+			before = revisions.keyReads
+			if allowed, err := keyAccountRouteAdmission(ctx, &group.ID, 43); err != nil || allowed || revisions.keyReads != before+1 || store.getCalls != 1 {
+				t.Fatalf("final admission used stale hint: allowed=%v err=%v reads=%d gets=%d", allowed, err, revisions.keyReads-before, store.getCalls)
+			}
+			metadata, _ := session.Metadata(1, 43, "actual-model", platform)
+			if err := session.BeforeDispatch(ctx, metadata); !errors.Is(err, ErrKeyAccountRouteCooling) || session.budget.Dispatched() != 0 {
+				t.Fatalf("transport dispatched a freshly-cooled account: %v", err)
+			}
+		})
 	}
 }

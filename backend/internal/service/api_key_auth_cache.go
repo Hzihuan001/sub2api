@@ -9,6 +9,8 @@ type APIKeyAuthSnapshot struct {
 	UserID                int64                    `json:"user_id"`
 	GroupID               *int64                   `json:"group_id,omitempty"`
 	BackupGroupIDs        []int64                  `json:"backup_group_ids,omitempty"`
+	KeyRouteScope         string                   `json:"key_route_scope,omitempty"`
+	KeyRouteRevision      int64                    `json:"key_route_revision,omitempty"`
 	KeyRouteFailurePolicy *KeyRouteFailurePolicy   `json:"key_route_failure_policy,omitempty"`
 	KeyModelPolicy        *KeyModelPolicy          `json:"key_model_policy,omitempty"`
 	Name                  string                   `json:"name"`

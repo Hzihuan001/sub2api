@@ -3,16 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UserApiKeysModal from '../UserApiKeysModal.vue'
 import type { AdminUser } from '@/types'
 
-const { getKeys, createKey, deleteKey, copyToClipboard } = vi.hoisted(() => ({
+const { getKeys, createKey, deleteKey, updateScope, copyToClipboard } = vi.hoisted(() => ({
   getKeys: vi.fn(),
   createKey: vi.fn(),
   deleteKey: vi.fn(),
+  updateScope: vi.fn(),
   copyToClipboard: vi.fn().mockResolvedValue(true)
 }))
 vi.mock('@/api/admin', () => ({ adminAPI: {
   users: { getUserApiKeys: getKeys, createUserApiKey: createKey },
   groups: { getAll: vi.fn().mockResolvedValue([]) },
-  apiKeys: { updateApiKeyGroup: vi.fn(), deleteApiKey: deleteKey },
+  apiKeys: { updateApiKeyGroup: vi.fn(), deleteApiKey: deleteKey, updateApiKeyRouteScope: updateScope },
 } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
 vi.mock('@/composables/useClipboard', () => ({ useClipboard: () => ({ copyToClipboard }) }))
@@ -23,6 +24,7 @@ beforeEach(() => {
   getKeys.mockReset()
   createKey.mockReset()
   deleteKey.mockReset()
+  updateScope.mockReset()
   copyToClipboard.mockClear()
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -53,6 +55,28 @@ async function switchUser(wrapper: Awaited<ReturnType<typeof open>>) {
 }
 
 describe('user API key loading', () => {
+  it('keeps legacy routed keys unchanged until an explicit admin upgrade', async () => {
+    const key = { ...keys(1, 'routed').items[0], backup_group_ids: [2], key_route_scope: 'group_v1' }
+    getKeys.mockResolvedValue({ items: [key] })
+    updateScope.mockResolvedValue({ api_key: { ...key, key_route_scope: 'account_v2', key_route_revision: 91 } })
+    const wrapper = await open(); await flushPromises()
+    expect(updateScope).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="key-route-scope-upgrade"]').trigger('click')
+    await flushPromises()
+    expect(updateScope).toHaveBeenCalledWith(1, 'account_v2')
+    expect(wrapper.find('[data-test="key-route-scope-upgrade"]').exists()).toBe(false)
+  })
+
+  it('disables account-scope conversion in read-only mode', async () => {
+    getKeys.mockResolvedValue({ items: [{ ...keys(1, 'routed').items[0], backup_group_ids: [2] }] })
+    const wrapper = await open(); await flushPromises()
+    await wrapper.setProps({ readOnly: true })
+    const upgrade = wrapper.get('[data-test="key-route-scope-upgrade"]')
+    expect(upgrade.attributes('disabled')).toBeDefined()
+    await upgrade.trigger('click')
+    expect(updateScope).not.toHaveBeenCalled()
+  })
+
   it('does not display the previous user keys when the next load fails', async () => {
     getKeys.mockResolvedValueOnce(keys(1, 'first-user-key')).mockRejectedValueOnce(new Error('unavailable'))
     const wrapper = await open(); await flushPromises()

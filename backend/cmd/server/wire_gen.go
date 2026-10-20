@@ -33,18 +33,18 @@ import (
 
 // Injectors from wire.go:
 
-func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
+func initializeApplication(buildInfo handler.BuildInfo) (*Application, func(), error) {
 	configConfig, err := config.ProvideConfig()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	client, err := repository.ProvideEnt(configConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	db, err := repository.ProvideSQLDB(client)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	userRepository := repository.NewUserRepository(client, db)
 	redeemCodeRepository := repository.NewRedeemCodeRepository(client)
@@ -89,7 +89,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator, affiliateService)
 	secretEncryptor, err := repository.NewAESEncryptor(configConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	totpCache := repository.NewTotpCache(redisClient)
 	totpService := service.NewTotpService(userRepository, secretEncryptor, totpCache, settingService, emailService, emailQueueService)
@@ -109,7 +109,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	pricingRemoteClient := repository.ProvidePricingRemoteClient(configConfig)
 	pricingService, err := service.ProvidePricingService(configConfig, pricingRemoteClient)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	billingService := service.NewBillingService(configConfig, pricingService)
 	geminiQuotaService := service.NewGeminiQuotaService(configConfig, settingRepository)
@@ -126,7 +126,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	identityService := service.NewIdentityService(identityCache)
 	timingWheelService, err := service.ProvideTimingWheelService()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	deferredService := service.ProvideDeferredService(accountRepository, timingWheelService)
 	claudeOAuthClient := repository.NewClaudeOAuthClient()
@@ -238,7 +238,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	promoHandler := admin.NewPromoHandler(promoService)
 	encryptionKey, err := payment.ProvideEncryptionKey(configConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	paymentConfigService := service.ProvidePaymentConfigService(client, settingRepository, encryptionKey)
 	registry := payment.ProvideRegistry()
@@ -315,7 +315,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	passkeySessionStore := repository.NewPasskeySessionStore(redisClient)
 	passkeyService, err := service.NewPasskeyService(configConfig, passkeyRepository, passkeySessionStore, userRepository)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	passkeyHandler := handler.NewPasskeyHandler(passkeyService, authService, settingService)
 	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService)
@@ -340,13 +340,20 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	optionalJWTAuthMiddleware := middleware.NewOptionalJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService, auditLogService)
-	keyRoutingService := service.NewKeyRoutingService(groupRepository, userGroupRateRepository, gatewayService, openAIGatewayService, compositeRouteResolver, configConfig, settingService)
+	accountHealthStore, cleanup := repository.ProvideKeyAccountHealthStore(redisClient)
+	keyAccountRoutingRuntime, err := service.ProvideKeyAccountRoutingRuntime(accountHealthStore, apiKeyRepository, accountRepository)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	keyRoutingService := service.ProvideKeyRoutingService(groupRepository, userGroupRateRepository, gatewayService, openAIGatewayService, compositeRouteResolver, configConfig, settingService, keyAccountRoutingRuntime)
 	apiKeyAuthMiddleware := middleware.ProvideAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig, keyRoutingService)
 	auditLogMiddleware := middleware.NewAuditLogMiddleware(auditLogService)
 	stepUpAuthMiddleware := middleware.NewStepUpAuthMiddleware(totpService, userService, settingService)
 	host, err := server.ProvideCustomHost(handlers, promptRuleService)
 	if err != nil {
-		return nil, err
+		cleanup()
+		return nil, nil, err
 	}
 	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, compositeRouteResolver, redisClient, host)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
@@ -377,7 +384,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		PluginManager: pluginManager,
 		Cleanup:       v,
 	}
-	return application, nil
+	return application, func() {
+		cleanup()
+	}, nil
 }
 
 // wire.go:

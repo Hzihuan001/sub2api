@@ -18,6 +18,13 @@ func (s *GatewayService) keyRoutingNativeReadiness(ctx context.Context, group *G
 	if s == nil {
 		return false, false, fmt.Errorf("native key routing readiness is unavailable")
 	}
+	// One authoritative policy check and batch prefill per group scan. The
+	// candidate loop remains a hint; the native selected account is rechecked
+	// after slot waits by final dispatch admission.
+	excluded, err := keyAccountRouteSchedulingExclusions(ctx, &group.ID, nil)
+	if err != nil {
+		return false, false, err
+	}
 	forcePlatform, _ := ctx.Value(ctxkey.ForcePlatform).(string)
 	accounts, useMixed, err := keyRoutingReadAccounts(ctx, s.schedulerSnapshot, s.accountRepo, group.ID, platform, forcePlatform != "")
 	if err != nil {
@@ -48,6 +55,9 @@ func (s *GatewayService) keyRoutingNativeReadiness(ctx context.Context, group *G
 			continue
 		}
 		supportsModel = true
+		if _, skip := excluded[account.ID]; skip {
+			continue
+		}
 		if !account.IsSchedulableForModelWithContext(ctx, model) ||
 			(group.RequirePrivacySet && !account.IsPrivacySet()) ||
 			!s.isGatewayAccountProfitEligible(ctx, account) ||
@@ -73,6 +83,13 @@ func (s *GatewayService) keyRoutingNativeReadiness(ctx context.Context, group *G
 		if !allowed {
 			continue
 		}
+		allowed, err = keyAccountRouteCandidateAdmission(ctx, &group.ID, account.ID)
+		if err != nil {
+			return false, false, err
+		}
+		if !allowed {
+			continue
+		}
 		if err := ctx.Err(); err != nil {
 			return false, false, err
 		}
@@ -92,6 +109,10 @@ func (s *OpenAIGatewayService) keyRoutingOpenAIReadiness(ctx context.Context, gr
 	}
 	if s == nil {
 		return false, false, fmt.Errorf("openai key routing readiness is unavailable")
+	}
+	excluded, err := keyAccountRouteSchedulingExclusions(ctx, &group.ID, nil)
+	if err != nil {
+		return false, false, err
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	accounts, _, err := keyRoutingReadAccounts(ctx, s.schedulerSnapshot, s.accountRepo, group.ID, platform, false)
@@ -124,6 +145,9 @@ func (s *OpenAIGatewayService) keyRoutingOpenAIReadiness(ctx context.Context, gr
 			continue
 		}
 		supportsModel = true
+		if _, skip := excluded[account.ID]; skip {
+			continue
+		}
 		if !isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, model, false, OpenAIEndpointCapabilityChatCompletions) ||
 			(group.RequirePrivacySet && !account.IsPrivacySet()) ||
 			keyRoutingThresholdBlocked(ctx, s.rateLimitService, account, model) ||
@@ -158,6 +182,13 @@ func (s *OpenAIGatewayService) keyRoutingOpenAIReadiness(ctx context.Context, gr
 			if len(s.filterGrokFreeQuotaAccountsForOpenAI(ctx, []Account{*account})) == 0 {
 				continue
 			}
+		}
+		allowed, err := keyAccountRouteCandidateAdmission(ctx, &group.ID, account.ID)
+		if err != nil {
+			return false, false, err
+		}
+		if !allowed {
+			continue
 		}
 		if err := ctx.Err(); err != nil {
 			return false, false, err

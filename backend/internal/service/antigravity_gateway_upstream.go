@@ -78,7 +78,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	}
 
 	// 发送请求
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	resp, err := KeyAccountInferenceDo(s.httpUpstream, req, proxyURL, account, originalModel)
 	if err != nil {
 		logger.LegacyPrintf("service.antigravity_gateway", "%s upstream request failed: %v", prefix, err)
 		return nil, fmt.Errorf("upstream request failed: %w", err)
@@ -130,6 +130,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 
 		// 提取 usage
 		upstreamResponseModelObserverFromContext(c).ObserveAnthropic(respBody)
+		markKeyAccountAnthropicProtocolFailure(KeyAccountResponseContext(resp), respBody)
 		usage = s.extractClaudeUsage(respBody)
 
 		c.Header("Content-Type", resp.Header.Get("Content-Type"))
@@ -161,6 +162,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 
 // streamUpstreamResponse 透传上游 SSE 流并提取 Claude usage
 func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp *http.Response, startTime time.Time) *antigravityStreamResult {
+	proofContext := KeyAccountResponseContext(resp)
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
 
@@ -253,6 +255,7 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				upstreamResponseModelObserverFromContext(c).ObserveAnthropic([]byte(strings.TrimSpace(data)))
+				markKeyAccountAnthropicProtocolFailure(proofContext, []byte(strings.TrimSpace(data)))
 			}
 
 			// 记录首 token 时间

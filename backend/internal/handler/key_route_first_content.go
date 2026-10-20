@@ -19,6 +19,9 @@ func keyRouteFirstContentNormalizeError(c *gin.Context, err error) error {
 	if err == nil || c == nil || c.Request == nil {
 		return err
 	}
+	if keyAccountForwardReplayBlocked(c) {
+		return &keyRouteNoReplayForwardError{message: err.Error()}
+	}
 	guard := keyrouting.GetFirstContentGuard(c.Request.Context())
 	if !guard.ReplayBlocked() {
 		return err
@@ -39,6 +42,9 @@ func keyRouteFirstContentNormalizeError(c *gin.Context, err error) error {
 func keyRouteFirstContentInterrupted(c *gin.Context, result any, forwardErr error) bool {
 	if c == nil || c.Request == nil {
 		return false
+	}
+	if state := keyAccountForwardStateFromContext(c); state != nil && !state.ended {
+		return finishKeyAccountNativeForward(c, result, forwardErr)
 	}
 	guard := keyrouting.GetFirstContentGuard(c.Request.Context())
 	if guard == nil {

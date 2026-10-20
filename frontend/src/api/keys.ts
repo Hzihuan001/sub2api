@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from './client'
-import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, KeyRouteFailurePolicy, KeyModelPolicy, PaginatedResponse } from '@/types'
+import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, KeyRouteFailurePolicy, KeyModelPolicy, KeyRouteScope, PaginatedResponse } from '@/types'
 
 /**
  * List all API keys for current user
@@ -70,9 +70,11 @@ export async function create(
   rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
   backupGroupIds: number[] = [],
   keyRouteFailurePolicy?: KeyRouteFailurePolicy | null,
-  keyModelPolicy?: KeyModelPolicy | null
+  keyModelPolicy?: KeyModelPolicy | null,
+  keyRouteScope?: KeyRouteScope
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name, backup_group_ids: [...backupGroupIds] }
+  if (keyRouteScope !== undefined) payload.key_route_scope = keyRouteScope
   if (keyModelPolicy !== undefined) payload.key_model_policy = keyModelPolicy
   if (keyRouteFailurePolicy !== undefined && keyRouteFailurePolicy !== null) {
     payload.key_route_failure_policy = keyRouteFailurePolicy

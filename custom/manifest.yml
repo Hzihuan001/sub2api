@@ -44,6 +44,23 @@ features:
       - backend/migrations/9002_custom_api_key_model_policies.sql
       - frontend/src/features/key-routing
       - frontend/src/views/user/__tests__/KeysView.spec.ts
+      - backend/internal/keyrouting/account_attempt_test.go
+      - backend/internal/keyrouting/account_health_test.go
+      - backend/internal/service/key_account_routing_runtime_test.go
+      - backend/internal/service/key_account_route_probe_test.go
+      - backend/internal/service/key_account_openai_transport_test.go
+      - backend/internal/service/key_account_kiro_protocol_test.go
+      - backend/internal/service/key_account_pricing_carrier_test.go
+      - backend/internal/handler/key_account_dispatch_test.go
+      - backend/internal/handler/key_account_partial_usage_test.go
+      - backend/internal/handler/key_account_pricing_test.go
+      - backend/internal/repository/key_account_health_test.go
+      - backend/internal/repository/key_account_health_integration_test.go
+      - backend/internal/repository/key_account_site_integration_test.go
+      - backend/internal/repository/custom_api_key_account_routes_integration_test.go
+      - backend/migrations/9003_custom_api_key_account_routes.sql
+      - backend/migrations/9004_custom_key_route_site.sql
+      - frontend/src/features/key-routing/__tests__/KeyRouteScopeNotice.spec.ts
   - id: gateway-resilience
     owner: custom/gateway-resilience
     description: Shared failure classification and native protections. Group status-code rules are defaults for key-local backup routing, not custom account-wide stops; legacy account cooldown cleanup remains supported.

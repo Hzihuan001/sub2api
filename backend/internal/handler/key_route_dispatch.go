@@ -37,6 +37,10 @@ func KeyRouteDispatch(next gin.HandlerFunc) gin.HandlerFunc {
 			return
 		}
 		c.Set("custom.key_route_dispatch", true)
+		if service.GetKeyAccountRoutingSession(c.Request.Context()) != nil {
+			runKeyAccountRouteDispatch(c, next)
+			return
+		}
 		for attempt := 0; attempt <= keyrouting.MaxBackupGroups; attempt++ {
 			c.Set("custom.key_route_restart", false)
 			runKeyRouteFirstContentAttempt(c, next)
@@ -121,10 +125,16 @@ func tryFinalKeyRouteFailover(c *gin.Context, failure *service.UpstreamFailoverE
 	if failure == nil {
 		return false
 	}
+	if c != nil && c.Request != nil && service.GetKeyAccountRoutingSession(c.Request.Context()) != nil {
+		return tryKeyAccountGroupExhausted(c)
+	}
 	return recordKeyRouteFailure(c, failure.StatusCode, keyRouteOutcome(failure), true)
 }
 
 func recordKeyRouteFailure(c *gin.Context, status int, outcome keyrouting.RouteOutcomeKind, allowSwitch bool) bool {
+	if c != nil && c.Request != nil && service.GetKeyAccountRoutingSession(c.Request.Context()) != nil {
+		return false // Real wire attempts own account_v2 samples, not group hooks.
+	}
 	if c == nil || c.Request == nil || !c.GetBool("custom.key_route_dispatch") || !keyRoutingRequestActive(c.Request.Context()) || c.Request.Context().Err() != nil {
 		return false
 	}
@@ -241,6 +251,9 @@ func keyRouteHasCountedOutcome(c *gin.Context, groupID int64) bool {
 // A completion hook, not a second usage log. Success resets consecutive
 // failures and occupies the recent-N sample window.
 func recordKeyRouteSuccess(c *gin.Context) {
+	if c != nil && c.Request != nil && service.GetKeyAccountRoutingSession(c.Request.Context()) != nil {
+		return
+	}
 	if c == nil || c.Request == nil || !keyRoutingRequestActive(c.Request.Context()) || c.Request.Context().Err() != nil {
 		return
 	}

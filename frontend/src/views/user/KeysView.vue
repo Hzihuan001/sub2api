@@ -506,9 +506,16 @@
           @update:primary-group-id="setPrimaryGroup"
         />
 
+        <KeyRouteScopeNotice
+          v-if="formData.backup_group_ids.length > 0"
+          v-model="formData.key_route_scope"
+          :new-key="!showEditModal"
+          :disabled="submitting"
+        />
         <KeyRouteFailureRulesEditor
           v-if="formData.backup_group_ids.length > 0"
           v-model="formData.key_route_failure_policy"
+          :scope="formData.key_route_scope"
           :disabled="submitting"
         />
 
@@ -1151,6 +1158,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 import KeyBackupGroupsEditor from '@/features/key-routing/KeyBackupGroupsEditor.vue'
 import KeyRouteFailureRulesEditor from '@/features/key-routing/KeyRouteFailureRulesEditor.vue'
+import KeyRouteScopeNotice from '@/features/key-routing/KeyRouteScopeNotice.vue'
 import KeyAdvancedSettings from '@/features/key-routing/KeyAdvancedSettings.vue'
 import KeyModelPolicyEditor from '@/features/key-routing/KeyModelPolicyEditor.vue'
 import { cloneKeyModelPolicy, normalizeKeyModelPolicy, validateKeyModelPolicy } from '@/features/key-routing/keyModelPolicy'
@@ -1167,7 +1175,7 @@ import { validateKeyRouteFailurePolicy, validateKeyRouting } from '@/features/ke
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-import type { ApiKey, Group, KeyRouteFailurePolicy, KeyModelPolicy, PublicSettings, UpdateApiKeyRequest } from '@/types'
+import type { ApiKey, Group, KeyRouteFailurePolicy, KeyRouteScope, KeyModelPolicy, PublicSettings, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1361,6 +1369,7 @@ const formData = ref({
   name: '',
   group_id: null as number | null,
   backup_group_ids: [] as number[],
+  key_route_scope: 'account_v2' as KeyRouteScope,
   key_route_failure_policy: null as KeyRouteFailurePolicy | null,
   key_model_policy: null as KeyModelPolicy | null,
   status: 'active' as 'active' | 'inactive',
@@ -1628,6 +1637,7 @@ const editKey = (key: ApiKey) => {
     name: key.name,
     group_id: key.group_id,
     backup_group_ids: [...(key.backup_group_ids ?? [])],
+    key_route_scope: key.key_route_scope ?? 'group_v1',
     key_route_failure_policy: key.key_route_failure_policy ? JSON.parse(JSON.stringify(key.key_route_failure_policy)) : null,
     key_model_policy: cloneKeyModelPolicy(key.key_model_policy),
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
@@ -1827,6 +1837,9 @@ const handleSubmit = async () => {
       if (shouldSubmitEditStatus(selectedKey.value, formData.value.status)) {
         updates.status = formData.value.status
       }
+      if (formData.value.key_route_scope !== (selectedKey.value.key_route_scope ?? 'group_v1')) {
+        updates.key_route_scope = formData.value.key_route_scope
+      }
       await keysAPI.update(selectedKey.value.id, updates)
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
@@ -1842,7 +1855,8 @@ const handleSubmit = async () => {
         rateLimitData,
         [...formData.value.backup_group_ids],
         effectiveKeyRouteFailurePolicy,
-        keyModelPolicy
+        keyModelPolicy,
+        formData.value.backup_group_ids.length > 0 ? formData.value.key_route_scope : 'group_v1'
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1897,6 +1911,7 @@ const resetKeyForm = () => {
     name: '',
     group_id: null,
     backup_group_ids: [],
+    key_route_scope: 'account_v2',
     key_route_failure_policy: null,
     key_model_policy: null,
     status: 'active',

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/keyrouting"
@@ -84,6 +86,22 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 		AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_UNAVAILABLE", "Multi-group routing is unavailable")
 		return nil, false
 	}
+	if key.KeyRouteScope == service.KeyRouteScopeAccountV2 {
+		preparer, ok := selector.(interface {
+			PrepareAccountRouteContext(context.Context, *service.APIKey, service.KeyRoutingRequest) (context.Context, error)
+		})
+		if !ok {
+			AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_UNAVAILABLE", "Account-scoped key routing is unavailable")
+			return nil, false
+		}
+		ctx, prepareErr := preparer.PrepareAccountRouteContext(c.Request.Context(), key, service.KeyRoutingRequest{Model: strings.TrimSpace(model.String()), Endpoint: endpoint})
+		if prepareErr != nil {
+			slog.WarnContext(c.Request.Context(), "key_account_route_prepare_failed", "api_key_id", key.ID, "error", prepareErr)
+			AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_UNAVAILABLE", "Unable to prepare account-scoped routing; retry later")
+			return nil, false
+		}
+		c.Request = c.Request.WithContext(ctx)
+	}
 	effective, plan, err := selector.Select(c.Request.Context(), key, service.KeyRoutingRequest{Model: strings.TrimSpace(model.String()), Endpoint: endpoint})
 	if err != nil {
 		switch {
@@ -94,6 +112,9 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 		case errors.Is(err, keyrouting.ErrModelUnavailable):
 			AbortWithError(c, http.StatusNotFound, "MODEL_NOT_FOUND", "No authorized group supports this model and endpoint")
 		case errors.Is(err, keyrouting.ErrNoSchedulableAccounts):
+			if wait := service.KeyAccountRouteRetryAfter(c.Request.Context()); wait > 0 {
+				c.Header("Retry-After", strconv.FormatInt(int64((wait+time.Second-1)/time.Second), 10))
+			}
 			AbortWithError(c, http.StatusServiceUnavailable, "NO_AVAILABLE_ACCOUNTS", "No schedulable account is available in the configured groups")
 		default:
 			slog.WarnContext(c.Request.Context(), "key_route_resolution_failed", "api_key_id", key.ID, "error", err)
@@ -154,6 +175,18 @@ func keyRoutingHasPrimaryOnlyIntent(body []byte) bool {
 		switch {
 		case strings.EqualFold(field.String(), "context_management"):
 			primaryOnly = true
+		case strings.EqualFold(field.String(), "input"):
+			if value.IsArray() {
+				value.ForEach(func(_, item gjson.Result) bool {
+					if item.IsObject() {
+						item.ForEach(func(name, kind gjson.Result) bool {
+							primaryOnly = strings.EqualFold(name.String(), "type") && kind.Type == gjson.String && kind.String() == "compaction_trigger"
+							return !primaryOnly
+						})
+					}
+					return !primaryOnly
+				})
+			}
 		case strings.EqualFold(field.String(), "web_search_options"), strings.EqualFold(field.String(), "mcp_servers"):
 			// Chat search and the Anthropic MCP connector can enable provider
 			// execution outside the tools array.

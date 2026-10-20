@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { ApiKey } from '@/types'
+import type { ApiKey, KeyRouteScope } from '@/types'
 
 export interface UpdateApiKeyGroupResult {
   api_key: ApiKey
@@ -26,6 +26,13 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
   return data
 }
 
+export async function updateApiKeyRouteScope(id: number, scope: KeyRouteScope): Promise<UpdateApiKeyGroupResult> {
+  const { data } = await apiClient.put<UpdateApiKeyGroupResult>(`/admin/api-keys/${id}`, {
+    key_route_scope: scope
+  })
+  return data
+}
+
 /**
  * Delete an API key from the admin user-management view.
  * Ownership and operator permissions are enforced by the server.
@@ -37,6 +44,7 @@ export async function deleteApiKey(id: number): Promise<{ message: string }> {
 
 export const apiKeysAPI = {
   updateApiKeyGroup,
+  updateApiKeyRouteScope,
   deleteApiKey
 }
 

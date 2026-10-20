@@ -82,7 +82,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 	setOpsRequestContext(c, model, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
-	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
+	pricingCtx, pricingAt := keyAccountGatewayRequestPricing(c, c.Request.Context())
 	c.Request = c.Request.WithContext(pricingCtx)
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, model)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
@@ -121,7 +121,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 	}
 	defer inflightRelease()
 
-	fs := NewFailoverState(h.maxAccountSwitches, false)
+	fs := keyAccountFailoverState(c, h.maxAccountSwitches, false)
 	for {
 		if failoverClientGone(c) {
 			return
@@ -197,11 +197,16 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		service.SetOpsUpstreamModel(c, model)
 
 		forwardStart := time.Now()
+		keyAccountForwardContext(c, c.Request.Context(), account)
 		result, forwardErr := h.gatewayService.ForwardSystemOne(c.Request.Context(), c, account, body)
 		if accountRelease != nil {
 			accountRelease()
 		}
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, time.Since(forwardStart).Milliseconds())
+		if keyRouteFirstContentInterrupted(c, result, forwardErr) {
+			return
+		}
+		forwardErr = keyRouteFirstContentNormalizeError(c, forwardErr)
 
 		if forwardErr != nil {
 			var failoverErr *service.UpstreamFailoverError

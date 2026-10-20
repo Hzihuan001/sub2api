@@ -32,6 +32,9 @@ func switchKeyRoute(c *gin.Context, effectiveKey *service.APIKey, request servic
 	if guard := keyrouting.GetFirstContentGuard(c.Request.Context()); guard.ReplayBlocked() {
 		return effectiveKey, false
 	}
+	if keyAccountForwardReplayBlocked(c) {
+		return effectiveKey, false
+	}
 	currentGroupID := *effectiveKey.GroupID
 	rootKey := cloneKeyRoutingPrimaryKey(c, effectiveKey)
 	next, _, err := selector.SelectNext(c.Request.Context(), rootKey, request, currentGroupID)

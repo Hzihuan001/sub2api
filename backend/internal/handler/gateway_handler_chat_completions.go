@@ -98,7 +98,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
-	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
+	pricingCtx, pricingAt := keyAccountGatewayRequestPricing(c, c.Request.Context())
 	c.Request = c.Request.WithContext(pricingCtx)
 
 	// 解析渠道级模型映射
@@ -185,10 +185,11 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		selectionSessionHash = "gemini:" + selectionSessionHash
 	}
 	// 3. Account selection + failover loop
-	fs := NewFailoverState(h.maxAccountSwitches, false)
+	accountSwitchLimit := h.maxAccountSwitches
 	if groupPlatform == service.PlatformGemini {
-		fs = NewFailoverState(h.maxAccountSwitchesGemini, false)
+		accountSwitchLimit = h.maxAccountSwitchesGemini
 	}
+	fs := keyAccountFailoverState(c, accountSwitchLimit, false)
 
 	for {
 		if failoverClientGone(c) {
@@ -307,6 +308,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		var result *service.ForwardResult
 		setActualUpstreamEndpoint(c, "")
+		keyAccountForwardContext(c, c.Request.Context(), account)
 		if account.Platform == service.PlatformGemini {
 			if h.geminiCompatService == nil {
 				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Gemini compatibility service is not configured")
@@ -369,6 +371,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 				zap.Error(err),
 			)
+			h.submitKeyAccountPartialForwardUsage(c, result, apiKey, account, subscription, pricingAt, body, channelMapping, reqModel)
 			return
 		}
 

@@ -114,7 +114,8 @@ func handleStreamReadError(err error, clientDisconnected bool, prefix string) (d
 	return false, false
 }
 
-func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time) (result *antigravityStreamResult, returnedErr error) {
+	proofContext := KeyAccountResponseContext(resp)
 	if upstreamResponseModelObserverFromContext(c) == nil {
 		beginUpstreamResponseModelObservation(c)
 	}
@@ -143,7 +144,14 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
 	usage := &ClaudeUsage{}
+	var actualUsage *ClaudeUsage
 	var firstTokenMs *int
+	defer func() {
+		if returnedErr != nil && keyAccountHasNativePartial(resp, actualUsage) {
+			result = &antigravityStreamResult{usage: actualUsage, firstTokenMs: firstTokenMs}
+			returnedErr = keyAccountKeepPartialError(returnedErr)
+		}
+	}()
 
 	type scanEvent struct {
 		line string
@@ -287,9 +295,16 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				// 解析 usage
 				if u := extractGeminiUsage(inner); u != nil {
 					usage = u
+					if proofContext != nil && u.hasObservedTokens() {
+						actualUsage = u
+					}
 				}
 				var parsed map[string]any
 				if json.Unmarshal(inner, &parsed) == nil {
+					observeKeyAccountProtocolPayload(proofContext, inner)
+					if failure := keyAccountGeminiProtocolError(proofContext, resp, inner); failure != nil {
+						return nil, failure
+					}
 					// Check for MALFORMED_FUNCTION_CALL
 					if candidates, ok := parsed["candidates"].([]any); ok && len(candidates) > 0 {
 						if cand, ok := candidates[0].(map[string]any); ok {
@@ -357,7 +372,8 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 
 // handleGeminiStreamToNonStreaming 读取上游流式响应，合并为非流式响应返回给客户端
 // Gemini 流式响应是增量的，需要累积所有 chunk 的内容
-func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time) (result *antigravityStreamResult, returnedErr error) {
+	proofContext := KeyAccountResponseContext(resp)
 	if upstreamResponseModelObserverFromContext(c) == nil {
 		beginUpstreamResponseModelObservation(c)
 	}
@@ -370,7 +386,14 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	scanner.Buffer(scanBuf[:0], maxLineSize)
 
 	usage := &ClaudeUsage{}
+	var actualUsage *ClaudeUsage
 	var firstTokenMs *int
+	defer func() {
+		if returnedErr != nil && keyAccountHasNativePartial(resp, actualUsage) {
+			result = &antigravityStreamResult{usage: actualUsage, firstTokenMs: firstTokenMs}
+			returnedErr = keyAccountKeepPartialError(returnedErr)
+		}
+	}()
 	var last map[string]any
 	var lastWithParts map[string]any
 	var collectedImageParts []map[string]any // 收集所有包含图片的 parts
@@ -461,6 +484,15 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 			var parsed map[string]any
 			if err := json.Unmarshal(inner, &parsed); err != nil {
 				continue
+			}
+			observeKeyAccountProtocolPayload(proofContext, inner)
+			if proofContext != nil {
+				if u := extractGeminiUsage(inner); u.hasObservedTokens() {
+					actualUsage = u
+				}
+			}
+			if failure := keyAccountGeminiProtocolError(proofContext, resp, inner); failure != nil {
+				return nil, failure
 			}
 
 			// 记录首 token 时间
@@ -836,7 +868,8 @@ func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int,
 
 // collectClaudeStreamResponse 收集上游流式响应，转换为 Claude 非流式格式返回
 // 用于处理客户端非流式请求但上游只支持流式的情况
-func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) ([]byte, *antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (body []byte, result *antigravityStreamResult, returnedErr error) {
+	proofContext := KeyAccountResponseContext(resp)
 	if upstreamResponseModelObserverFromContext(c) == nil {
 		beginUpstreamResponseModelObservation(c)
 	}
@@ -849,6 +882,14 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 	scanner.Buffer(scanBuf[:0], maxLineSize)
 
 	var firstTokenMs *int
+	var actualUsage *ClaudeUsage
+	defer func() {
+		if returnedErr != nil && keyAccountHasNativePartial(resp, actualUsage) {
+			body = nil
+			result = &antigravityStreamResult{usage: actualUsage, firstTokenMs: firstTokenMs}
+			returnedErr = keyAccountKeepPartialError(returnedErr)
+		}
+	}()
 	var last map[string]any
 	var lastWithParts map[string]any
 	var collectedParts []map[string]any // 收集所有 parts（包括 text、thinking、functionCall、inlineData 等）
@@ -940,6 +981,15 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 			if err := json.Unmarshal(inner, &parsed); err != nil {
 				continue
 			}
+			observeKeyAccountProtocolPayload(proofContext, inner)
+			if proofContext != nil {
+				if u := extractGeminiUsage(inner); u.hasObservedTokens() {
+					actualUsage = u
+				}
+			}
+			if failure := keyAccountGeminiProtocolError(proofContext, resp, inner); failure != nil {
+				return nil, nil, failure
+			}
 
 			last = parsed
 
@@ -1018,6 +1068,9 @@ returnResponse:
 func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
 	claudeResp, streamRes, err := s.collectClaudeStreamResponse(c, resp, startTime, originalModel)
 	if err != nil {
+		if streamRes != nil && keyAccountHasNativePartial(resp, streamRes.usage) {
+			return streamRes, keyAccountKeepPartialError(err)
+		}
 		var failoverErr *UpstreamFailoverError
 		if errors.As(err, &failoverErr) {
 			return nil, err
@@ -1044,7 +1097,8 @@ func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Cont
 }
 
 // handleClaudeStreamingResponse 处理 Claude 流式响应（Gemini SSE → Claude SSE 转换）
-func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (result *antigravityStreamResult, returnedErr error) {
+	proofContext := KeyAccountResponseContext(resp)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -1058,6 +1112,13 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 
 	processor := antigravity.NewStreamingProcessor(originalModel)
 	var firstTokenMs *int
+	var actualUsage *ClaudeUsage
+	defer func() {
+		if returnedErr != nil && keyAccountHasNativePartial(resp, actualUsage) {
+			result = &antigravityStreamResult{usage: actualUsage, firstTokenMs: firstTokenMs}
+			returnedErr = keyAccountKeepPartialError(returnedErr)
+		}
+	}()
 	// 使用 Scanner 并限制单行大小，避免 ReadString 无上限导致 OOM
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -1196,6 +1257,19 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 
 			lastDataAt = time.Now()
 			s.observeAntigravityGeminiSSELine(c, ev.line)
+			if payload, ok := extractAnthropicSSEDataLine(ev.line); ok {
+				if inner, err := s.unwrapV1InternalResponse([]byte(strings.TrimSpace(payload))); err == nil {
+					observeKeyAccountProtocolPayload(proofContext, inner)
+					if proofContext != nil {
+						if u := extractGeminiUsage(inner); u.hasObservedTokens() {
+							actualUsage = u
+						}
+					}
+					if failure := keyAccountGeminiProtocolError(proofContext, resp, inner); failure != nil {
+						return nil, failure
+					}
+				}
+			}
 
 			// 处理 SSE 行，转换为 Claude 格式
 			claudeEvents := processor.ProcessLine(strings.TrimRight(ev.line, "\r\n"))

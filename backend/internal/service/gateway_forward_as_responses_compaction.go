@@ -59,6 +59,12 @@ func (s *GatewayService) handleResponsesCompactionResponse(
 	}
 
 	finalResp, usage := s.collectAnthropicResponseFromSSE(resp.Body, requestID, heartbeat)
+	// Compaction remains primary-only at ingress. Retain the same narrow guard
+	// for direct callers so a failed scoped Kiro wire cannot become a locally
+	// synthesized successful compaction response.
+	if result, err := keyAccountKiroNativeResult(resp, nil, nil, originalModel, mappedModel, clientStream, startTime); err != nil {
+		return result, err
+	}
 	if finalResp == nil {
 		return nil, s.failCompaction(c, clientStream, http.StatusBadGateway,
 			"Upstream stream ended without a response", requestID)

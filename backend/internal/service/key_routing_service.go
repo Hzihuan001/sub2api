@@ -42,6 +42,7 @@ type KeyRoutingService struct {
 	cfg       *config.Config
 	settings  *SettingService
 	failures  *keyrouting.FailureTracker
+	accounts  *KeyAccountRoutingRuntime
 	policyMu  sync.RWMutex
 	policy    map[int64]cachedKeyRouteFailurePolicy
 }
@@ -109,6 +110,9 @@ func (s *KeyRoutingService) SelectNext(ctx context.Context, key *APIKey, request
 // subsequent attempts and requests.
 func (s *KeyRoutingService) RecordFailure(ctx context.Context, key *APIKey, request KeyRoutingRequest, groupID, statusCode int64) (keyrouting.RouteFailureResult, error) {
 	result := keyrouting.RouteFailureResult{RuleIndex: -1}
+	if key != nil && key.KeyRouteScope == KeyRouteScopeAccountV2 {
+		return result, nil // Each real dispatch is observed by the account session.
+	}
 	if s == nil || s.failures == nil || key == nil || key.ID <= 0 || groupID <= 0 || statusCode < 100 || statusCode > 599 || (s.settings == nil && key.KeyRouteFailurePolicy == nil) {
 		return result, nil
 	}
@@ -124,6 +128,9 @@ func (s *KeyRoutingService) RecordFailure(ctx context.Context, key *APIKey, requ
 // identity as exact-status rules, while the independent tracker owns counters.
 func (s *KeyRoutingService) RecordOutcome(ctx context.Context, key *APIKey, request KeyRoutingRequest, groupID int64, kind keyrouting.RouteOutcomeKind) (keyrouting.RouteFailureResult, error) {
 	result := keyrouting.RouteFailureResult{RuleIndex: -1}
+	if key != nil && key.KeyRouteScope == KeyRouteScopeAccountV2 {
+		return result, nil
+	}
 	if s == nil || s.failures == nil || key == nil || key.ID <= 0 || groupID <= 0 || (s.settings == nil && key.KeyRouteFailurePolicy == nil) {
 		return result, nil
 	}
@@ -242,7 +249,7 @@ func (s *KeyRoutingService) selectFrom(ctx context.Context, key *APIKey, request
 			candidateCtx = s.native.withGatewayProfitControlGate(candidateCtx, &groupID)
 			state.SupportsModel, state.HasSchedulableAccounts, err = s.native.keyRoutingNativeReadiness(candidateCtx, group, platform, model, req.Endpoint)
 		}
-		if err == nil && state.SupportsModel && state.HasSchedulableAccounts && !ignoreRouteCooldown && s.failures != nil && (s.settings != nil || key.KeyRouteFailurePolicy != nil) {
+		if key.KeyRouteScope != KeyRouteScopeAccountV2 && err == nil && state.SupportsModel && state.HasSchedulableAccounts && !ignoreRouteCooldown && s.failures != nil && (s.settings != nil || key.KeyRouteFailurePolicy != nil) {
 			if policy, policyErr := s.loadRouteFailurePolicy(ctx, key, groupID); policyErr == nil {
 				if cooling, _ := s.failures.IsCooling(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: groupID, Model: req.Model, Endpoint: req.Endpoint}, policy); cooling {
 					lastCoolingGroupID = groupID

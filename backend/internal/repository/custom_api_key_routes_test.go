@@ -102,7 +102,7 @@ func TestCustomAPIKeyRoutesRepositoryReadFailureDoesNotDowngrade(t *testing.T) {
 func TestCustomAPIKeyRoutePoliciesRepositoryRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	repo, client := newAPIKeyRepoSQLite(t)
-	_, err := client.ExecContext(ctx, `CREATE TABLE custom_api_key_route_policies (
+	_, err := client.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS custom_api_key_route_policies (
 		api_key_id INTEGER PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
 		policy TEXT NOT NULL
 	)`)

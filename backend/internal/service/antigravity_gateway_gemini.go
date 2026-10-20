@@ -209,7 +209,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 				if err == nil {
 					fallbackReq, err := antigravity.NewAPIRequest(ctx, upstreamAction, accessToken, fallbackWrapped)
 					if err == nil {
-						fallbackResp, err := s.httpUpstream.Do(fallbackReq, proxyURL, account.ID, account.Concurrency)
+						fallbackResp, err := KeyAccountInferenceDo(s.httpUpstream, fallbackReq, proxyURL, account, fallbackModel)
 						if err == nil && fallbackResp.StatusCode < 400 {
 							_ = resp.Body.Close()
 							resp = fallbackResp
@@ -424,6 +424,11 @@ handleSuccess:
 		// 客户端要求流式，直接透传
 		streamRes, err := s.handleGeminiStreamingResponse(c, resp, startTime)
 		if err != nil {
+			if streamRes != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, streamRes.usage, streamRes.firstTokenMs, originalModel, forwardedModel, true, startTime, err); partial != nil {
+					return partial, partialErr
+				}
+			}
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_error error=%v", prefix, err)
 			return nil, err
 		}
@@ -434,6 +439,11 @@ handleSuccess:
 		// 客户端要求非流式，收集流式响应后返回
 		streamRes, err := s.handleGeminiStreamToNonStreaming(c, resp, startTime)
 		if err != nil {
+			if streamRes != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, streamRes.usage, streamRes.firstTokenMs, originalModel, forwardedModel, false, startTime, err); partial != nil {
+					return partial, partialErr
+				}
+			}
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_collect_error error=%v", prefix, err)
 			return nil, err
 		}

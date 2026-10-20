@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html"
 	"math"
@@ -70,6 +71,7 @@ type APIKeyUpdateFields struct {
 	GroupID               bool
 	BackupGroupIDs        bool
 	KeyRouteFailurePolicy bool
+	KeyRouteScope         bool
 	KeyModelPolicy        bool
 	ExpiresAt             bool
 	// QuotaUsed 仅供"重置配额用量"路径声明；常规计费走 IncrementQuotaUsed。
@@ -220,6 +222,8 @@ type CreateAPIKeyRequest struct {
 	Name                  string                 `json:"name"`
 	GroupID               *int64                 `json:"group_id"`
 	BackupGroupIDs        []int64                `json:"backup_group_ids"`
+	KeyRouteScope         *string                `json:"key_route_scope,omitempty"`
+	KeyRouteRevision      json.RawMessage        `json:"key_route_revision,omitempty"` // rejected on writes
 	KeyRouteFailurePolicy *KeyRouteFailurePolicy `json:"key_route_failure_policy"`
 	KeyModelPolicy        *KeyModelPolicy        `json:"key_model_policy"`
 	CustomKey             *string                `json:"custom_key"`   // 可选的自定义key
@@ -240,8 +244,10 @@ type CreateAPIKeyRequest struct {
 type UpdateAPIKeyRequest struct {
 	Name                  *string                `json:"name"`
 	GroupID               *int64                 `json:"group_id"`
-	BackupGroupIDs        *[]int64               `json:"backup_group_ids"`         // nil preserves; an empty array clears
-	KeyRouteFailurePolicy *KeyRouteFailurePolicy `json:"key_route_failure_policy"` // non-nil replaces, including an empty rules array to disable
+	BackupGroupIDs        *[]int64               `json:"backup_group_ids"` // nil preserves; an empty array clears
+	KeyRouteScope         *string                `json:"key_route_scope,omitempty"`
+	KeyRouteRevision      json.RawMessage        `json:"key_route_revision,omitempty"` // rejected on writes
+	KeyRouteFailurePolicy *KeyRouteFailurePolicy `json:"key_route_failure_policy"`     // non-nil replaces, including an empty rules array to disable
 	// KeyRouteFailurePolicySet distinguishes an explicit JSON null (restore
 	// inheritance from the group policy) from an omitted field (preserve).
 	KeyRouteFailurePolicySet bool            `json:"-"`
@@ -272,6 +278,9 @@ func validateAPIKeyLimit(v float64) error {
 }
 
 func validateCreateAPIKeyRequest(req CreateAPIKeyRequest) error {
+	if err := ValidateKeyRouteWriteMetadata(req.KeyRouteScope, req.KeyRouteRevision); err != nil {
+		return err
+	}
 	if err := req.KeyModelPolicy.Validate(); err != nil {
 		return err
 	}
@@ -292,6 +301,9 @@ func validateCreateAPIKeyRequest(req CreateAPIKeyRequest) error {
 }
 
 func validateUpdateAPIKeyRequest(req UpdateAPIKeyRequest) error {
+	if err := ValidateKeyRouteWriteMetadata(req.KeyRouteScope, req.KeyRouteRevision); err != nil {
+		return err
+	}
 	if err := req.KeyModelPolicy.Validate(); err != nil {
 		return err
 	}
@@ -607,6 +619,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		Name:                  html.EscapeString(req.Name),
 		GroupID:               req.GroupID,
 		BackupGroupIDs:        append([]int64(nil), req.BackupGroupIDs...),
+		KeyRouteScope:         keyRouteWriteScope(req.KeyRouteScope),
 		KeyRouteFailurePolicy: cloneAPIKeyRouteFailurePolicy(req.KeyRouteFailurePolicy),
 		KeyModelPolicy:        modelPolicy,
 		Status:                StatusActive,
@@ -863,7 +876,7 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	// 下面若干分支会顺带把 Status 改回 active（配额扩容、清除过期等），
 	// 所以用原始值比对来决定是否写 status，而不是只看 req.Status。
 	originalStatus := apiKey.Status
-	if req.GroupID != nil || req.BackupGroupIDs != nil {
+	if req.GroupID != nil || req.BackupGroupIDs != nil || (req.KeyRouteScope != nil && *req.KeyRouteScope == KeyRouteScopeAccountV2) {
 		primary, backups := apiKey.GroupID, apiKey.BackupGroupIDs
 		if req.GroupID != nil {
 			primary = req.GroupID
@@ -884,6 +897,10 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	if req.BackupGroupIDs != nil {
 		apiKey.BackupGroupIDs = append([]int64(nil), (*req.BackupGroupIDs)...)
 		fields.BackupGroupIDs = true
+	}
+	if req.KeyRouteScope != nil {
+		apiKey.KeyRouteScope = *req.KeyRouteScope
+		fields.KeyRouteScope = true
 	}
 	if req.KeyRouteFailurePolicy != nil {
 		apiKey.KeyRouteFailurePolicy = cloneAPIKeyRouteFailurePolicy(req.KeyRouteFailurePolicy)

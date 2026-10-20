@@ -34,7 +34,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	attempt int,
 	lastFailureReason string,
 	agentTaskRecoveryTried *bool,
-) (*OpenAIForwardResult, error) {
+) (forwardResult *OpenAIForwardResult, forwardErr error) {
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}
@@ -260,11 +260,15 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	// 所有异常路径（读写错误、error 事件等）已在各自分支中提前调用 MarkBroken，
 	// 因此 defer 中只需处理正常退出时不 MarkBroken 即可。
 	cleanExit := false
+	var keyAccountAttempt *keyAccountWSAttempt
 	defer func() {
 		if !cleanExit {
 			lease.MarkBroken()
 		}
 		lease.Release()
+		if keyAccountAttempt != nil {
+			forwardResult = keyAccountAttempt.complete(lease, cleanExit, forwardResult, forwardErr, c)
+		}
 	}()
 	connID := strings.TrimSpace(lease.ConnID())
 	logOpenAIWSModeDebug(
@@ -342,7 +346,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		return nil, err
 	}
 
-	if err := lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout()); err != nil {
+	keyAccountAttempt, inferenceCtx, err := beginKeyAccountWSAttempt(ctx, account, wsURL, openAIWSPayloadString(payload, "model"))
+	if err != nil {
+		return nil, err
+	}
+	writeErr := lease.WriteJSONWithContextTimeout(inferenceCtx, payload, s.openAIWSWriteTimeout())
+	keyAccountAttempt.sent(writeErr)
+	if err := writeErr; err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(
 			"write_request_fail account_id=%d conn_id=%s cause=%s payload_bytes=%d",
@@ -387,7 +397,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	clientDisconnected := false
 	clientDisconnectDrainStartedAt := time.Time{}
 	readTimeout := s.openAIWSReadTimeout()
-	upstreamReadCtx := ctx
+	upstreamReadCtx := inferenceCtx
 	upstreamReadDetached := false
 	clientRequestCanceled := func() bool {
 		return ctx != nil && errors.Is(ctx.Err(), context.Canceled)
@@ -435,6 +445,21 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
 			ClientDisconnect:              clientDisconnected,
+		}
+	}
+	if keyAccountAttempt != nil {
+		keyAccountAttempt.nativeObserve = func(message []byte) {
+			event, _, _ := parseOpenAIWSEventEnvelope(message)
+			responseModelObserver.ObserveOpenAI(message, event)
+			if openAIWSMessageShouldParseUsage(event, message) {
+				parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
+			}
+			imageCounter.AddSSEData(message)
+		}
+		keyAccountAttempt.nativeResult = func() *OpenAIForwardResult {
+			result := resultWithUsage()
+			result.ImageCount, result.ImageOutputSizes = imageCounter.Count(), imageCounter.Sizes()
+			return result
 		}
 	}
 
@@ -541,6 +566,7 @@ readLoop:
 			}
 			message, readErr = lease.ReadMessageWithContextTimeout(upstreamReadCtx, currentReadTimeout)
 			if readErr == nil {
+				keyAccountAttempt.observe(message)
 				if documents, repaired := splitOpenAIConcatenatedJSONDocuments(message); repaired {
 					logOpenAIWSModeInfo(
 						"concatenated_json_repaired account_id=%d conn_id=%s documents=%d bytes=%d",
@@ -575,6 +601,7 @@ readLoop:
 			return nil, errors.New("upstream websocket returned malformed Responses event JSON after downstream output")
 		}
 		if readErr != nil {
+			keyAccountAttempt.readFailed(readErr)
 			lease.MarkBroken()
 			closeStatus, closeReason := summarizeOpenAIWSReadCloseError(readErr)
 			logOpenAIWSModeInfo(
@@ -665,6 +692,19 @@ readLoop:
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 		}
 		imageCounter.AddSSEData(message)
+		if failure := keyAccountAttempt.safeFailure(); failure != nil && !wroteDownstream {
+			// Retain native credential/rate-limit side effects; the Key-local
+			// adapter only changes replay admission, never global account state.
+			if eventType == "error" {
+				s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
+				code, kind, text := parseOpenAIWSErrorEventFields(message)
+				s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, code, kind, text, mappedModel)
+			} else if eventType == "response.failed" {
+				s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
+			}
+			lease.MarkBroken()
+			return nil, failure
+		}
 
 		if eventType == "error" || eventType == "response.failed" {
 			markOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)

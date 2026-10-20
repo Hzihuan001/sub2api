@@ -115,7 +115,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 			return nil, buildErr
 		}
 
-		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account, keyAccountInferenceJSONModel(patchedBody))
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
@@ -1288,6 +1288,9 @@ func (s *OpenAIGatewayService) bridgeGrokComposerImageInputs(
 	for index, imageURL := range imageURLs {
 		description, usage, err := s.describeGrokComposerImage(ctx, c, account, token, imageURL, index+1)
 		if err != nil {
+			if KeyAccountForwardScopeFromContext(ctx) != nil {
+				addOpenAIUsage(&bridgeUsage, usage)
+			}
 			return body, bridgeUsage, false, err
 		}
 		descriptions = append(descriptions, description)
@@ -1387,6 +1390,20 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 	imageURL string,
 	index int,
 ) (string, OpenAIUsage, error) {
+	if KeyAccountForwardScopeFromContext(ctx) != nil {
+		return s.describeKeyAccountGrokComposerImage(ctx, c, account, token, imageURL, index)
+	}
+	return s.describeGrokComposerImageNative(ctx, c, account, token, imageURL, index)
+}
+
+func (s *OpenAIGatewayService) describeGrokComposerImageNative(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	token string,
+	imageURL string,
+	index int,
+) (string, OpenAIUsage, error) {
 	body, err := buildGrokComposerImageDescriptionBody(imageURL, index)
 	if err != nil {
 		return "", OpenAIUsage{}, err
@@ -1406,14 +1423,24 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+	resp, err := s.doKeyAccountGrokAuxiliaryUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		return "", OpenAIUsage{}, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	if KeyAccountForwardScopeFromContext(ctx) != nil && (resp == nil || resp.Body == nil) {
+		return "", OpenAIUsage{}, fmt.Errorf("Grok image description returned no readable response")
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			if aux, _ := ctx.Value(keyAccountGrokAuxiliaryKey{}).(*keyAccountGrokAuxiliary); aux != nil {
+				aux.cleanupFailed = true
+			}
+		}
+	}()
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
+		usage := keyAccountGrokAuxiliaryUsage(ctx, respBody)
 		upstreamMsg := sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(respBody))
 		if upstreamMsg == "" {
 			upstreamMsg = fmt.Sprintf("xAI image bridge upstream returned status %d", resp.StatusCode)
@@ -1436,7 +1463,7 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 		s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel), account, resp.StatusCode, resp.Header, respBody)
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
-			return "", OpenAIUsage{}, &UpstreamFailoverError{
+			return "", usage, &UpstreamFailoverError{
 				StatusCode:               resp.StatusCode,
 				ResponseBody:             respBody,
 				ResponseHeaders:          resp.Header.Clone(),
@@ -1447,18 +1474,27 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 				SameAccountRetryMax:      retryMax,
 			}
 		}
-		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
+		return "", usage, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
 	}
 
 	s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel), account, resp.Header, resp.StatusCode)
-	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, nil)
-	if err != nil {
-		return "", OpenAIUsage{}, fmt.Errorf("read grok composer image bridge response: %w", err)
+	var respBody []byte
+	if KeyAccountResponseContext(resp) != nil {
+		respBody, err = readKeyAccountGrokAuxiliaryResponse(resp, c, s)
+	} else {
+		respBody, err = ReadUpstreamResponseBody(resp.Body, s.cfg, c, nil)
 	}
+	if err != nil {
+		return "", keyAccountGrokAuxiliaryUsage(ctx, respBody), fmt.Errorf("read grok composer image bridge response: %w", err)
+	}
+	verifiedError := markKeyAccountOpenAIProtocolFailure(KeyAccountResponseContext(resp), respBody)
 
 	var parsed apicompat.ResponsesResponse
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return "", OpenAIUsage{}, fmt.Errorf("parse grok composer image bridge response: %w", err)
+	}
+	if verifiedError {
+		return "", copyOpenAIUsageFromResponsesUsage(parsed.Usage), fmt.Errorf("grok composer image bridge returned an upstream error envelope")
 	}
 	description := strings.TrimSpace(grokResponsesOutputText(&parsed))
 	if description == "" {

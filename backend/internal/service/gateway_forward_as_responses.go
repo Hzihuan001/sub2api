@@ -167,6 +167,10 @@ func (s *GatewayService) ForwardAsResponses(
 		cachePlan := s.prepareKiroResponsesCacheEmulationUsage(ctx, account, group, body, mappedModel, estimateKiroInputTokens(ctx, anthropicBody))
 		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group, cachePlan)
 		if err != nil {
+			var failover *UpstreamFailoverError
+			if KeyAccountForwardScopeFromContext(ctx) != nil && errors.As(err, &failover) {
+				return nil, err
+			}
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -202,7 +206,7 @@ func (s *GatewayService) ForwardAsResponses(
 		}
 
 		// 11. Send request
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		resp, err = KeyAccountInferenceDoWithTLS(s.httpUpstream, upstreamReq, proxyURL, account, mappedModel, s.tlsFPProfileService.ResolveTLSProfile(account))
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -268,7 +272,7 @@ func (s *GatewayService) ForwardAsResponses(
 		result, handleErr = s.handleResponsesBufferedStreamingResponse(resp, c, originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping)
 	}
 
-	return result, handleErr
+	return keyAccountKiroNativeResult(resp, result, handleErr, originalModel, mappedModel, clientStream, startTime)
 }
 
 func adaptResponsesClientToolsForAnthropic(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
@@ -477,6 +481,9 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 	finalResp, usage := s.collectAnthropicResponseFromSSE(resp.Body, requestID, nil)
+	if result, err := keyAccountKiroNativeResult(resp, nil, nil, originalModel, mappedModel, false, startTime); err != nil {
+		return result, err
+	}
 
 	if finalResp == nil {
 		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
@@ -813,6 +820,9 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		}
 	}
 
+	if result, err := keyAccountKiroNativeResult(resp, resultWithUsage(), scanner.Err(), originalModel, mappedModel, true, startTime); err != nil && hasKeyAccountKiroProtocol(resp) {
+		return result, err
+	}
 	return finalizeStream()
 }
 

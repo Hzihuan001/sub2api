@@ -10,6 +10,22 @@ vi.mock('vue-i18n', () => ({
 }))
 
 describe('KeyRouteFailureRulesEditor', () => {
+  it('describes account-local statistics without rewriting the policy when scope changes', async () => {
+    const policy = { rules: [{ type: 'ttft' as const, threshold: 3, sample_size: 20, first_content_seconds: 15, cooldown_seconds: 120 }] }
+    const wrapper = mount(KeyRouteFailureRulesEditor, { props: { modelValue: policy, scope: 'account_v2' } })
+    expect(wrapper.text()).toContain('keyRulesAccountDescription')
+    await wrapper.get('[data-test="key-route-rules-toggle-details"]').trigger('click')
+    expect(wrapper.text()).toContain('keyRulesAccountRule')
+    expect(wrapper.text()).toContain('keyRulesAccountScopeHint')
+    expect(wrapper.get('[data-test="key-route-ttft-safety"]').text()).toContain('keyRulesAccountTTFTSafety')
+    expect(wrapper.find('[title="custom.keyRouting.keyRulesAccountHint_ttft"]').exists()).toBe(true)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    await wrapper.setProps({ scope: 'group_v1' })
+    expect(wrapper.text()).toContain('keyRulesDescription')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('describes inheritance from the actually selected group in both languages', () => {
     for (const key of ['rulesHint', 'keyRulesInheritHint', 'keyRulesInheritedHint'] as const) {
       expect(zh[key]).toContain('当前实际选中分组')

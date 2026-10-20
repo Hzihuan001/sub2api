@@ -23,10 +23,11 @@ type firstContentWriter struct {
 	hold    bool
 	pending []byte
 	frames  []byte
+	observe func() bool
 }
 
 func newFirstContentWriter(w gin.ResponseWriter, guard *keyrouting.FirstContentGuard, hold bool) *firstContentWriter {
-	return &firstContentWriter{ResponseWriter: w, guard: guard, headers: w.Header().Clone(), status: http.StatusOK, hold: hold}
+	return &firstContentWriter{ResponseWriter: w, guard: guard, headers: w.Header().Clone(), status: http.StatusOK, hold: hold, observe: guard.Observe}
 }
 
 func (w *firstContentWriter) Header() http.Header {
@@ -143,7 +144,7 @@ func (w *firstContentWriter) inspect(p []byte) bool {
 		// rather than silently discard potentially charged upstream output.
 		if len(bytes.TrimSpace(p)) > 0 {
 			w.guard.PreventReplay()
-			return w.guard.Observe()
+			return w.observe()
 		}
 		return false
 	}
@@ -174,7 +175,7 @@ func (w *firstContentWriter) inspect(p []byte) bool {
 			commit = true
 		}
 		if semantic {
-			w.guard.Observe()
+			w.observe()
 			return true
 		}
 	}

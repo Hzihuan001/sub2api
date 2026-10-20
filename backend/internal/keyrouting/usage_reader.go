@@ -22,16 +22,17 @@ func ProtectUsageReader(ctx context.Context, body io.ReadCloser) io.ReadCloser {
 	if wrapped, ok := body.(*firstContentUsageReader); ok && wrapped.guard == guard {
 		return body
 	}
-	return &firstContentUsageReader{ReadCloser: body, guard: guard}
+	return &firstContentUsageReader{ReadCloser: body, guard: guard, attempt: GetAccountAttempt(ctx)}
 }
 
 type firstContentUsageReader struct {
 	io.ReadCloser
-	guard *FirstContentGuard
-	mode  byte // j: JSON; s: SSE; zero: no non-whitespace byte yet.
-	line  []byte
-	data  []byte
-	done  bool
+	guard   *FirstContentGuard
+	attempt *AccountAttempt
+	mode    byte // j: JSON; s: SSE; zero: no non-whitespace byte yet.
+	line    []byte
+	data    []byte
+	done    bool
 }
 
 func (r *firstContentUsageReader) Read(p []byte) (int, error) {
@@ -125,6 +126,9 @@ func (r *firstContentUsageReader) inspect(payload []byte) {
 	}
 	for _, key := range []string{"usage", "usageMetadata"} {
 		if usageHasPositiveNumber(root[key]) {
+			if r.attempt != nil {
+				r.attempt.ObserveUsage()
+			}
 			r.protect()
 			return
 		}
@@ -132,6 +136,9 @@ func (r *firstContentUsageReader) inspect(payload []byte) {
 	for _, key := range []string{"response", "message"} {
 		var envelope map[string]json.RawMessage
 		if json.Unmarshal(root[key], &envelope) == nil && usageHasPositiveNumber(envelope["usage"]) {
+			if r.attempt != nil {
+				r.attempt.ObserveUsage()
+			}
 			r.protect()
 			return
 		}

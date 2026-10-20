@@ -20,6 +20,16 @@ describe('API key routing payloads', () => {
     expect(post).toHaveBeenCalledWith('/keys', { name: 'Route', group_id: 2, backup_group_ids: [5, 3] })
   })
 
+  it('only sends an explicitly selected account scope and never a generation on creation', async () => {
+    await create('Account route', 2, undefined, undefined, undefined, undefined, undefined, undefined, [5], null, null, 'account_v2')
+    expect(post).toHaveBeenLastCalledWith('/keys', {
+      name: 'Account route', group_id: 2, backup_group_ids: [5], key_model_policy: null, key_route_scope: 'account_v2'
+    })
+    expect(post.mock.calls[0][1]).not.toHaveProperty('key_route_revision')
+    await update(1, { key_route_scope: 'account_v2' })
+    expect(put).toHaveBeenLastCalledWith('/keys/1', { key_route_scope: 'account_v2' })
+  })
+
   it('distinguishes omitted backup updates from an explicit clear', async () => {
     await update(1, { name: 'Rename' })
     await update(1, { backup_group_ids: [] })

@@ -723,7 +723,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", err.Error())
 		}
 		requestIDHeader = idHeader
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err = KeyAccountInferenceDo(s.httpUpstream, upstreamReq, proxyURL, account, mappedModel)
 		if err != nil {
 			// A transport failure has no upstream status code to retry against.  Hand
 			// it to the failover classifier immediately so the gateway can try the
@@ -1009,14 +1009,26 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 	if req.Stream {
 		streamRes, err := s.handleStreamingResponse(c, resp, startTime, originalModel)
 		if err != nil {
+			if streamRes != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, streamRes.usage, streamRes.firstTokenMs, originalModel, mappedModel, true, startTime, err); partial != nil {
+					return partial, partialErr
+				}
+			}
 			return nil, err
 		}
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
 	} else {
 		if useUpstreamStream {
-			collected, usageObj, err := collectGeminiSSE(resp.Body, true)
+			collected, usageObj, _, err := collectGeminiSSEForKeyAccount(resp, true, nil)
 			if err != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, usageObj, nil, originalModel, mappedModel, false, startTime, err); partial != nil {
+					return partial, partialErr
+				}
+				var failure *UpstreamFailoverError
+				if errors.As(err, &failure) {
+					return nil, err
+				}
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 			}
 			collectedBytes, _ := json.Marshal(collected)
@@ -1031,6 +1043,9 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		} else {
 			usage, err = s.handleNonStreamingResponse(c, resp, originalModel)
 			if err != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, usage, nil, originalModel, mappedModel, false, startTime, err); partial != nil {
+					return partial, partialErr
+				}
 				return nil, err
 			}
 		}
@@ -1254,7 +1269,11 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, err.Error())
 		}
 		requestIDHeader = idHeader
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		if action == "countTokens" {
+			resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		} else {
+			resp, err = KeyAccountInferenceDo(s.httpUpstream, upstreamReq, proxyURL, account, mappedModel)
+		}
 		if err != nil {
 			transportErr := s.handleUpstreamTransportError(ctx, c, account, err)
 			if action == "countTokens" && !errors.Is(transportErr, context.Canceled) && !errors.Is(transportErr, context.DeadlineExceeded) {
@@ -1515,6 +1534,11 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	if stream {
 		streamRes, err := s.handleNativeStreamingResponse(c, resp, startTime, isOAuth, account, requestID)
 		if err != nil {
+			if streamRes != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, streamRes.usage, streamRes.firstTokenMs, originalModel, mappedModel, true, startTime, err); partial != nil {
+					return partial, partialErr
+				}
+			}
 			return nil, err
 		}
 		usage = streamRes.usage
@@ -1522,12 +1546,19 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	} else {
 		if useUpstreamStream {
 			var best geminiResponseSignal
-			collected, usageObj, stats, err := collectGeminiSSEObserved(resp.Body, isOAuth, func(rawBytes []byte) {
+			collected, usageObj, stats, err := collectGeminiSSEForKeyAccount(resp, isOAuth, func(rawBytes []byte) {
 				if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind > best.Kind {
 					best = sig
 				}
 			})
 			if err != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, usageObj, nil, originalModel, mappedModel, false, startTime, err); partial != nil {
+					return partial, partialErr
+				}
+				var failure *UpstreamFailoverError
+				if errors.As(err, &failure) {
+					return nil, err
+				}
 				return nil, s.writeGoogleError(c, http.StatusBadGateway, "Failed to read upstream stream")
 			}
 			s.finalizeGeminiSSESignal(c, account, false, requestID, best, stats.dataEvents > 0, stats.fallback)
@@ -1539,6 +1570,9 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		} else {
 			usageResp, err := s.handleNativeNonStreamingResponse(c, resp, isOAuth, account, requestID)
 			if err != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, usageResp, nil, originalModel, mappedModel, false, startTime, err); partial != nil {
+					return partial, partialErr
+				}
 				return nil, err
 			}
 			usage = usageResp
@@ -2041,6 +2075,7 @@ type geminiStreamResult struct {
 }
 
 func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, error) {
+	proofContext := KeyAccountResponseContext(resp)
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
@@ -2061,6 +2096,9 @@ func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context,
 	if err := json.Unmarshal(unwrappedBody, &geminiResp); err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
+	if failure := keyAccountGeminiProtocolError(proofContext, resp, unwrappedBody); failure != nil {
+		return extractGeminiUsage(unwrappedBody), failure
+	}
 
 	claudeResp, usage := convertGeminiToClaudeMessage(geminiResp, originalModel, unwrappedBody, false)
 	c.JSON(http.StatusOK, claudeResp)
@@ -2068,7 +2106,8 @@ func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context,
 	return usage, nil
 }
 
-func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*geminiStreamResult, error) {
+func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (result *geminiStreamResult, returnedErr error) {
+	proofContext := KeyAccountResponseContext(resp)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -2102,6 +2141,13 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 	var firstTokenMs *int
 	var usage ClaudeUsage
+	var actualUsage *ClaudeUsage
+	defer func() {
+		if returnedErr != nil && keyAccountHasNativePartial(resp, actualUsage) {
+			result = &geminiStreamResult{usage: actualUsage, firstTokenMs: firstTokenMs}
+			returnedErr = keyAccountKeepPartialError(returnedErr)
+		}
+	}()
 	finishReason := ""
 	sawToolUse := false
 
@@ -2149,6 +2195,15 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		var geminiResp map[string]any
 		if err := json.Unmarshal(unwrappedBytes, &geminiResp); err != nil {
 			continue
+		}
+		observeKeyAccountProtocolPayload(proofContext, unwrappedBytes)
+		if proofContext != nil {
+			if u := extractGeminiUsage(unwrappedBytes); u.hasObservedTokens() {
+				actualUsage = u
+			}
+		}
+		if failure := keyAccountGeminiProtocolError(proofContext, resp, unwrappedBytes); failure != nil {
+			return nil, failure
 		}
 
 		if fr := extractGeminiFinishReason(geminiResp); fr != "" {
@@ -2667,6 +2722,7 @@ type UpstreamHTTPResult struct {
 }
 
 func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool, account *Account, upstreamRequestID string) (*ClaudeUsage, error) {
+	proofContext := KeyAccountResponseContext(resp)
 	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Response Headers ==========")
 		for key, values := range resp.Header {
@@ -2694,6 +2750,9 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	}
 	observer.ObserveGemini(respBody)
 	observeGeminiImageOutputs(c, respBody)
+	if failure := keyAccountGeminiProtocolError(proofContext, resp, respBody); failure != nil {
+		return extractGeminiUsage(respBody), failure
+	}
 	if sig, ok := detectGeminiResponseSignalInBody(respBody); ok {
 		s.markGeminiResponseSignal(c, account, sig, false, upstreamRequestID)
 	} else if isGeminiEmptyResponseBody(respBody) {
@@ -2714,7 +2773,8 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	return &ClaudeUsage{}, nil
 }
 
-func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool, account *Account, upstreamRequestID string) (*geminiNativeStreamResult, error) {
+func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool, account *Account, upstreamRequestID string) (result *geminiNativeStreamResult, returnedErr error) {
+	proofContext := KeyAccountResponseContext(resp)
 	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Streaming Response Headers ==========")
 		for key, values := range resp.Header {
@@ -2747,11 +2807,18 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 
 	reader := bufio.NewReader(resp.Body)
 	usage := &ClaudeUsage{}
+	var actualUsage *ClaudeUsage
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
 	var firstTokenMs *int
+	defer func() {
+		if returnedErr != nil && keyAccountHasNativePartial(resp, actualUsage) {
+			result = &geminiNativeStreamResult{usage: actualUsage, firstTokenMs: firstTokenMs}
+			returnedErr = keyAccountKeepPartialError(returnedErr)
+		}
+	}()
 	var best geminiResponseSignal
 	sawDataEvent := false
 	fallback := &geminiSSEFallbackBody{}
@@ -2787,9 +2854,16 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					}
 					if u := extractGeminiUsage(rawBytes); u != nil {
 						usage = u
+						if proofContext != nil && u.hasObservedTokens() {
+							actualUsage = u
+						}
 					}
 					observer.ObserveGemini(rawBytes)
 					observeGeminiImageOutputs(c, rawBytes)
+					observeKeyAccountProtocolPayload(proofContext, rawBytes)
+					if failure := keyAccountGeminiProtocolError(proofContext, resp, rawBytes); failure != nil {
+						return nil, failure
+					}
 
 					if firstTokenMs == nil {
 						ms := int(time.Since(startTime).Milliseconds())

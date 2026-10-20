@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -35,9 +36,11 @@ func NewAdminAPIKeyHandler(adminService service.AdminService) *AdminAPIKeyHandle
 
 // AdminUpdateAPIKeyGroupRequest represents the request to update an API key.
 type AdminUpdateAPIKeyGroupRequest struct {
-	BackupGroupIDs      *[]int64 `json:"backup_group_ids"`
-	GroupID             *int64   `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
-	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
+	BackupGroupIDs      *[]int64        `json:"backup_group_ids"`
+	KeyRouteScope       *string         `json:"key_route_scope"`
+	KeyRouteRevision    json.RawMessage `json:"key_route_revision"`
+	GroupID             *int64          `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
+	ResetRateLimitUsage *bool           `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
 }
 
 // UpdateGroup handles updating an API key's admin-managed fields.
@@ -54,6 +57,10 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	if err := service.ValidateKeyRouteWriteMetadata(req.KeyRouteScope, req.KeyRouteRevision); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	var resetKey *service.APIKey
 	if req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage {
@@ -65,7 +72,16 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 	}
 
 	var result *service.AdminUpdateAPIKeyGroupIDResult
-	if req.BackupGroupIDs != nil {
+	if req.KeyRouteScope != nil {
+		mutator, ok := h.adminService.(interface {
+			AdminUpdateAPIKeyRouting(context.Context, int64, *int64, *[]int64, *string) (*service.AdminUpdateAPIKeyGroupIDResult, error)
+		})
+		if !ok {
+			response.Error(c, 500, "API_KEY_SERVICE_UNAVAILABLE: API key routing scope is not configured")
+			return
+		}
+		result, err = mutator.AdminUpdateAPIKeyRouting(c.Request.Context(), keyID, req.GroupID, req.BackupGroupIDs, req.KeyRouteScope)
+	} else if req.BackupGroupIDs != nil {
 		mutator, ok := h.adminService.(interface {
 			AdminUpdateAPIKeyRoutes(context.Context, int64, *int64, *[]int64) (*service.AdminUpdateAPIKeyGroupIDResult, error)
 		})
@@ -81,7 +97,7 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if resetKey != nil && req.GroupID == nil && req.BackupGroupIDs == nil {
+	if resetKey != nil && req.GroupID == nil && req.BackupGroupIDs == nil && req.KeyRouteScope == nil {
 		result.APIKey = resetKey
 	}
 
@@ -114,6 +130,10 @@ func (h *AdminAPIKeyHandler) CreateForUser(c *gin.Context) {
 	}
 	if strings.TrimSpace(req.Name) == "" {
 		response.BadRequest(c, "name is required")
+		return
+	}
+	if err := service.ValidateKeyRouteWriteMetadata(req.KeyRouteScope, req.KeyRouteRevision); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 

@@ -148,10 +148,12 @@ func runMainServer() {
 		BuildType: BuildType,
 	}
 
-	app, err := initializeApplication(buildInfo)
+	app, releaseDependencies, err := initializeApplication(buildInfo)
 	if err != nil {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
+	// Wire-owned custom resources close after native workers have drained.
+	defer releaseDependencies()
 	defer app.Cleanup()
 	if err := app.Custom.StartWorkers(context.Background()); err != nil {
 		log.Printf("Custom workers started in degraded state: %v", err)

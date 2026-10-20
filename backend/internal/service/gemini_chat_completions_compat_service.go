@@ -122,7 +122,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", err.Error())
 		}
 		requestIDHeader = idHeader
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err = KeyAccountInferenceDo(s.httpUpstream, upstreamReq, proxyURL, account, mappedModel)
 		if err != nil {
 			// Transport failures are failover signals, not retryable upstream
 			// statuses. Let the gateway switch accounts immediately.
@@ -245,13 +245,25 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	if clientStream {
 		streamRes, err := s.handleChatCompletionsStreamingResponseFromGemini(c, resp, startTime, originalModel, account.Type == AccountTypeOAuth, includeUsage)
 		if err != nil {
+			if streamRes != nil {
+				if partial, partialErr := keyAccountPartialUsageResult(resp, c, streamRes.usage, streamRes.firstTokenMs, originalModel, mappedModel, true, startTime, err); partial != nil {
+					return partial, partialErr
+				}
+			}
 			return nil, err
 		}
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
 	} else if useUpstreamStream {
-		collected, usageObj, err := collectGeminiSSE(resp.Body, account.Type == AccountTypeOAuth)
+		collected, usageObj, _, err := collectGeminiSSEForKeyAccount(resp, account.Type == AccountTypeOAuth, nil)
 		if err != nil {
+			if partial, partialErr := keyAccountPartialUsageResult(resp, c, usageObj, nil, originalModel, mappedModel, false, startTime, err); partial != nil {
+				return partial, partialErr
+			}
+			var failure *UpstreamFailoverError
+			if errors.As(err, &failure) {
+				return nil, err
+			}
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 		}
 		collectedBytes, _ := json.Marshal(collected)
@@ -264,6 +276,9 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	} else {
 		usageResp, err := s.handleChatCompletionsNonStreamingResponseFromGemini(c, resp, originalModel, account.Type == AccountTypeOAuth)
 		if err != nil {
+			if partial, partialErr := keyAccountPartialUsageResult(resp, c, usageResp, nil, originalModel, mappedModel, false, startTime, err); partial != nil {
+				return partial, partialErr
+			}
 			return nil, err
 		}
 		usage = usageResp
@@ -440,6 +455,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 	originalModel string,
 	isOAuth bool,
 ) (*ClaudeUsage, error) {
+	proofContext := KeyAccountResponseContext(resp)
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
@@ -453,6 +469,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 	var geminiResp map[string]any
 	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
 		return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+	}
+	if failure := keyAccountGeminiProtocolError(proofContext, resp, respBody); failure != nil {
+		return extractGeminiUsage(respBody), failure
 	}
 
 	chatResp, usage, err := geminiResponseToChatCompletions(geminiResp, originalModel, respBody, nil)
@@ -500,7 +519,8 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	originalModel string,
 	isOAuth bool,
 	includeUsage bool,
-) (*geminiStreamResult, error) {
+) (result *geminiStreamResult, returnedErr error) {
+	proofContext := KeyAccountResponseContext(resp)
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
@@ -522,7 +542,14 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	ccState.IncludeUsage = includeUsage
 
 	var usage ClaudeUsage
+	var actualUsage *ClaudeUsage
 	var firstTokenMs *int
+	defer func() {
+		if returnedErr != nil && keyAccountHasNativePartial(resp, actualUsage) {
+			result = &geminiStreamResult{usage: actualUsage, firstTokenMs: firstTokenMs}
+			returnedErr = keyAccountKeepPartialError(returnedErr)
+		}
+	}()
 	firstChunk := true
 
 	writeChatChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
@@ -613,6 +640,15 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 
 					var geminiResp map[string]any
 					if err := json.Unmarshal(rawBytes, &geminiResp); err == nil {
+						observeKeyAccountProtocolPayload(proofContext, rawBytes)
+						if proofContext != nil {
+							if u := extractGeminiUsage(rawBytes); u.hasObservedTokens() {
+								actualUsage = u
+							}
+						}
+						if failure := keyAccountGeminiProtocolError(proofContext, resp, rawBytes); failure != nil {
+							return nil, failure
+						}
 						if firstChunk {
 							firstChunk = false
 							ms := int(time.Since(startTime).Milliseconds())

@@ -211,7 +211,7 @@ func (s *FailoverState) HandleFailoverError(
 
 	// 同账号重试不算切换账号，粘性会话仅在实际切换时强制缓存计费。
 	retryCount := s.SameAccountRetryCount[accountID]
-	sameAccountRetry := sameAccountRetryAllowed(failoverErr, retryCount, retryLimit)
+	sameAccountRetry := sameAccountRetryAllowed(failoverErr, retryCount, retryLimit) && keyAccountSameAccountRetryAllowed(ctx, accountID)
 	if needForceCacheBilling(s.hasBoundSession, failoverErr, sameAccountRetry) {
 		s.ForceCacheBilling = true
 	}
@@ -241,6 +241,11 @@ func (s *FailoverState) HandleFailoverError(
 
 	// 加入失败列表
 	s.FailedAccountIDs[accountID] = struct{}{}
+	if session := service.GetKeyAccountRoutingSession(ctx); session != nil {
+		if group, ok := ctx.Value(ctxkey.Group).(*service.Group); ok && group != nil {
+			_ = session.ExcludeRequestAccount(group.ID, accountID)
+		}
+	}
 
 	// 检查是否耗尽
 	if s.SwitchCount >= s.MaxSwitches {
@@ -287,6 +292,11 @@ func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAc
 	// 不代表账号耗尽，直接按取消终止。
 	if ctx.Err() != nil {
 		return FailoverCanceled
+	}
+	if service.GetKeyAccountRoutingSession(ctx) != nil {
+		// Account-scoped exclusions outlive native 503 backoff/reset. A proven
+		// empty pool is handed to the forward-only group coordinator instead.
+		return FailoverExhausted
 	}
 
 	if s.LastFailoverErr != nil &&

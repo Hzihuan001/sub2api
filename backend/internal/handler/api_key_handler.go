@@ -36,6 +36,8 @@ type CreateAPIKeyRequest struct {
 	Name                  string                         `json:"name" binding:"required"`
 	GroupID               *int64                         `json:"group_id"` // nullable
 	BackupGroupIDs        []int64                        `json:"backup_group_ids"`
+	KeyRouteScope         *string                        `json:"key_route_scope"`
+	KeyRouteRevision      json.RawMessage                `json:"key_route_revision"`
 	KeyRouteFailurePolicy *service.KeyRouteFailurePolicy `json:"key_route_failure_policy"`
 	KeyModelPolicy        *service.KeyModelPolicy        `json:"key_model_policy"`
 	CustomKey             *string                        `json:"custom_key"`      // 可选的自定义key
@@ -55,6 +57,8 @@ type UpdateAPIKeyRequest struct {
 	Name                  string          `json:"name"`
 	GroupID               *int64          `json:"group_id"`
 	BackupGroupIDs        *[]int64        `json:"backup_group_ids"`
+	KeyRouteScope         *string         `json:"key_route_scope"`
+	KeyRouteRevision      json.RawMessage `json:"key_route_revision"`
 	KeyRouteFailurePolicy json.RawMessage `json:"key_route_failure_policy"`
 	KeyModelPolicy        json.RawMessage `json:"key_model_policy"`
 	Status                string          `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -202,11 +206,16 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: numeric limits must be finite and non-negative, and expires_in_days must be greater than zero")
 		return
 	}
+	if err := service.ValidateKeyRouteWriteMetadata(req.KeyRouteScope, req.KeyRouteRevision); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	svcReq := service.CreateAPIKeyRequest{
 		Name:                  req.Name,
 		GroupID:               req.GroupID,
 		BackupGroupIDs:        req.BackupGroupIDs,
+		KeyRouteScope:         req.KeyRouteScope,
 		KeyRouteFailurePolicy: req.KeyRouteFailurePolicy,
 		KeyModelPolicy:        req.KeyModelPolicy,
 		CustomKey:             req.CustomKey,
@@ -260,6 +269,10 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: numeric limits must be finite and non-negative")
 		return
 	}
+	if err := service.ValidateKeyRouteWriteMetadata(req.KeyRouteScope, req.KeyRouteRevision); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	var keyRouteFailurePolicy *service.KeyRouteFailurePolicy
 	keyRouteFailurePolicySet := req.KeyRouteFailurePolicy != nil
@@ -285,6 +298,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		KeyModelPolicy:           keyModelPolicy,
 		KeyModelPolicySet:        req.KeyModelPolicy != nil,
 		BackupGroupIDs:           req.BackupGroupIDs,
+		KeyRouteScope:            req.KeyRouteScope,
 		KeyRouteFailurePolicy:    keyRouteFailurePolicy,
 		KeyRouteFailurePolicySet: keyRouteFailurePolicySet,
 		IPWhitelist:              req.IPWhitelist,

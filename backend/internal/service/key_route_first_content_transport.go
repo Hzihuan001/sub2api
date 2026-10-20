@@ -16,6 +16,9 @@ func keyRouteFirstContentExpired(ctx context.Context) bool {
 }
 
 func protectKeyRouteUsageResponse(ctx context.Context, response *http.Response) {
+	if KeyAccountResponseContext(response) != nil {
+		return // This wire already has its immutable usage/context observer.
+	}
 	if response != nil && response.StatusCode >= 200 && response.StatusCode < 300 {
 		response.Body = keyrouting.ProtectUsageReader(ctx, response.Body)
 	}

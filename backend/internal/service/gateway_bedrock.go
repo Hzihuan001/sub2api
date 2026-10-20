@@ -201,7 +201,7 @@ func (s *GatewayService) executeBedrockUpstream(
 		if err != nil {
 			return nil, err
 		}
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, nil)
+		resp, err = KeyAccountInferenceDoWithTLS(s.httpUpstream, upstreamReq, proxyURL, account, modelID, nil)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()

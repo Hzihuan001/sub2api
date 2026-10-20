@@ -954,47 +954,22 @@ func (m *PluginManager) ReadUIAsset(ctx context.Context, id int64, relative stri
 }
 
 func (m *PluginManager) RoundTripOpenAIOAuth(ctx context.Context, request *http.Request, proxyURL string, account *Account) (*http.Response, bool, error) {
-	if !m.ShouldRouteOpenAIOAuth(account) {
-		return nil, false, nil
+	reservation, handled, err := m.reserveOpenAIOAuth(account)
+	if err != nil || !handled {
+		return nil, handled, err
 	}
-	route := m.route.Load()
-	if route == nil {
-		return nil, false, nil
-	}
-	if route.runtime == nil {
-		return nil, true, fmt.Errorf("OpenAI OAuth 插件不可用: %s", route.unavailable)
-	}
-	if route.runtime.client.Exited() {
-		runtimeErr := errors.New("OpenAI OAuth 插件进程已退出")
-		if stateErr := m.markRuntimeUnavailable(route, runtimeErr.Error()); stateErr != nil {
-			return nil, true, errors.Join(runtimeErr, stateErr)
-		}
-		return nil, true, runtimeErr
-	}
-	if !route.runtime.beginRequest() {
-		return nil, true, errors.New("OpenAI OAuth 插件正在停止")
-	}
-	response, err := route.runtime.roundTrip(ctx, request, proxyURL, account)
-	if err != nil {
-		route.runtime.finishRequest()
-		if route.runtime.client.Exited() {
-			if stateErr := m.markRuntimeUnavailable(route, err.Error()); stateErr != nil {
-				err = errors.Join(err, stateErr)
-			}
-		}
-		return nil, true, err
-	}
-	return response, true, nil
+	defer reservation.cancelBeforeDispatch()
+	response, err := reservation.roundTrip(ctx, request, proxyURL, account)
+	return response, true, err
 }
 
 // ShouldRouteOpenAIOAuth 判断该账号是否命中当前 OpenAI OAuth 插件绑定。
 // WebSocket 入口用它把命中的账号切换到 HTTP Bridge，避免绕过 v1 HTTP 插件协议。
 func (m *PluginManager) ShouldRouteOpenAIOAuth(account *Account) bool {
-	if m == nil || account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+	if m == nil {
 		return false
 	}
-	route := m.route.Load()
-	return route != nil && route.rolloutPercent > 0 && int(stablePluginBucket(account.ID)) < route.rolloutPercent
+	return shouldRouteOpenAIOAuthSnapshot(m.route.Load(), account)
 }
 
 func (m *PluginManager) markRuntimeUnavailable(failedRoute *pluginRoute, message string) error {

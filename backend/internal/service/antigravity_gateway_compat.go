@@ -397,6 +397,11 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatResponse(
 	}
 	streamResult, err := s.consumeAntigravityCompatSuccess(c, call, resp)
 	if err != nil {
+		if streamResult != nil {
+			if partial, partialErr := keyAccountPartialUsageResult(resp, c, streamResult.usage, streamResult.firstTokenMs, call.request.originalModel, call.billingModel, call.request.clientStream, call.request.startTime, err); partial != nil {
+				return partial, partialErr
+			}
+		}
 		return nil, err
 	}
 	if streamResult.usage == nil {
@@ -566,6 +571,9 @@ func (s *AntigravityGatewayService) handleChatCompletionsNonStreamingFromAntigra
 ) (*antigravityStreamResult, error) {
 	claudeResponse, result, err := s.collectClaudeStreamResponse(c, resp, startTime, originalModel)
 	if err != nil {
+		if result != nil && keyAccountHasNativePartial(resp, result.usage) {
+			return result, keyAccountKeepPartialError(err)
+		}
 		return nil, s.mapAntigravityCompatCollectionError(c, err)
 	}
 	var anthropicResponse apicompat.AnthropicResponse
@@ -585,6 +593,9 @@ func (s *AntigravityGatewayService) handleResponsesNonStreamingFromAntigravity(
 ) (*antigravityStreamResult, error) {
 	claudeResponse, result, err := s.collectClaudeStreamResponse(c, resp, startTime, originalModel)
 	if err != nil {
+		if result != nil && keyAccountHasNativePartial(resp, result.usage) {
+			return result, keyAccountKeepPartialError(err)
+		}
 		return nil, s.mapAntigravityCompatCollectionError(c, err)
 	}
 	var anthropicResponse apicompat.AnthropicResponse

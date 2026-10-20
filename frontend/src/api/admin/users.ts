@@ -5,7 +5,7 @@
 
 import { apiClient } from '../client'
 import { listPlatformIds } from '@/constants/platformCatalog'
-import type { AccountPlatform, AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey, UserRole } from '@/types'
+import type { AccountPlatform, AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey, UserRole, CreateApiKeyRequest } from '@/types'
 
 export interface AdminBindAuthIdentityChannelRequest {
   channel: string
@@ -234,7 +234,7 @@ export async function getUserApiKeys(id: number): Promise<PaginatedResponse<ApiK
  */
 export async function createUserApiKey(
   id: number,
-  payload: { name: string; group_id?: number | null }
+  payload: CreateApiKeyRequest
 ): Promise<ApiKey> {
   const { data } = await apiClient.post<{ api_key: ApiKey }>(
     `/admin/users/${id}/api-keys`,

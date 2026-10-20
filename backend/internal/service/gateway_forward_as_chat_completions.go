@@ -126,6 +126,10 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		cachePlan := s.prepareKiroChatCompletionsCacheEmulationUsage(ctx, account, group, body, mappedModel, estimateKiroInputTokens(ctx, anthropicBody))
 		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, parsed, anthropicBody, mappedModel, originalModel, c.Request.Header, group, cachePlan)
 		if err != nil {
+			var failover *UpstreamFailoverError
+			if KeyAccountForwardScopeFromContext(ctx) != nil && errors.As(err, &failover) {
+				return nil, err
+			}
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -161,7 +165,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		}
 
 		// 11. Send request
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		resp, err = KeyAccountInferenceDoWithTLS(s.httpUpstream, upstreamReq, proxyURL, account, mappedModel, s.tlsFPProfileService.ResolveTLSProfile(account))
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -225,7 +229,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		result, handleErr = s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
 	}
 
-	return result, handleErr
+	return keyAccountKiroNativeResult(resp, result, handleErr, originalModel, mappedModel, clientStream, startTime)
 }
 
 // extractCCReasoningEffortFromBody reads reasoning effort from a Chat Completions
@@ -336,6 +340,9 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		}
 	}
 
+	if result, err := keyAccountKiroNativeResult(resp, nil, scanner.Err(), originalModel, mappedModel, false, startTime); err != nil && hasKeyAccountKiroProtocol(resp) {
+		return result, err
+	}
 	if finalResp == nil {
 		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
 		return nil, fmt.Errorf("upstream stream ended without response")
@@ -534,6 +541,9 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		}
 	}
 
+	if result, err := keyAccountKiroNativeResult(resp, resultWithUsage(), scanner.Err(), originalModel, mappedModel, true, startTime); err != nil && hasKeyAccountKiroProtocol(resp) {
+		return result, err
+	}
 	// Finalize both state machines
 	finalResEvents := apicompat.FinalizeAnthropicResponsesStream(anthState)
 	for _, resEvt := range finalResEvents {

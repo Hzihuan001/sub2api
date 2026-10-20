@@ -288,7 +288,18 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStream(
 func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveInterval(
 	c *gin.Context, resp *http.Response, startTime time.Time, originalModel string,
 	adapter antigravityCompatStreamAdapter, prefix string, interval, maxPreContentWait time.Duration,
-) (*antigravityStreamResult, error) {
+) (result *antigravityStreamResult, returnedErr error) {
+	proofContext := KeyAccountResponseContext(resp)
+	var actualUsage *ClaudeUsage
+	defer func() {
+		if returnedErr != nil && keyAccountHasNativePartial(resp, actualUsage) {
+			if result == nil {
+				result = &antigravityStreamResult{}
+			}
+			result.usage = actualUsage
+			returnedErr = keyAccountKeepPartialError(returnedErr)
+		}
+	}()
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
@@ -354,6 +365,20 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 			}
 			resetAntigravityCompatTimer(timeoutTimer, timeout)
 			s.observeAntigravityGeminiSSELine(c, event.line)
+			if proofContext != nil {
+				if data, ok := extractAnthropicSSEDataLine(event.line); ok {
+					payload, unwrapErr := s.unwrapV1InternalResponse([]byte(data))
+					if unwrapErr == nil && payload != nil {
+						observeKeyAccountProtocolPayload(proofContext, payload)
+						if usage := extractGeminiUsage(payload); usage.hasObservedTokens() {
+							actualUsage = usage
+						}
+						if failure := keyAccountGeminiProtocolError(proofContext, resp, payload); failure != nil {
+							return nil, failure
+						}
+					}
+				}
+			}
 			session.consume(event.line)
 
 		case <-timeoutCh:

@@ -35,6 +35,10 @@ type APIKey struct {
 	GroupID *int64
 	// BackupGroupIDs are tried in order after GroupID; they never replace the primary binding.
 	BackupGroupIDs []int64
+	// Scope is deliberately outside the legacy policy JSON. Existing keys keep
+	// group_v1 until an explicit conversion to account_v2 is persisted.
+	KeyRouteScope    string
+	KeyRouteRevision int64
 	// KeyRouteFailurePolicy is an optional per-key override for automatic
 	// backup-group failover. A non-nil empty policy explicitly disables the
 	// group policy for this key; nil preserves the group policy fallback.

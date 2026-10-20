@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 28 // v28: exact per-key model policy
+const apiKeyAuthSnapshotVersion = 29 // v29: explicit account-route scope and durable revision
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -331,6 +331,9 @@ func (s *APIKeyService) applyAuthCacheEntry(key string, entry *APIKeyAuthCacheEn
 	if err := entry.Snapshot.KeyModelPolicy.Validate(); err != nil {
 		return nil, false, nil // ignore corrupt cache and reload the authoritative key
 	}
+	if err := ValidateKeyRouteMetadata(entry.Snapshot.KeyRouteScope, entry.Snapshot.KeyRouteRevision); err != nil {
+		return nil, false, nil
+	}
 	return s.snapshotToAPIKey(key, entry.Snapshot), true, nil
 }
 
@@ -344,6 +347,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		UserID:                apiKey.UserID,
 		GroupID:               apiKey.GroupID,
 		BackupGroupIDs:        append([]int64(nil), apiKey.BackupGroupIDs...),
+		KeyRouteScope:         apiKey.KeyRouteScope,
+		KeyRouteRevision:      apiKey.KeyRouteRevision,
 		KeyRouteFailurePolicy: cloneAPIKeyRouteFailurePolicy(apiKey.KeyRouteFailurePolicy),
 		KeyModelPolicy:        apiKey.KeyModelPolicy.Clone(),
 		Name:                  apiKey.Name,
@@ -469,6 +474,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		UserID:                snapshot.UserID,
 		GroupID:               snapshot.GroupID,
 		BackupGroupIDs:        append([]int64(nil), snapshot.BackupGroupIDs...),
+		KeyRouteScope:         snapshot.KeyRouteScope,
+		KeyRouteRevision:      snapshot.KeyRouteRevision,
 		KeyRouteFailurePolicy: cloneAPIKeyRouteFailurePolicy(snapshot.KeyRouteFailurePolicy),
 		KeyModelPolicy:        snapshot.KeyModelPolicy.Clone(),
 		Key:                   key,

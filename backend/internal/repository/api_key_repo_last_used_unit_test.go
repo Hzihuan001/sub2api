@@ -43,6 +43,7 @@ func newAPIKeyRepoSQLite(t *testing.T) (*apiKeyRepository, *dbent.Client) {
 		policy TEXT NOT NULL
 	)`)
 	require.NoError(t, err)
+	installAPIKeyAccountRouteTestSchema(t, client)
 
 	return &apiKeyRepository{client: client, sql: db}, client
 }

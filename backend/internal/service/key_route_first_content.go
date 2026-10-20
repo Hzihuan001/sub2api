@@ -8,6 +8,9 @@ import (
 )
 
 func (s *KeyRoutingService) FirstContentTimeout(ctx context.Context, key *APIKey, _ KeyRoutingRequest, groupID int64) (time.Duration, error) {
+	if key != nil && key.KeyRouteScope == KeyRouteScopeAccountV2 {
+		return 0, nil // Timed at each actual account dispatch, never per group.
+	}
 	if s == nil || key == nil {
 		return 0, nil
 	}
@@ -19,6 +22,9 @@ func (s *KeyRoutingService) FirstContentTimeout(ctx context.Context, key *APIKey
 }
 
 func (s *KeyRoutingService) RecordFirstContent(ctx context.Context, key *APIKey, request KeyRoutingRequest, groupID int64, elapsed time.Duration) (keyrouting.RouteFailureResult, error) {
+	if key != nil && key.KeyRouteScope == KeyRouteScopeAccountV2 {
+		return keyrouting.RouteFailureResult{RuleIndex: -1}, nil
+	}
 	if s == nil || s.failures == nil || key == nil {
 		return keyrouting.RouteFailureResult{}, nil
 	}
