@@ -35,8 +35,10 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 	}
 	endpoint := keyRoutingTextEndpoint(c.Request.Method, c.Request.URL.Path)
 	if endpoint == "" {
-		// Metadata, media, WS, forced-provider and resource endpoints retain the
-		// primary group's existing behavior. Never guess a resource's owner.
+		// Ordinary model discovery exposes a read-only catalogue source without
+		// selecting a group. Other metadata, media, WS and resource endpoints
+		// retain the primary group's behavior; never guess a resource's owner.
+		setAPIKeyRouteCatalogueSource(c, selector)
 		return key, true
 	}
 	body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)

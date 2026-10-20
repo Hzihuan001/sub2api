@@ -2,6 +2,8 @@
 
 本仓库把官方主线、长期定制集成分支和临时升级分支分开。预期流程是每次官方发布后，先由同步工作流生成升级分支、冲突报告和测试结果，再由人工确认定制功能边界；同步工作流不负责构建、部署或修改生产环境。
 
+2026-10-20 新增**未发布本地 c 候选**：普通主备模型目录并集已在独立 `key_route_catalogue` service/middleware/handler 模块实现，宿主仅薄接线，契约/测试已登记；无新增迁移，不变更调度/计费。b 的两个备用独有模型 HTTP/SSE 通过；c 再对齐原生中间组权限阻断，最终零模型调用目录/权限/缓存补验通过，未重复网关测试。尚未提交、推送或部署；详见 [目录验收记录](CUSTOM_KEY_CATALOGUE_ACCEPTANCE_20261020.md)。后续升级先核对该工作区成果，不能只从远端正式 `.12` 推断功能已齐；本地 18180/18181/18182 已非下文正式 digest。
+
 2026-10-20 当前边界：`.12` Key 编辑器、独立 TTFT/SLA/故障规则和模型限制已部署三站，运行 `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4` / `custom-0.2.16.12`；镜像 digest `sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610`。完整 service、正式产物本地主站 13/13、三站启动健康及逐站生产检查见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)，不据此声称 L1/COS 完整登录矩阵或生产付费调用已做。Fork 权限 API 虽 enabled，本次真实 dispatch 仍返回 HTTP 422 `Actions has been disabled for this repository`，未产生运行；已批准本地 GHCR 路径不等于 CI 或真实自动升级 PR 链路成功。
 
 发布分支与 `origin/custom/integration` 同步 `.12` 运行提交及文档收尾，精确 ref 由 Git 核验，运行标签不因文档更新而移动。下次升级从 [项目状态](CUSTOM_PROJECT_STATUS.md) 和实际远端核对完整功能集合，保留主备 Key、独立规则、模型限制及公共文档。不要从旧 `D:/projects/sub2api-custom` 根检出全量发布或合并历史功能分支。GitHub CLI 默认仓库曾指向上游；查询/触发工作流必须显式指定 `-R Hzihuan001/sub2api` 或完整 API 路径。

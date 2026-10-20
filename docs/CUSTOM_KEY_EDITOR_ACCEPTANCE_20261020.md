@@ -2,22 +2,46 @@
 
 > 当前状态：`0.2.16-custom.12` 已推送并部署主站/L1/COS。以下 g/d 的失败与补验证据保持原样；正式 digest 单轮验收和生产发布独立记录在本节及 [custom.12 发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)，不倒写历史。
 
-## 正式发布产物验收与当前本地环境
+> 本地环境最新覆盖：主备模型目录合并 **c 候选未发布**，现运行在 18180/18181/18182；c 对齐中间组权限终止，零模型调用目录补验通过，复用 b 的两个独有备用模型 HTTP/SSE 证据。完整记录和当前停止命令见 [目录验收记录](CUSTOM_KEY_CATALOGUE_ACCEPTANCE_20261020.md)。下方 SLA/正式 digest 结果代表当时独立补验，不能把其镜像 ID 直接用于当前 c 容器测试。
+
+## 三项范围确认的本地复核（2026-10-20）
+
+- 用户补回较早的范围确认：TTFT、SLA 成功率、Key 模型白名单全部包含，并在本地测试后验收。核对发现三项均已在 custom.12 实现且此前已发布；本轮只读复核与准备本地验收，不再次推送或部署，不把后到确认写成新增发布授权。
+- 源码与已验收运行提交未变，复用下文完整 service、受影响前端及正式镜像主站 13/13 证据；该次只读复核未新增 HTTP SLA 矩阵，随后独立补验结果见下一节。
+- 本地 `http://127.0.0.1:18180/keys` 实际回读专用 `codex-key-editor-acceptance-20261020`：TTFT 8 秒/最近 20 次中 3 次，SLA 最近 20 次低于 95%，统一冷却 240 秒；模型限制已启用、精确 ID `gpt-4o-mini`。这里只展开既有编辑器，未提交修改、创建或删除 Key，万模站未操作。
+- 页面已保留供本人验收，截图 `D:/projects/key-three-features-local-review-20261020.jpg`；模型限制位于高级设置中。TTFT 取消前上游可能产生费用、最后合格分组不按阈值截断等安全边界仍保留。该次页面复核未发起模型请求或接受任何合规确认。
+
+## SLA 独立 Docker 网关补验（2026-10-20 09:41–09:42）
+
+- 正式 `custom.12` digest `e6a53ec6…`，隔离项目 `moshu-reseller-acceptance-c` 的 main 站执行一次 **11/11** 合成请求；没有修改应用源码、构建镜像、调用生产或付费模型、重新推送部署，也未重复此前 13 个场景。没有代用户接受合规确认。
+- 脚本新增互斥 `-SLACasesOnly`，固定预算 11 次。通过合成管理员 API 创建临时用户/Key/组/账号；为隔离原生按账号的 502 冷却，在同一组轮换临时账号，不重置 Key/组/模型/端点的 SLA 身份，也不清除或绕过原生保护。该测试同时覆盖 SLA 跨同组账号累计。
+- 验证完整样本才判定；50% 恰等阈值不冷却；低于阈值的失败可切换当前请求；冷却期间新健康主账号也被跳过；清空规则立即恢复主组；成功完成低成功率窗口只影响下一请求，当前成功不重放。冷却探针只调用备用一次，成功主组请求也只调用一次。
+- **7 次成功**均各一条 usage/dedup，实际主组 2 倍率/备用 0.5 倍率结算；4 次失败不扣款。合成总额 `0.00002565`，余额与 Key 配额精确一致，不是真实模型费用；未写入全局账号暂停字段。
+- 报告 `D:/projects/custom12-local-sla-20261020/evidence.json`，run `cc451ebb5f37`；16 个 API 临时资源均按登记 ID 删除、状态 200，独立 mock 已删除，原九个应用/数据服务 ID、启动时间及 restart 数不变。原 Key 和页面验收 Key 保留。报告 `passed-with-findings` 唯一项仍是已知 `MODELS_PRIMARY_ONLY`，没有隐瞒成完整模型目录并集。
+- 本轮仅新增可复用测试脚本及共享记录；运行版本仍为已发布的 `0.2.16-custom.12`，本地入口仍为 `http://127.0.0.1:18180/keys`，供本人验收。
+
+复用命令（证据目录必须为新的空缺路径；不传自动合规确认开关）：
+
+```powershell
+pwsh -NoProfile -File deploy/tests/key-routing-acceptance-existing.ps1 -Execute -Sites main -SLACasesOnly -ExpectedImageId sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610 -OutputDirectory D:/projects/custom12-local-sla-new-run
+```
+
+## 正式发布产物验收（目录合并之前的独立阶段）
 
 - 运行 `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4`，标签 `custom-0.2.16.12`，三站同一 `ghcr.io/hzihuan001/sub2api@sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610`（linux/amd64）。
 - 发布前完整 service（含最后工具 guard）17,311 项/关键后端 137 项通过；正式 GHCR 拉回后单轮本地主站 **13/13** HTTP/SSE/TTFT/模型准入与账务场景通过，报告 `D:/projects/custom12-published-gateway-20261020/evidence.json`。10 次成功均单条 usage/dedup、实际组扣费；已输出/已有用量不重发、最后组不截断、拒绝场景零调用。报告 `passed-with-findings` 的已知项为目录仍主组，非备用并集。
-- 三个本地应用均为该正式镜像，healthy、restart 0，六个数据服务未重建；保留 9001/9002 的同库 custom.11 主应用启动健康回退/恢复通过，不能据此声称模型限制权限等价。
+- 该阶段三个本地应用均为该正式镜像，healthy、restart 0，六个数据服务未重建；保留 9001/9002 的同库 custom.11 主应用启动健康回退/恢复通过，不能据此声称模型限制权限等价。当前本地产物已替换，见文首目录 c 记录。
 - 生产主站→L1→COS 已完成 app-only 更新；2026-10-20 06:26:50 有限复核健康、版本/commit/digest、公共 JS 与源站一致及关键日志 0。无生产付费模型、没有生产全角色登录矩阵；L1/COS 本地完整管理矩阵仍未执行，不代本人合规确认。Actions 实际 dispatch 422，无 CI run。
-- 本地入口仍为 `http://127.0.0.1:18180/keys`、L1 `18181`、COS `18182`。保留验收数据；若本人完成本地合规后补测 L1/COS，用当前 digest 的 `-ExpectedImageId`，不使用下文历史 d/g ID。
+- 本地入口仍为 `http://127.0.0.1:18180/keys`、L1 `18181`、COS `18182`。保留验收数据；若本人完成本地合规后补测 L1/COS，先核对实际镜像 ID，不使用下文历史 d/g 或已替换的正式镜像 ID。
 
 停止当前验收环境（保留数据卷）：
 
 ```powershell
-$env:SUB2API_IMAGE = 'ghcr.io/hzihuan001/sub2api@sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610'
+$env:SUB2API_IMAGE = 'sub2api-custom:key-catalogue-20261020c'
 docker compose -p moshu-reseller-acceptance-c -f deploy/acceptance/docker-compose.isolation.yml stop
 ```
 
-不要使用 `down -v`。下文 g/d 的关闭参数和补测 ID 仅代表历史阶段，当前以上述正式坐标为准。
+不要使用 `down -v`。下文 g/d 的关闭参数和补测 ID 仅代表历史阶段，当前本地产物以上方目录 c 记录为准。
 
 ## 历史 g 扩展：TTFT、SLA 与 Key 模型限制（当时本地验证完成、未发布）
 

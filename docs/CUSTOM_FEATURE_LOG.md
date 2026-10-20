@@ -1,5 +1,24 @@
 # 定制功能日志
 
+### 2026-10-20 — 目录可达前缀修补与最终 c 本地复核（未发布）
+
+- 反向复核发现中间组撤权、改订阅或 ClaudeOnly 后，目录仍展示后组，但原生选组会先终止。仅在独立目录 service 截断同类后续候选，保留前面有效目录；inactive/missing 仍可跳过，inactive+撤权以权限优先。未改实际选组、权限或计费。
+- service 11 顶层/32 含子项定向及 Go vet 通过；c Docker 最终目录/权限/缓存补验 passed、零模型调用/零账目变化，8 资源清理均 200，原九服务未重启。新增 `-CatalogueCasesOnly -CatalogueMetadataOnly` 固定零模型预算；b 的 2/2 HTTP/SSE 证据复用，不无因重跑。
+- 本地三应用为 `sub2api-custom:key-catalogue-20261020c` / `sha256:2454007241e32bc3c66f8e3d0d7375d7be407fc8de08c2ab8c7dd6ebde773a96`，六数据容器未重建。按 computer-use 技能真实只读复核规则/模型限制回显、取消不保存，console 无 error。精确证据和截图见 [`目录验收记录`](CUSTOM_KEY_CATALOGUE_ACCEPTANCE_20261020.md)。未提交/推送/部署，等用户本地验收。
+
+### 2026-10-20 — 主备模型目录并集（本地验收通过，未推送/部署）
+
+- 独立 service 只读候选、middleware 元数据注入、handler 原生表示合并；普通 `/v1/models`、`/models` 及详情按主备优先顺序去重，分组/Key 白名单只减。真实账号来源为空不造默认目录，CN 平台不回退 Claude；单组和特殊协议路径不变。
+- 保留原生 metadata，2 MiB 隔离捕获及最终 ETag/304；修复 pinned 动态白名单提前跳过与字面 `[1m]` 的边界。无调度、计费、规则计数/数据库改造，不扩展原生主组 inactive/失权时的鉴权行为。
+- 定向后端、Go vet、架构契约通过；最终本地 b 三应用健康、六数据容器不变。本地主站目录权限/缓存/元数据零扣费，以及 DeepSeek/Kimi 独有模型 HTTP/SSE 2/2、各一 usage/dedup 和实际组扣费通过。mock 协议错误的首次失败报告保留，有限补验后 passed/0 findings，无生产/付费模型调用。
+- 该阶段本地 `sub2api-custom:key-catalogue-20261020b`（现已替换为上方 c）；完整坐标、源码边界、已知限制及停止命令见 [`目录合并验收记录`](CUSTOM_KEY_CATALOGUE_ACCEPTANCE_20261020.md)。等待用户本地验收；生产仍为正式 `.12`，未推送或部署。
+
+### 2026-10-20 — SLA 独立本地网关补验（测试与文档，无新发布）
+
+- `key-routing-acceptance-existing.ps1` 增加互斥 `-SLACasesOnly`：11 次固定预算、隔离内部 mock、同组临时账号轮换以排除原生 502 冷却干扰，维持 exact-ID 清理和原服务不重启门禁。
+- 正式 custom.12 本地主站 **11/11** 通过：完整窗口、严格低于阈值、失败触发当次切组、冷却跳过健康主账号、清规则恢复、成功不重放且只冷却后续请求。7 次成功 usage/dedup 各一条，实际组计费与余额/配额精确一致；合成总额 `0.00002565`，无真实模型费用。
+- 16 个临时资源清理均 200，mock 删除，原九服务未重启；已有 Key 与页面验收数据保留。唯一 finding 仍为目录只列主组。只增加脚本及共享记录，不改应用源码、镜像或生产部署；原始证据及本地入口见 [`验收记录`](CUSTOM_KEY_EDITOR_ACCEPTANCE_20261020.md)。
+
 ### 2026-10-20 — custom.12 已发布三站：Key 编辑器及独立故障规则
 
 - 用户针对明确的三站发布确认回复继续后，已完成本地门禁、提交推送、正式镜像、回拉、备份及主站→L1→COS 发布。三站均为 `0.2.16-custom.12`，运行 `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4`，标签 `custom-0.2.16.12`，digest `sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610`。

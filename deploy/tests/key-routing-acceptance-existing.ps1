@@ -6,6 +6,9 @@ param(
   [switch]$AcceptSyntheticAdminCompliance,
   [switch]$ExtendedKeyRules,
   [switch]$RemainingSafetyCasesOnly,
+  [switch]$SLACasesOnly,
+  [switch]$CatalogueCasesOnly,
+  [switch]$CatalogueMetadataOnly,
   [string]$ExpectedImageId = 'sha256:b54b0e3d2d0dbbd5ac3f9d95a84ee0b16f0162114a6249ca9b101be4ba40f744',
   [string]$OutputDirectory = ''
 )
@@ -15,7 +18,7 @@ param(
 # A fresh labelled mock and API-created resources are removed by exact recorded ID.
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 required' }
-if (-not $Execute) { Write-Output 'Use -Execute after reviewing this script. Reuses an acceptance-only project; seven synthetic gateway requests per selected site (thirteen with -ExtendedKeyRules, three with -RemainingSafetyCasesOnly); exact-ID cleanup; redacted evidence retained. Compliance remains untouched unless explicitly opted in.'; return }
+if (-not $Execute) { Write-Output 'Use -Execute after reviewing this script. Reuses an acceptance-only project; seven synthetic gateway requests per selected site (thirteen with -ExtendedKeyRules, three with -RemainingSafetyCasesOnly, eleven with -SLACasesOnly, two with -CatalogueCasesOnly; zero with -CatalogueCasesOnly -CatalogueMetadataOnly); exact-ID cleanup; redacted evidence retained. Compliance remains untouched unless explicitly opted in.'; return }
 function Check([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
 function Docker {
   $result = & docker.exe @args
@@ -25,6 +28,9 @@ function Docker {
 Check ($Project -match '^moshu-reseller-acceptance(?:-[a-zA-Z0-9_-]+)?$') 'Only dedicated local acceptance projects are allowed'
 Check ($ExpectedImageId -match '^sha256:[a-f0-9]{64}$') 'Exact application image ID required'
 Check ($Sites.Count -eq @($Sites | Select-Object -Unique).Count) 'Each site may only be selected once'
+Check (-not ($SLACasesOnly -and ($ExtendedKeyRules -or $RemainingSafetyCasesOnly))) 'SLA-only mode cannot be combined with another gateway suite'
+Check (-not ($CatalogueCasesOnly -and ($SLACasesOnly -or $ExtendedKeyRules -or $RemainingSafetyCasesOnly))) 'Catalogue-only mode cannot be combined with another gateway suite'
+Check (-not $CatalogueMetadataOnly -or $CatalogueCasesOnly) 'Metadata-only mode requires -CatalogueCasesOnly'
 $run = [Guid]::NewGuid().ToString('N').Substring(0,12)
 $prefix = "key-route-existing-$run"
 $network = "${Project}_default"
@@ -36,18 +42,19 @@ Check (-not (Test-Path -LiteralPath $OutputDirectory)) 'Report directory must be
 $containers = @{}; $initial = @{}; $mockId = ''; $site = ''; $token = ''; $userToken = ''; $apiKey = ''; $userId = 0; $keyId = 0
 $resources = @{}; $gatewayCalls = 0; $cleanupStandalone = $false
 if ($RemainingSafetyCasesOnly) { $ExtendedKeyRules = $true }
-$gatewayLimit=$(if($RemainingSafetyCasesOnly){3}elseif($ExtendedKeyRules){13}else{7})*$Sites.Count
+$gatewayLimit=$(if($CatalogueMetadataOnly){0}elseif($CatalogueCasesOnly){2}elseif($SLACasesOnly){11}elseif($RemainingSafetyCasesOnly){3}elseif($ExtendedKeyRules){13}else{7})*$Sites.Count
 $evidence = [ordered]@{status='running';run=$run;project=$Project;image=$ExpectedImageId;started_at=[DateTime]::UtcNow.ToString('o');sites=@{};findings=[Collections.Generic.List[object]]::new();cleanup=[Collections.Generic.List[object]]::new();fixture_sha256=(Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash.ToLowerInvariant();limits=@{gateway_requests=$gatewayLimit;paid_models=$false;application_restarts=$false;data_service_changes=$false;mock_published_ports=$false}}
 $httpClient = @'
 const fs=require('node:fs'),p=JSON.parse(fs.readFileSync(0,'utf8'));
 if(!['main','l1','cos','localhost'].includes(p.host)||!p.path.startsWith('/')||p.path.startsWith('//'))throw Error('Non-fixture target');
 (async()=>{const h={};if(p.token)h.authorization='Bearer '+p.token;if(p.body!==null)h['content-type']='application/json';
+if(p.etag)h['if-none-match']=p.etag;
 const r=await fetch('http://'+(p.host==='localhost'?'127.0.0.1':p.host)+':8080'+p.path,{method:p.method,headers:h,body:p.body===null?undefined:JSON.stringify(p.body),redirect:'error',signal:AbortSignal.timeout(45000)});
-process.stdout.write(JSON.stringify({status:r.status,content:await r.text()}));})().catch(e=>{process.stderr.write(e.message);process.exitCode=1});
+process.stdout.write(JSON.stringify({status:r.status,content:await r.text(),etag:r.headers.get('etag')}));})().catch(e=>{process.stderr.write(e.message);process.exitCode=1});
 '@
 function Save { $evidence.gateway_requests=$script:gatewayCalls; $evidence | ConvertTo-Json -Depth 25 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'evidence.json') -Encoding utf8 }
-function Http([string]$Method,[string]$Path,[string]$Auth='',[object]$Body=$null,[string]$HostName=$script:site) {
-  $payload=@{method=$Method;path=$Path;token=$Auth;body=$Body;host=$HostName}|ConvertTo-Json -Depth 20 -Compress
+function Http([string]$Method,[string]$Path,[string]$Auth='',[object]$Body=$null,[string]$HostName=$script:site,[string]$ETag='') {
+  $payload=@{method=$Method;path=$Path;token=$Auth;body=$Body;host=$HostName;etag=$ETag}|ConvertTo-Json -Depth 20 -Compress
   if ($script:cleanupStandalone) {
     # A crashed fixture must not prevent exact-ID cleanup of synthetic data.
     # This client is temporary, has no ports/volumes and cannot target production.
@@ -58,7 +65,7 @@ function Http([string]$Method,[string]$Path,[string]$Auth='',[object]$Body=$null
   if ($LASTEXITCODE -ne 0) { throw "Synthetic HTTP transport failed: $Method $Path; not retried" }
   $r=($raw -join "`n")|ConvertFrom-Json -AsHashtable; $data=$null
   if ($r.content) { try { $data=$r.content|ConvertFrom-Json -AsHashtable -NoEnumerate } catch {} }
-  return @{Status=[int]$r.status;Content=[string]$r.content;Json=$data}
+  return @{Status=[int]$r.status;Content=[string]$r.content;Json=$data;ETag=[string]$r.etag}
 }
 function Api([string]$Method,[string]$Path,[string]$Auth=$script:token,[object]$Body=$null,[int]$Expected=200) {
   $r=Http $Method "/api/v1$Path" $Auth $Body
@@ -88,14 +95,24 @@ function Set-Primary([string]$Scenario,[bool]$Schedulable=$true) {
   Check ($updated.schedulable -eq $Schedulable) 'Synthetic schedulable fixture change was not applied'
   Start-Sleep -Seconds 3
 }
-function Gateway([string]$Label,[string]$ExpectedSlot,[long]$ExpectedGroup,[decimal]$Rate,[bool]$Stream=$false,[string]$Mode='success') {
+function Rotate-SLAPrimary([string]$Scenario) {
+  # Isolate group-level SLA from native per-account transient-error cooldowns.
+  # Keep Key/group/model/endpoint unchanged; never clear native runtime state.
+  $old=(Api POST "/admin/accounts/$($accountIds[0])/schedulable" $token @{schedulable=$false}).Json.data
+  Check ($old.schedulable -eq $false) 'Old SLA fixture account was not disabled'
+  $next=[long](Api POST '/admin/accounts' $token @{name="$prefix-$site-sla-$($resources[$site].accounts.Count)";platform='openai';type='apikey';concurrency=5;priority=0;rate_multiplier=1;group_ids=@($primaryGroup);extra=@{openai_passthrough=$false;openai_responses_mode='force_responses'};credentials=(Credentials $Scenario 'primary')}).Json.data.id
+  Check ($next -gt 0) 'Fresh SLA fixture account was not created'
+  $resources[$site].accounts.Add($next);$script:accountIds[0]=$next;Save
+  Start-Sleep -Seconds 3
+}
+function Gateway([string]$Label,[string]$ExpectedSlot,[long]$ExpectedGroup,[decimal]$Rate,[bool]$Stream=$false,[string]$Mode='success',[string]$Model='gpt-4o-mini') {
   Check ($script:gatewayCalls -lt $gatewayLimit) 'Fixed gateway request budget exhausted'
   $before=Ledger; $statsBefore=Stats; $script:gatewayCalls++; Save
   $clock=[Diagnostics.Stopwatch]::StartNew()
-  $r=Http POST '/v1/responses' $apiKey @{model='gpt-4o-mini';input="synthetic $prefix $Label";stream=$Stream}
+  $r=Http POST '/v1/responses' $apiKey @{model=$Model;input="synthetic $prefix $Label";stream=$Stream}
   $clock.Stop()
   $statsAfter=Stats; $calls=@($statsAfter|Select-Object -Skip $statsBefore.Count)
-  $phase=@{label=$Label;status=$r.Status;upstream=$calls;elapsed_ms=$clock.ElapsedMilliseconds}; $evidence.sites[$site].last_attempt=$phase; Save
+  $phase=@{label=$Label;model=$Model;status=$r.Status;upstream=$calls;elapsed_ms=$clock.ElapsedMilliseconds}; $evidence.sites[$site].last_attempt=$phase; Save
   if ($Mode -eq 'success') {
     Check ($r.Status -eq 200 -and $r.Content.Contains('backup-ok')) "$site $Label did not complete successfully"
     $selected=@($calls|Where-Object {$_.slot -eq $ExpectedSlot})
@@ -116,6 +133,7 @@ function Gateway([string]$Label,[string]$ExpectedSlot,[long]$ExpectedGroup,[deci
     Check (@($calls|Where-Object {$_.slot -ne 'primary'}).Count -eq 0) "$site $Label replayed after output/rejection"
     if($Mode -eq 'partial'){Check ($r.Status -eq 200 -and $r.Content.Contains('already-output') -and -not $r.Content.Contains('backup-ok')) "$site $Label lost original partial stream"}
     if($Mode -eq 'unavailable'){Check ($r.Status -eq 503 -and $calls.Count -eq 0) "$site $Label reached upstream despite all accounts unavailable"}
+    if($Mode -eq 'failure'){Check ($r.Status -eq 502 -and $calls.Count -gt 0) "$site $Label did not preserve the expected upstream failure"}
     Check ($after.balance -eq $before.balance -and $after.quota_used -eq $before.quota_used) "$site $Label unexpectedly charged failed fixture"
     $phase.debit=0
   }
@@ -168,9 +186,15 @@ try {
     $groupIds=@();$accountIds=@()
     foreach($slot in $slots) {
       $rate=switch($slot){'primary'{2}'backup'{0.5}'third'{0.75}}
-      $g=[long](Api POST '/admin/groups' $token @{name="$prefix-$site-$slot";platform='openai';subscription_type='standard';rate_multiplier=$rate}).Json.data.id
+      $fixturePlatform=if($CatalogueCasesOnly){switch($slot){'backup'{'deepseek'}'third'{'kimi'}default{'openai'}}}else{'openai'}
+      $g=[long](Api POST '/admin/groups' $token @{name="$prefix-$site-$slot";platform=$fixturePlatform;subscription_type='standard';rate_multiplier=$rate}).Json.data.id
       $groupIds+=$g;$resources[$site].groups.Add($g);Save
-      $a=[long](Api POST '/admin/accounts' $token @{name="$prefix-$site-$slot";platform='openai';type='apikey';concurrency=5;priority=0;rate_multiplier=1;group_ids=@($g);extra=@{openai_passthrough=$false;openai_responses_mode='force_responses'};credentials=(Credentials 'success' $slot ($slot -ne 'primary'))}).Json.data.id
+      if($CatalogueCasesOnly) {
+        # Unique discovered IDs must also be callable. Use explicit synthetic
+        # per-token prices; never rely on unknown-model fallback pricing.
+        $null=Api PUT "/admin/groups/$g" $token @{model_pricing=@(@{platform=$fixturePlatform;models=@("$slot-model");billing_mode='token';input_price=0.000001;output_price=0.000002})}
+      }
+      $a=[long](Api POST '/admin/accounts' $token @{name="$prefix-$site-$slot";platform=$fixturePlatform;type='apikey';concurrency=5;priority=0;rate_multiplier=1;group_ids=@($g);extra=@{openai_passthrough=$false;openai_responses_mode='force_responses'};credentials=(Credentials 'success' $slot ($slot -ne 'primary'))}).Json.data.id
       $accountIds+=$a;$resources[$site].accounts.Add($a);Save
     }
     $primaryGroup=$groupIds[0];$backupGroup=$groupIds[1];$thirdGroup=$groupIds[2]
@@ -188,6 +212,86 @@ try {
     $backupModelsVisible=@($models.Json.data.id).Contains('backup-model') -and @($models.Json.data.id).Contains('third-model')
     if(-not $backupModelsVisible){$evidence.findings.Add(@{site=$site;code='MODELS_PRIMARY_ONLY';observed_ids=@($models.Json.data.id);message='Metadata currently lists primary-group models only, while text requests may route to backup groups.'})}
     $evidence.sites[$site].validation=@{ownership_denied=403;duplicate_backup=400;duplicate_rule=400;backup_models_visible=$backupModelsVisible}
+    if($CatalogueCasesOnly) {
+      $evidence.sites[$site].suite=if($CatalogueMetadataOnly){'catalogue-metadata-only'}else{'catalogue-only'}
+      Check ($backupModelsVisible -and @($models.Json.data.id|Where-Object {$_ -eq 'gpt-4o-mini'}).Count -eq 1) 'Catalogue did not merge and deduplicate the authorized groups'
+      Check ([bool]$models.ETag) 'Merged catalogue has no final ETag'
+      $beforeMetadata=Ledger;$beforeMetadataStats=Stats
+      $cached=Http GET '/v1/models' $apiKey $null $site $models.ETag
+      Check ($cached.Status -eq 304 -and -not $cached.Content) 'Final catalogue ETag was not respected'
+      $detail=Http GET '/v1/models/backup-model' $apiKey
+      Check ($detail.Status -eq 200 -and $detail.Json.id -eq 'backup-model') 'Backup model detail is missing'
+      $null=Api PUT "/admin/groups/$backupGroup" $token @{status='inactive'}
+      $inactive=Http GET '/v1/models' $apiKey $null $site $models.ETag
+      Check ($inactive.Status -eq 200 -and $inactive.ETag -ne $models.ETag -and -not @($inactive.Json.data.id).Contains('backup-model') -and @($inactive.Json.data.id).Contains('third-model')) 'Disabled backup leaked through the old catalogue ETag'
+      $null=Api PUT "/admin/groups/$backupGroup" $token @{status='active';is_exclusive=$true}
+      $unauthorized=Http GET '/v1/models' $apiKey
+      Check ($unauthorized.Status -eq 200 -and -not @($unauthorized.Json.data.id).Contains('backup-model') -and -not @($unauthorized.Json.data.id).Contains('third-model') -and @($unauthorized.Json.data.id).Contains('unrelated-model')) 'Catalogue advertised a later group beyond the native authorization barrier'
+      $null=Api PUT "/admin/groups/$backupGroup" $token @{is_exclusive=$false}
+      $null=Api POST "/admin/accounts/$($accountIds[1])/schedulable" $token @{schedulable=$false}
+      $emptyPool=Http GET '/v1/models' $apiKey
+      Check ($emptyPool.Status -eq 200 -and -not @($emptyPool.Json.data.id).Contains('backup-model') -and -not ($emptyPool.Content -match 'claude-')) 'Empty backup pool invented a default catalogue'
+      $null=Api POST "/admin/accounts/$($accountIds[1])/schedulable" $token @{schedulable=$true}
+      $null=Api PUT "/keys/$keyId" $userToken @{key_model_policy=@{enabled=$true;models=@('backup-model','third-model')}}
+      $restricted=Http GET '/v1/models' $apiKey
+      Check ($restricted.Status -eq 200 -and @($restricted.Json.data).Count -eq 2 -and @($restricted.Json.data.id).Contains('backup-model') -and @($restricted.Json.data.id).Contains('third-model')) 'Key model policy did not narrow the merged catalogue'
+      $hidden=Http GET '/v1/models/gpt-4o-mini' $apiKey
+      Check ($hidden.Status -eq 404) 'Restricted model detail leaked'
+      $null=Api PUT "/keys/$keyId" $userToken @{key_model_policy=$null}
+      $afterMetadata=Ledger;$afterMetadataStats=Stats
+      Check ($afterMetadata.balance -eq $beforeMetadata.balance -and $afterMetadata.quota_used -eq $beforeMetadata.quota_used -and $afterMetadata.usage_count -eq $beforeMetadata.usage_count -and $afterMetadataStats.Count -eq $beforeMetadataStats.Count) 'Model discovery invoked a model or changed billing'
+      if(-not $CatalogueMetadataOnly) {
+        Start-Sleep -Seconds 3
+        Gateway 'catalogue-backup-model-http' 'backup' $backupGroup 0.5 $false 'success' 'backup-model'
+        Gateway 'catalogue-third-model-sse' 'third' $thirdGroup 0.75 $true 'success' 'third-model'
+      }
+      $evidence.sites[$site].catalogue=@{union=$true;deduplicated=$true;final_etag=$true;backup_detail=$true;disabled_hidden=$true;unauthorized_hidden=$true;authorization_barrier=$true;empty_pool_no_defaults=$true;key_allowlist=$true;metadata_zero_debit=$true;deepseek_http=(-not $CatalogueMetadataOnly);kimi_sse=(-not $CatalogueMetadataOnly)}
+      Save
+    } elseif($SLACasesOnly) {
+      # No new application code or image: exercise SLA through the real gateway.
+      # One group result counts once, even when its native account retries.
+      $evidence.sites[$site].suite='sla-only'
+      $sla=@{rules=@(@{type='sla_success_rate';threshold=50;sample_size=2;cooldown_seconds=120})}
+      $null=Api PUT "/keys/$keyId" $userToken @{key_route_failure_policy=$sla}
+      $saved=(Api GET "/keys/$keyId" $userToken).Json.data
+      Check ($saved.key_route_failure_policy.rules[0].type -eq 'sla_success_rate' -and $saved.key_route_failure_policy.rules[0].threshold -eq 50 -and $saved.key_route_failure_policy.rules[0].sample_size -eq 2) 'SLA rule did not persist'
+      $startLedger=Ledger
+      Rotate-SLAPrimary 'server'
+      Gateway 'sla-incomplete-window-no-fallback' '' 0 0 $false 'failure'
+      Rotate-SLAPrimary 'success'
+      Gateway 'sla-equal-threshold-success-stays-primary' 'primary' $primaryGroup 2
+      Gateway 'sla-equal-threshold-next-still-primary' 'primary' $primaryGroup 2
+      Rotate-SLAPrimary 'server'
+      Gateway 'sla-equal-threshold-failure-no-fallback' '' 0 0 $false 'failure'
+      Rotate-SLAPrimary 'server'
+      Gateway 'sla-below-threshold-failure-switch' 'backup' $backupGroup 0.5
+      Check (@($evidence.sites[$site].last_attempt.upstream|Where-Object {$_.slot -eq 'primary'}).Count -gt 0) 'SLA threshold failure did not actually traverse the primary'
+      Rotate-SLAPrimary 'success'
+      Gateway 'sla-cooling-next-skips-primary' 'backup' $backupGroup 0.5
+      Check (@($evidence.sites[$site].last_attempt.upstream|Where-Object {$_.slot -eq 'primary'}).Count -eq 0) 'SLA cooldown retried primary instead of skipping it'
+      $null=Api PUT "/keys/$keyId" $userToken @{key_route_failure_policy=@{rules=@()}}
+      Check ((Api GET "/keys/$keyId" $userToken).Json.data.key_route_failure_policy.rules.Count -eq 0) 'SLA clearing did not persist'
+      Gateway 'sla-remove-rules-restores-primary' 'primary' $primaryGroup 2
+
+      # Success can complete a bad window, but must only affect the NEXT request.
+      $sla.rules[0].threshold=75;$sla.rules[0].sample_size=3
+      $null=Api PUT "/keys/$keyId" $userToken @{key_route_failure_policy=$sla}
+      Rotate-SLAPrimary 'server'
+      Gateway 'sla-success-trigger-incomplete-one' '' 0 0 $false 'failure'
+      Rotate-SLAPrimary 'server'
+      Gateway 'sla-success-trigger-incomplete-two' '' 0 0 $false 'failure'
+      Rotate-SLAPrimary 'success'
+      Gateway 'sla-success-triggers-next-only' 'primary' $primaryGroup 2
+      Gateway 'sla-success-trigger-next-skips-primary' 'backup' $backupGroup 0.5
+      Check (@($evidence.sites[$site].last_attempt.upstream|Where-Object {$_.slot -eq 'primary'}).Count -eq 0) 'Successful SLA sample did not cool the primary for the next request'
+      $finalLedger=Ledger
+      $charged=[decimal]0
+      foreach($phase in $evidence.sites[$site].phases){if($phase.ContainsKey('charged')){$charged += [decimal]$phase.charged}}
+      Check ($finalLedger.usage_count - $startLedger.usage_count -eq 7 -and $finalLedger.dedup_count - $startLedger.dedup_count -eq 7) 'SLA matrix did not produce exactly seven successful settlements'
+      Check ([decimal]$startLedger.balance-[decimal]$finalLedger.balance -eq $charged -and [decimal]$finalLedger.quota_used-[decimal]$startLedger.quota_used -eq $charged) 'SLA cumulative ledger differs from phase settlements'
+      $evidence.sites[$site].sla=@{complete_window=$true;equality_does_not_cool=$true;failure_switch=$true;cooldown_skips_primary=$true;rule_removal_restores_primary=$true;success_not_replayed=$true;success_cools_next_request=$true;success_settlements=7;charged=$charged}
+      Save
+    } else {
     if(-not $RemainingSafetyCasesOnly) {
     Start-Sleep -Seconds 3
     Gateway 'primary-model-missing-http' 'backup' $backupGroup 0.5
@@ -251,6 +355,7 @@ try {
       $after=Ledger;$statsAfter=Stats
       Check ($denied.Status -eq 404 -and $statsBefore.Count -eq $statsAfter.Count -and $before.balance -eq $after.balance -and $before.quota_used -eq $after.quota_used) 'Restricted model reached upstream or charged'
       $evidence.sites[$site].model_policy=@{persisted=$true;catalog_filtered=$true;denied_status=$denied.Status;denied_upstream_calls=0;denied_debit=0}
+    }
     }
     $state=(Sql "SELECT json_agg(json_build_object('id',id,'temp',temp_unschedulable_until,'overload',overload_until)) FROM accounts WHERE id IN ($($resources[$site].accounts -join ','));")|ConvertFrom-Json
     Check (@($state|Where-Object {$_.temp -or $_.overload}).Count -eq 0) "$site custom rules globally paused an account"

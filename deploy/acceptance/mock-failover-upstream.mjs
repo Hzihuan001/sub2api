@@ -21,7 +21,7 @@ http.createServer(async (req, res) => {
   }
   const key = (req.headers.authorization || '').replace('Bearer ', '')
   const [scenario, slot] = key.split(':')
-  requests.push({ scenario, slot, path: req.url, stream: body.stream })
+  requests.push({ scenario, slot, path: req.url, stream: Boolean(body.stream), model: body.model })
   const emit = value => res.write(`data: ${JSON.stringify(value)}\n\n`)
   if (scenario?.startsWith('slow_')) {
     let heartbeat
@@ -56,6 +56,22 @@ http.createServer(async (req, res) => {
       emit({ type: 'response.failed', response: { id: 'resp_fixture', status: 'failed', error: { code: 'server_error', type: 'server_error', status_code: 503, message: 'synthetic upstream failure' } } })
       return res.end()
     }
+  }
+  // CN-compatible groups translate Responses into native Chat Completions.
+  // Reply in the requested wire protocol instead of returning a Responses body
+  // that a real Chat provider would never send.
+  if (req.url === '/v1/chat/completions') {
+    const id = `chatcmpl_${crypto.randomUUID()}`
+    const usage = { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 }
+    if (!body.stream) return json(res, 200, {
+      id, object: 'chat.completion', model: body.model,
+      choices: [{ index: 0, message: { role: 'assistant', content: 'backup-ok' }, finish_reason: 'stop' }], usage
+    })
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
+    emit({ id, object: 'chat.completion.chunk', model: body.model, choices: [{ index: 0, delta: { role: 'assistant', content: 'backup-ok' }, finish_reason: null }] })
+    emit({ id, object: 'chat.completion.chunk', model: body.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage })
+    res.write('data: [DONE]\n\n')
+    return res.end()
   }
   const value = {
     id: `resp_${crypto.randomUUID()}`, object: 'response', status: 'completed', model: body.model,

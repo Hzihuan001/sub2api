@@ -2,6 +2,8 @@
 
 ## 当前状态
 
+2026-10-20 补充：正式生产已为 `.12`；普通主备模型目录并集新增为**未发布本地 c 候选**。b 的备用独有模型 HTTP/SSE 验收通过；c 对齐中间组权限阻断并通过零模型调用目录/权限/缓存补验，等待用户本地验收。当前入口 `http://127.0.0.1:18180/keys`；精确坐标/范围见 [目录验收记录](CUSTOM_KEY_CATALOGUE_ACCEPTANCE_20261020.md)。下文 `.7` 及“目录只含主组”等描述是当时历史，不表示本地最新候选仍缺此项。
+
 2026-10-15，本功能与分组显式默认值已随 `.7` 部署主站/L1/COS，三站最终 healthy/restart 0。运行提交 `f36de3d4a00400c66994a02c13c5d23f6a7feac8` / `custom-0.2.16.7`，发布及集成分支已推 `3ce7de3ebe68263a3f0e8bf6a83393486747306f`，后续文档单独同步；GHCR digest `sha256:ec8860583ac3603fadc108e90b2036abf352d395b5035ee8f4cb51d1de66ac42` 本地/OVH 回拉一致。活动工作树、分支和开发基线仍分别为 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`、`codex/group-failover-rules-v0.2.16`、`3b0145c8abbf57d581f99084e88118ea7e759e3f`。精确部署和证据见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md)。
 
 本轮没有合并新官方版本或运行付费模型请求；下方本地开发测试保留原始范围，不因发布自动扩大为生产测试。
