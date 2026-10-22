@@ -9,6 +9,12 @@
 
 ## 1. 当前快照
 
+### 2026-10-23 — `custom.14` 已完成三站发布
+
+- 当前生产主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 均运行 `0.2.16-custom.14`。运行提交 `09e885d4eb2098a48758b9b5309e166bd85737ce`，标签 `custom-0.2.16.14`；镜像摘要 `sha256:61468c96ecbafb5e79f959e06a74291773fae77db235fff130ad9d67df4f2ca7`。
+- 本轮新增的受限 OpenAI Responses 恢复适配器已通过本地三站隔离验收 `12/12`；只允许官方 OpenAI API Key、已存储且可完整读取的 Responses 文本链，其他状态/工具/文件/图片/兼容 provider 均 fail closed。无数据库迁移。
+- 三站已按主站→L1→COS 顺序仅重建应用容器。部署前备份 `/opt/sub2api-backups/v0.2.16-custom.14-20261022T195945Z` 已验证可读；各站在途请求为 0，健康检查、版本/完整提交、匿名权限、关键启动日志均通过，PostgreSQL/Redis、卷、网络和反代保持不变。详细坐标与限制见 [`custom.14 发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM14_20261023.md)。
+
 ### 2026-10-23 — 连续会话跨账号恢复适配器（本地实现，未发布）
 
 - **目标**：源账号明确返回可重试的 HTTP 失败时，尽量把已存储的 Responses 会话恢复为无状态文本请求，再交给既有多分组路由；不静默删除状态 ID，不把不完整上下文交给另一账号。
@@ -16,7 +22,7 @@
 - **故障边界**：仅在尚未产生语义输出、上游明确返回 429/500/502/503/504 且响应体存在时尝试；超时、EOF、部分 SSE、未知 200、400/401/403/404/409、OAuth/Codex、DeepSeek/Kimi/兼容端点、工具/函数、文件/图片、conversation/background、加密推理和其他 provider-managed 状态全部 fail closed，继续返回原始错误。拒绝工具等有副作用状态可显著降低重复执行风险，但上游在生成后返回 5xx/429 时仍不能从协议上证明“绝未执行”，因此不宣称绝对零重复。
 - **计费边界**：恢复后的请求体会重新估算；若增量预留失败，会完整回滚 API Key、请求体、路由上下文，不能留下半切换状态。原有 usage/结算路径不改；本轮不新增长期会话存储。
 - **验证**：Docker Go 环境中 `internal/service`、`internal/server/middleware`、`internal/handler` 定向回归通过；新增恢复重建、链路校验、外部引用拒绝、错误码分类测试通过，`git diff --check` 通过。使用本地构建镜像 `sub2api-custom:group-routing-recovery-local-20261023`（digest `sha256:ea56e552f0ff8c44288093ebe8784cd9544e66f705a2a4892a847bcaee97de7a`）完成三站隔离 Compose 健康检查和合成账号优先级验收：12/12 请求成功，A→A→同组 B→后续分组、分组倍率/余额、exactly-once 结算、重复配置拦截和权限隔离均通过。验收容器/卷已按专用项目清理；报告 `D:/projects/key-route-recovery-20261023-r2/evidence.json`。
-- **发布状态**：代码已提交为 `5521f3940` 并推送到 `origin/codex/key-account-routing-stability-20261022`；以上镜像只是本地验收产物，尚未创建发布标签、构建发布镜像或部署，生产仍为 `0.2.16-custom.13`。该适配器不是“所有 provider/所有对话都能迁移”的承诺；不支持场景必须保持明确错误。下一步需按发布清单复核后再决定是否部署。
+- **阶段记录**：该实现随后合并到 `09e885d4e`，发布为 `custom-0.2.16.14` 并部署三站；本段保留实现边界与本地验收事实，不再代表当前生产版本。该适配器不是“所有 provider/所有对话都能迁移”的承诺；不支持场景必须保持明确错误。
 
 ### 2026-10-22 — 降低多分组 Key 的状态请求失败率（进行中，未发布）
 
