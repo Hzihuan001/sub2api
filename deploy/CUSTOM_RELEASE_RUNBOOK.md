@@ -1,6 +1,47 @@
 # Sub2API custom release runbook
 
-## Release coordinates and authorization
+## Current release: custom.13 deployed to all three sites (2026-10-22)
+
+This section overrides the historical `.12` coordinates and rollback examples below. **The exact `.13` published image passed local pull-back acceptance and the main → L1 → COS production rollout. All three sites now run the version/commit/digest below.** No newer official release was merged in this round; the official base remains `v0.2.16`.
+
+- Authoritative source: `codex/key-account-routing-stability-20261022` in `C:/Users/a/.codex/worktrees/group-routing-current`.
+- Version `0.2.16-custom.13`; runtime commit `90804511dcfd57d9e99d7df470cfa05282182664`; runtime tag `custom-0.2.16.13`.
+- Published image `ghcr.io/hzihuan001/sub2api:0.2.16-custom.13`; immutable deployment reference `ghcr.io/hzihuan001/sub2api@sha256:9d79c4378f3e4dc6dd4d1648cff7420947ccb7984a33d7bb2cbd11030c32c14f`.
+- Build the release from the repository **root `Dockerfile`**. Its PostgreSQL-client stage and runtime `pg_dump`/`psql` dependencies must be preserved; do not substitute a slimmer application-only Dockerfile that breaks backup operations. Verify both utilities in the final pulled image without connecting to production databases.
+- Actions dispatch returned HTTP 422; no successful runtime CI run is claimed. Use the already authorized local build → authenticated GHCR push → immutable pull-back acceptance path. Publication does not establish automated upgrade-PR or CI success.
+
+### custom.13 migration and rollback boundary
+
+Relative to the previous production `.12`, this release added only `9003_custom_api_key_account_routes.sql` and `9004_custom_key_route_site.sql`. Keep every previously applied migration and checksum unchanged; do not modify old migrations, delete compatibility tables or restore a database backup as an application rollback. The shared administrator Key editor change itself adds no migration; 9003/9004 belong to the complete `.13` routing bundle.
+
+- 9003 adds opt-in `account_v2` routing metadata/revisions and authorization fencing while retaining existing `group_v1` behavior. The `.12` binary does not implement the new scope's semantics: inspect active `account_v2` Keys before any rollback, and stop for an explicit compatibility decision rather than silently treating them as old group routing, deleting Keys or modifying balances.
+- 9004 persists a site UUID namespace. Cloned sites sharing Redis must retain distinct namespaces; validate main/L1/COS identity and do not copy one site's namespace into another.
+- Exact application fallback: `ghcr.io/hzihuan001/sub2api@sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610` (`0.2.16-custom.12`). Retain additive schema and business data. Rollback must not conceal the `account_v2` compatibility limitation.
+
+### custom.13 completed acceptance and production evidence
+
+The formal immutable image passed the local synthetic gateway matrix **33/33** (cleanup 42) and administrator editor matrix **5/5** (cleanup 6), with no findings. Local evidence: `D:/projects/custom13-published-gateway-20261022/evidence.json` and `D:/projects/custom13-published-admin-20261022/evidence.json`. These are formal-image results, separate from earlier candidate checks.
+
+| Site | Deployment UTC, 2026-10-22 | Asia/Shanghai, 2026-10-22 | Migration rows after update |
+| --- | --- | --- | --- |
+| Main | 05:35:48–05:36:01.557991 | 13:35:48–13:36:01.557991 | 328 |
+| L1 | 05:37:19–05:37:27.344938 | 13:37:19–13:37:27.344938 | 337 |
+| COS | 05:39:21–05:39:29.286409 | 13:39:21–13:39:29.286409 | 337 |
+
+Every station reached zero in the read-only drain before only its application service was recreated. All became healthy with zero restarts; environment/mount/port/network fingerprints and PostgreSQL/Redis container identities/start times were preserved. Every old migration ledger row remained unchanged, with only 9003/9004 added. Origin and public health, Keys, image-studio and documentation-tool checks returned 200; the three protected anonymous-interface checks returned 401. Critical startup-log findings were zero.
+
+The subsequent read-only comparison confirmed three distinct site namespaces. Across the three sites, all **18** origin/public resources (entry index plus KeysView and UsersView bundles) matched the accepted local formal artifact by SHA. No paid production model call or production rollback was performed. This bounded acceptance does not claim successful Actions CI, every provider/endpoint, sustained concurrency capacity or long-term monitoring.
+
+### Checklist for the next release
+
+1. Pull the exact published digest locally; verify version/commit, health, PostgreSQL utilities and bounded shared-Key-editor/protocol checks. Do not substitute earlier candidate results for the actual artifact.
+2. Inspect each live deployment's Compose path/service, old image, migration ledger, site namespace and configuration. Take private, readable PostgreSQL/configuration/persistent-data/proxy backups before mutation; record checksums and verify archive/dump readability without exposing credentials.
+3. Deploy **main → L1 → COS**, only after the previous site's checks pass. Drain using read-only account/user/Key/live/WebSocket slots, waiting counters, batch jobs and image tasks. A timeout does not authorize forced cancellation. Update only the application service; preserve PostgreSQL, Redis, volumes, environment, networks and reverse-proxy configuration. Do not make paid model or payment calls without separate authorization.
+4. On a failed station gate, stop subsequent stations and apply the recorded compatible fallback only when migration and routing-scope guards allow it. Do not restore older business data. Record exact outcomes, limits and immutable coordinates.
+
+Documentation-only closure commits must not move the runtime tag. The older release records below remain historical evidence, not current `.13` acceptance or rollback instructions.
+
+## Historical custom.12 release coordinates and authorization
 
 - Read [`CUSTOM_PROJECT_STATUS.md`](../docs/CUSTOM_PROJECT_STATUS.md) before each release and verify actual integration ancestry/contents. Release and integration branches include `.12` runtime and the separate documentation closure; resolve the exact current ref with Git, without moving the runtime tag.
 - Current 2026-10-20 release: upstream `v0.2.16`, branch `codex/group-failover-rules-v0.2.16`, runtime `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4`, version `0.2.16-custom.12`, tag `custom-0.2.16.12`, `linux/amd64`, built `2026-10-19T22:11:37Z`.
