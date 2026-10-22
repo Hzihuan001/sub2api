@@ -7,7 +7,7 @@
 - **可恢复范围**：官方 OpenAI API Key + `api.openai.com` + 已完成且已存储的 Responses。适配器按链读取 `input_items` 和 `response.output`，验证模型/响应 ID/分页/重复项目，内存限量重建完整有序文本请求；不会保存会话正文或改写历史 `instructions`。
 - **安全拒绝范围**：OAuth/Codex、DeepSeek/Kimi/兼容端点、工具/函数调用、文件/图片/远程引用、conversation/background、加密推理、未知响应、非明确 HTTP 失败、超时/EOF/部分输出均不自动重放。只有 429/500/502/503/504 且未产生语义输出时才进入恢复尝试；由于上游可能在返回 5xx/429 前已开始生成，仍保留理论上的重复执行风险，不承诺绝对零重复。
 - **计费与回滚**：恢复请求若扩大输入，仅预留增量余额；预留失败会回滚请求体、API Key、路由上下文。原生 usage、实际组计费和结算不改变。
-- **验证/发布**：Docker 定向后端回归及新增恢复单测已通过，`git diff --check` 通过；本地构建镜像 `sub2api-custom:group-routing-recovery-local-20261023`（`sha256:ea56e552f0ff8c44288093ebe8784cd9544e66f705a2a4892a847bcaee97de7a`）完成三站隔离 Compose 健康检查和 12/12 合成路由/账务验收，证据 `D:/projects/key-route-recovery-20261023-r2/evidence.json`。验收容器和卷已清理；尚未提交、推送或部署，生产保持 `0.2.16-custom.13`。
+- **验证/发布**：Docker 定向后端回归及新增恢复单测已通过，`git diff --check` 通过；本地构建镜像 `sub2api-custom:group-routing-recovery-local-20261023`（`sha256:ea56e552f0ff8c44288093ebe8784cd9544e66f705a2a4892a847bcaee97de7a`）完成三站隔离 Compose 健康检查和 12/12 合成路由/账务验收，证据 `D:/projects/key-route-recovery-20261023-r2/evidence.json`。验收容器和卷已清理；代码已提交 `5521f3940` 并推送开发分支，尚未发布部署，生产保持 `0.2.16-custom.13`。
 
 ### 2026-10-23 — 连续会话跨账号恢复边界复核（未发布）
 
