@@ -206,13 +206,15 @@ func (w *keyAccountForwardWriter) active() *firstContentWriter {
 	if attempt == nil || attempt == w.current {
 		return w.writer
 	}
-	if w.current != nil && w.current.ReplayBlocked() {
+	blocked := w.current != nil && w.current.ReplayBlocked()
+	if blocked {
 		// The transport must forbid dispatching another wire in this state.
 		attempt.PreventReplay(keyrouting.AttemptVetoNativeGuard)
 	}
 	w.current = attempt
-	w.writer.guard = attempt.Guard()
-	w.writer.observe = attempt.ObserveFirstContent
+	if !blocked {
+		w.writer.beginAttempt(attempt.Guard(), attempt.ObserveFirstContent)
+	}
 	return w.writer
 }
 

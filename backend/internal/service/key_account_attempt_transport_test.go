@@ -266,9 +266,11 @@ func TestKeyAccountInferenceTransportObservationFailureDoesNotAbortRetryOrFinish
 	var observed atomic.Int32
 	ctx, scope, account := keyAccountTransportFixture(t, context.Background(), KeyAccountForwardOptions{ObserveAttempt: func(context.Context, keyrouting.AccountAttemptSample) error { observed.Add(1); return want }})
 	for i := 0; i < 2; i++ {
-		_, err := KeyAccountInferenceDoFunc(keyAccountTransportRequest(t, ctx), account, "m", func(*http.Request) (*http.Response, error) { return nil, errors.New("network failed") })
-		require.Error(t, err)
-		require.False(t, errors.Is(err, want), "health writes must not replace native transport errors")
+		response, err := KeyAccountInferenceDoFunc(keyAccountTransportRequest(t, ctx), account, "m", func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader("overloaded"))}, nil
+		})
+		require.NoError(t, err)
+		require.NoError(t, response.Body.Close())
 	}
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {

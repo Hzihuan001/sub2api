@@ -559,7 +559,7 @@ func (w *keyAccountWireAttempt) retryableFailure() bool {
 	w.mu.Lock()
 	status, transportErr := w.status, w.transportErr
 	w.mu.Unlock()
-	return status >= 400 && status <= 599 || status == 0 && transportErr != nil || status >= 200 && status <= 299 && (w.attempt.VerifiedFailure() || w.firstContentCancellationVerified())
+	return status >= 400 && status <= 599 || status == 0 && transportErr != nil && w.firstContentCancellationVerified() || status >= 200 && status <= 299 && (w.attempt.VerifiedFailure() || w.firstContentCancellationVerified())
 }
 
 // Expiry is a deadline fact, not protocol proof. Only this exact wire's typed
@@ -611,7 +611,7 @@ func keyAccountFirstContentCancellationError(err error) bool {
 func (w *keyAccountWireAttempt) finish(terminal keyrouting.AccountAttemptResult) keyrouting.AccountAttemptSample {
 	w.finishOnce.Do(func() {
 		w.mu.Lock()
-		status, transportErr := w.status, w.transportErr
+		status := w.status
 		w.mu.Unlock()
 		// This seam has direct HTTP provenance. Never promote a native parser's
 		// synthesized failover code into a response that was never received.
@@ -633,7 +633,7 @@ func (w *keyAccountWireAttempt) finish(terminal keyrouting.AccountAttemptResult)
 			if native := w.httpTerminal(); native.Outcome != keyrouting.OutcomeFailure || status >= 400 && status <= 599 {
 				terminal.Outcome = native.Outcome
 			}
-			ambiguous := status >= 100 && status < 400 || status == 0 && transportErr == nil
+			ambiguous := status >= 100 && status < 400 || status == 0
 			if ambiguous && !terminal.VerifiedFailure && !terminal.VerifiedFirstContentCancellation {
 				w.attempt.PreventReplay(keyrouting.AttemptVetoUnknownProtocol)
 			}

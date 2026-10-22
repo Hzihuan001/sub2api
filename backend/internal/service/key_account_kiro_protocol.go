@@ -82,14 +82,24 @@ func keyAccountKiroActualUsage(usage kiropkg.Usage) bool {
 // that would be mistaken for decoded provider proof.
 type keyAccountKiroStreamBody struct {
 	io.ReadCloser
-	reader        io.Reader
-	state         *keyAccountKiroProtocol
+	reader io.Reader
+	state  *keyAccountKiroProtocol
+	// proofContext is deliberately bound to no account attempt. The translated
+	// Anthropic SSE is a client-facing representation and may contain estimated
+	// cache/input usage; only the original Kiro binary observer may mark usage or
+	// replay safety on the real wire attempt.
+	proofContext  context.Context
 	closeUpstream func() error
 	done          <-chan struct{}
 	closeOnce     sync.Once
 }
 
-func (b *keyAccountKiroStreamBody) KeyAccountWireContext() context.Context { return b.state.wire }
+func (b *keyAccountKiroStreamBody) KeyAccountWireContext() context.Context {
+	if b == nil {
+		return nil
+	}
+	return b.proofContext
+}
 
 func (b *keyAccountKiroStreamBody) Read(p []byte) (int, error) {
 	if b.reader != nil {

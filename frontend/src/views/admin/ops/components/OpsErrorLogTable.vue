@@ -123,11 +123,17 @@
         </template>
 
         <template #cell-message="{ row }">
-          <span
-            v-if="row.message"
-            class="block max-w-[280px] truncate text-sm text-gray-600 dark:text-gray-400"
-            :title="row.message"
-          >{{ formatSmartMessage(row.message) || '-' }}</span>
+          <div v-if="row.message" class="max-w-[280px] space-y-1">
+            <span
+              v-if="routeSwitchAnnotation(row.message)"
+              class="inline-flex max-w-full items-center rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-medium text-teal-800 dark:bg-teal-900/40 dark:text-teal-200"
+              :title="routeSwitchAnnotation(row.message)?.groupName"
+            >{{ routeSwitchLabel(row.message) }}</span>
+            <span
+              class="block truncate text-sm text-gray-600 dark:text-gray-400"
+              :title="routeSwitchAnnotation(row.message)?.cleanMessage || row.message"
+            >{{ formatSmartMessage(routeSwitchAnnotation(row.message)?.cleanMessage || row.message) || '-' }}</span>
+          </div>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
@@ -191,6 +197,7 @@ import type { Column } from '@/components/common/types'
 import { getSeverityClass, formatDateTime } from '../utils/opsFormatters'
 import { mapErrorCategory } from '@/utils/errorCategory'
 import { mapErrorSortKey, statusCodeBadgeClass } from '@/utils/errorBadges'
+import { parseOpsRouteSwitchAnnotation } from '@/features/gateway-resilience/opsRouteSwitchLabel'
 
 const { t } = useI18n()
 
@@ -318,6 +325,15 @@ function onSort(key: string, order: 'asc' | 'desc') {
 }
 
 const getStatusClass = statusCodeBadgeClass
+
+function routeSwitchAnnotation(message: string) {
+  return parseOpsRouteSwitchAnnotation(message)
+}
+
+function routeSwitchLabel(message: string): string {
+  const annotation = routeSwitchAnnotation(message)
+  return annotation ? t('admin.ops.errorLog.routeSwitchToBackup', { group: annotation.groupName }) : ''
+}
 
 function formatSmartMessage(msg: string): string {
   if (!msg) return ''

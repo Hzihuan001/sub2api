@@ -177,7 +177,7 @@
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
                 }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ row.group ? t('custom.keyRouting.editGroup') : t('custom.keyRouting.selectPrimary') }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ row.group ? t('custom.keyRouting.editGroup') : t('custom.keyRouting.selectGroup') }}</span>
                 <svg
                   class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
                   fill="none"
@@ -200,7 +200,7 @@
                 data-test="edit-key-backups"
                 data-test-route-summary
                 @click="editKey(row)"
-              >{{ t('custom.keyRouting.summary', { count: row.backup_group_ids.length }) }}</button>
+              >{{ t('custom.keyRouting.summary', { count: row.backup_group_ids.length + 1 }) }}</button>
             </div>
           </template>
 
@@ -498,22 +498,20 @@
         </div>
 
         <KeyBackupGroupsEditor
-          v-model="formData.backup_group_ids"
-          :primary-group-id="formData.group_id"
+          v-model="keyRouteGroupIds"
           :groups="groups"
           :user-group-rates="userGroupRates"
           :disabled="submitting"
-          @update:primary-group-id="setPrimaryGroup"
         />
 
         <KeyRouteScopeNotice
-          v-if="formData.backup_group_ids.length > 0"
+          v-if="keyRouteGroupIds.length > 1"
           v-model="formData.key_route_scope"
           :new-key="!showEditModal"
           :disabled="submitting"
         />
         <KeyRouteFailureRulesEditor
-          v-if="formData.backup_group_ids.length > 0"
+          v-if="keyRouteGroupIds.length > 1"
           v-model="formData.key_route_failure_policy"
           :scope="formData.key_route_scope"
           :disabled="submitting"
@@ -1162,7 +1160,7 @@ import KeyRouteScopeNotice from '@/features/key-routing/KeyRouteScopeNotice.vue'
 import KeyAdvancedSettings from '@/features/key-routing/KeyAdvancedSettings.vue'
 import KeyModelPolicyEditor from '@/features/key-routing/KeyModelPolicyEditor.vue'
 import { cloneKeyModelPolicy, normalizeKeyModelPolicy, validateKeyModelPolicy } from '@/features/key-routing/keyModelPolicy'
-import { validateKeyRouteFailurePolicy, validateKeyRouting } from '@/features/key-routing/keyRouting'
+import { keyRouteFromAPI, keyRouteToAPI, validateKeyRouteFailurePolicy, validateOrderedKeyRouting } from '@/features/key-routing/keyRouting'
 	import DataTable from '@/components/common/DataTable.vue'
 	import Pagination from '@/components/common/Pagination.vue'
 	import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1391,6 +1389,15 @@ const formData = ref({
   expiration_date: ''
 })
 
+const keyRouteGroupIds = computed<number[]>({
+  get: () => keyRouteFromAPI(formData.value.group_id, formData.value.backup_group_ids),
+  set: (groupIds) => {
+    const route = keyRouteToAPI(groupIds)
+    formData.value.group_id = route.groupId
+    formData.value.backup_group_ids = route.backupGroupIds
+  }
+})
+
 const advancedSettingsSummary = computed(() => {
   const form = formData.value
   const count = Number(form.enable_ip_restriction) + Number(Number(form.quota) > 0)
@@ -1481,10 +1488,6 @@ const groupOptions = computed(() =>
     platform: group.platform
   }))
 )
-
-const setPrimaryGroup = (groupId: number | null) => {
-  formData.value.group_id = groupId
-}
 
 // Group dropdown search
 const groupSearchQuery = ref('')
@@ -1746,17 +1749,17 @@ const confirmDelete = (key: ApiKey) => {
 const handleSubmit = async () => {
   if (submitting.value) return
   // Validate group_id is required
-  if (formData.value.group_id === null) {
+  if (keyRouteGroupIds.value.length === 0) {
     appStore.showError(t('keys.groupRequired'))
     return
   }
 
-  const routingError = validateKeyRouting(formData.value.group_id, formData.value.backup_group_ids, groups.value)
+  const routingError = validateOrderedKeyRouting(keyRouteGroupIds.value, groups.value)
   if (routingError) {
     appStore.showError(t(`custom.keyRouting.${routingError}`))
     return
   }
-  const effectiveKeyRouteFailurePolicy = formData.value.backup_group_ids.length > 0
+  const effectiveKeyRouteFailurePolicy = keyRouteGroupIds.value.length > 1
     ? formData.value.key_route_failure_policy
     : null
   const keyRoutePolicyError = validateKeyRouteFailurePolicy(effectiveKeyRouteFailurePolicy)
@@ -1819,11 +1822,12 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
+    const route = keyRouteToAPI(keyRouteGroupIds.value)
     if (showEditModal.value && selectedKey.value) {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
-        group_id: formData.value.group_id,
-        backup_group_ids: [...formData.value.backup_group_ids],
+        group_id: route.groupId!,
+        backup_group_ids: route.backupGroupIds,
         key_route_failure_policy: effectiveKeyRouteFailurePolicy,
         key_model_policy: keyModelPolicy,
         ip_whitelist: ipWhitelist,
@@ -1846,17 +1850,17 @@ const handleSubmit = async () => {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
       await keysAPI.create(
         formData.value.name,
-        formData.value.group_id,
+        route.groupId!,
         customKey,
         ipWhitelist,
         ipBlacklist,
         quota,
         expiresInDays,
         rateLimitData,
-        [...formData.value.backup_group_ids],
+        route.backupGroupIds,
         effectiveKeyRouteFailurePolicy,
         keyModelPolicy,
-        formData.value.backup_group_ids.length > 0 ? formData.value.key_route_scope : 'group_v1'
+        keyRouteGroupIds.value.length > 1 ? formData.value.key_route_scope : 'group_v1'
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded

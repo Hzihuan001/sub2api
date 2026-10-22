@@ -9,6 +9,45 @@
 
 ## 1. 当前快照
 
+### 2026-10-21 — 稳定性收敛与真实模拟派发补验（未发布）
+
+- 用户要求稳定可靠且不要过度复杂：停止扩充业务机制，继续复用原生调度、价格和计费；仅补关键边界证据。生产、数据库和现有候选容器未改。
+- Anthropic API Key 直通、Gemini Chat 兼容、SystemOne、Antigravity upstream 的实际模拟派发/原生 usage/终态/清理，以及 SystemOne/Gemini 未知 200 响应防重放，6 个顶层测试通过。Gemini native HTTP/SSE、Bedrock 和完整受影响后端三包仍在补验，不宣称全部 provider 或账务闭环完成。
+- 错误日志独立标签的三个前端文件 16/16 测试通过，包含历史真实前缀、长消息截断以及 rate limit/deadline 通用提示；无生产 UI 或数据库变更。
+- 后端完整测试首轮因选错旧只读模块缓存未进入测试，已换当前本机缓存离线重跑，不能视为通过。最终结果继续追加到本段。
+- 后续只保留必要门槛：固定产物、小规模并发/双应用/Redis故障、稳定版镜像业务回退、一次有限长连接资源检查和用户本地验收。当前仍不可发布；详细范围及证据见 [`执行台账`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md)。
+
+### 2026-10-21 — Key 内账号优先级故障切换三站定向实测（未发布）
+
+- 三站本地隔离容器各完成 4 个合成 OpenAI Responses HTTP 请求：A、A、停用 A 后 B、停用 B 后分组2。12/12 返回 200；每站实际账号/组/倍率与 usage、去重、余额及 Key quota 逐笔核对一致（group1 三笔、group2 一笔，每站总扣费 `0.00001755`）。33 项合成资源均清理，原容器未重启，未调用真实模型。
+- 证据：`D:/projects/key-route-existing-4d4f59ae9de0/evidence.json`；复现参数为 `deploy/tests/key-routing-acceptance-existing.ps1 -AccountPriorityFallbackOnly`。此证据不覆盖其他 provider、SSE、并发/Redis故障、完整回退或人工验收。
+- 复核纠正：当前源码已有 OpenAI HTTP/plugin 与 TTFT/未知响应竞态的定向测试；旧台账对这两项的部分描述已过时。跨 provider 的现有身份矩阵有部分在实际网络派发前取消，不能证明每个平台都通过真实发送、终态、防重放及原生账务验收。
+- 本轮复测：后端 `go test ./internal/keyrouting ./internal/service ./internal/handler -run 'Test(KeyAccount|AccountAttempt)' -count=1 -timeout=300s` 三包通过；前端密钥编辑、错误标签和宿主文案回归 `77/77`，`pnpm --dir frontend run typecheck`、受影响文件 ESLint 和 `git diff --check` 通过。三站 `/health` 仍为 200。此组测试不能替代真实 PostgreSQL/Redis 故障矩阵或逐 provider 账务验收。
+- **状态仍是开发中，不可上线**：B1–B7 还未闭环；生产未改、未推送、未部署。活动工作树及本地候选坐标见 [`账号级路由执行台账`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md)。
+
+### 2026-10-21 — 密钥分组编辑统一为优先级列表（本地未发布）
+
+- 用户确认所有 Key 分组只具有优先级顺序；任意后续项上移至首位后自然成为首选，不应显示固定主/备用身份。
+- Key 编辑器已统一为有序列表，操作和分组摘要已按完整路由显示；兼容 API 继续使用 `group_id + backup_group_ids`，无 schema 迁移。
+- 错误日志对新界面显示“切换至后续优先级分组”，解析仍兼容历史标签。
+- 定向前端测试 77/77 通过，TypeScript 检查通过；生产未改。本地镜像 `sub2api-custom:key-account-routing-priority-ui` (`sha256:ed9f20d39f18a0c0f626f5a89b0cdc0a7bfbe8c10471a34ee4a178a75c15f7aa`) 已包含该 UI 变更，三站健康检查 200，等待用户人工验收。
+- 本次变更细节与测试文件见 [`账号级路由执行台账`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md)。
+
+### 2026-10-21 — UI 标签补齐与账号路由候选 Docker 验收（未发布；其后补入优先级列表编辑器）
+
+- **最终候选覆盖说明**：本节初始镜像摘要已被上方“密钥分组编辑统一为优先级列表”记录中的最终镜像摘要取代；`18280–18282` 三站均以最终镜像 healthy，数据服务未重建。
+
+- **当前状态**：本地候选已构建并通过两轮隔离验收；生产仍为 `0.2.16-custom.12`，未提交、未推送、未发布、未改生产。
+- **活动树**：`C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`，分支 `codex/group-failover-rules-v0.2.16`，源码 HEAD `b0e9f4f67`。
+- **候选镜像**：`sub2api-custom:key-account-routing-priority-ui`，运行镜像 ID `sha256:d3637dc275af1337b44de259dfb755881fbdf59bced116526029445032664c08`。主站/L1/COS 均使用同一镜像；三个应用容器均 healthy，`/health` 均返回 200，六个数据服务容器未重建。
+- **本地入口**：主站 `http://127.0.0.1:18280`，L1 `http://127.0.0.1:18281`，COS `http://127.0.0.1:18282`。当前 Compose 项目为 `moshu-reseller-acceptance-key-routing`，使用独立合成数据库、Redis 和 mock 上游。
+- **候选验收**：基础套件 `30/30`、扩展套件 `48/48` gateway 请求通过，覆盖同组优先、备用组顺序、预算边界、TTFT/冷却、SSE、不可用账号、实际组结算、重放保护；临时资源按 ID 清理，无生产模型调用。证据分别为 `D:/projects/key-routing-ui1-final-20261021/evidence.json` 和 `D:/projects/key-routing-ui1-extended-20261021/evidence.json`。
+- **前端补丁**：错误日志跨组标签从长消息后缀解析为独立标签，列表和详情均显示；当前新增统一优先级列表编辑，摘要显示总分组数。前端相关 6 个测试文件 `77/77` 通过，`vue-tsc --noEmit` 通过。Go 定向包测试也已通过。
+- **尚未放行**：用户浏览器人工验收、真实 PostgreSQL/Redis 双实例与共享 Redis 故障注入、旧镜像回退/再升级、完整生产计费矩阵、所有已承诺 provider 的端到端证据和 B1–B6 发布门槛仍未完成。因此本候选**不能视为可上线**，也不能据此推送或部署。
+- **回退补验**：在同一隔离卷上短暂启动旧候选 `sub2api-custom:key-account-routing-b0e9f4f`（image `sha256:42c0342fd6620b58fe5d7a0162329ef0c613f15afce0dc9376547b98186131f5`），主站健康检查 200、容器重启 0；随后恢复新候选，三站健康 200、镜像 ID 一致，数据库/Redis 容器仍未重建。该证据只证明旧镜像可读本地当前 schema，不等于完整旧版本业务回归。
+- **运行时补验**：主站 Redis 重启后恢复 healthy，主站 `/health` 保持 200；同一主站数据库/Redis 网络内启动第二个应用实例，内部 `/health` 返回 200，随后已清理临时实例。三站应用仍 healthy、重启计数为 0。
+- **下一步**：请先打开三个本地入口进行页面/密钥编辑及错误标签人工验收；确认后再补齐剩余发布门槛，之后才决定是否提交、推送和按主站→L1→COS 发布。
+
 ### 2026-10-21 — 账号级路由继续实施（开发中，未发布）
 
 - **当前状态**：账号级同组优先、备用组顺序、预算耗尽安全转备用、尝试生命周期、重放保护和原生结算窄适配已在活动树接线；本次补齐 Redis 站点分桶容量限制。生产保持 `0.2.16-custom.12`，未推送、未发布、未改生产。

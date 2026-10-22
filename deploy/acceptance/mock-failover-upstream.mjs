@@ -23,6 +23,21 @@ http.createServer(async (req, res) => {
   const [scenario, slot] = key.split(':')
   requests.push({ scenario, slot, path: req.url, stream: Boolean(body.stream), model: body.model })
   const emit = value => res.write(`data: ${JSON.stringify(value)}\n\n`)
+  if (scenario === 'long_connection') {
+    if (!body.stream) return json(res, 400, { error: { code: 'stream_required' } })
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-accel-buffering': 'no' })
+    const responseId = `resp_long_${crypto.randomUUID()}`
+    emit({ type: 'response.created', response: { id: responseId, object: 'response', status: 'in_progress', model: body.model } })
+    emit({ type: 'response.output_text.delta', response_id: responseId, output_index: 0, content_index: 0, delta: 'long-stream-ready' })
+    const heartbeat = setInterval(() => { if (!res.destroyed) res.write(': heartbeat\n\n') }, 20_000)
+    await new Promise(resolve => setTimeout(resolve, 660_000))
+    clearInterval(heartbeat)
+    if (res.destroyed) return
+    emit({ type: 'response.completed', response: { id: responseId, object: 'response', status: 'completed', model: body.model,
+      output: [{ id: 'msg_long_fixture', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'long-stream-ready', annotations: [] }] }],
+      usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 } } })
+    return res.end()
+  }
   if (scenario?.startsWith('slow_')) {
     let heartbeat
     if (body.stream && scenario !== 'slow_headers') {

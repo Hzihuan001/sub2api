@@ -3,6 +3,7 @@ import type { Group, KeyRouteFailurePolicy, KeyRouteFailureRule, KeyRouteFailure
 export type { KeyRouteFailurePolicy, KeyRouteFailureRule, KeyRouteFailureRuleType }
 
 export const MAX_BACKUP_GROUPS = 4
+export const MAX_ROUTE_GROUPS = MAX_BACKUP_GROUPS + 1
 
 export const KEY_ROUTE_RULE_DEFAULTS = {
   threshold: 3,
@@ -82,40 +83,62 @@ export function validateKeyRouteFailurePolicy(policy: KeyRouteFailurePolicy | nu
 }
 
 export type KeyRoutingGroup = Pick<Group, 'id' | 'name' | 'status' | 'subscription_type' | 'claude_code_only'>
-export type KeyRoutingError = 'tooMany' | 'primaryRequired' | 'groupUnavailable' | 'standardOnly' | 'claudeCodeOnly' | 'duplicate'
+export type KeyRoutingError = 'tooMany' | 'groupUnavailable' | 'standardOnly' | 'claudeCodeOnly' | 'duplicate'
 
-/** A single group retains the existing subscription and Claude Code-only behavior. */
-export function validateKeyRouting(
-  primaryGroupId: number | null,
-  backupGroupIds: readonly number[],
-  groups: readonly KeyRoutingGroup[]
-): KeyRoutingError | null {
-  if (backupGroupIds.length === 0) return null
-  if (backupGroupIds.length > MAX_BACKUP_GROUPS) return 'tooMany'
-  if (primaryGroupId === null) return 'primaryRequired'
-  const routeIds = [primaryGroupId, ...backupGroupIds]
-  if (new Set(routeIds).size !== routeIds.length) return 'duplicate'
-  for (const id of routeIds) {
+export function isKeyRouteGroupEligible(group: KeyRoutingGroup | undefined): boolean {
+  return group?.status === 'active' && group.subscription_type === 'standard' && !group.claude_code_only
+}
+
+/** Validate the ordered UI model. The first group is serialized as group_id for API compatibility. */
+export function validateOrderedKeyRouting(groupIds: readonly number[], groups: readonly KeyRoutingGroup[]): KeyRoutingError | null {
+  if (groupIds.length > MAX_ROUTE_GROUPS) return 'tooMany'
+  if (new Set(groupIds).size !== groupIds.length) return 'duplicate'
+  for (const id of groupIds) {
     const group = groups.find((item) => item.id === id)
     if (!group || group.status !== 'active') return 'groupUnavailable'
-    if (group.subscription_type !== 'standard') return 'standardOnly'
-    if (group.claude_code_only) return 'claudeCodeOnly'
+  }
+  if (groupIds.length > 1) {
+    for (const id of groupIds) {
+      const group = groups.find((item) => item.id === id)
+      if (group?.subscription_type !== 'standard') return 'standardOnly'
+      if (group?.claude_code_only) return 'claudeCodeOnly'
+    }
   }
   return null
 }
 
-export function availableBackupGroups<T extends KeyRoutingGroup>(
+export function availableKeyRouteGroups<T extends KeyRoutingGroup>(
   groups: readonly T[],
-  primaryGroupId: number | null,
-  backupGroupIds: readonly number[]
+  groupIds: readonly number[],
+  replacingIndex: number | null
 ): T[] {
-  return groups.filter((group) => group.status === 'active' &&
-    group.subscription_type === 'standard' &&
-    !group.claude_code_only &&
-    group.id !== primaryGroupId && !backupGroupIds.includes(group.id))
+  const adding = replacingIndex === null
+  const isMultiGroupAfterSelection = adding ? groupIds.length > 0 : groupIds.length > 1
+  if (adding && groupIds.length > 0 && !groupIds.every((id) => isKeyRouteGroupEligible(groups.find((group) => group.id === id)))) return []
+  const current = replacingIndex === null ? undefined : groups.find((group) => group.id === groupIds[replacingIndex])
+  const maySwap = current !== undefined && (!isMultiGroupAfterSelection || isKeyRouteGroupEligible(current))
+  const selected = new Set(groupIds)
+  return groups.filter((group) => group.status === 'active'
+    && (!isMultiGroupAfterSelection || isKeyRouteGroupEligible(group))
+    && (!selected.has(group.id) || (replacingIndex !== null && group.id === groupIds[replacingIndex]) || (maySwap && selected.has(group.id))))
 }
 
-export function moveBackupGroup(ids: readonly number[], index: number, direction: -1 | 1): number[] {
+/** A single group retains the existing subscription and Claude Code-only behavior. */
+export interface APIKeyGroupRoute {
+  groupId: number | null
+  backupGroupIds: number[]
+}
+
+/** Keep the wire/storage shape stable while presenting one ordered route in the UI. */
+export function keyRouteFromAPI(groupId: number | null | undefined, backupGroupIds: readonly number[] | null | undefined): number[] {
+  return groupId == null ? [...(backupGroupIds ?? [])] : [groupId, ...(backupGroupIds ?? [])]
+}
+
+export function keyRouteToAPI(groupIds: readonly number[]): APIKeyGroupRoute {
+  return { groupId: groupIds[0] ?? null, backupGroupIds: groupIds.slice(1) }
+}
+
+export function moveRouteGroup(ids: readonly number[], index: number, direction: -1 | 1): number[] {
   const next = [...ids]
   const destination = index + direction
   if (index < 0 || index >= next.length || destination < 0 || destination >= next.length) return next

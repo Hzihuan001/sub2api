@@ -7,7 +7,7 @@ services:
   main:
     image: ${SUB2API_IMAGE:?Set SUB2API_IMAGE}
     ports:
-      - "127.0.0.1:18180:8080"
+      - "127.0.0.1:18280:8080"
     environment: &app-env
       AUTO_SETUP: "true"
       SERVER_HOST: 0.0.0.0
@@ -45,7 +45,7 @@ services:
   l1:
     image: ${SUB2API_IMAGE:?Set SUB2API_IMAGE}
     ports:
-      - "127.0.0.1:18181:8080"
+      - "127.0.0.1:18281:8080"
     environment:
       <<: *app-env
       DATABASE_HOST: l1-db
@@ -68,7 +68,7 @@ services:
   cos:
     image: ${SUB2API_IMAGE:?Set SUB2API_IMAGE}
     ports:
-      - "127.0.0.1:18182:8080"
+      - "127.0.0.1:18282:8080"
     environment:
       <<: *app-env
       DATABASE_HOST: cos-db

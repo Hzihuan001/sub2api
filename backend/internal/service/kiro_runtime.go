@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/keyrouting"
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/cespare/xxhash/v2"
@@ -394,7 +395,11 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 	var responseBody io.ReadCloser = pr
 	if protocol != nil {
 		reader := bufio.NewReader(pr)
-		body := &keyAccountKiroStreamBody{ReadCloser: pr, reader: reader, state: protocol, closeUpstream: resp.Body.Close, done: producerDone}
+		// Keep native proof on protocol.wire, but expose a derived context with
+		// no AccountAttempt to the generic Anthropic converter. The converter may
+		// add estimated usage/cache fields that are not upstream billing proof.
+		proofContext := keyrouting.WithAccountAttempt(protocol.wire, nil)
+		body := &keyAccountKiroStreamBody{ReadCloser: pr, reader: reader, state: protocol, proofContext: proofContext, closeUpstream: resp.Body.Close, done: producerDone}
 		// A pure immediate exception has no Anthropic prelude. Resolve it
 		// before native bridges commit a response or invent an empty success.
 		if _, readErr := reader.Peek(1); readErr != nil {

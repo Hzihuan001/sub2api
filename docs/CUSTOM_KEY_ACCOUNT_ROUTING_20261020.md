@@ -2,11 +2,47 @@
 
 ## 状态（2026-10-21）
 
+### 稳定性收敛原则（2026-10-21，当前执行约束）
+
+- 用户补充要求：严谨、稳定、可靠、可用，避免过度复杂。本轮不继续增加规则类别、管理页面、计费器或额外调度层；现有模块和原生调度/计费接口保持。
+- 当前已补真实模拟派发测试：Anthropic API Key 直通、Gemini Chat 兼容、SystemOne、Antigravity upstream；分别检查实际发送、原生解析 usage、尝试身份、终态、资源清理和成功后不允许重放。SystemOne/Gemini 的 HTTP 200 非法载荷额外验证未知结果不能再次发包。该组 6 个顶层测试通过；它们不是完整 handler 账务或全部 provider 路径的通过证明。
+- Gemini native HTTP/SSE 与 Bedrock 的最小派发用例正在补验。仅补独立解析路径的关键证据，不复制生产解析器或为测试增加业务机制。
+- 一次完整受影响后端三包测试正在运行。首轮选错旧依赖缓存，在测试执行前因只读缓存缺依赖失败；已切换为本机当前模块缓存并禁用网络重试，保留环境失败记录，不将其当作业务失败或通过。
+- 前端错误标签当前补丁已验证在长消息截断和限流/超时通用文案替换后仍独立显示；不增加错误记录字段，不改使用记录。相关三个测试文件 16/16 通过。
+- 剩余门槛收敛为：固定源码与镜像、独立协议的关键派发/结算边界、小规模并发和双应用/Redis故障恢复、真实稳定镜像业务回退、一次有限长连接资源检查、用户本地验收。复用已有成功证据，不反复跑无结论的全套压测；未满足前不推送或部署。
+
+### 2026-10-21 复核更正：竞态证据与三站 A→B→后续分组场景
+
+- **TTFT/未知响应的旧缺口已被后续定向测试覆盖**：当前源码 `backend/internal/service/key_account_attempt_transport_b2_test.go` 含 `TestKeyAccountInferenceTransportB2HTTPPreludeProofAndUnknownTimerRace`、空/截断成功响应 EOF、Close 与 timer 竞争、迟到未知 payload/usage、明确 2xx 协议错误和独立派发等测试。此前“未知 2xx 与 TTFT 恰好到期仍有已知重放缺口”是旧审计结论，现不再准确。该证据覆盖 HTTP transport 边界，不代表所有 provider/parser 的生命周期闭环均已通过。
+- **OpenAI 接线的旧描述已过时**：当前源码已有 OpenAI HTTP/plugin 发送与重试定向测试。`TestKeyAccountProviderInferenceUsesNativeResolvedIdentity` 中其他 provider 的测试回调在真实网络派发前取消，只证明解析身份和准入 hook，不证明真实发送、解析终态、防重放及结算。B1 仍需逐 provider 的真实发送/终态/usage 验证。
+- **本次真实网关场景**：三站隔离 Compose、固定本地镜像 `sha256:ed9f20d39f18a0c0f626f5a89b0cdc0a7bfbe8c10471a34ee4a178a75c15f7aa`、本地模拟上游下，各执行 4 次请求：A、A、停用测试账号 A 后 B、再停用 B 后分组2。三站共 12/12 HTTP 200；每站 usage/dedup 恰好 4 条，group1 3 条、group2 1 条，实际 account/group/rate 与逐笔扣款、余额和 Key quota 一致。每站总扣款 `0.00001755`，group1 单笔 `0.00000540`，group2 单笔 `0.00000135`。精确证据：`D:/projects/key-route-existing-4d4f59ae9de0/evidence.json`；33 项合成资源成功清理，既有容器未重启。
+- **证据范围有限**：上述流程证明 OpenAI Responses HTTP 的路由和计费，不证明六类规则触发路径、SSE/其他 provider、并发竞态、Redis/容量故障、旧镜像完整业务回退或用户人工验收。场景由 `deploy/tests/key-routing-acceptance-existing.ps1 -AccountPriorityFallbackOnly` 复现。
+- **当前结论**：开发中、未发布；无推送、生产访问或部署。Docker 候选可供用户在 `18280–18282` 人工查看，但 B1–B7 与源码/镜像来源关联仍未闭环，不能标为可上线。
+
+### 优先级列表语义补充（2026-10-21，本地未发布）
+
+- 用户确认密钥分组应与万模一致：所有分组仅按顺序/优先级区分，不存在固定主组或备用组身份；将任意一项上移到首位即可成为最高优先级。
+- `KeyBackupGroupsEditor.vue` 现在编辑统一的 `groupIds[]`，每一行提供相同的上移、下移、替换和移除；替换时选择列表中已有项会交换位置。摘要按总分组数显示。
+- 为降低主线合并风险，后端、数据库和 API 保持不变。`keyRouteFromAPI` / `keyRouteToAPI` 在前端边界把有序列表转换为既有 `group_id + backup_group_ids`，顺序不变。
+- 故障日志新显示文案为“切换至后续优先级分组”；列表仍识别历史“切换备用分组”记录。
+- 验证：前端相关 6 个测试文件 **77/77** 通过，`pnpm run typecheck` 退出 0。候选镜像 `sub2api-custom:key-account-routing-priority-ui`，运行 ID `sha256:d3637dc275af1337b44de259dfb755881fbdf59bced116526029445032664c08`；三站应用仅重建应用容器后均 healthy，`/health` 均返回 200。Compose 本地入口为 `18280–18282`，六个 DB/Redis 容器没有重建。
+- 最终本地候选：`sub2api-custom:key-account-routing-priority-ui`，镜像 ID `sha256:ed9f20d39f18a0c0f626f5a89b0cdc0a7bfbe8c10471a34ee4a178a75c15f7aa`；三站容器均 healthy，入口为 `18280–18282`。本补充只完成 UI/协议适配与定向验证，不代表整个账号级路由目标完成；未推送、未部署。
+
+### 最新候选验收补记（2026-10-21，未发布）
+
+- 新候选镜像 `sub2api-custom:key-account-routing-b0e9f4f-ui1`，运行 ID `sha256:79e11abf195e02c544564e7def55d23a8a76974cf7ab05a61059049adca5890a`，源码 HEAD `b0e9f4f67`；三站隔离 Compose 项目 `moshu-reseller-acceptance-key-routing` 已仅重建应用容器，六个数据库/Redis 容器保持原 ID、未重启。
+- `key-routing-acceptance-existing.ps1 -Execute` 基础套件通过 **30/30**；`-ExtendedKeyRules` 通过 **48/48**。三站均覆盖，零 findings，临时资源分别清理 42/42 和 42/42，未访问生产、未调用真实模型、未产生费用。证据：`D:/projects/key-routing-ui1-final-20261021/evidence.json`、`D:/projects/key-routing-ui1-extended-20261021/evidence.json`。
+- 扩展证据包括同组账号冷却、主/备用组路由顺序、预算耗尽安全转备用、TTFT 末候选不截断、SSE、账号不可调度、失败不扣费、按实际组结算、已输出不重放及跨站隔离。该脚本是合成上游验收，不代替真实 provider、容量/长连接、回退和用户人工确认。
+- 前端新增 `frontend/src/features/gateway-resilience/opsRouteSwitchLabel.ts`：从错误消息后缀独立解析“切换备用分组”，列表与详情分别显示标签，主错误文案仍保持可搜索/可读；无数据库字段和使用记录结构变更。相关前端测试 131/131，类型检查通过；构建成功。
+- **发布结论**：本轮本地候选验证通过，但 B1–B7 尚未全部闭环，生产保持不变；在用户打开 `18280–18282` 完成人工验收、并完成剩余旧镜像回退/完整 provider/账务/Redis 故障门槛前，不得推送或部署。
+- **旧镜像补验**：同一隔离数据库/Redis 卷短暂使用旧候选 image `sha256:42c0342fd6620b58fe5d7a0162329ef0c613f15afce0dc9376547b98186131f5` 启动主站，健康检查 200、重启 0；随后恢复新候选三站，健康检查均 200。仅证明旧镜像能启动并读取当前结构，尚未覆盖旧版本完整网关/账务回归。
+- **运行时补验**：主站 Redis 重启后健康恢复且应用 `/health` 仍为 200；同一主站数据库/Redis 网络启动第二个应用实例并通过内部 `/health` 200，临时实例已清理。该检查未替代 Redis 故障注入下的完整路由/账务矩阵。
+
 - **开发中，不是已完成或已发布功能。生产不变。**
 - 用户完整目标来源：本会话目标附件 `c75d38fa-ae5e-4e18-a25d-ecc1cea476cf/goal-objective.md`，本文件作为跨会话执行台账，不缩小原目标。
 - 活动树：`C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`；分支 `codex/group-failover-rules-v0.2.16`。
 - 已冻结上一轮目录并集源码为本地提交 `ec9b754c9`，没有推送；原验收证据及边界保留在 [目录验收记录](CUSTOM_KEY_CATALOGUE_ACCEPTANCE_20261020.md)。此前文档中的“未提交”指该时点的历史状态。
-- 本地验收目前仍是目录 c 候选；本轮账号级代码没有装入该镜像，不能靠页面可打开宣称账号级验收通过。
+- 本地隔离环境当前运行账号路由 UI 候选，且已通过上方所列 A→B→后续分组合成网关场景；该结果只覆盖特定 OpenAI Responses HTTP 场景，不能靠页面可打开或单场景通过宣称账号级目标验收完成。
 - 生产基线仍为 `0.2.16-custom.12`，运行提交 `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4`、digest `sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610`，详见既有发布记录。
 
 ### 最新实施补记：预算例外已获确认（开发中，未发布）
@@ -22,8 +58,8 @@
 - **组合接线证据**：实际执行 Wire 生成成功。首次因新增 provider cleanup 与原 injector 返回值不匹配失败；按原生 Wire cleanup 返回方式调整 injector/main 后重新生成通过，启动失败/退出均释放自定义独立池。尚未以此宣布新 Docker 启动通过。
 - 架构契约检查通过（7 个现有模块、12 个测试组，不新增宿主大模块），契约脚本 18 项测试通过。前端受影响 5 个文件 84 项通过（13.49 秒），`pnpm run typecheck` 退出 0；Browserslist 数据过期提示保留，未无关升级依赖。
 - **2026-10-21 容量补强**：Redis 健康状态新增站点分桶索引；状态、Key 索引和站点桶索引使用同一 Redis hash slot，Lua 原子检查 `MaxIdentitiesPerKey` 与站点桶配额，避免多 Key 跨站点无限增长，同时保留 Redis Cluster 的单槽原子性。新增站点容量/过期清理测试通过；内存适配继续执行精确站点上限。
-- **2026-10-21 回归**：`go test ./internal/keyrouting ./internal/repository -run 'TestKeyAccountHealth|TestCustomAPIKeyAccountRoute|TestCustomKeyRouteSite|TestKeyAccountRoute'` 通过；`go test ./internal/pkg/kiro` 通过；前端 5 个定向文件 84 项通过。一次全包命令中的 `backup_pg_dumper` 失败是 Windows 测试环境缺少 `sh`，不是本次账号路由代码失败，需在 Linux/Docker 验收中复核。
-- 当前未推送、未发布、未改生产，`18180–18182` 仍是旧目录 c 候选。热点去重容量实测、完整原生账务与清理、固定三站 Docker、生产构建和用户人工确认仍属发布硬门槛；当前 Docker Desktop Linux 引擎未运行，尚未开始新候选镜像验收。
+- **旧时点状态（2026-10-21，已被后续工作覆盖）**：当时全包命令中的 `backup_pg_dumper` 失败源于 Windows 环境缺少 `sh`；当时 Docker 引擎未运行且新候选未构建。不要将这段历史状态当作当前环境事实。
+- **本轮当前状态（2026-10-21）**：活动树 HEAD 仍为 `b0e9f4f67`，当前变更尚未提交；三站 `18280–18282` 正运行 `sha256:ed9f20d39f18a0c0f626f5a89b0cdc0a7bfbe8c10471a34ee4a178a75c15f7aa` 隔离候选，健康检查均为 200。A→A→B→分组2 的 12 次模拟网关请求和对应账务已通过；`go test ./internal/keyrouting ./internal/service ./internal/handler -run 'Test(KeyAccount|AccountAttempt)' -count=1 -timeout=300s` 三包通过，前端 77 项、类型、定向 ESLint 及差异检查通过。热点容量、完整 provider 发送/终态/原生账务、双实例故障闭环、完整旧镜像业务回退、长连接性能及用户人工验收仍未闭环。未推送、未部署、生产未改。
 
 ### 历史规划复核结论（保留审计时点，以最新实施补记为准）
 
@@ -31,17 +67,17 @@
 
 #### 本次规划交付时的补充状态
 
-- 后续在途补丁已经加入 GPT 插件/原生 HTTP 共用尝试入口及 handler 同组重选/原生重试状态保留。**这些是未提交的开发补丁，尚无稳定组合构建、完整 handler 测试或 Docker 证据；不能据此把 B1/B3/B4 标为通过。** 下方“OpenAI 尚未接入”等文字保留为较早审计时点，不代表上述补丁已经验收。
-- 原生 parser 已补严格错误证明适配；单次 `TestKeyAccountProtocol` 定向通过（0.096 秒），涵盖九种实际解析路径和旧 wire 隔离。未知 2xx 与 TTFT 竞争的生命周期修复仍在收尾，parser 定向通过不代替生命周期及网关联合验收。
+- **历史审计时点**：后续在途补丁尚未组合验证时，GPT/HTTP 和未知 2xx/TTFT 曾被标为未完成；这一快照已过时，以顶部“复核更正”和当前测试证据为准。
+- 原生 parser 严格错误证明仍须与实际 provider 的真实发送、终态观察和账务合验；`TestKeyAccountInferenceTransportB2*` 已覆盖 HTTP transport 的 unknown 2xx/TTFT timer、空或截断 EOF、迟到 usage/unknown payload、Close 竞争及验证错误，不再将该 HTTP 边界描述为“已知未修复重放缺口”。
 - Kiro 存在明确阻断：现有 translator 可能忽略 opaque/Exception 事件并合成空成功，且非流式路径可能填入估算输入用量。必须先增加狭窄 typed-error 观察端口并保留真实部分用量结算；不能凭异常文字重试、不能把空结果当成功通过。SystemOne 等特殊响应也必须逐协议验证，不能以其他平台通过代替。
 - TTFT 候选探测 wrapper 尚未转发 `CandidateEligible`，会退回逐账号权威检查；须补齐批读接口传递并测量 SQL/Redis 调用数。候选初扫批读通过，不代表 TTFT 探测已无逐账号网络开销。
 - TTFT 的“还有替代候选”还必须排除本请求已经失败的实际上游指纹，并核验剩余原生/全局预算；仅 readiness 返回 true 不足以主动取消当前请求。否则可能取消 A 后，所有后续路径都被去重或预算拒绝。
 - 同组重新进入 handler 后的价格快照、可变上下文、最后因果错误标签、真正发包后被内部重试准入拒绝时的预算归属、冷却期间原生同账号重试，均需专门测试，不能只检查最终 HTTP 200。
 - 本次规划阶段不新增官方升级、不扩大图片/WebSocket/后台任务的自动重放范围，不申请生产测试费用；待完整固定本地候选及用户确认后才进入发布流程。
 
-- provider 方面，Anthropic/转换、Gemini/转换、Bedrock、Kiro、Antigravity（含 credits-overages）、SystemOne 等 13 个文件的 19 处真实推理发送已加入薄适配；13 条新 provider 定向用例通过（0.098 秒）。Gemini countTokens 等非推理调用没有计入。**OpenAI 插件/原生 HTTP 选择尚未接入统一尝试边界，GPT 主路径仍是明确阻断；其他路径也只有定向证据，未获全链路支持认定。**
+- provider 方面，Anthropic/转换、Gemini/转换、Bedrock、Kiro、Antigravity（含 credits-overages）、SystemOne 等有实际发送薄适配；当前仍缺逐 provider 的真实发送→解析终态→唯一计样→安全重放→原生账务闭环证据。OpenAI HTTP/plugin 有更深入的派发/重试定向测试，但不替代其余 provider 的完整矩阵。
 - handler 的尝试 scope/动态 writer 接线已开始，组内换号/跨组协调、503 排除集、原生预算分类、槽位与预留释放后确认仍未闭环；不能把新 helper 的存在当作调度完成。
-- 生命周期定向测试 keyrouting 0.050 秒、service 0.246 秒通过；覆盖真实本机 HTTP 取消、晚 usage、未知 2xx、内部重试及 Close/Read 屏障。此前 HTTP 测试夹具的 teardown 等待已修，保留该失败经过。**未知 2xx 与 TTFT 恰好到期的组合仍有已知重放缺口，必须先修复，不能以这些已过用例豁免。**
+- 生命周期定向测试已覆盖真实本机 HTTP 取消、迟到 usage、未知 2xx、内部重试及 Close/Read 屏障；HTTP 测试夹具 teardown 的历史失败已修。未知 2xx 与 TTFT 到期边界有新增 B2 专项测试；跨 provider parser 行为仍需逐协议验收。
 - `MarkKeyAccountVerifiedFailure` 仅有接口和测试，生产解析器尚无接入；仅凭原生 `UpstreamFailoverError`、空 200、EOF 或错误文字不能证明重放安全。原生解析器必须逐协议提供明确错误证据，使用所属 wire 的不可变上下文。
 - 独立 Redis 客户端、读/写候选默认 150/250ms、无网络重试、有界池和独立 cleanup 已开发；runtime 定向 0.182 秒、repository 定向 1.436 秒通过。候选 hint/组入口批读接线、实际 Wire 生成和 cleanup、多实例与真实故障验收待完成；最后网络超时分类小改动也须纳入稳定源码统一测试。
 - 存储容量仍需生产基数测算：每 identity 1024 去重项/15 分钟、每 Key 256 identity 不能不经热点测算直接上线。站点级分桶硬上限已补齐，但分桶在极端热点下可能早于精确总上限拒绝新 identity；应以活跃 Key/组/账号/模型/端点基数和峰值尝试率配置，并观测容量降级，不能让规则静默失效无人可知。
@@ -84,12 +120,12 @@
 | 0 基线 | 冻结目录并集、记录版本、隔离改动 | 本地提交 `ec9b754c9`；未推送 |
 | 1 核心 | 独立账号健康、尝试生命周期、Redis 原子状态、去重/代次/TTL/容量 | 核心、runtime、transport、批读、站点分桶容量定向测试通过；真实 Redis/生产容量尚未验收 |
 | 2 调度 | readiness/实际选号/粘性/槽位后检查一致，503 不清规则排除、跨组指纹/预算 | gate/session/候选探测、同组优先、跨组顺序、预算例外和最终准入已接线；仍需三站 HTTP/SSE 故障注入验收 |
-| 3 安全 | 常驻重放保护、独立 TTFT、所有受支持文本平台 HTTP/SSE、原生计费 | 生命周期与 19 个 provider 发送薄适配有定向证据；OpenAI 接点、未知 2xx+TTFT、parser proof 和完整清理/账务待验 |
+| 3 安全 | 常驻重放保护、独立 TTFT、所有受支持文本平台 HTTP/SSE、原生计费 | OpenAI HTTP/plugin、HTTP unknown-2xx/TTFT 竞态、Kiro/Grok/WS/部分用量等多项定向回归通过；19 个 provider 薄适配仍缺逐 provider 真实派发→终态→原生账务闭环 |
 | 4 兼容 | 元数据、旧配置、缓存、前端文案、错误标签、目录不受软冷却影响 | 显式 scope/API/UI 已开发并定向通过；9003 单项 PG 已过，9004/全链路回滚待验 |
-| 5 本地 | PostgreSQL/Redis/三站/两实例/故障注入/账务/长连接/回滚 | Docker 引擎未运行，未运行本轮候选；旧目录 c 容器不计入证据 |
-| 6 人工验收 | 用户在本地验收通过 | 待用户；此前目录或 UI 验收不代替本轮确认 |
+| 5 本地 | PostgreSQL/Redis/三站/两实例/故障注入/账务/长连接/回滚 | 当前候选三站健康；A→A→B→分组2 的 12 次合成 HTTP 请求和实际组账单通过。历史基础/扩展网关套件也通过；双实例共享状态故障矩阵、完整回退业务验收、provider 全矩阵、热点容量和长连接仍未闭环 |
+| 6 人工验收 | 用户在本地验收通过 | 三站本地入口可打开，待用户确认页面及完整行为；此前目录或 UI 验收不代替本轮确认 |
 | 7 发布 | 用户通过后推送/镜像复验/主站→L1→COS/逐站回滚门槛 | 禁止提前执行 |
-| 8 收尾 | 共享文档、实际发布坐标、回滚命令、精确旧镜像清理 | 尚未开始；不删除在用/回滚镜像或卷 |
+| 8 收尾 | 共享文档、实际发布坐标、回滚命令、精确旧镜像清理 | 执行台账/日志已同步本轮证据；发布坐标、最终回滚命令及精确镜像清理须等发布门槛通过后收尾 |
 
 ## 架构与代码所有权
 
@@ -308,7 +344,7 @@ TTFT 只有在其他原生合法候选存在且可安全重放时才允许主动
 
 维护一份 hook 清单和架构契约：实际生产组合 Wire 必须生成；provider 漏接、双重计数、旧计时器误开、任意写全局暂停字段均有失败测试。新增文件、迁移和测试登记到现有 manifest/contracts，后续官方升级可定位少量接点。不修改已发布 9000–9002 校验值，不修改 Ent 生成文件，不夹带本轮之外的官方版本合并。
 
-前端继续现有主备卡片与规则布局；只有有备用组才显示自动切换。增加必要的账号统计说明与旧模式显式转换，不增加使用记录列、路由原因页或全局账号停止状态。原错误日志保留，仅真实跨组的最后因果错误使用已有“切换备用分组：名称”标签；历史冷却初始跳组不伪造错误。
+前端分组采用统一有序优先级列表，不显示固定主组/备用组角色；仅配置多个分组时显示自动切换规则。增加必要的账号统计说明与旧模式显式转换，不增加使用记录列、路由原因页或全局账号停止状态。原错误日志保留，仅真实跨组的最后因果错误显示后续优先级分组标签；历史冷却初始跳组不伪造错误。
 
 ### J. 阶段交付与具体验收证据
 

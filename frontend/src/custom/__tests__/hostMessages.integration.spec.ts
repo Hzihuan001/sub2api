@@ -17,8 +17,8 @@ afterEach(() => {
 
 describe('real i18n host message loading', () => {
   it.each([
-    { locale: 'en' as const, title: 'Service groups', summary: '+2 backup · route configured', position: 'Backup 3' },
-    { locale: 'zh' as const, title: '服务分组', summary: '+2 备用 · 已配置路由', position: '备用 3' }
+    { locale: 'en' as const, title: 'Service groups', summary: '2 priority groups configured', position: 'Priority 3' },
+    { locale: 'zh' as const, title: '服务分组', summary: '已配置 2 个优先级分组', position: '优先级 3' }
   ])('loads key routing translations and placeholders in $locale through the real host', async ({ locale, title, summary, position }) => {
     const { i18n, loadLocaleMessages } = await import('@/i18n')
     await loadLocaleMessages(locale)

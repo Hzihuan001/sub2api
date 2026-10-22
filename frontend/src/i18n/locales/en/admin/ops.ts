@@ -263,6 +263,7 @@ export default {
         userId: 'User ID',
         apiKey: 'API Key',
         keyDeletedBadge: 'Key Deleted',
+        routeSwitchToBackup: 'Switched to a later-priority group: {group}',
         account: 'Account',
         accountId: 'Account ID',
         status: 'Status',

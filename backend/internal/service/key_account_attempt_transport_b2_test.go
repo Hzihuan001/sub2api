@@ -197,6 +197,33 @@ func TestKeyAccountInferenceTransportB2HTTPEmptySuccessEOFNeverBecomesTTFTProof(
 	}
 }
 
+func TestKeyAccountInferenceTransportB2AmbiguousNetworkFailureCannotReplay(t *testing.T) {
+	var received atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		_, _ = io.Copy(io.Discard, request.Body)
+		received.Add(1)
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = conn.Close() // Simulate execution followed by loss before response headers.
+		}
+	}))
+	defer server.Close()
+	ctx, scope, account := keyAccountTransportFixture(t, context.Background(), KeyAccountForwardOptions{})
+	_, err := KeyAccountInferenceDoFunc(keyAccountLocalHTTPRequest(t, ctx, server.URL), account, "wire-model", server.Client().Do)
+	require.Error(t, err)
+	require.EqualValues(t, 1, received.Load(), "the first request reached the upstream")
+	_, err = KeyAccountInferenceDoFunc(keyAccountTransportRequest(t, ctx), account, "wire-model", func(*http.Request) (*http.Response, error) {
+		t.Fatal("an ambiguous response-less failure must never dispatch a duplicate inference")
+		return nil, nil
+	})
+	require.ErrorIs(t, err, ErrKeyAccountReplayBlocked)
+	sample, err := scope.Finish(nil, keyrouting.AccountAttemptResult{Outcome: keyrouting.OutcomeFailure})
+	require.NoError(t, err)
+	require.NotZero(t, sample.ReplayVeto&keyrouting.AttemptVetoUnknownProtocol)
+	require.True(t, scope.CleanupAck())
+	require.False(t, scope.CanStartNext())
+}
+
 func TestKeyAccountInferenceTransportB2CloseWinningBeforeTimerCannotForgeProof(t *testing.T) {
 	stop := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {

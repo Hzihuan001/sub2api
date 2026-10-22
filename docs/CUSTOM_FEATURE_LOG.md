@@ -1,5 +1,48 @@
 # 定制功能日志
 
+### 2026-10-21 — 稳定性收敛与协议派发补验（开发中，未发布）
+
+- **约束**：按用户要求，保持现有模块和原生调度/计费，不继续堆业务机制；只针对已识别的风险补最小测试。
+- **测试改动**：新增 `backend/internal/service/key_account_provider_dispatch_test.go`，复用原生服务与本地模拟传输；已有 Anthropic 测试 recorder 仅增加调用计数。覆盖 Anthropic 直通、Gemini Chat、SystemOne、Antigravity upstream 的真实模拟派发、usage、身份和终态；未知 200 载荷保守阻止重放，6 个顶层测试已通过。Gemini native/Bedrock 独立路径补验中，不冒称全平台闭环。
+- **前端**：仅补错误标签回归，三个相关文件 16/16 通过，确认历史前缀、200 字截断及限流/超时通用提示不遮挡标签；没有新增数据库字段或使用记录展示。
+- **失败留痕**：Gemini 返回的防重放错误经原生网关包装为上游错误，初始测试断言错误身份过严；改为验证接口返回错误、上游仅收到一次和未知协议 veto 后通过，未改生产错误行为。完整三包首轮选错旧只读缓存，缺依赖导致测试启动失败，已改当前缓存离线重跑。
+- **发布**：没有 push、标签、部署或生产访问。仍需固定产物、有限并发/存储故障、真实稳定版业务回退、长连接资源检查和用户验收；成功结果复用，不反复完整压测。
+
+### 2026-10-21 — Key 路由复核及 A→B→后续分组、计费验收（未发布）
+
+- **需求**：按真实网关顺序验证分组1账号 A 健康时持续使用 A；停用 A 后改用同组 B；再停用 B 后进入分组2，并核对实际账号、组和费用。
+- **实现/测试**：验收脚本新增 `-AccountPriorityFallbackOnly` 独立模式，只创建本轮合成用户、Key、A/B 和模拟上游，不更改生产或使用真实模型；测试失败时也恢复原有基准账号调度状态。
+- **结果**：主站、L1、COS 各 4 次请求均为 HTTP 200，顺序为 A、A、B、分组2。每站 4 条唯一 usage/dedup；分组1 3 笔、分组2 1 笔，逐笔账号/组/倍率及余额、Key quota 与原生账单一致。每站扣费 `0.00001755`，测试资源清理 33/33，原有服务未重启。没有真实上游费用。
+- **证据**：`D:/projects/key-route-existing-4d4f59ae9de0/evidence.json`。Go 定向测试 `go test ./internal/keyrouting ./internal/service ./internal/handler -run 'Test(KeyAccountInferenceTransportB2|AccountAttempt|KeyAccountDispatch|KeyAccountRouting|KeyRouteFirstContent|KeyAccountForward)' -count=1 -timeout=180s` 通过（包耗时分别 0.111/1.184/0.055 秒）；前端相关 6 个文件 77/77、类型检查和定向 ESLint 通过。网关脚本仍只证明模拟 OpenAI Responses HTTP 场景，不代表全平台验收。
+- **状态**：未提交、未推送、未部署。整体目标继续受 B1–B7 门槛约束；真实 provider 派发/终态和计费矩阵、并发/Redis故障与容量、完整回退以及用户人工验收仍未闭环。
+
+### 2026-10-21 — 未发布 — Key 分组编辑改为统一优先级列表
+
+- **最终本地候选摘要**：标签 `sub2api-custom:key-account-routing-priority-ui` 最终镜像为 `sha256:ed9f20d39f18a0c0f626f5a89b0cdc0a7bfbe8c10471a34ee4a178a75c15f7aa`，三站均 healthy、健康端点均为 200。后续如读到本条早期测试描述中的旧 digest，以本条最终摘要为准。
+
+- **需求**：对齐万模行为，所有 Key 分组仅有顺序优先级；调高任意分组后可成为第一优先组，不使用固定主/备用身份。
+- **Feature ID**：`key-routing` / `gateway-resilience`
+- **官方基线**：账号级路由开发基线 `0.2.16-custom.12`；活动分支 `codex/group-failover-rules-v0.2.16`。
+- **实现边界**：`frontend/src/features/key-routing/KeyBackupGroupsEditor.vue` 统一编辑器；`keyRouting.ts` 有序列表和 API 编解码适配；`KeysView.vue`、`UserApiKeysModal.vue` 摘要/表单映射；中英文提示；错误日志切组标签显示。
+- **用户可见行为**：列表每项有一致的上移、下移、替换、移除；首位自动表示最高优先级；摘要计数包含全部分组。日志标签改为“切换至后续优先级分组”，仍支持旧记录。
+- **数据库/迁移**：无；API 和存储沿用 `group_id + backup_group_ids`，保持顺序，不做迁移。
+- **测试**：前端定向 6 个文件 `77/77` 通过；`pnpm run typecheck` 通过。候选镜像 `sub2api-custom:key-account-routing-priority-ui` (`sha256:d3637dc275af1337b44de259dfb755881fbdf59bced116526029445032664c08`) 三站容器均 healthy，`/health` 返回 200；六个 PostgreSQL/Redis 容器未重建，等待用户页面验收。
+- **提交/PR**：仅本地；没有提交/推送。
+- **发布镜像**：本地验收候选已构建；非发布镜像。
+- **部署站点**：未部署；生产保持不变。
+- **回滚**：回退本地 UI 文件；无 schema 变化，可回到原编辑界面。
+- **备注**：不要将现有候选 Docker 镜像视为已包含此项 UI；完整账号级路由发布门槛仍未完成。
+
+### 2026-10-21 — 切组错误标签与最终本地候选验收（未发布）
+
+- **范围**：补齐错误日志中“切换备用分组”提示的可见性，并以新候选镜像复验账号级 Key 路由；未修改使用记录、数据库表或生产环境。
+- **实现**：新增 `frontend/src/features/gateway-resilience/opsRouteSwitchLabel.ts`，从现有错误消息后缀解析切组目标；错误日志列表显示独立小标签并清理正文尾缀，详情弹窗显示独立标签；长错误消息被截断时仍能看见切组提示。中英文文案各增加一条，不引入页面耦合。
+- **候选**：源码 HEAD `b0e9f4f67`，镜像 `sub2api-custom:key-account-routing-b0e9f4f-ui1`，运行 ID `sha256:79e11abf195e02c544564e7def55d23a8a76974cf7ab05a61059049adca5890a`。
+- **验证**：前端相关 9 个测试文件 131/131、`vue-tsc --noEmit`、后端定向包测试通过；基础三站合成验收 30/30、扩展三站合成验收 48/48，零 findings，资源按 ID 清理，数据库/Redis 未重建。
+- **发布状态**：仅本地验收，未提交/推送/部署；生产仍 `0.2.16-custom.12`。待用户人工验收本地 `18280–18282` 及剩余 B1–B7 门槛后再决定发布。
+- **回退补验**：同一隔离数据卷使用旧候选镜像启动主站并通过 `/health` 200，随后恢复新候选三站并再次通过健康检查；未重建数据库/Redis。该检查不替代完整旧版本业务回归。
+- **运行时补验**：主站 Redis 重启后应用健康检查保持 200；同一站点第二个应用实例通过内部健康检查后已清理，三站正式候选容器仍 healthy。
+
 ### 2026-10-21 — Key 内账号级路由：站点容量补强与局部回归（开发中，未发布）
 
 - **需求**：在“先换同组账号、组内候选耗尽后换备用组”的方案上，补齐共享 Redis 健康状态的站点级容量边界；用户已确认组内安全重试预算耗尽后可转备用组，但不得给未尝试账号记失败/冷却。

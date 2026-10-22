@@ -111,6 +111,11 @@
 
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.message') }}</div>
+          <span
+            v-if="routeSwitchAnnotation"
+            class="mt-1 inline-flex max-w-full items-center rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-medium text-teal-800 dark:bg-teal-900/40 dark:text-teal-200"
+            :title="routeSwitchAnnotation.groupName"
+          >{{ t('admin.ops.errorLog.routeSwitchToBackup', { group: routeSwitchAnnotation.groupName }) }}</span>
           <div class="mt-1 break-words text-sm font-medium text-gray-900 dark:text-white" :title="rootCauseMessage">
             {{ rootCauseMessage || '—' }}
           </div>
@@ -233,6 +238,7 @@ import { useAppStore } from '@/stores'
 import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
 import { formatDateTime } from '@/utils/format'
 import { resolveUpstreamPayload } from '../utils/errorDetailResponse'
+import { parseOpsRouteSwitchAnnotation } from '@/features/gateway-resilience/opsRouteSwitchLabel'
 
 interface Props {
   show: boolean
@@ -258,6 +264,7 @@ const detail = ref<OpsErrorDetail | null>(null)
 const showUpstreamList = computed(() => props.errorType === 'request')
 
 const requestId = computed(() => detail.value?.request_id || detail.value?.client_request_id || '')
+const routeSwitchAnnotation = computed(() => parseOpsRouteSwitchAnnotation(detail.value?.message))
 
 type DiagnosticPayloadKey = 'client' | 'upstream_message' | 'upstream_detail' | 'upstream_events'
 

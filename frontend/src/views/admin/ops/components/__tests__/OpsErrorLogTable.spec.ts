@@ -9,7 +9,9 @@ vi.mock('vue-i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-i18n')>()
   return {
     ...actual,
-    useI18n: () => ({ t: (key: string) => key }),
+    useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => key === 'admin.ops.errorLog.routeSwitchToBackup'
+      ? `切换至后续优先级分组：${params?.group ?? ''}`
+      : key }),
   }
 })
 
@@ -72,6 +74,30 @@ describe('OpsErrorLogTable user/api-key/account columns', () => {
 
     expect(wrapper.text()).toContain('old-key')
     expect(wrapper.text()).toContain('admin.ops.errorLog.keyDeletedBadge')
+  })
+
+  it.each(['切换至后续优先级分组：', '切换备用分组：'])(
+    'shows the group badge from %s even when the long original error is truncated',
+    (prefix) => {
+      const groupName = 'GPT-企业'
+      const original = 'upstream failure '.repeat(20)
+      const wrapper = mountTable({ message: `${original}· ${prefix}${groupName}` })
+
+      expect(wrapper.text()).toContain(`切换至后续优先级分组：${groupName}`)
+      expect(wrapper.text()).toContain(groupName)
+      expect(wrapper.find('[title="' + original.trimEnd() + '"]').text()).toBe(original.substring(0, 200) + '...')
+    }
+  )
+
+  it.each([
+    ['provider rate limit exceeded', 'admin.ops.errorLog.commonErrors.rateLimit'],
+    ['context deadline exceeded', 'admin.ops.errorLog.commonErrors.contextDeadlineExceeded'],
+  ])('keeps the group badge when %s becomes a common error hint', (original, commonHint) => {
+    const groupName = 'GPT-企业'
+    const wrapper = mountTable({ message: `${original} · 切换备用分组：${groupName}` })
+
+    expect(wrapper.text()).toContain(`切换至后续优先级分组：${groupName}`)
+    expect(wrapper.find('[title="' + original + '"]').text()).toBe(commonHint)
   })
 })
 

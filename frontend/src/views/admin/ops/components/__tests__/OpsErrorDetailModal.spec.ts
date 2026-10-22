@@ -23,7 +23,9 @@ vi.mock('vue-i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-i18n')>()
   return {
     ...actual,
-    useI18n: () => ({ t: (key: string) => key })
+    useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => key === 'admin.ops.errorLog.routeSwitchToBackup'
+      ? `切换至后续优先级分组：${params?.group ?? ''}`
+      : key })
   }
 })
 
@@ -75,5 +77,36 @@ describe('OpsErrorDetailModal', () => {
     expect(wrapper.text()).toContain('429')
     expect(wrapper.findAll('pre')).toHaveLength(2)
     expect(wrapper.text()).not.toContain('admin.ops.errorDetail.payloads.upstream_detail')
+  })
+
+  it('shows the later-priority group badge separately from the unmodified error details', async () => {
+    mocks.getRequestErrorDetail.mockResolvedValue({
+      id: 2,
+      created_at: '2026-08-19T00:00:00Z',
+      phase: 'request',
+      type: 'upstream_error',
+      error_owner: 'provider',
+      error_source: 'gateway',
+      severity: 'P1',
+      status_code: 502,
+      platform: 'openai',
+      model: 'gpt-6.1-sol',
+      resolved: false,
+      request_id: 'rid-2',
+      message: `${'upstream failure '.repeat(20)}· 切换至后续优先级分组：GPT-企业`,
+      error_body: '',
+      upstream_error_message: 'upstream failure',
+      account_name: 'account',
+      group_name: 'group',
+      is_business_limited: false
+    })
+
+    const wrapper = shallowMount(OpsErrorDetailModal, {
+      props: { show: true, errorId: 2, errorType: 'request' },
+      global: { stubs: { BaseDialog: { template: '<div><slot /></div>' }, Icon: true } }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('GPT-企业')
   })
 })

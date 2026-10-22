@@ -42,7 +42,8 @@ func TestFirstContentDispatchWaitsForCleanupAndDiscardsPrelude(t *testing.T) {
 		if *key.GroupID == 1 {
 			defer func() { cleaned = true }()
 			c.Header("Content-Type", "text/event-stream")
-			_, _ = c.Writer.Write([]byte("data: {\"type\":\"response.created\"}\n\n: ping\n\n"))
+			c.Header("X-Upstream-Request-ID", "account-a")
+			_, _ = c.Writer.Write([]byte("data: {\"type\":\"response.created\",\"marker\":\"account-a-only\"}\n\n: ping\n\n"))
 			c.Writer.Flush()
 			require.False(t, c.Writer.Written())
 			select {
@@ -59,6 +60,8 @@ func TestFirstContentDispatchWaitsForCleanupAndDiscardsPrelude(t *testing.T) {
 	require.Equal(t, []int64{1, 2}, groups)
 	require.Equal(t, http.StatusOK, c.Writer.Status())
 	require.Contains(t, c.Writer.Header().Get("Content-Type"), "application/json")
+	require.Empty(t, c.Writer.Header().Get("X-Upstream-Request-ID"), "headers from a safely discarded account attempt must not leak")
+	require.NotContains(t, c.Writer.Body.String(), "account-a-only", "discarded SSE frames must not leak into the backup response")
 	require.Len(t, selector.latencies, 2)
 	events, ok := c.MustGet(service.OpsUpstreamErrorsKey).([]*service.OpsUpstreamErrorEvent)
 	require.True(t, ok)

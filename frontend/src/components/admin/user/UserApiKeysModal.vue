@@ -133,7 +133,7 @@
             <div class="flex items-center gap-1"><span>{{ t('admin.users.columns.created') }}: {{ formatDateTime(key.created_at) }}</span></div>
           </div>
           <p v-if="key.backup_group_ids?.length" class="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300" data-test="admin-key-backups">
-            {{ t('custom.keyRouting.summary', { count: key.backup_group_ids.length }) }} · {{ t('custom.keyRouting.adminEditHint') }}
+            {{ t('custom.keyRouting.summary', { count: key.backup_group_ids.length + 1 }) }} · {{ t('custom.keyRouting.adminEditHint') }}
           </p>
           <KeyRouteScopeNotice
             v-if="key.backup_group_ids?.length"

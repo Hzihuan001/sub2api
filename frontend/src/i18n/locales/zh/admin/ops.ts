@@ -263,6 +263,7 @@ export default {
         userId: '用户 ID',
         apiKey: 'API Key',
         keyDeletedBadge: 'Key 已删除',
+        routeSwitchToBackup: '切换至后续优先级分组：{group}',
         account: '账号',
         accountId: '账号 ID',
         status: '状态码',

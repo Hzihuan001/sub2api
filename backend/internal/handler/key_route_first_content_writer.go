@@ -30,6 +30,19 @@ func newFirstContentWriter(w gin.ResponseWriter, guard *keyrouting.FirstContentG
 	return &firstContentWriter{ResponseWriter: w, guard: guard, headers: w.Header().Clone(), status: http.StatusOK, hold: hold, observe: guard.Observe}
 }
 
+func (w *firstContentWriter) beginAttempt(guard *keyrouting.FirstContentGuard, observe func() bool) {
+	if !w.hold || w.ResponseWriter.Written() {
+		guard.PreventReplay()
+		return
+	}
+	w.headers = w.ResponseWriter.Header().Clone()
+	w.status = http.StatusOK
+	w.pending = nil
+	w.frames = nil
+	w.guard = guard
+	w.observe = observe
+}
+
 func (w *firstContentWriter) Header() http.Header {
 	if w.hold {
 		return w.headers
