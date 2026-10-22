@@ -37,6 +37,22 @@ func switchKeyRoute(c *gin.Context, effectiveKey *service.APIKey, request servic
 	}
 	currentGroupID := *effectiveKey.GroupID
 	rootKey := cloneKeyRoutingPrimaryKey(c, effectiveKey)
+	// Avoid one speculative SelectNext call after the last configured group.
+	// Besides unnecessary repository/scheduler work, that call records a
+	// synthetic switch attempt in route diagnostics even though no group can
+	// follow it. The configured route is strictly primary followed by backups.
+	configuredGroups := append([]int64(nil), rootKey.BackupGroupIDs...)
+	configuredGroups = append([]int64{derefKeyRouteGroupID(rootKey)}, configuredGroups...)
+	last := -1
+	for i, id := range configuredGroups {
+		if id == currentGroupID {
+			last = i
+			break
+		}
+	}
+	if last < 0 || last >= len(configuredGroups)-1 {
+		return effectiveKey, false
+	}
 	next, _, err := selector.SelectNext(c.Request.Context(), rootKey, request, currentGroupID)
 	if err != nil || next == nil || next.GroupID == nil || *next.GroupID == currentGroupID || next.Group == nil {
 		return effectiveKey, false
@@ -50,7 +66,6 @@ func switchKeyRoute(c *gin.Context, effectiveKey *service.APIKey, request servic
 	ctx := context.WithValue(base, ctxkey.Group, next.Group)
 	ctx = context.WithValue(ctx, ctxkey.UserID, next.UserID)
 	ctx = context.WithValue(ctx, ctxkey.KeyRoutingActive, true)
-	ctx = service.WithOpsRouteSwitchLabel(ctx, strings.TrimSpace(next.Group.Name))
 	// The original request may have resolved a composite group's platform
 	// before the switch. Replace that request-local decision so downstream
 	// dispatch, quota and logging use the selected backup group.
@@ -84,7 +99,15 @@ func switchKeyRoute(c *gin.Context, effectiveKey *service.APIKey, request servic
 	servermiddleware.SetOpsFallbackAPIKey(c, next)
 	c.Set(keyRoutingSelectorContextKey, selector)
 	c.Set("custom.key_route_switch_group", strings.TrimSpace(next.Group.Name))
+	service.MarkOpsRouteSwitch(c, next.Group.Name)
 	return next, true
+}
+
+func derefKeyRouteGroupID(key *service.APIKey) int64 {
+	if key == nil || key.GroupID == nil {
+		return 0
+	}
+	return *key.GroupID
 }
 
 func cloneKeyRoutingPrimaryKey(c *gin.Context, current *service.APIKey) *service.APIKey {

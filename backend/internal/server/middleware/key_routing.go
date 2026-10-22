@@ -25,6 +25,10 @@ type APIKeyRouteSelector interface {
 	Select(context.Context, *service.APIKey, service.KeyRoutingRequest) (*service.APIKey, keyrouting.Plan, error)
 }
 
+type apiKeyHTTPResponseSourceSelector interface {
+	SelectHTTPResponseSource(context.Context, *service.APIKey, service.KeyRoutingRequest, string) (*service.APIKey, int64, error)
+}
+
 // ProvideAPIKeyAuthMiddleware is the production composition. The upstream
 // constructor remains source-compatible for existing integrations/tests.
 func ProvideAPIKeyAuthMiddleware(keys *service.APIKeyService, subscriptions *service.SubscriptionService, cfg *config.Config, routes *service.KeyRoutingService) APIKeyAuthMiddleware {
@@ -43,11 +47,11 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 		setAPIKeyRouteCatalogueSource(c, selector)
 		return key, true
 	}
-	body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
-	if err != nil {
+	body, readErr := httputil.ReadRequestBodyWithPrealloc(c.Request)
+	if readErr != nil {
 		status := http.StatusBadRequest
 		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
+		if errors.As(readErr, &maxErr) {
 			status = http.StatusRequestEntityTooLarge
 		}
 		AbortWithError(c, status, "KEY_ROUTE_INVALID_REQUEST", "Unable to read routing request")
@@ -58,7 +62,16 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 		AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_INVALID_REQUEST", "Expected an unambiguous JSON object without duplicate fields")
 		return nil, false
 	}
-	if keyRoutingHasBoundState(body) || c.GetHeader("x-codex-turn-state") != "" {
+	previousResponseID, hasPreviousResponseID, validPreviousResponseID := keyRoutingPreviousResponseID(body)
+	if !validPreviousResponseID {
+		AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_INVALID_REQUEST", "previous_response_id must be a non-empty string")
+		return nil, false
+	}
+	if hasPreviousResponseID && endpoint != service.CompositeRouteEndpointResponses {
+		AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_STATEFUL_UNSUPPORTED", "Stored response references are supported only on the Responses API")
+		return nil, false
+	}
+	if keyRoutingHasBoundStateExceptPreviousResponse(body, hasPreviousResponseID) || c.GetHeader("x-codex-turn-state") != "" {
 		AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_STATEFUL_UNSUPPORTED", "Multi-group keys currently require stateless text requests; use a single-group key for stored response or conversation references")
 		return nil, false
 	}
@@ -79,7 +92,12 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 	// Native remote compaction, media and provider-executed tools have an
 	// independent lifecycle. A provider may execute a tool before emitting any
 	// visible content, so these requests must never be replayed to a backup.
-	if service.IsExplicitImageGenerationIntent(c.Request.URL.Path, model.String(), body) || keyRoutingHasPrimaryOnlyIntent(body) {
+	primaryOnlyIntent := service.IsExplicitImageGenerationIntent(c.Request.URL.Path, model.String(), body) || keyRoutingHasPrimaryOnlyIntent(body)
+	if hasPreviousResponseID && primaryOnlyIntent {
+		AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_STATEFUL_UNSUPPORTED", "Stored response references cannot be combined with image generation or provider-managed tools on a multi-group key")
+		return nil, false
+	}
+	if primaryOnlyIntent {
 		return key, true
 	}
 	if selector == nil {
@@ -87,6 +105,10 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 		return nil, false
 	}
 	if key.KeyRouteScope == service.KeyRouteScopeAccountV2 {
+		if hasPreviousResponseID {
+			AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_STATEFUL_UNSUPPORTED", "Stored response references are not supported with account-scoped multi-group routing")
+			return nil, false
+		}
 		preparer, ok := selector.(interface {
 			PrepareAccountRouteContext(context.Context, *service.APIKey, service.KeyRoutingRequest) (context.Context, error)
 		})
@@ -102,7 +124,37 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 		}
 		c.Request = c.Request.WithContext(ctx)
 	}
-	effective, plan, err := selector.Select(c.Request.Context(), key, service.KeyRoutingRequest{Model: strings.TrimSpace(model.String()), Endpoint: endpoint})
+	routingRequest := service.KeyRoutingRequest{Model: strings.TrimSpace(model.String()), Endpoint: endpoint}
+	var effective *service.APIKey
+	var plan keyrouting.Plan
+	var sourceAccountID int64
+	var err error
+	if hasPreviousResponseID {
+		sourceSelector, supported := selector.(apiKeyHTTPResponseSourceSelector)
+		if !supported {
+			AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_RESPONSE_SOURCE_UNAVAILABLE", "Unable to resolve the stored response source; retry later")
+			return nil, false
+		}
+		effective, sourceAccountID, err = sourceSelector.SelectHTTPResponseSource(c.Request.Context(), key, routingRequest, previousResponseID)
+		if err != nil {
+			if errors.Is(err, service.ErrOpenAIHTTPResponseSourceUnavailable) {
+				AbortWithError(c, http.StatusConflict, "KEY_ROUTE_RESPONSE_SOURCE_UNAVAILABLE", "Stored response source is unavailable for this key")
+			} else {
+				slog.WarnContext(c.Request.Context(), "key_route_response_source_lookup_failed", "api_key_id", key.ID, "error", err)
+				AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_RESPONSE_SOURCE_LOOKUP_FAILED", "Unable to resolve the stored response source; retry later")
+			}
+			return nil, false
+		}
+		if hasPreviousResponseID {
+			if sourceAccountID <= 0 || effective == nil || effective.GroupID == nil || effective.Group == nil {
+				AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_RESPONSE_SOURCE_UNAVAILABLE", "Stored response source is unavailable for this key")
+				return nil, false
+			}
+			plan.SelectedGroupID = *effective.GroupID
+		}
+	} else {
+		effective, plan, err = selector.Select(c.Request.Context(), key, routingRequest)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, keyrouting.ErrNotAuthorized):
@@ -130,9 +182,18 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 	if key.GroupID != nil {
 		primaryGroupID = *key.GroupID
 	}
-	routingCtx := context.WithValue(c.Request.Context(), ctxkey.KeyRoutingActive, true)
-	if primaryGroupID > 0 {
-		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingPrimaryGroupID, primaryGroupID)
+	routingCtx := c.Request.Context()
+	if hasPreviousResponseID {
+		// A stored Responses ID is bound to the group/account that created it.
+		// Do not install group dispatch here: a retry on another group/account
+		// would submit provider state outside its ownership scope.
+		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingResponseSourceGroupID, *effective.GroupID)
+		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingResponseSourceAccountID, sourceAccountID)
+	} else {
+		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingActive, true)
+		if primaryGroupID > 0 {
+			routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingPrimaryGroupID, primaryGroupID)
+		}
 	}
 	c.Request = c.Request.WithContext(routingCtx)
 	// Retain the immutable ingress snapshot before platform/model/pricing
@@ -142,6 +203,14 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 	c.Set("custom.key_route_body", append([]byte(nil), body...))
 	c.Set("custom.key_route_request", service.KeyRoutingRequest{Model: strings.TrimSpace(model.String()), Endpoint: endpoint})
 	c.Set("custom.key_routing_selector", selector)
+	// Keep an immutable copy of the user's primary+backup route. A stored
+	// Responses continuation is initially pinned to its source group/account;
+	// a later capability-gated replay may need to resume normal routing from
+	// that source group without reconstructing the original key from mutated
+	// request context.
+	rootSnapshot := *key
+	rootSnapshot.BackupGroupIDs = append([]int64(nil), key.BackupGroupIDs...)
+	c.Set("custom.key_route_root_key", &rootSnapshot)
 	c.Set("custom.key_route", plan)
 	if key.GroupID != nil && *effective.GroupID != *key.GroupID {
 		slog.InfoContext(c.Request.Context(), "key_route_selected", "api_key_id", key.ID, "primary_group_id", *key.GroupID, "selected_group_id", *effective.GroupID, "reason", plan.Reason)
@@ -281,10 +350,37 @@ func keyRoutingToolType(tool gjson.Result) (toolType string, hasType bool) {
 }
 
 func keyRoutingHasBoundState(body []byte) bool {
+	return keyRoutingHasBoundStateExceptPreviousResponse(body, false)
+}
+
+func keyRoutingPreviousResponseID(body []byte) (responseID string, present bool, valid bool) {
+	valid = true
+	gjson.ParseBytes(body).ForEach(func(field, value gjson.Result) bool {
+		if !strings.EqualFold(field.String(), "previous_response_id") {
+			return true
+		}
+		if value.Type == gjson.Null || (value.Type == gjson.String && strings.TrimSpace(value.String()) == "") {
+			return true
+		}
+		present = true
+		if value.Type != gjson.String {
+			valid = false
+			return false
+		}
+		responseID = strings.TrimSpace(value.String())
+		valid = responseID != ""
+		return false
+	})
+	return responseID, present, valid
+}
+
+func keyRoutingHasBoundStateExceptPreviousResponse(body []byte, ignorePreviousResponse bool) bool {
 	bound := false
 	gjson.ParseBytes(body).ForEach(func(k, v gjson.Result) bool {
 		switch strings.ToLower(k.String()) {
-		case "previous_response_id", "conversation":
+		case "previous_response_id":
+			bound = !ignorePreviousResponse && v.Type != gjson.Null && v.Raw != `""`
+		case "conversation":
 			bound = v.Type != gjson.Null && v.Raw != `""`
 		case "background":
 			bound = v.Type != gjson.Null && v.Type != gjson.False

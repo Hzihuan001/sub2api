@@ -22,6 +22,14 @@ type KeyRoutingRequest struct {
 	Endpoint string
 }
 
+// KeyRoutingHTTPResponseSourceResolver is intentionally narrow: ingress uses
+// it only for a Responses previous_response_id continuation. The resolver
+// must return the authorized source group and the account that created the
+// response; no arbitrary cross-group or cross-account fallback is allowed.
+type KeyRoutingHTTPResponseSourceResolver interface {
+	SelectHTTPResponseSource(context.Context, *APIKey, KeyRoutingRequest, string) (*APIKey, int64, error)
+}
+
 func keyRoutingRequestActive(ctx context.Context) bool {
 	if ctx == nil {
 		return false
@@ -82,7 +90,49 @@ func (s *KeyRoutingService) InvalidateGroupFailurePolicy(groupID int64) {
 }
 
 func (s *KeyRoutingService) Select(ctx context.Context, key *APIKey, request KeyRoutingRequest) (*APIKey, keyrouting.Plan, error) {
-	return s.selectFrom(ctx, key, request, 0)
+	return s.selectFrom(ctx, key, request, 0, false)
+}
+
+// SelectHTTPResponseSource resolves a previous_response_id in the API key's
+// configured group scopes, then performs readiness checks against that group
+// only. The returned source account is carried separately so the Responses
+// handler can enforce account stickiness after scheduler selection.
+func (s *KeyRoutingService) SelectHTTPResponseSource(ctx context.Context, key *APIKey, request KeyRoutingRequest, responseID string) (*APIKey, int64, error) {
+	if s == nil || s.openai == nil || key == nil || key.GroupID == nil || key.User == nil {
+		return nil, 0, ErrOpenAIHTTPResponseSourceUnavailable
+	}
+	groupIDs := append([]int64{*key.GroupID}, key.BackupGroupIDs...)
+	groupID, accountID, err := s.openai.ResolveOpenAIHTTPResponseSource(ctx, groupIDs, responseID, key.UserID, key.ID)
+	if err != nil {
+		return nil, 0, err
+	}
+	source := *key
+	source.GroupID = &groupID
+	source.Group = nil
+	source.BackupGroupIDs = nil
+	// A stored response may outlive the source account's schedulable window. We
+	// still need the authorized source-group snapshot so the Responses handler
+	// can attempt a capability-gated provider replay before falling back to the
+	// normal multi-group route. Readiness is checked again by the handler.
+	effective, _, selectErr := s.selectFrom(ctx, &source, request, 0, true)
+	if selectErr != nil {
+		return nil, 0, selectErr
+	}
+	if effective == nil || effective.GroupID == nil || *effective.GroupID != groupID {
+		return nil, 0, ErrOpenAIHTTPResponseSourceUnavailable
+	}
+	// Continue only with groups after the source group. The source response
+	// cannot be submitted to a group that precedes its owner without an explicit
+	// provider replay, and once replayed the source group should be preferred
+	// before its configured backups.
+	routeIDs := append([]int64{derefGroupID(key.GroupID)}, key.BackupGroupIDs...)
+	for index, candidate := range routeIDs {
+		if candidate == groupID {
+			effective.BackupGroupIDs = append([]int64(nil), routeIDs[index+1:]...)
+			break
+		}
+	}
+	return effective, accountID, nil
 }
 
 // SelectNext evaluates only groups after currentGroupID. It is used by the
@@ -102,7 +152,7 @@ func (s *KeyRoutingService) SelectNext(ctx context.Context, key *APIKey, request
 	if start < 0 {
 		return nil, keyrouting.Plan{}, fmt.Errorf("%w: current group is outside the configured route", keyrouting.ErrInvalidConfig)
 	}
-	return s.selectFrom(ctx, key, request, start)
+	return s.selectFrom(ctx, key, request, start, false)
 }
 
 // RecordFailure records a configured group rule without touching account or
@@ -169,7 +219,7 @@ func (s *KeyRoutingService) PrepareRouteContext(ctx context.Context, key *APIKey
 	return WithCompositeRouteDecision(ctx, decision), model, nil
 }
 
-func (s *KeyRoutingService) selectFrom(ctx context.Context, key *APIKey, request KeyRoutingRequest, start int) (*APIKey, keyrouting.Plan, error) {
+func (s *KeyRoutingService) selectFrom(ctx context.Context, key *APIKey, request KeyRoutingRequest, start int, allowUnavailableSource bool) (*APIKey, keyrouting.Plan, error) {
 	if key == nil || key.User == nil || key.GroupID == nil || request.Model == "" {
 		return nil, keyrouting.Plan{}, keyrouting.ErrInvalidConfig
 	}
@@ -231,7 +281,15 @@ func (s *KeyRoutingService) selectFrom(ctx context.Context, key *APIKey, request
 		if !state.SupportsEndpoint {
 			return state, nil
 		}
-		if domain.UsesOpenAIGateway(platform) {
+		if allowUnavailableSource {
+			// The response owner has already proven that this group produced the
+			// stored response. Do not require a currently schedulable account here;
+			// a provider retrieval adapter may still be able to read the response
+			// and replay it on another account. Authorization, active state,
+			// endpoint and model allowlist checks above remain mandatory.
+			state.SupportsModel = true
+			state.HasSchedulableAccounts = true
+		} else if domain.UsesOpenAIGateway(platform) {
 			if s.openai == nil {
 				return state, fmt.Errorf("OpenAI-compatible scheduler is unavailable")
 			}
@@ -249,7 +307,7 @@ func (s *KeyRoutingService) selectFrom(ctx context.Context, key *APIKey, request
 			candidateCtx = s.native.withGatewayProfitControlGate(candidateCtx, &groupID)
 			state.SupportsModel, state.HasSchedulableAccounts, err = s.native.keyRoutingNativeReadiness(candidateCtx, group, platform, model, req.Endpoint)
 		}
-		if key.KeyRouteScope != KeyRouteScopeAccountV2 && err == nil && state.SupportsModel && state.HasSchedulableAccounts && !ignoreRouteCooldown && s.failures != nil && (s.settings != nil || key.KeyRouteFailurePolicy != nil) {
+		if !allowUnavailableSource && key.KeyRouteScope != KeyRouteScopeAccountV2 && err == nil && state.SupportsModel && state.HasSchedulableAccounts && !ignoreRouteCooldown && s.failures != nil && (s.settings != nil || key.KeyRouteFailurePolicy != nil) {
 			if policy, policyErr := s.loadRouteFailurePolicy(ctx, key, groupID); policyErr == nil {
 				if cooling, _ := s.failures.IsCooling(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: groupID, Model: req.Model, Endpoint: req.Endpoint}, policy); cooling {
 					lastCoolingGroupID = groupID

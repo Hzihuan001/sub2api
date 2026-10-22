@@ -178,6 +178,12 @@ func (f *accountDispatchFixture) run(t *testing.T, limit int, statuses map[int64
 				status = 200
 			}
 			err := f.do(t, ctx, account, status, `{"ok":true}`, true)
+			if err != nil {
+				value, _ := c.Get(service.OpsUpstreamErrorsKey)
+				events, _ := value.([]*service.OpsUpstreamErrorEvent)
+				events = append(append([]*service.OpsUpstreamErrorEvent(nil), events...), &service.OpsUpstreamErrorEvent{AccountID: account.ID, UpstreamStatusCode: status, Message: "synthetic upstream failure"})
+				c.Set(service.OpsUpstreamErrorsKey, events)
+			}
 			if keyRouteFirstContentInterrupted(c, nil, err) {
 				return
 			}
@@ -218,7 +224,25 @@ func TestKeyAccountDispatchExhaustsSameGroupBeforeBackup(t *testing.T) {
 	require.Equal(t, []int64{1}, f.selector.switched)
 	require.Equal(t, 2, f.cleaned)
 	require.Len(t, f.store.observations, 3)
-	require.Equal(t, "backup", f.c.GetString("custom.key_route_switch_group"))
+	events, ok := f.c.Get(service.OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	items := events.([]*service.OpsUpstreamErrorEvent)
+	require.Len(t, items, 2)
+	require.Empty(t, items[0].RouteSwitchGroup, "earlier same-group failure did not directly trigger the switch")
+	require.Equal(t, "backup", items[1].RouteSwitchGroup, "the exhausted account error directly causing failover must be marked")
+	require.Equal(t, service.OpsRouteSwitchLabelPrefix+"backup", service.LastOpsRouteSwitchLabel(items))
+}
+
+func TestKeyAccountDispatchBackupFailureDoesNotMislabelAsSwitchCause(t *testing.T) {
+	f := newAccountDispatchFixture(t)
+	f.run(t, 4, map[int64]int{41: 503, 42: 503, 43: 502})
+	events, ok := f.c.Get(service.OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	items := events.([]*service.OpsUpstreamErrorEvent)
+	require.Len(t, items, 3)
+	require.Equal(t, "backup", items[1].RouteSwitchGroup)
+	require.Empty(t, items[2].RouteSwitchGroup, "the later backup failure did not trigger another switch")
+	require.Empty(t, service.LastOpsRouteSwitchLabel(items), "summary must not falsely attribute the later failure")
 }
 
 func TestKeyAccountDispatchApprovedNativeBudgetBackupDoesNotFailHealthyCandidate(t *testing.T) {
@@ -388,14 +412,16 @@ func TestKeyAccountDispatchClientCancelNeverStartsBackup(t *testing.T) {
 	require.Equal(t, 1, f.budget.Dispatched())
 }
 
-func TestKeyAccountDispatchReentryKeepsOnlyExistingCausalBackupLabel(t *testing.T) {
+func TestKeyAccountDispatchReentryDoesNotCarrySwitchLabelsIntoLaterErrors(t *testing.T) {
 	for _, label := range []string{"", "切换备用分组：测试备用"} {
 		f := newAccountDispatchFixture(t)
 		key, _ := servermiddleware.GetAPIKeyFromContext(f.c)
 		request, _ := keyRouteRequest(f.c)
-		f.c.Set("custom.key_route_switch_group", label)
+		if label != "" {
+			f.c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{RouteSwitchGroup: "测试备用"}})
+		}
 		require.NoError(t, resetKeyAccountGroupContext(f.c, key, request, f.selector))
-		require.Equal(t, label, service.OpsRouteSwitchLabel(f.c.Request.Context()), "historical cooling without a causal error must not fabricate a label")
+		require.Empty(t, service.OpsRouteSwitchLabel(f.c.Request.Context()), "historical error labels must not follow request context")
 	}
 }
 

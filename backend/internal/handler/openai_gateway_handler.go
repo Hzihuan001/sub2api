@@ -523,6 +523,24 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	responseSourceGroupID, _ := c.Request.Context().Value(ctxkey.KeyRoutingResponseSourceGroupID).(int64)
+	responseSourceAccountID, _ := c.Request.Context().Value(ctxkey.KeyRoutingResponseSourceAccountID).(int64)
+	pinnedResponseSource := responseSourceGroupID > 0 || responseSourceAccountID > 0
+	if pinnedResponseSource {
+		keyGroupID := int64(0)
+		if apiKey.GroupID != nil {
+			keyGroupID = *apiKey.GroupID
+		}
+		if previousResponseID == "" || responseSourceGroupID <= 0 || responseSourceAccountID <= 0 || keyGroupID != responseSourceGroupID {
+			reqLog.Warn("openai.response_source_pin_invalid",
+				zap.Int64("key_group_id", keyGroupID),
+				zap.Int64("source_group_id", responseSourceGroupID),
+				zap.Int64("source_account_id", responseSourceAccountID),
+			)
+			h.errorResponse(c, http.StatusConflict, "invalid_request_error", "Stored response source is unavailable for this key")
+			return
+		}
+	}
 	if previousResponseID != "" {
 		previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 		reqLog = reqLog.With(
@@ -540,6 +558,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		groupID := int64(0)
 		if apiKey.GroupID != nil {
 			groupID = *apiKey.GroupID
+		}
+		if pinnedResponseSource && groupID != responseSourceGroupID {
+			reqLog.Warn("openai.response_source_group_mismatch",
+				zap.Int64("key_group_id", groupID),
+				zap.Int64("source_group_id", responseSourceGroupID),
+			)
+			h.errorResponse(c, http.StatusConflict, "invalid_request_error", "Stored response source is unavailable for this key")
+			return
 		}
 		owned, ownershipErr := h.gatewayService.ValidateOpenAIHTTPResponseOwner(
 			c.Request.Context(),
@@ -692,6 +718,88 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
 	pricingCtx, pricingAt := keyAccountOpenAIRequestPricing(c, c.Request.Context(), apiKey.GroupID, h.gatewayService.WithOpenAIRequestPricingContext)
 	c.Request = c.Request.WithContext(pricingCtx)
+	var recoveryInflightRelease func()
+	defer func() {
+		if recoveryInflightRelease != nil {
+			recoveryInflightRelease()
+		}
+	}()
+
+	// A stored Responses continuation is initially pinned to its source
+	// account. If that account is unavailable, the only safe way to make the
+	// request portable is to retrieve the completed source response and replay
+	// its ordered items as a stateless request. The provider adapter is narrow
+	// and fail-closed; unsupported providers, OAuth state, external items and
+	// ambiguous transport failures still return the original error.
+	recoverResponsesContinuation := func() bool {
+		if !pinnedResponseSource || responseSourceAccountID <= 0 || previousResponseID == "" {
+			return false
+		}
+		// Recovery installs a new request context and API-key snapshot before the
+		// incremental balance reservation is known to succeed. Keep a complete
+		// rollback snapshot so a reservation failure cannot leave a half-switched
+		// request that later forwards with mismatched body, key, and routing state.
+		oldRequest := c.Request
+		oldBody := append([]byte(nil), body...)
+		oldForwardBody := append([]byte(nil), forwardBody...)
+		oldAPIKey := apiKey
+		oldRootKey, oldRootKeyOK := c.Get("custom.key_route_root_key")
+		oldBaseContext, oldBaseContextOK := c.Get("custom.key_route_base_context")
+		oldRouteBody, oldRouteBodyOK := c.Get("custom.key_route_body")
+		recoveredKey, recoveredBody, ok := h.recoverOpenAIResponsesContinuation(c, apiKey, responseSourceAccountID, previousResponseID, body, forwardModel)
+		if !ok || recoveredKey == nil || len(recoveredBody) == 0 {
+			return false
+		}
+		// Retrieval expands the request with bounded source history. Cover the
+		// incremental in-flight estimate before sending the replay; the original
+		// reservation remains attached to the request and is still transferred to
+		// the single final usage record.
+		oldEstimate := tokenInflightEstimate(reqModel, body)
+		newEstimate := tokenInflightEstimate(reqModel, recoveredBody)
+		if h.billingCacheService != nil && recoveredKey.User != nil && recoveredKey.Group != nil {
+			oldCost, oldPriced := h.gatewayService.EstimateInflightReservation(c.Request.Context(), apiKey, oldEstimate)
+			newCost, newPriced := h.gatewayService.EstimateInflightReservation(c.Request.Context(), recoveredKey, newEstimate)
+			if newPriced && (!oldPriced || newCost > oldCost) {
+				delta := newCost
+				if oldPriced {
+					delta -= oldCost
+				}
+				if delta > 0 {
+					release, reserveErr := h.billingCacheService.ReserveInflightBalance(c.Request.Context(), recoveredKey.User, recoveredKey.Group, subscription, delta)
+					if reserveErr != nil {
+						requestmodel.ResetRequestBody(oldRequest, oldBody)
+						c.Request = oldRequest
+						c.Set(string(middleware2.ContextKeyAPIKey), oldAPIKey)
+						middleware2.SetOpsFallbackAPIKey(c, oldAPIKey)
+						if oldRootKeyOK {
+							c.Set("custom.key_route_root_key", oldRootKey)
+						}
+						if oldBaseContextOK {
+							c.Set("custom.key_route_base_context", oldBaseContext)
+						}
+						if oldRouteBodyOK {
+							c.Set("custom.key_route_body", oldRouteBody)
+						}
+						body = oldBody
+						forwardBody = oldForwardBody
+						apiKey = oldAPIKey
+						return false
+					}
+					recoveryInflightRelease = release
+				}
+			}
+		}
+		apiKey = recoveredKey
+		body = recoveredBody
+		forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+		previousResponseID = ""
+		responseSourceGroupID = 0
+		responseSourceAccountID = 0
+		pinnedResponseSource = false
+		// The stateless replay must not inherit a source-account session hash.
+		sessionHash = ""
+		return true
+	}
 
 	for {
 		// Streaming Forward intentionally detaches the upstream request so usage can
@@ -725,6 +833,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if pinnedResponseSource && recoverResponsesContinuation() {
+				continue
+			}
+			if pinnedResponseSource {
+				// A previous_response_id is owned by exactly one source account.
+				// Never let ordinary scheduler fallback substitute another account.
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Stored response source account is unavailable; retry with a new response", streamStarted)
+				return
+			}
 			if len(failedAccountIDs) == 0 && tryKeyRouteSelectionUnavailable(c, err) {
 				return
 			}
@@ -753,6 +870,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
+			if pinnedResponseSource && recoverResponsesContinuation() {
+				continue
+			}
+			if pinnedResponseSource {
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Stored response source account is unavailable; retry with a new response", streamStarted)
+				return
+			}
 			if tryKeyRouteUnavailable(c) {
 				return
 			}
@@ -761,6 +885,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				markOpsRoutingCapacityLimited(c)
 			}
 			h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
+			return
+		}
+		if pinnedResponseSource && (selection.Account.ID != responseSourceAccountID || !scheduleDecision.StickyPreviousHit) {
+			reqLog.Warn("openai.response_source_account_mismatch",
+				zap.Int64("expected_account_id", responseSourceAccountID),
+				zap.Int64("selected_account_id", selection.Account.ID),
+				zap.Bool("sticky_previous_hit", scheduleDecision.StickyPreviousHit),
+			)
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+				selection.ReleaseFunc = nil
+			}
+			if recoverResponsesContinuation() {
+				continue
+			}
+			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Stored response source account is unavailable; retry with a new response", streamStarted)
 			return
 		}
 		if previousResponseID != "" && selection != nil && selection.Account != nil {
@@ -777,6 +917,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		)
 		account := selection.Account
 		if previousResponseID != "" && requestPlatform == service.PlatformOpenAI && !account.IsOpenAIApiKey() {
+			if pinnedResponseSource {
+				if selection.ReleaseFunc != nil {
+					selection.ReleaseFunc()
+					selection.ReleaseFunc = nil
+				}
+				if recoverResponsesContinuation() {
+					continue
+				}
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Stored response source account cannot continue this request", streamStarted)
+				return
+			}
 			// The public Responses HTTP API supports previous_response_id on API-key
 			// accounts. OAuth/SetupToken upstreams do not, so keep searching instead
 			// of silently deleting continuation state from a mixed account pool.
@@ -805,6 +956,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
+			if pinnedResponseSource {
+				h.handleOpenAIProfitVetoExhausted(c, streamStarted, reqLog, profitVetoCount+1)
+				return
+			}
 			// 利润终检否决：排除该账号重新选号，全池耗尽由下一轮选号报错；
 			// 否决次数达上限则直接终止，避免排队抢槽后才终检的延迟放大。
 			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
@@ -975,6 +1130,24 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 							}
 							continue
 						}
+					}
+					if pinnedResponseSource {
+						// Once same-account retries are exhausted, an explicit HTTP
+						// rejection can be recovered by replaying the stored response
+						// history. Transport ambiguity is rejected by the helper.
+						if isOpenAIResponseRecoveryEligibleError(failoverErr) {
+							failedAccountIDs[account.ID] = struct{}{}
+							keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
+							lastFailoverErr = failoverErr
+							if recoverResponsesContinuation() {
+								continue
+							}
+						}
+						// Recovery is unavailable or unsupported. Do not substitute a
+						// different account while the request still carries a stored
+						// response ID, because that would produce a provider-level 400.
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}

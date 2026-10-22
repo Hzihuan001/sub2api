@@ -47,7 +47,7 @@ func (s *KeyRoutingService) AccountFirstContentTimeout(ctx context.Context, root
 	}
 	probe := &keyAccountRouteProbeGate{inner: session, excludedAccount: accountID}
 	probeCtx := WithKeyAccountRouteGate(ctx, probe)
-	_, _, err := s.selectFrom(probeCtx, root, request, start)
+	_, _, err := s.selectFrom(probeCtx, root, request, start, false)
 	switch {
 	case err == nil:
 		return wait, nil

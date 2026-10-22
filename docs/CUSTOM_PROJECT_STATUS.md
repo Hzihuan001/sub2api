@@ -9,6 +9,32 @@
 
 ## 1. 当前快照
 
+### 2026-10-23 — 连续会话跨账号恢复适配器（本地实现，未发布）
+
+- **目标**：源账号明确返回可重试的 HTTP 失败时，尽量把已存储的 Responses 会话恢复为无状态文本请求，再交给既有多分组路由；不静默删除状态 ID，不把不完整上下文交给另一账号。
+- **已实现**：新增独立 `openai_response_retrieval.go` 适配器和 handler 协调层。仅允许官方 OpenAI API Key、官方 `api.openai.com`、`completed` 且已存储的 Responses；按 `previous_response_id` 链读取 `input_items` 与每个 response 的 `output`，限深度/页数/项目数/字节数，校验响应 ID、模型、重复项目和分页进度，然后仅在内存中重建本次请求。检索请求显式使用 OpenAI HTTP upstream profile。
+- **故障边界**：仅在尚未产生语义输出、上游明确返回 429/500/502/503/504 且响应体存在时尝试；超时、EOF、部分 SSE、未知 200、400/401/403/404/409、OAuth/Codex、DeepSeek/Kimi/兼容端点、工具/函数、文件/图片、conversation/background、加密推理和其他 provider-managed 状态全部 fail closed，继续返回原始错误。拒绝工具等有副作用状态可显著降低重复执行风险，但上游在生成后返回 5xx/429 时仍不能从协议上证明“绝未执行”，因此不宣称绝对零重复。
+- **计费边界**：恢复后的请求体会重新估算；若增量预留失败，会完整回滚 API Key、请求体、路由上下文，不能留下半切换状态。原有 usage/结算路径不改；本轮不新增长期会话存储。
+- **验证**：Docker Go 环境中 `internal/service`、`internal/server/middleware`、`internal/handler` 定向回归通过；新增恢复重建、链路校验、外部引用拒绝、错误码分类测试通过，`git diff --check` 通过。使用本地构建镜像 `sub2api-custom:group-routing-recovery-local-20261023`（digest `sha256:ea56e552f0ff8c44288093ebe8784cd9544e66f705a2a4892a847bcaee97de7a`）完成三站隔离 Compose 健康检查和合成账号优先级验收：12/12 请求成功，A→A→同组 B→后续分组、分组倍率/余额、exactly-once 结算、重复配置拦截和权限隔离均通过。验收容器/卷已按专用项目清理；报告 `D:/projects/key-route-recovery-20261023-r2/evidence.json`。
+- **发布状态**：代码尚未提交、推送或部署；以上镜像只是本地验收产物，生产仍为 `0.2.16-custom.13`。该适配器不是“所有 provider/所有对话都能迁移”的承诺；不支持场景必须保持明确错误。下一步应先审查变更并决定是否提交，再做发布前完整清单。
+
+### 2026-10-22 — 降低多分组 Key 的状态请求失败率（进行中，未发布）
+
+- **目标**：在不长期保存完整会话上下文、不重复输出/扣费的前提下，减少上游账号故障导致的用户侧请求错误。先巩固已有无状态请求的安全故障切换，再评估可从原上游恢复的 Responses 状态链。
+- **实现边界**：不得仅删除 `previous_response_id` 后重试；增量请求缺少完整历史时必须拒绝该恢复路径。跨分组响应归属只能在当前 Key 授权分组范围内查找，不得全局按响应 ID 搜索。已经输出语义内容、工具副作用不明或状态不可完整恢复时不得透明重放。
+- **研究结论**：参考 OpenAI Responses 状态接口、LiteLLM 粘性路由、AWS 网关提交前故障转移，以及 Sub2API 关于 `previous_response_id` 缺失恢复的案例。采用“请求体本身完整则请求级重试；状态链可从源账号完整读取时限额恢复；其余保持原路由/明确失败”的分层策略。仅临时持有恢复数据，不建立长期会话存储。
+- **当前状态**：已完成第一阶段安全接线：多分组 Responses `previous_response_id` 只在当前 Key 的授权分组内解析来源组和来源账号，续接请求固定原组并在转发前强制校验原账号；缺少归属、归属冲突、缓存读取失败、原账号不可调度或粘滞未命中时 fail closed，不随机切换账号，也不删除响应 ID 重发。普通会话引用、工具/图片托管状态、WebSocket 和 account-v2 状态仍保持原有保护。middleware、service resolver 和 handler/key-route 定向测试已通过；本地 Docker 联合验收和生产发布尚未完成。不要将 `backend/internal/keyrouting/replay/` 中的实验性内存转录缓存视为已批准的通用恢复方案。
+- **发布**：未提交、未推送、未构建或部署；生产仍为 `0.2.16-custom.13`。需待实现和本地验收完成后再决定发布。
+- **参考**：[OpenAI Conversation state](https://developers.openai.com/api/docs/guides/conversation-state)、[LiteLLM Responses API](https://github.com/BerriAI/litellm/blob/main/docs/response_api.md)、[Sub2API #6524](https://github.com/Wei-Shaw/sub2api/issues/6524)。
+
+### 2026-10-22 — 错误日志精确标记触发切组的错误（本地验证通过，未发布）
+
+- 已在权威活动树补齐精确因果标记：成功选择后续优先级分组时，仅给本次尝试内实际导致切换的最后一条已有上游错误写入 `route_switch_group`。同组较早的失败、空分组、未成功选择目标组，以及之后备用组的新错误不会被错标。
+- 错误详情用独立 `gateway-resilience` 组件显示被标记事件的原序号、上游状态码、账号、原消息和“切换至后续优先级分组：目标组”标签。真实恢复摘要仍可显示标签；后续本地拒绝或备用组失败的最终摘要不继承历史标签。旧记录兼容，不反推历史因果。
+- 复用现有 `upstream_errors` JSON，不新增迁移、使用记录字段或错误行，不修改路由结果、计费、原 TTFT 过滤或 SLA/上游健康统计。没有原始错误事件时不补造状态码或错误记录。
+- 验证：后端 `go test ./internal/service ./internal/handler -run '^Test(MarkOpsRouteSwitch|Ops|KeyAccount|KeyRoute|FirstContent)' -count=1 -timeout=300s` 通过；前端 5 文件 39 项、类型检查、定向 ESLint 通过；模块契约检查及其 18 项测试通过。包含同组 A/B 耗尽、备用再失败、目标组本地拒绝、空组、账号不匹配、快照不变和队列 JSON 往返。
+- 此补丁尚未提交、推送、构建镜像或部署；生产与现有本地验收容器仍为下述 `.13`，不能通过刷新看到本补丁。
+
 ### 2026-10-22 — `.13` 已推送并完成三站生产部署
 
 - 当前生产主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 均为 `0.2.16-custom.13`。运行提交 `90804511dcfd57d9e99d7df470cfa05282182664`，标签 `custom-0.2.16.13`；镜像摘要 `sha256:9d79c4378f3e4dc6dd4d1648cff7420947ccb7984a33d7bb2cbd11030c32c14f`。工作分支和 `custom/integration` 已同步运行源码，文档收尾另行提交，不移动运行标签。

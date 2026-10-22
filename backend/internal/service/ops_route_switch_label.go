@@ -5,7 +5,73 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/gin-gonic/gin"
 )
+
+const opsRouteSwitchEventCursorKey = "custom.ops_route_switch_event_cursor"
+
+type opsRouteErrorAttempt struct {
+	start     int
+	accountID int64
+}
+
+// BeginOpsRouteErrorAttempt bounds causality to the active native group/forward
+// invocation. Account zero permits native group retries; a concrete account
+// requires the error to belong to that account, never a previous attempt.
+func BeginOpsRouteErrorAttempt(c *gin.Context, accountID int64) {
+	if c == nil {
+		return
+	}
+	value, _ := c.Get(OpsUpstreamErrorsKey)
+	events, _ := value.([]*OpsUpstreamErrorEvent)
+	c.Set(opsRouteSwitchEventCursorKey, opsRouteErrorAttempt{start: len(events), accountID: accountID})
+}
+
+// MarkOpsRouteSwitch marks the last new error, not the request's eventual
+// failure. A successful switch through an empty group must not relabel an
+// earlier error. Copy the event slice/record to preserve any prior snapshots.
+func MarkOpsRouteSwitch(c *gin.Context, groupName string) {
+	if c == nil {
+		return
+	}
+	groupName = strings.TrimPrefix(NormalizeOpsRouteSwitchLabel(groupName), OpsRouteSwitchLabelPrefix)
+	if groupName == "" {
+		return
+	}
+	value, _ := c.Get(OpsUpstreamErrorsKey)
+	events, _ := value.([]*OpsUpstreamErrorEvent)
+	value, exists := c.Get(opsRouteSwitchEventCursorKey)
+	attempt, valid := value.(opsRouteErrorAttempt)
+	BeginOpsRouteErrorAttempt(c, 0)
+	if !exists || !valid {
+		return
+	}
+	for i := len(events) - 1; i >= attempt.start; i-- {
+		if events[i] == nil {
+			continue
+		}
+		if attempt.accountID > 0 && events[i].AccountID != attempt.accountID {
+			return
+		}
+		marked := *events[i]
+		marked.RouteSwitchGroup = groupName
+		updated := append([]*OpsUpstreamErrorEvent(nil), events...)
+		updated[i] = &marked
+		c.Set(OpsUpstreamErrorsKey, updated)
+		return
+	}
+}
+
+// LastOpsRouteSwitchLabel deliberately ignores an earlier switch if a later
+// error did not cause one. The earlier event retains its own JSON annotation.
+func LastOpsRouteSwitchLabel(events []*OpsUpstreamErrorEvent) string {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i] != nil {
+			return NormalizeOpsRouteSwitchLabel(events[i].RouteSwitchGroup)
+		}
+	}
+	return ""
+}
 
 const (
 	// OpsRouteSwitchLabelPrefix is intentionally short: it is shown alongside

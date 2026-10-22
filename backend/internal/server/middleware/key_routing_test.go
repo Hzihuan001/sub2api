@@ -25,6 +25,63 @@ func (f keyRouteSelectorFunc) Select(ctx context.Context, key *service.APIKey, r
 	return f(ctx, key, req)
 }
 
+type keyRouteResponseSourceSelector struct {
+	key    *service.APIKey
+	group  int64
+	acct   int64
+	called bool
+}
+
+func (s *keyRouteResponseSourceSelector) Select(context.Context, *service.APIKey, service.KeyRoutingRequest) (*service.APIKey, keyrouting.Plan, error) {
+	return nil, keyrouting.Plan{}, errors.New("ordinary selector must not be called for a stored response")
+}
+
+func (s *keyRouteResponseSourceSelector) SelectHTTPResponseSource(_ context.Context, _ *service.APIKey, _ service.KeyRoutingRequest, responseID string) (*service.APIKey, int64, error) {
+	s.called = true
+	if responseID != "resp_source" {
+		return nil, 0, service.ErrOpenAIHTTPResponseSourceUnavailable
+	}
+	clone := *s.key
+	group := *s.key.Group
+	group.ID = s.group
+	group.Status = service.StatusActive
+	group.ModelAllowlist = service.GroupModelAllowlist{}
+	clone.GroupID = &group.ID
+	clone.Group = &group
+	clone.BackupGroupIDs = nil
+	return &clone, s.acct, nil
+}
+
+func TestKeyRoutingStoredResponsePinsSourceGroupAndAccount(t *testing.T) {
+	key := routeTestKey()
+	selector := &keyRouteResponseSourceSelector{key: key, group: 2, acct: 42}
+	router := keyRouteTestRouter(t, key, selector, http.MethodPost, "/v1/responses", func(c *gin.Context) {
+		got, ok := GetAPIKeyFromContext(c)
+		require.True(t, ok)
+		require.EqualValues(t, 2, *got.GroupID)
+		require.Empty(t, got.BackupGroupIDs)
+		require.EqualValues(t, 2, c.Request.Context().Value(ctxkey.KeyRoutingResponseSourceGroupID))
+		require.EqualValues(t, 42, c.Request.Context().Value(ctxkey.KeyRoutingResponseSourceAccountID))
+		require.Nil(t, c.Request.Context().Value(ctxkey.KeyRoutingActive))
+		data, err := io.ReadAll(c.Request.Body)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"model":"primary-only","previous_response_id":"resp_source"}`, string(data))
+		c.Status(http.StatusOK)
+	})
+	w := sendKeyRouteRequest(router, http.MethodPost, "/v1/responses", `{"model":"primary-only","previous_response_id":"resp_source"}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.True(t, selector.called)
+}
+
+func TestKeyRoutingStoredResponseRejectsPrimaryOnlyIntent(t *testing.T) {
+	key := routeTestKey()
+	selector := &keyRouteResponseSourceSelector{key: key, group: 2, acct: 42}
+	router := keyRouteTestRouter(t, key, selector, http.MethodPost, "/v1/responses", func(*gin.Context) { t.Fatal("forwarded") })
+	w := sendKeyRouteRequest(router, http.MethodPost, "/v1/responses", `{"model":"primary-only","previous_response_id":"resp_source","tools":[{"type":"image_generation"}]}`)
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	require.False(t, selector.called)
+}
+
 func routeTestKey() *service.APIKey {
 	group := &service.Group{ID: 1, Status: service.StatusActive, Platform: service.PlatformOpenAI, Hydrated: true, SubscriptionType: service.SubscriptionTypeStandard, ModelAllowlist: service.GroupModelAllowlist{Enabled: true, Models: []string{"primary-only"}}}
 	return &service.APIKey{ID: 10, UserID: 20, Key: "key-routing-test", Status: service.StatusActive, GroupID: &group.ID, Group: group, BackupGroupIDs: []int64{2}, User: &service.User{ID: 20, Status: service.StatusActive, Role: service.RoleUser, Balance: 10}}
@@ -112,7 +169,6 @@ func TestKeyRoutingAuthNeverBypassesIdentityOrBalance(t *testing.T) {
 func TestKeyRoutingIngressRejectsAmbiguousAndStatefulBeforeSelection(t *testing.T) {
 	for _, body := range []string{
 		`{"model":"a","model":"b"}`, `{"model":"a","Model":"b"}`,
-		`{"model":"a","previous_response_id":"resp_x"}`, `{"model":"a","Previous_Response_ID":"resp_x"}`,
 		`{"model":"a","conversation":{"id":"conv_x"}}`, `{"model":"a","input":[{"type":"item_reference","id":"x"}]}`,
 		`{"model":"a","input":[{"type":"message","type":"item_reference","id":"x"}]}`, `{"model":"a","background":true}`,
 		`{"model":"a","input":[{"type":"message","content":[{"type":"input_file","file_id":"file_x"}]}]}`,

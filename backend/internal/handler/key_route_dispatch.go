@@ -43,6 +43,7 @@ func KeyRouteDispatch(next gin.HandlerFunc) gin.HandlerFunc {
 		}
 		for attempt := 0; attempt <= keyrouting.MaxBackupGroups; attempt++ {
 			c.Set("custom.key_route_restart", false)
+			service.BeginOpsRouteErrorAttempt(c, 0)
 			runKeyRouteFirstContentAttempt(c, next)
 			if !c.GetBool("custom.key_route_restart") || c.IsAborted() || c.Writer.Written() || c.Request.Context().Err() != nil {
 				return

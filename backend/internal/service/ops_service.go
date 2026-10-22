@@ -617,6 +617,7 @@ func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
 		out.Stage = truncateString(strings.TrimSpace(out.Stage), 64)
 		out.Scope = truncateString(strings.TrimSpace(out.Scope), 64)
 		out.Reason = truncateString(strings.TrimSpace(out.Reason), 128)
+		out.RouteSwitchGroup = truncateString(strings.TrimSpace(out.RouteSwitchGroup), maxOpsRouteSwitchGroupName)
 
 		if out.AccountID < 0 {
 			out.AccountID = 0

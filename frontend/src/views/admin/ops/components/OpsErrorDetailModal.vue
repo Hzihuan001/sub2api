@@ -135,6 +135,8 @@
         <div class="mt-3 break-words text-sm font-medium text-amber-900 dark:text-amber-100">{{ rootCauseMessage }}</div>
       </div>
 
+      <OpsRouteSwitchEvents :upstream-errors="detail.upstream_errors" />
+
       <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
         <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.diagnosticPayloads') }}</h3>
         <div v-if="!diagnosticPayloadSections.length" class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ t('common.noData') }}</div>
@@ -239,6 +241,7 @@ import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
 import { formatDateTime } from '@/utils/format'
 import { resolveUpstreamPayload } from '../utils/errorDetailResponse'
 import { parseOpsRouteSwitchAnnotation } from '@/features/gateway-resilience/opsRouteSwitchLabel'
+import OpsRouteSwitchEvents from '@/features/gateway-resilience/OpsRouteSwitchEvents.vue'
 
 interface Props {
   show: boolean

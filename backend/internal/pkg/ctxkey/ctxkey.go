@@ -72,6 +72,13 @@ const (
 	// group when the request-local effective key is a backup group.
 	KeyRoutingPrimaryGroupID Key = "ctx_key_routing_primary_group_id"
 
+	// KeyRoutingResponseSourceGroupID and AccountID pin a Responses HTTP
+	// continuation to the group/account that created its previous_response_id.
+	// They are set only after the source is resolved inside the API key's
+	// configured group scopes; downstream adapters must fail closed on a miss.
+	KeyRoutingResponseSourceGroupID   Key = "ctx_key_routing_response_source_group_id"
+	KeyRoutingResponseSourceAccountID Key = "ctx_key_routing_response_source_account_id"
+
 	// IsMaxTokensOneHaikuRequest 标识当前请求是否为 max_tokens=1 + haiku 模型的探测请求
 	// 用于 ClaudeCodeOnly 验证绕过（绕过 system prompt 检查，但仍需验证 User-Agent）
 	IsMaxTokensOneHaikuRequest Key = "ctx_is_max_tokens_one_haiku"

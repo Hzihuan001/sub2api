@@ -11,7 +11,7 @@ upstream:
 features:
   - id: key-routing
     owner: custom/key-routing
-    description: Ordered API key backup groups, independent per-key failure/SLA/TTFT/status rules, model admission and authorized multi-group catalogue aggregation, bounded safe pre-output dispatch, and effective-group native billing on stateless text requests.
+    description: Ordered API key backup groups, independent per-key failure/SLA/TTFT/status rules, model admission and authorized multi-group catalogue aggregation, bounded safe pre-output dispatch, effective-group native billing, and fail-closed same-source Responses continuations.
     tests:
       - backend/internal/keyrouting
       - backend/internal/keyrouting/failure_tracker_test.go
@@ -85,6 +85,10 @@ features:
       - frontend/src/features/gateway-resilience
       - frontend/src/features/gateway-resilience/__tests__/groupFailurePolicy.spec.ts
       - frontend/src/features/gateway-resilience/__tests__/GroupFailurePolicyModal.spec.ts
+      - frontend/src/features/gateway-resilience/OpsRouteSwitchEvents.vue
+      - frontend/src/features/gateway-resilience/opsRouteSwitchEvents.ts
+      - frontend/src/features/gateway-resilience/__tests__/OpsRouteSwitchEvents.spec.ts
+      - frontend/src/features/gateway-resilience/__tests__/opsRouteSwitchEventParser.spec.ts
       - frontend/src/views/admin/__tests__/GroupsView.codexManifest.spec.ts
       - deploy/tests/gateway-failover-smoke.ps1
   - id: operator

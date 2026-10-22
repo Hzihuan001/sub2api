@@ -1,5 +1,39 @@
 # 定制功能日志
 
+### 2026-10-23 — 受限的 Responses 连续会话跨账号恢复（本地实现，未发布）
+
+- **用户目标**：上游账号刚失效时尽量无感切换，减少用户侧错误；同时不因删除 `previous_response_id`、缺历史重放或工具副作用不明而造成上下文错乱、重复执行或重复扣费。
+- **模块化实现**：新增 `backend/internal/service/openai_response_retrieval.go` 作为独立 provider 适配器，新增 `backend/internal/handler/openai_response_recovery.go` 作为网关协调层；调度、计费和普通多组故障切换仍复用原生路径，未把恢复逻辑散落到通用路由核心。
+- **可恢复范围**：官方 OpenAI API Key + `api.openai.com` + 已完成且已存储的 Responses。适配器按链读取 `input_items` 和 `response.output`，验证模型/响应 ID/分页/重复项目，内存限量重建完整有序文本请求；不会保存会话正文或改写历史 `instructions`。
+- **安全拒绝范围**：OAuth/Codex、DeepSeek/Kimi/兼容端点、工具/函数调用、文件/图片/远程引用、conversation/background、加密推理、未知响应、非明确 HTTP 失败、超时/EOF/部分输出均不自动重放。只有 429/500/502/503/504 且未产生语义输出时才进入恢复尝试；由于上游可能在返回 5xx/429 前已开始生成，仍保留理论上的重复执行风险，不承诺绝对零重复。
+- **计费与回滚**：恢复请求若扩大输入，仅预留增量余额；预留失败会回滚请求体、API Key、路由上下文。原生 usage、实际组计费和结算不改变。
+- **验证/发布**：Docker 定向后端回归及新增恢复单测已通过，`git diff --check` 通过；本地构建镜像 `sub2api-custom:group-routing-recovery-local-20261023`（`sha256:ea56e552f0ff8c44288093ebe8784cd9544e66f705a2a4892a847bcaee97de7a`）完成三站隔离 Compose 健康检查和 12/12 合成路由/账务验收，证据 `D:/projects/key-route-recovery-20261023-r2/evidence.json`。验收容器和卷已清理；尚未提交、推送或部署，生产保持 `0.2.16-custom.13`。
+
+### 2026-10-23 — 连续会话跨账号恢复边界复核（未发布）
+
+- **用户目标**：源账号刚刚失效时，尽量让客户端无感切到可用账号继续请求，同时不因错误重放造成上下文错乱、工具重复执行或重复计费。
+- **复核结果**：当前 Responses 归属缓存只记录响应 ID 的用户/API Key/分组/账号，不保存完整响应正文或 input items；上游也没有统一的检索/重建适配器。直接把旧 `previous_response_id` 发给新账号通常无效，直接删除它又会静默丢失历史，因此本轮保持 fail-closed。
+- **实现状态**：保留来源组/账号解析、同账号粘滞校验和可重试错误码；撤回未完成的“凭纯文本数组形状推断完整历史”的启发式 replay 分支。实验性 `backend/internal/keyrouting/replay/` 仅作为后续研究草稿，未接入网关、计费或生产组合。
+- **验证**：Docker Go 环境中 `go test -tags=unit ./internal/server/middleware ./internal/service ./internal/handler -run 'TestKeyRouting|TestKeyRouteDispatchWalksAllConfiguredFallbackGroupsInOrder|TestOpenAIGatewayHandlerResponses_(Rejects|Fails|Source)'` 通过；`git diff --check` 通过。未提交、未推送、未构建、未部署。
+- **后续条件**：要实现跨账号连续会话迁移，必须先采用明确 opt-in 的完整历史协议，或为支持该能力的上游增加 retrieve/input-items 适配器，并分别验证纯文本、工具调用、图片、加密推理、流中断和计费快照。
+
+### 2026-10-22 — 多分组 Key 状态请求故障恢复（进行中，未发布）
+
+- **目标**：减少用户因所选上游账号不可用而遇到的请求错误，同时避免不完整上下文重试、工具重复执行、SSE 重复输出和重复扣费。
+- **研究/设计**：采用分级恢复边界：包含完整历史的无状态请求可按现有请求级安全判定切换；Responses 状态链仅在来源账号仍可访问、链完整、请求可安全转换时考虑有界临时恢复；Conversation、外部资源/工具副作用不明、`store=false` 且仅有增量输入、已开始语义输出等情形不强行切换。响应归属必须在当前 API Key 的授权分组范围内验证。
+- **重要限制**：不得把“去掉 `previous_response_id` 并重发原增量 body”视为恢复；不得全局搜索/泄露其他用户的响应 ID；不得在输出提交后自动重放。用户同意少数故障请求可能增加上游成本，不代表允许重复对用户计费。
+- **当前状态**：第一阶段实现已接线；本轮未提交、未推送、未构建镜像或部署。middleware、service resolver、handler/key-route 定向测试已通过；完整 Docker 联合验收仍待执行。
+- **本阶段已落地**：新增来源组/来源账号解析接口和请求上下文 pin；仅对 Responses HTTP 的单一 `previous_response_id` 放行多组 Key，续接时使用来源组计费/模型/授权上下文，并在 handler 转发前要求调度器命中同一账号。原账号的安全同账号重试仍可继续，耗尽后不再跨账号重放；来源缺失、冲突、缓存/账号不可用均返回可重试错误。图片、provider-managed tools、WebSocket、conversation/background 等状态不走此特例。middleware 定向测试通过；service/handler 全量容器回归和 Docker 验收待完成。
+- **参考**：[OpenAI Conversation state](https://developers.openai.com/api/docs/guides/conversation-state)、[LiteLLM Responses API](https://github.com/BerriAI/litellm/blob/main/docs/response_api.md)、[Sub2API #6524](https://github.com/Wei-Shaw/sub2api/issues/6524)。
+
+### 2026-10-22 — 精确标记导致切组的错误（本地未发布）
+
+- **模块**：`gateway-resilience` / `key-routing`。将整次请求的粘滞切组标记改为尝试边界内的单事件标记，账号级入口只增加观测游标，不改变调度或计费。成功切组后消费游标，避免后续空组或错误复用旧原因。
+- **显示**：错误详情新增独立事件组件，展示显式 `route_switch_group` 事件的原编号、状态、账号、原消息与目标分组标签；没有标记的旧 JSON 安全兼容。仅明确由该事件构造的恢复摘要附标签，后续最终错误不会被误标。使用记录不改。
+- **存储与边界**：沿用既有错误事件 JSON，入队前保留长度限制和复制隔离；无迁移、无新错误行，不伪造 TTFT/provider 状态，不改变已有日志过滤和 SLA/健康统计。
+- **验证**：后端 Ops/KeyAccount/KeyRoute/FirstContent 定向两包通过；前端 5 文件 39 项、`vue-tsc --noEmit`、定向 ESLint 通过；模块契约和 18 项负向测试通过。覆盖耗尽切组、后续失败/本地拒绝不误标、空组不重标、账号隔离及序列化保留。
+- **发布**：未提交/推送/部署；生产仍 `0.2.16-custom.13`，现有本地容器未重建。权威源码仍在 `C:/Users/a/.codex/worktrees/group-routing-current`，此条不覆盖 `.13` 的正式产物信息。
+
 ### 2026-10-22 — 已发布 `.13`：账号级Key路由与管理员完整Key编辑
 
 - 版本 `0.2.16-custom.13`，运行 `90804511dcfd57d9e99d7df470cfa05282182664`，标签 `custom-0.2.16.13`，digest `sha256:9d79c4378f3e4dc6dd4d1648cff7420947ccb7984a33d7bb2cbd11030c32c14f`；源码/集成分支/标签/镜像已推送，主站、L1、COS已顺序上线，非仅文档提交。本条覆盖下面阶段性“未发布”状态，保留其对应候选测试事实。

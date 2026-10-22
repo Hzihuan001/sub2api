@@ -1,6 +1,7 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OpsErrorDetailModal from '../OpsErrorDetailModal.vue'
+import OpsRouteSwitchEvents from '@/features/gateway-resilience/OpsRouteSwitchEvents.vue'
 
 const mocks = vi.hoisted(() => ({
   getRequestErrorDetail: vi.fn(),
@@ -80,6 +81,10 @@ describe('OpsErrorDetailModal', () => {
   })
 
   it('shows the later-priority group badge separately from the unmodified error details', async () => {
+    const upstreamErrors = JSON.stringify([
+      { upstream_status_code: 503, account_name: 'failed account', message: 'upstream failure', route_switch_group: 'GPT-企业' },
+      { upstream_status_code: 502, message: 'later unmarked error' }
+    ])
     mocks.getRequestErrorDetail.mockResolvedValue({
       id: 2,
       created_at: '2026-08-19T00:00:00Z',
@@ -96,6 +101,7 @@ describe('OpsErrorDetailModal', () => {
       message: `${'upstream failure '.repeat(20)}· 切换至后续优先级分组：GPT-企业`,
       error_body: '',
       upstream_error_message: 'upstream failure',
+      upstream_errors: upstreamErrors,
       account_name: 'account',
       group_name: 'group',
       is_business_limited: false
@@ -108,5 +114,6 @@ describe('OpsErrorDetailModal', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('GPT-企业')
+    expect(wrapper.findComponent(OpsRouteSwitchEvents).props('upstreamErrors')).toBe(upstreamErrors)
   })
 })

@@ -340,10 +340,10 @@ func TestOpsErrorLoggerMiddleware_RecordsRecoveredUpstreamTelemetryOutsideFailur
 	router := gin.New()
 	router.Use(OpsErrorLoggerMiddleware(ops))
 	router.POST("/v1/responses", func(c *gin.Context) {
-		c.Request = c.Request.WithContext(service.WithOpsRouteSwitchLabel(c.Request.Context(), "备用分组"))
 		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
 			UpstreamStatusCode: http.StatusTooManyRequests,
 			Message:            "earlier attempt was rate limited",
+			RouteSwitchGroup:   "备用分组",
 		}})
 		c.JSON(http.StatusOK, gin.H{"status": "completed"})
 	})
@@ -388,7 +388,7 @@ func TestOpsErrorLoggerMiddleware_RecoveredTelemetryFiltersSkipMonitoringAttempt
 	router.POST("/v1/responses", func(c *gin.Context) {
 		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{
 			{UpstreamStatusCode: http.StatusTooManyRequests, Message: "visible retry"},
-			{UpstreamStatusCode: http.StatusBadGateway, Message: "hidden retry", SkipMonitoring: true},
+			{UpstreamStatusCode: http.StatusBadGateway, Message: "hidden retry", SkipMonitoring: true, RouteSwitchGroup: "hidden target"},
 		})
 		c.JSON(http.StatusOK, gin.H{"status": "completed"})
 	})
@@ -404,6 +404,62 @@ func TestOpsErrorLoggerMiddleware_RecoveredTelemetryFiltersSkipMonitoringAttempt
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	require.Equal(t, "visible retry", events[0].Message)
+}
+
+func TestOpsErrorLoggerMiddleware_RouteSwitchStaysOnCauseNotLaterBackupFailure(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{
+			{AccountID: 41, UpstreamStatusCode: 503, Message: "primary overloaded", RouteSwitchGroup: "backup"},
+			{AccountID: 42, UpstreamStatusCode: 502, Message: "backup failed"},
+		})
+		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"type": "upstream_error", "message": "backup failed"}})
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Empty(t, job.entry.RouteSwitchLabel)
+	require.NotContains(t, job.entry.ErrorMessage, "切换备用分组")
+	require.NotNil(t, job.entry.UpstreamErrorsJSON)
+	events, err := service.ParseOpsUpstreamErrors(*job.entry.UpstreamErrorsJSON)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	require.Equal(t, "backup", events[0].RouteSwitchGroup)
+	require.Empty(t, events[1].RouteSwitchGroup)
+}
+
+func TestOpsErrorLoggerMiddleware_RouteSwitchDoesNotLabelLaterLocalRejection(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		service.BeginOpsRouteErrorAttempt(c, 41)
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{AccountID: 41, UpstreamStatusCode: 503, Message: "primary overloaded"}})
+		service.MarkOpsRouteSwitch(c, "backup")
+		service.BeginOpsRouteErrorAttempt(c, 0)
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"type": "permission_error", "message": "backup unavailable"}})
+	})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, http.StatusForbidden, job.entry.StatusCode)
+	require.Empty(t, job.entry.RouteSwitchLabel)
+	require.Equal(t, "backup unavailable", job.entry.ErrorMessage)
+	require.NotNil(t, job.entry.UpstreamErrorsJSON)
+	events, err := service.ParseOpsUpstreamErrors(*job.entry.UpstreamErrorsJSON)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, int64(41), events[0].AccountID)
+	require.Equal(t, 503, events[0].UpstreamStatusCode)
+	require.Equal(t, "backup", events[0].RouteSwitchGroup)
 }
 
 func TestOpsErrorLoggerMiddleware_RecoveredTelemetrySkipsAllHiddenAttempts(t *testing.T) {

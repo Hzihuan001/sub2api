@@ -471,6 +471,10 @@ type OpsUpstreamErrorEvent struct {
 	Scope  string `json:"scope,omitempty"`
 	Reason string `json:"reason,omitempty"`
 
+	// Set only on the error attempt after which a later-priority group was
+	// successfully selected. It must not follow the request into later attempts.
+	RouteSwitchGroup string `json:"route_switch_group,omitempty"`
+
 	Message string `json:"message,omitempty"`
 	Detail  string `json:"detail,omitempty"`
 

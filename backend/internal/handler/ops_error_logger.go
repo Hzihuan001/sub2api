@@ -464,17 +464,6 @@ func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int
 	c.Set(opsRequestTypeKey, requestType)
 }
 
-// applyOpsRouteSwitchLabelFromContext copies the request-scoped backup-group
-// annotation into an existing ops error input.  The annotation is deliberately
-// attached only to ops errors; usage records and gateway response payloads are
-// untouched.
-func applyOpsRouteSwitchLabelFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
-	if c == nil || entry == nil || c.Request == nil {
-		return
-	}
-	service.ApplyOpsRouteSwitchLabel(entry, service.OpsRouteSwitchLabel(c.Request.Context()))
-}
-
 func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
 	if c == nil || accountID <= 0 {
 		return
@@ -1260,7 +1249,6 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 			CreatedAt: time.Now(),
 		}
-		applyOpsRouteSwitchLabelFromContext(c, entry)
 		applyOpsLatencyFieldsFromContext(c, entry)
 		applyOpsUpstreamFieldsFromContext(c, entry)
 		if parsed.StreamFailure {
@@ -1386,7 +1374,10 @@ func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatu
 	entry.InboundEndpoint = GetInboundEndpoint(c)
 	entry.UpstreamModel = c.GetString(opsUpstreamModelKey)
 	entry.RequestType = opsRequestTypeFromContext(c)
-	applyOpsRouteSwitchLabelFromContext(c, entry)
+	// This summary is constructed from the last visible provider event. A
+	// later local rejection must not inherit this marker in its own summary;
+	// final failures show precise event markers only in diagnostic details.
+	service.ApplyOpsRouteSwitchLabel(entry, service.LastOpsRouteSwitchLabel(entry.UpstreamErrors))
 
 	apiKey := getOpsAPIKey(c)
 	fallbackPlatform := guessPlatformFromPath(entry.RequestPath)
@@ -1576,7 +1567,6 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 
 		CreatedAt: time.Now(),
 	}
-	applyOpsRouteSwitchLabelFromContext(c, entry)
 	applyOpsLatencyFieldsFromContext(c, entry)
 	if !streamErr.RequestScoped {
 		applyOpsUpstreamFieldsFromContext(c, entry)

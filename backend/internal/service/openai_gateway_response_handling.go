@@ -25,6 +25,15 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	// ErrOpenAIHTTPResponseSourceUnavailable means the response ID has no
+	// unique, authorized group/account binding in the caller's allowed scopes.
+	ErrOpenAIHTTPResponseSourceUnavailable = errors.New("OpenAI HTTP response source unavailable")
+	// ErrOpenAIHTTPResponseSourceLookup means the scoped state store failed; the
+	// caller must return a retryable error rather than guessing another group.
+	ErrOpenAIHTTPResponseSourceLookup = errors.New("OpenAI HTTP response source lookup failed")
+)
+
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
 	usage            *OpenAIUsage
@@ -1457,6 +1466,59 @@ func (s *OpenAIGatewayService) ValidateOpenAIHTTPResponseOwner(
 		return false, err
 	}
 	return ownerUserID == userID || (ownerUserID <= 0 && ownerAPIKeyID == apiKeyID), nil
+}
+
+// ResolveOpenAIHTTPResponseSource searches only the groups configured on the
+// authenticated key. A response ID must resolve to exactly one owner binding
+// belonging to this user (or legacy key-only ownership) and a group-scoped
+// account binding. It deliberately does not search the upstream or global
+// cache, and it never substitutes a different account when the binding is
+// absent.
+func (s *OpenAIGatewayService) ResolveOpenAIHTTPResponseSource(
+	ctx context.Context,
+	groupIDs []int64,
+	responseID string,
+	userID, apiKeyID int64,
+) (groupID, accountID int64, err error) {
+	if s == nil || ctx == nil || strings.TrimSpace(responseID) == "" || userID <= 0 || apiKeyID <= 0 || len(groupIDs) == 0 {
+		return 0, 0, ErrOpenAIHTTPResponseSourceUnavailable
+	}
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return 0, 0, ErrOpenAIHTTPResponseSourceLookup
+	}
+	seen := make(map[int64]struct{}, len(groupIDs))
+	for _, candidateGroupID := range groupIDs {
+		if candidateGroupID <= 0 {
+			return 0, 0, ErrOpenAIHTTPResponseSourceUnavailable
+		}
+		if _, duplicate := seen[candidateGroupID]; duplicate {
+			continue
+		}
+		seen[candidateGroupID] = struct{}{}
+		ownerUserID, ownerAPIKeyID, found, lookupErr := store.GetHTTPResponseOwner(ctx, candidateGroupID, responseID)
+		if lookupErr != nil {
+			return 0, 0, fmt.Errorf("%w: group %d: %v", ErrOpenAIHTTPResponseSourceLookup, candidateGroupID, lookupErr)
+		}
+		if !found || (ownerUserID != userID && !(ownerUserID <= 0 && ownerAPIKeyID == apiKeyID)) {
+			continue
+		}
+		boundAccountID, accountErr := store.GetResponseAccount(ctx, candidateGroupID, responseID)
+		if accountErr != nil {
+			return 0, 0, fmt.Errorf("%w: group %d account binding: %v", ErrOpenAIHTTPResponseSourceLookup, candidateGroupID, accountErr)
+		}
+		if boundAccountID <= 0 {
+			return 0, 0, fmt.Errorf("%w: response owner has no account binding", ErrOpenAIHTTPResponseSourceUnavailable)
+		}
+		if groupID != 0 {
+			return 0, 0, fmt.Errorf("%w: response ID matches multiple authorized groups", ErrOpenAIHTTPResponseSourceUnavailable)
+		}
+		groupID, accountID = candidateGroupID, boundAccountID
+	}
+	if groupID <= 0 || accountID <= 0 {
+		return 0, 0, ErrOpenAIHTTPResponseSourceUnavailable
+	}
+	return groupID, accountID, nil
 }
 
 // BindOpenAIHTTPResponseOwner records an HTTP continuation owner independently

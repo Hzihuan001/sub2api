@@ -105,6 +105,7 @@ func runKeyAccountRouteDispatch(c *gin.Context, next gin.HandlerFunc) {
 	// A second bounded guard covers programming errors without granting extra
 	// sends: BeforeDispatch still enforces the smaller shared/native budgets.
 	for entry := 0; entry < 4096+keyrouting.MaxBackupGroups; entry++ {
+		service.BeginOpsRouteErrorAttempt(c, 0)
 		c.Set("custom.key_route_restart", false)
 		c.Set("custom.key_account_restart", false)
 		c.Set("custom.key_account_count_switch", false)
@@ -178,9 +179,6 @@ func resetKeyAccountGroupContext(c *gin.Context, key *service.APIKey, request se
 	ctx = context.WithValue(ctx, ctxkey.Group, key.Group)
 	ctx = context.WithValue(ctx, ctxkey.UserID, key.UserID)
 	ctx = context.WithValue(ctx, ctxkey.KeyRoutingActive, true)
-	if label := c.GetString("custom.key_route_switch_group"); label != "" {
-		ctx = service.WithOpsRouteSwitchLabel(ctx, label)
-	}
 	preparer, ok := selector.(keyRouteContextPreparer)
 	if !ok {
 		return service.ErrKeyAccountRouteScope

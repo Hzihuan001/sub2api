@@ -75,7 +75,7 @@ func (s *KeyRoutingService) AccountGroupHasCandidate(ctx context.Context, key *A
 	}
 	probe := *key
 	probe.GroupID, probe.Group, probe.BackupGroupIDs = &groupID, nil, nil
-	_, _, err := s.selectFrom(ctx, &probe, request, 0)
+	_, _, err := s.selectFrom(ctx, &probe, request, 0, false)
 	switch {
 	case err == nil:
 		return true, nil

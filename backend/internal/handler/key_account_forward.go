@@ -75,6 +75,7 @@ func keyAccountForwardContext(c *gin.Context, native context.Context, account *s
 	selectorValue, _ := c.Get(keyRoutingSelectorContextKey)
 	selector, selectorOK := selectorValue.(keyAccountCandidateSelector)
 	state := &keyAccountForwardState{session: session, parent: c.Request.Context(), groupID: metadata.GroupID, account: metadata.AccountID}
+	service.BeginOpsRouteErrorAttempt(c, metadata.AccountID)
 	baseWriter := c.Writer
 	options := service.KeyAccountForwardOptions{
 		Metadata:     metadata,

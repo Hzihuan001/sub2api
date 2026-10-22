@@ -98,6 +98,50 @@ func TestKeyRoutingServiceSelectsBackupAndLeavesAuthSnapshotUntouched(t *testing
 	require.Equal(t, 2.0, groups.groups[2].RateMultiplier)
 }
 
+func TestKeyRoutingServiceResolvesStoredResponseOnlyWithinConfiguredGroups(t *testing.T) {
+	svc, key, _, _, _ := newKeyRoutingFixture()
+	store := svc.openai.getOpenAIWSStateStore()
+	ctx := context.Background()
+	require.NoError(t, store.BindHTTPResponseOwner(ctx, 2, "resp_source", key.UserID, key.ID, time.Minute))
+	require.NoError(t, store.BindResponseAccount(ctx, 2, "resp_source", 20, time.Minute))
+	effective, accountID, err := svc.SelectHTTPResponseSource(ctx, key, KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointResponses}, "resp_source")
+	require.NoError(t, err)
+	require.EqualValues(t, 20, accountID)
+	require.EqualValues(t, 2, *effective.GroupID)
+	require.Equal(t, []int64{3}, effective.BackupGroupIDs)
+	require.Equal(t, []int64{2, 3}, key.BackupGroupIDs)
+
+	// A response owned by a group outside this key's route cannot be used as a
+	// continuation; the resolver must never search globally or choose a backup.
+	require.NoError(t, store.BindHTTPResponseOwner(ctx, 99, "resp_outside", key.UserID, key.ID, time.Minute))
+	require.NoError(t, store.BindResponseAccount(ctx, 99, "resp_outside", 30, time.Minute))
+	_, _, found, err := store.GetHTTPResponseOwner(ctx, 1, "resp_outside")
+	require.NoError(t, err)
+	require.False(t, found)
+	_, _, found, err = store.GetHTTPResponseOwner(ctx, 2, "resp_outside")
+	require.NoError(t, err)
+	require.False(t, found)
+	_, _, found, err = store.GetHTTPResponseOwner(ctx, 99, "resp_outside")
+	require.NoError(t, err)
+	require.True(t, found)
+	groupID, accountID, resolveErr := svc.openai.ResolveOpenAIHTTPResponseSource(ctx, []int64{1, 2}, "resp_outside", key.UserID, key.ID)
+	require.ErrorIs(t, resolveErr, ErrOpenAIHTTPResponseSourceUnavailable)
+	require.Zero(t, groupID)
+	require.Zero(t, accountID)
+}
+
+func TestKeyRoutingServiceRejectsAmbiguousStoredResponseOwner(t *testing.T) {
+	svc, key, _, _, _ := newKeyRoutingFixture()
+	store := svc.openai.getOpenAIWSStateStore()
+	ctx := context.Background()
+	for _, groupID := range []int64{1, 2} {
+		require.NoError(t, store.BindHTTPResponseOwner(ctx, groupID, "resp_ambiguous", key.UserID, key.ID, time.Minute))
+		require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_ambiguous", groupID*10, time.Minute))
+	}
+	_, _, err := svc.SelectHTTPResponseSource(ctx, key, KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointResponses}, "resp_ambiguous")
+	require.ErrorIs(t, err, ErrOpenAIHTTPResponseSourceUnavailable)
+}
+
 func TestKeyRoutingServiceNoAccountsFallsThroughButRecoversPrimaryOnNextRequest(t *testing.T) {
 	svc, key, accounts, _, _ := newKeyRoutingFixture()
 	primary := accounts.accounts[1]

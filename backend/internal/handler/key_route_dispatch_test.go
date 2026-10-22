@@ -93,6 +93,7 @@ func TestKeyRouteDispatchFinalOutcomeSwitchesAfterHandlerCleanup(t *testing.T) {
 		groups = append(groups, *key.GroupID)
 		if *key.GroupID == 1 {
 			defer func() { cleaned = true }()
+			c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{AccountID: 99, UpstreamStatusCode: 429, Message: "trigger"}})
 			require.True(t, tryFinalKeyRouteFailover(c, &service.UpstreamFailoverError{StatusCode: 429}))
 			return
 		}
@@ -112,6 +113,8 @@ func TestKeyRouteDispatchFinalOutcomeSwitchesAfterHandlerCleanup(t *testing.T) {
 	require.Equal(t, []dispatchOutcome{{group: 1, kind: keyrouting.OutcomeRateLimit}, {group: 2, kind: keyrouting.OutcomeSuccess}}, selector.outcomes)
 	require.Equal(t, []int64{1}, selector.switched)
 	require.Equal(t, "backup", c.GetString("custom.key_route_switch_group"))
+	events := c.MustGet(service.OpsUpstreamErrorsKey).([]*service.OpsUpstreamErrorEvent)
+	require.Equal(t, "backup", events[0].RouteSwitchGroup)
 }
 
 func TestKeyRouteFinalHookDeduplicatesAndHonorsThreshold(t *testing.T) {
@@ -197,6 +200,39 @@ func TestKeyRouteDispatchStopsOnWriteAbortCancelAndBound(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A route key may contain more than one fallback group.  A failed attempt
+// must advance strictly in configured order and must not jump back to the
+// primary group or repeatedly invoke the same fallback.
+func TestKeyRouteDispatchWalksAllConfiguredFallbackGroupsInOrder(t *testing.T) {
+	c, selector := newDispatchTestContext(t)
+	primary, _ := servermiddleware.GetAPIKeyFromContext(c)
+	firstID, secondID := int64(2), int64(3)
+	primary.BackupGroupIDs = []int64{firstID, secondID}
+	selector.statusTriggered = true
+	first := &service.APIKey{ID: primary.ID, UserID: primary.UserID, GroupID: &firstID, BackupGroupIDs: primary.BackupGroupIDs, User: primary.User, Group: &service.Group{ID: firstID, Name: "backup-1", Platform: service.PlatformDeepseek}}
+	second := &service.APIKey{ID: primary.ID, UserID: primary.UserID, GroupID: &secondID, BackupGroupIDs: primary.BackupGroupIDs, User: primary.User, Group: &service.Group{ID: secondID, Name: "backup-2", Platform: service.PlatformOpenAI}}
+	selector.next[1] = first
+	selector.next[firstID] = second
+	selector.next[secondID] = nil
+
+	var groups []int64
+	KeyRouteDispatch(func(c *gin.Context) {
+		key, ok := servermiddleware.GetAPIKeyFromContext(c)
+		require.True(t, ok)
+		groups = append(groups, *key.GroupID)
+		// There is no response body before the failure, so each group is safe
+		// to retry.  The final group has no next route and ends the dispatch.
+		require.False(t, c.Writer.Written())
+		if !tryFinalKeyRouteFailover(c, &service.UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable}) {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "exhausted"})
+		}
+	})(c)
+
+	require.Equal(t, []int64{1, firstID, secondID}, groups)
+	require.Equal(t, []int64{1, firstID}, selector.switched)
+	require.Equal(t, http.StatusBadGateway, c.Writer.Status())
 }
 
 func TestKeyRouteOutcomeClassifiesOnlyRealUpstreamFailures(t *testing.T) {

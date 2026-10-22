@@ -56,12 +56,17 @@ func newTestKeyRouteContext(t *testing.T) (*gin.Context, *service.APIKey, *servi
 
 func TestKeyRouteSwitchBeforeResponseAndAnnotatesContext(t *testing.T) {
 	c, primary, backup, selector := newTestKeyRouteContext(t)
+	service.BeginOpsRouteErrorAttempt(c, 0)
+	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{UpstreamStatusCode: http.StatusServiceUnavailable, Message: "overloaded"}})
 	got, switched := switchKeyRoute(c, primary, service.KeyRoutingRequest{Model: "model", Endpoint: service.CompositeRouteEndpointResponses}, selector)
 	require.True(t, switched)
 	require.Same(t, backup, got)
 	require.Equal(t, []int64{1}, selector.seen)
 	require.Equal(t, "备用分组", c.GetString("custom.key_route_switch_group"))
-	require.Equal(t, service.OpsRouteSwitchLabelPrefix+"备用分组", service.OpsRouteSwitchLabel(c.Request.Context()))
+	events, _ := c.Get(service.OpsUpstreamErrorsKey)
+	routeEvents := events.([]*service.OpsUpstreamErrorEvent)
+	require.Equal(t, "备用分组", routeEvents[0].RouteSwitchGroup)
+	require.Empty(t, service.OpsRouteSwitchLabel(c.Request.Context()), "switch state must not stick to later request errors")
 	resolved, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
 	require.True(t, ok)
 	require.Equal(t, service.PlatformDeepseek, resolved)

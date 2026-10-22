@@ -72,7 +72,7 @@ func TestFirstContentDispatchWaitsForCleanupAndDiscardsPrelude(t *testing.T) {
 	require.Equal(t, "first_content_timeout", events[0].Reason)
 	require.Zero(t, events[0].UpstreamStatusCode, "Key-local deadline is not a provider 504")
 	require.True(t, events[0].SkipMonitoring)
-	require.NotEmpty(t, service.OpsRouteSwitchLabel(c.Request.Context()))
+	require.NotEmpty(t, events[0].RouteSwitchGroup)
 }
 
 func TestFirstContentDispatchKnownUsageAndPartialContentPreventReplay(t *testing.T) {
