@@ -2,6 +2,8 @@
 param(
   [switch]$Execute,
   [string]$SourceProject = 'moshu-reseller-acceptance-key-routing',
+  [string]$CandidateTag = '',
+  [string]$CandidateID = '',
   [string]$OutputDirectory = ''
 )
 
@@ -13,18 +15,27 @@ $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 required' }
 $StableTag = 'ghcr.io/hzihuan001/sub2api:0.2.16-custom.12'
 $StableID = 'sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610'
-$CandidateTag = 'sub2api-custom:key-account-routing-priority-ui'
-$CandidateID = 'sha256:ed9f20d39f18a0c0f626f5a89b0cdc0a7bfbe8c10471a34ee4a178a75c15f7aa'
 $ProjectPrefix = 'key-route-stable-rollback-'
 if (-not $Execute) {
-  Write-Output 'Read-only preflight only. Use -Execute to pg_dump the synthetic COS acceptance database into a new private clone and run six fake-upstream requests through candidate → stable → candidate.'
+  Write-Output 'Prepared only. Use -Execute -CandidateTag <local tag> -CandidateID sha256:<image> to pg_dump the synthetic COS acceptance database into a new private clone and run six fake-upstream requests through candidate → stable → candidate.'
   return
 }
 
 function Check([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
+Check (-not [string]::IsNullOrWhiteSpace($CandidateTag) -and $CandidateID -cmatch '^sha256:[a-f0-9]{64}$') 'Explicit -CandidateTag and exact -CandidateID sha256:<image> are required'
 function Docker([string[]]$DockerArgs) {
   $result = & docker.exe @DockerArgs 2>&1
-  if ($LASTEXITCODE -ne 0) { throw "Docker command failed: $($DockerArgs[0]) $($DockerArgs[1])" }
+  if ($LASTEXITCODE -ne 0) {
+    $command = "$($DockerArgs[0]) $($DockerArgs[1])"
+    $diagnostic = ''
+    if ($DockerArgs[0] -eq 'exec') {
+      $command += " $($DockerArgs[2])"
+      if ($DockerArgs[2] -in @('psql','createdb')) {
+        $diagnostic = (($result | ForEach-Object { [string]$_ } | Where-Object { $_ -match '(ERROR|FATAL):' } | Select-Object -First 1) -join '') -replace '"[^"]*"|''[^'']*''','<redacted>'
+      }
+    }
+    throw "Docker command failed: $command $diagnostic"
+  }
   return $result
 }
 function InspectOne([string]$Name) {
@@ -50,7 +61,9 @@ function CloneWrite([string]$Query) {
 function WaitPg {
   $deadline = [DateTime]::UtcNow.AddSeconds(60)
   do {
-    $null = & docker.exe exec $dbName pg_isready -U acceptance -d sub2api 2>$null
+    # The image's initialization server accepts socket connections before it
+    # restarts as the final server. TCP readiness excludes that transient server.
+    $null = & docker.exe exec $dbName pg_isready -h 127.0.0.1 -U acceptance -d sub2api 2>$null
     if ($LASTEXITCODE -eq 0) { return }
     Start-Sleep -Milliseconds 500
   } while ([DateTime]::UtcNow -lt $deadline)
@@ -229,7 +242,7 @@ process.stdout.write(JSON.stringify({status:r.status,content:await r.text(),etag
     WaitApp $ExpectedID
     $running=InspectOne $appName
     Check ($running.Image -eq $ExpectedID -and $running.Config.Labels[$runLabel] -eq $run) 'Application image or ownership label changed'
-    Check (((Docker @('inspect',$appName,'--format','{{json .HostConfig.PortBindings}}')) -join '').Trim() -eq 'null') 'Application unexpectedly published a host port'
+    Check ($null -eq $running.HostConfig.PortBindings -or $running.HostConfig.PortBindings.Count -eq 0) 'Application unexpectedly published a host port'
     Check ((Call 'GET' '/health').Status -eq 200) 'Application health endpoint failed'
     return @{container_id=$running.Id;image_id=$running.Image;health=$running.State.Health.Status;restart_count=$running.RestartCount;published_ports=0}
   }
@@ -361,6 +374,7 @@ process.stdout.write(JSON.stringify({status:r.status,content:await r.text(),etag
 } catch {
   $evidence.status='failed'
   $evidence.failure=$_.Exception.Message
+  $evidence.failure_script_stack=$_.ScriptStackTrace
   if($appName -and (docker ps -aq --filter "name=^/$appName$") ) {
     try {
       $tail=(Docker @('logs','--timestamps','--tail','250',$appName)) -join "`n"

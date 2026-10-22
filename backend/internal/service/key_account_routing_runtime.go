@@ -27,8 +27,8 @@ type KeyAccountRoutingAccountLister interface {
 }
 
 // An optional shared-store implementation can collapse the first candidate
-// scan into one read. Results must preserve input order and revisions. Runtime
-// falls back to single reads cached for the current inbound request. Final
+// scan into bounded reads. Results must preserve input order and revisions.
+// Runtime falls back to single reads cached for the current inbound request. Final
 // account admission always refreshes the selected identity separately.
 type KeyAccountRoutingHealthBatchReader interface {
 	GetMany(context.Context, []keyrouting.AccountHealthIdentity) ([]keyrouting.AccountHealthSnapshot, error)
@@ -47,6 +47,8 @@ const (
 	keyAccountHealthReadTimeout  = 150 * time.Millisecond
 	keyAccountHealthWriteTimeout = 250 * time.Millisecond
 	keyAccountHealthMaxTimeout   = time.Second
+	// Match the repository batch reader's maximum accepted input size.
+	keyAccountHealthBatchLimit = 1024
 )
 
 type KeyAccountRoutePolicySnapshot struct {
@@ -613,14 +615,22 @@ func (s *KeyAccountRoutingSession) loadHealth(ctx context.Context, groupID int64
 	defer cancel()
 	results := make([]keyrouting.AccountHealthSnapshot, len(missing))
 	if batch, ok := s.runtime.store.(KeyAccountRoutingHealthBatchReader); ok {
-		loaded, err := batch.GetMany(child, missing)
-		if err != nil {
-			return s.finishHealthError(ctx, child, err)
+		// Large groups share the same read deadline across all bounded calls.
+		// Publish nothing until every chunk and revision has been validated.
+		for start := 0; start < len(missing); start += keyAccountHealthBatchLimit {
+			if err := child.Err(); err != nil {
+				return s.finishHealthError(ctx, child, err)
+			}
+			end := min(start+keyAccountHealthBatchLimit, len(missing))
+			loaded, err := batch.GetMany(child, missing[start:end])
+			if err != nil {
+				return s.finishHealthError(ctx, child, err)
+			}
+			if len(loaded) != end-start {
+				return s.healthError(ctx, keyrouting.ErrAccountHealthCorrupt)
+			}
+			copy(results[start:end], loaded)
 		}
-		if len(loaded) != len(missing) {
-			return s.healthError(ctx, keyrouting.ErrAccountHealthCorrupt)
-		}
-		results = loaded
 	} else {
 		for i, id := range missing {
 			snapshot, err := s.runtime.store.Get(child, id)
@@ -629,6 +639,9 @@ func (s *KeyAccountRoutingSession) loadHealth(ctx context.Context, groupID int64
 			}
 			results[i] = snapshot
 		}
+	}
+	if err := child.Err(); err != nil {
+		return s.finishHealthError(ctx, child, err)
 	}
 	for index, snapshot := range results {
 		if snapshot.PolicyRevision != missing[index].PolicyRevision {

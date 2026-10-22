@@ -559,7 +559,19 @@ func (w *keyAccountWireAttempt) retryableFailure() bool {
 	w.mu.Lock()
 	status, transportErr := w.status, w.transportErr
 	w.mu.Unlock()
-	return status >= 400 && status <= 599 || status == 0 && transportErr != nil && w.firstContentCancellationVerified() || status >= 200 && status <= 299 && (w.attempt.VerifiedFailure() || w.firstContentCancellationVerified())
+	return status >= 400 && status <= 599 ||
+		status == 0 && transportErr != nil && (w.transportNotSent() || w.firstContentCancellationVerified()) ||
+		status >= 200 && status <= 299 && (w.attempt.VerifiedFailure() || w.firstContentCancellationVerified())
+}
+
+// Only the plugin's explicit typed rejection proves that no inference reached
+// the upstream. A generic network error may have lost a completed response.
+func (w *keyAccountWireAttempt) transportNotSent() bool {
+	w.mu.Lock()
+	err := w.transportErr
+	w.mu.Unlock()
+	var pluginErr *PluginTransportError
+	return errors.As(err, &pluginErr) && !pluginErr.RequestSent
 }
 
 // Expiry is a deadline fact, not protocol proof. Only this exact wire's typed
@@ -633,7 +645,7 @@ func (w *keyAccountWireAttempt) finish(terminal keyrouting.AccountAttemptResult)
 			if native := w.httpTerminal(); native.Outcome != keyrouting.OutcomeFailure || status >= 400 && status <= 599 {
 				terminal.Outcome = native.Outcome
 			}
-			ambiguous := status >= 100 && status < 400 || status == 0
+			ambiguous := status >= 100 && status < 400 || status == 0 && !w.transportNotSent()
 			if ambiguous && !terminal.VerifiedFailure && !terminal.VerifiedFirstContentCancellation {
 				w.attempt.PreventReplay(keyrouting.AttemptVetoUnknownProtocol)
 			}

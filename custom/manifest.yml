@@ -47,6 +47,7 @@ features:
       - backend/internal/keyrouting/account_attempt_test.go
       - backend/internal/keyrouting/account_health_test.go
       - backend/internal/service/key_account_routing_runtime_test.go
+      - backend/internal/service/key_account_routing_runtime_batch_test.go
       - backend/internal/service/key_account_route_probe_test.go
       - backend/internal/service/key_account_openai_transport_test.go
       - backend/internal/service/key_account_kiro_protocol_test.go
@@ -114,6 +115,12 @@ features:
     description: Admin-only usage presentation and API-key administration helpers.
     tests:
       - backend/internal/handler/admin/usage_handler.go
+      - backend/internal/handler/admin/apikey_full_edit_test.go
+      - backend/internal/service/admin_apikey_update_test.go
+      - frontend/src/components/admin/user/__tests__/UserApiKeysModal.spec.ts
+      - frontend/src/components/admin/user/__tests__/AdminUserApiKeyEditor.spec.ts
+      - frontend/src/components/keys/ApiKeyEditorDialog.vue
+      - frontend/src/features/key-editor
       - frontend/src/views/admin
 
 policies:

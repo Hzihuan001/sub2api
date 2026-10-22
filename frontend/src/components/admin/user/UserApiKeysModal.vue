@@ -1,5 +1,5 @@
 <template>
-  <BaseDialog :show="show" :title="t('admin.users.userApiKeys')" width="wide" @close="handleClose">
+  <BaseDialog :show="show && !editingKey" :title="t('admin.users.userApiKeys')" width="wide" @close="handleClose">
     <div v-if="user" class="space-y-4">
       <div class="flex items-center gap-3 rounded-xl bg-gray-50 p-4 dark:bg-dark-700">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30">
@@ -70,6 +70,16 @@
             </div>
             <div class="flex shrink-0 items-center gap-1">
               <button
+                v-if="!props.readOnly"
+                type="button"
+                class="rounded-lg px-2 py-1 text-xs text-primary-600 hover:bg-primary-50 disabled:opacity-50 dark:text-primary-400 dark:hover:bg-dark-700"
+                data-test="edit-user-api-key"
+                :disabled="loadingGroups || updatingKeyIds.has(key.id)"
+                @click="beginEdit(key)"
+              >
+                {{ t('common.edit') }}
+              </button>
+              <button
                 type="button"
                 class="rounded-lg px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
                 :title="t('admin.users.copyApiKey')"
@@ -133,7 +143,7 @@
             <div class="flex items-center gap-1"><span>{{ t('admin.users.columns.created') }}: {{ formatDateTime(key.created_at) }}</span></div>
           </div>
           <p v-if="key.backup_group_ids?.length" class="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300" data-test="admin-key-backups">
-            {{ t('custom.keyRouting.summary', { count: key.backup_group_ids.length + 1 }) }} · {{ t('custom.keyRouting.adminEditHint') }}
+            {{ t('custom.keyRouting.summary', { count: key.backup_group_ids.length + 1 }) }}
           </p>
           <KeyRouteScopeNotice
             v-if="key.backup_group_ids?.length"
@@ -146,6 +156,16 @@
       </div>
     </div>
   </BaseDialog>
+
+  <AdminUserApiKeyEditor
+    v-if="show && user && editingKey && !props.readOnly"
+    :key="`${user.id}:${editingKey.id}`"
+    :api-key="editingKey"
+    :user="user"
+    :groups="allGroups"
+    @close="editingKey = null"
+    @saved="applyEditedKey"
+  />
 
   <ConfirmDialog
     :show="showDeleteDialog"
@@ -228,6 +248,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
+import AdminUserApiKeyEditor from './AdminUserApiKeyEditor.vue'
 
 const props = withDefaults(defineProps<{ show: boolean; user: AdminUser | null; readOnly?: boolean }>(), {
   readOnly: false
@@ -254,6 +275,9 @@ const creating = ref(false)
 const showDeleteDialog = ref(false)
 const deletingKey = ref<ApiKey | null>(null)
 const deletingKeyId = ref<number | null>(null)
+const editingKey = ref<ApiKey | null>(null)
+const loadingGroups = ref(false)
+const groupsLoaded = ref(false)
 
 const createGroupOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.users.none') },
@@ -276,6 +300,15 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
 watch(() => [props.show, props.user?.id] as const, ([show], _, onCleanup) => {
   onCleanup(() => { requestVersion++ })
   closeGroupSelector()
+  editingKey.value = null
+  groupsLoaded.value = false
+  loadingGroups.value = false
+  allGroups.value = []
+  creating.value = false
+  updatingKeyIds.value.clear()
+  deletingKeyId.value = null
+  deletingKey.value = null
+  showDeleteDialog.value = false
   if (show && props.user) {
     load()
     if (!props.readOnly) loadGroups()
@@ -306,12 +339,40 @@ const load = async () => {
 }
 
 const loadGroups = async () => {
+  const version = requestVersion
+  loadingGroups.value = true
   try {
     const groups = await adminAPI.groups.getAll()
+    if (version !== requestVersion) return false
     allGroups.value = groups || []
+    groupsLoaded.value = true
+    return true
   } catch (error) {
     console.error('Failed to load groups:', error)
+    return false
+  } finally {
+    if (version === requestVersion) loadingGroups.value = false
   }
+}
+
+watch(() => props.readOnly, (readOnly) => { if (readOnly) editingKey.value = null })
+
+const beginEdit = async (key: ApiKey) => {
+  if (props.readOnly || !props.user || loadingGroups.value) return
+  const version = requestVersion
+  if (!groupsLoaded.value && !await loadGroups()) {
+    if (version === requestVersion) appStore.showError(t('admin.users.failedToLoadGroups'))
+    return
+  }
+  if (version !== requestVersion || props.readOnly) return
+  closeGroupSelector()
+  editingKey.value = key
+}
+
+const applyEditedKey = (key: ApiKey) => {
+  if (key.user_id !== props.user?.id) return
+  const index = apiKeys.value.findIndex((item) => item.id === key.id)
+  if (index !== -1) apiKeys.value[index] = key
 }
 
 const beginCreate = () => {
@@ -330,21 +391,24 @@ const createApiKey = async () => {
   const name = createName.value.trim()
   if (!name || creating.value) return
 
+  const version = requestVersion
   creating.value = true
   try {
     const key = await adminAPI.users.createUserApiKey(props.user.id, {
       name,
       group_id: createGroupId.value
     })
+    if (version !== requestVersion) return
     apiKeys.value.unshift(key)
     showCreateForm.value = false
     createName.value = ''
     createGroupId.value = null
     appStore.showSuccess(t('admin.users.apiKeyCreated'))
   } catch (error: any) {
+    if (version !== requestVersion) return
     appStore.showError(error?.message || t('admin.users.apiKeyCreateFailed'))
   } finally {
-    creating.value = false
+    if (version === requestVersion) creating.value = false
   }
 }
 
@@ -366,7 +430,7 @@ const upgradeRouteScope = async (key: ApiKey, scope: KeyRouteScope) => {
     if (version !== requestVersion) return
     appStore.showError(error?.message || t('keys.failedToSave'))
   } finally {
-    updatingKeyIds.value.delete(key.id)
+    if (version === requestVersion) updatingKeyIds.value.delete(key.id)
   }
 }
 
@@ -385,17 +449,20 @@ const cancelDelete = () => {
 const deleteApiKey = async () => {
   if (props.readOnly || !deletingKey.value || deletingKeyId.value !== null) return
   const key = deletingKey.value
+  const version = requestVersion
   deletingKeyId.value = key.id
   try {
     await adminAPI.apiKeys.deleteApiKey(key.id)
+    if (version !== requestVersion) return
     apiKeys.value = apiKeys.value.filter((item) => item.id !== key.id)
     appStore.showSuccess(t('admin.users.apiKeyDeleted'))
     showDeleteDialog.value = false
     deletingKey.value = null
   } catch (error: any) {
+    if (version !== requestVersion) return
     appStore.showError(error?.message || t('admin.users.apiKeyDeleteFailed'))
   } finally {
-    deletingKeyId.value = null
+    if (version === requestVersion) deletingKeyId.value = null
   }
 }
 
@@ -431,9 +498,11 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
   closeGroupSelector()
   if (key.group_id === newGroupId || (!key.group_id && newGroupId === null)) return
 
+  const version = requestVersion
   updatingKeyIds.value.add(key.id)
   try {
     const result = await adminAPI.apiKeys.updateApiKeyGroup(key.id, newGroupId)
+    if (version !== requestVersion) return
     // Update local data
     const idx = apiKeys.value.findIndex((k) => k.id === key.id)
     if (idx !== -1) {
@@ -445,9 +514,10 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
       appStore.showSuccess(t('admin.users.groupChangedSuccess'))
     }
   } catch (error: any) {
+    if (version !== requestVersion) return
     appStore.showError(error?.message || t('admin.users.groupChangeFailed'))
   } finally {
-    updatingKeyIds.value.delete(key.id)
+    if (version === requestVersion) updatingKeyIds.value.delete(key.id)
   }
 }
 
@@ -470,6 +540,7 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 const handleClose = () => {
+  editingKey.value = null
   closeGroupSelector()
   showCreateForm.value = false
   showDeleteDialog.value = false

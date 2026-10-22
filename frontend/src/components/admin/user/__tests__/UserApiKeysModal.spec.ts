@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UserApiKeysModal from '../UserApiKeysModal.vue'
 import type { AdminUser } from '@/types'
 
-const { getKeys, createKey, deleteKey, updateScope, copyToClipboard } = vi.hoisted(() => ({
+const { getKeys, getGroups, createKey, deleteKey, updateScope, copyToClipboard } = vi.hoisted(() => ({
   getKeys: vi.fn(),
+  getGroups: vi.fn(),
   createKey: vi.fn(),
   deleteKey: vi.fn(),
   updateScope: vi.fn(),
@@ -12,7 +13,7 @@ const { getKeys, createKey, deleteKey, updateScope, copyToClipboard } = vi.hoist
 }))
 vi.mock('@/api/admin', () => ({ adminAPI: {
   users: { getUserApiKeys: getKeys, createUserApiKey: createKey },
-  groups: { getAll: vi.fn().mockResolvedValue([]) },
+  groups: { getAll: getGroups },
   apiKeys: { updateApiKeyGroup: vi.fn(), deleteApiKey: deleteKey, updateApiKeyRouteScope: updateScope },
 } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
@@ -22,6 +23,7 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 enableAutoUnmount(afterEach)
 beforeEach(() => {
   getKeys.mockReset()
+  getGroups.mockReset().mockResolvedValue([])
   createKey.mockReset()
   deleteKey.mockReset()
   updateScope.mockReset()
@@ -36,7 +38,8 @@ function deferred() {
   return { promise, resolve, reject }
 }
 const user = (id: number) => ({ id, email: `user${id}@example.com`, username: `user${id}` }) as AdminUser
-const keys = (id: number, name: string) => ({ items: [{ id, name, key: 'sk-example-key-value-for-tests', status: 'active', created_at: '2026-09-20', group_id: null }] })
+const keys = (id: number, name: string) => ({ items: [{ id, user_id: 1, name, key: 'sk-example-key-value-for-tests', status: 'active', created_at: '2026-09-20', group_id: null }] })
+const editorStub = { name: 'AdminUserApiKeyEditor', props: ['apiKey', 'user', 'groups'], emits: ['saved', 'close'], template: '<div data-test="admin-editor" />' }
 async function open() {
   const wrapper = mount(UserApiKeysModal, {
     props: { show: false, user: user(1) },
@@ -44,6 +47,7 @@ async function open() {
       BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /></div>' },
       ConfirmDialog: { props: ['show'], emits: ['confirm', 'cancel'], template: '<div v-if="show"><button data-test="confirm-delete" @click="$emit(\'confirm\')">confirm</button><button data-test="cancel-delete" @click="$emit(\'cancel\')">cancel</button></div>' },
       GroupBadge: true, GroupOptionItem: true,
+      AdminUserApiKeyEditor: editorStub,
     } },
   })
   await wrapper.setProps({ show: true })
@@ -122,8 +126,64 @@ describe('user API key actions', () => {
   it('shows existing backups and protects their route from quick group changes', async () => {
     getKeys.mockResolvedValue({ items: [{ ...keys(1, 'routed-key').items[0], group_id: 1, backup_group_ids: [2, 3] }] })
     const wrapper = await open(); await flushPromises()
-    expect(wrapper.get('[data-test="admin-key-backups"]').text()).toContain('custom.keyRouting.adminEditHint')
+    expect(wrapper.get('[data-test="admin-key-backups"]').text()).toContain('custom.keyRouting.summary')
+    expect(wrapper.get('[data-test="admin-key-backups"]').text()).not.toContain('custom.keyRouting.adminEditHint')
     expect(wrapper.find('[data-test="quick-change-key-group"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="edit-user-api-key"]').exists()).toBe(true)
+  })
+
+  it('opens the full editor for a routed key and applies the saved key', async () => {
+    const key = { ...keys(1, 'routed-key').items[0], group_id: 1, backup_group_ids: [2, 3] }
+    getKeys.mockResolvedValue({ items: [key] })
+    const wrapper = await open(); await flushPromises()
+    await wrapper.get('[data-test="edit-user-api-key"]').trigger('click'); await flushPromises()
+    const editor = wrapper.findComponent(editorStub)
+    expect(editor.props('apiKey')).toEqual(key)
+    expect(editor.props('user').id).toBe(1)
+    editor.vm.$emit('saved', { ...key, name: 'updated-key', group_id: 3, backup_group_ids: [1, 2] })
+    editor.vm.$emit('close'); await flushPromises()
+    expect(wrapper.text()).toContain('updated-key')
+    expect(wrapper.find('[data-test="admin-editor"]').exists()).toBe(false)
+  })
+
+  it('allows editing single-group keys too', async () => {
+    getKeys.mockResolvedValue(keys(1, 'single-key'))
+    const wrapper = await open(); await flushPromises()
+    await wrapper.get('[data-test="edit-user-api-key"]').trigger('click'); await flushPromises()
+    expect(wrapper.findComponent(editorStub).props('apiKey').name).toBe('single-key')
+  })
+
+  it('closes the previous user editor when the selected user changes', async () => {
+    getKeys.mockResolvedValueOnce(keys(1, 'first')).mockResolvedValueOnce({ items: [{ ...keys(2, 'second').items[0], user_id: 2 }] })
+    const wrapper = await open(); await flushPromises()
+    await wrapper.get('[data-test="edit-user-api-key"]').trigger('click'); await flushPromises()
+    const oldEditor = wrapper.findComponent(editorStub)
+    await wrapper.setProps({ user: user(2) }); await flushPromises()
+    expect(wrapper.find('[data-test="admin-editor"]').exists()).toBe(false)
+    oldEditor.vm.$emit('saved', { ...keys(2, 'stale-update').items[0], user_id: 1 })
+    await flushPromises()
+    expect(wrapper.text()).toContain('second')
+    expect(wrapper.text()).not.toContain('stale-update')
+  })
+
+  it('does not replace the current groups with a late previous user load', async () => {
+    const oldGroups = deferred()
+    getGroups.mockReturnValueOnce(oldGroups.promise).mockResolvedValueOnce([{ id: 2, name: 'current-group' }])
+    getKeys.mockResolvedValueOnce(keys(1, 'first')).mockResolvedValueOnce({ items: [{ ...keys(2, 'second').items[0], user_id: 2 }] })
+    const wrapper = await open(); await flushPromises()
+    await wrapper.setProps({ user: user(2) }); await flushPromises()
+    oldGroups.resolve([{ id: 1, name: 'old-group' }]); await flushPromises()
+    await wrapper.get('[data-test="edit-user-api-key"]').trigger('click'); await flushPromises()
+    expect(wrapper.findComponent(editorStub).props('groups')).toEqual([{ id: 2, name: 'current-group' }])
+  })
+
+  it('unmounts a full editor when management becomes read-only', async () => {
+    getKeys.mockResolvedValue(keys(1, 'editable'))
+    const wrapper = await open(); await flushPromises()
+    await wrapper.get('[data-test="edit-user-api-key"]').trigger('click'); await flushPromises()
+    await wrapper.setProps({ readOnly: true })
+    expect(wrapper.find('[data-test="admin-editor"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="edit-user-api-key"]').exists()).toBe(false)
   })
 
   it('creates a key for the selected user', async () => {
@@ -139,6 +199,39 @@ describe('user API key actions', () => {
 
     expect(createKey).toHaveBeenCalledWith(1, { name: 'new key', group_id: null })
     expect(wrapper.text()).toContain('created-key')
+  })
+
+  it('does not insert a previous user key when its creation completes after switching users', async () => {
+    const oldCreate = deferred()
+    getKeys.mockResolvedValueOnce(keys(1, 'first-user-key')).mockResolvedValueOnce({ items: [{ ...keys(2, 'current-user-key').items[0], user_id: 2 }] })
+    createKey.mockReturnValueOnce(oldCreate.promise)
+    const wrapper = await open(); await flushPromises()
+    await wrapper.get('[data-test="create-user-api-key"]').trigger('click')
+    await wrapper.get('[data-test="create-user-api-key-name"]').setValue('first-user-new-key')
+    await wrapper.get('[data-test="create-user-api-key-form"]').trigger('submit')
+    expect(createKey).toHaveBeenCalledWith(1, { name: 'first-user-new-key', group_id: null })
+    await switchUser(wrapper); await flushPromises()
+    oldCreate.resolve({ ...keys(3, 'late-first-user-key').items[0], user_id: 1 }); await flushPromises()
+    expect(wrapper.text()).toContain('current-user-key')
+    expect(wrapper.text()).not.toContain('late-first-user-key')
+    expect(wrapper.get('[data-test="create-user-api-key"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('can reopen editing after an obsolete group load completes while closed and read-only', async () => {
+    const oldGroups = deferred()
+    getGroups.mockReturnValueOnce(oldGroups.promise).mockResolvedValueOnce([{ id: 2, name: 'current-group' }])
+    getKeys.mockResolvedValue(keys(1, 'current-key'))
+    const wrapper = await open(); await flushPromises()
+    expect(wrapper.get('[data-test="edit-user-api-key"]').attributes('disabled')).toBeDefined()
+    await wrapper.setProps({ show: false, readOnly: true })
+    oldGroups.resolve([{ id: 1, name: 'obsolete-group' }]); await flushPromises()
+    await wrapper.setProps({ show: true }); await flushPromises()
+    expect(wrapper.find('[data-test="edit-user-api-key"]').exists()).toBe(false)
+    await wrapper.setProps({ readOnly: false })
+    expect(wrapper.get('[data-test="edit-user-api-key"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-test="edit-user-api-key"]').trigger('click'); await flushPromises()
+    expect(wrapper.findComponent(editorStub).props('groups')).toEqual([{ id: 2, name: 'current-group' }])
+    expect(getGroups).toHaveBeenCalledTimes(2)
   })
 
   it('copies the full API key value', async () => {
@@ -179,5 +272,6 @@ describe('user API key actions', () => {
     expect(wrapper.find('[data-test="copy-user-api-key"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="create-user-api-key"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="delete-user-api-key"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="edit-user-api-key"]').exists()).toBe(false)
   })
 })

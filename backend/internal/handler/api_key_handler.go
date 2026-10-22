@@ -8,7 +8,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -53,27 +52,7 @@ type CreateAPIKeyRequest struct {
 }
 
 // UpdateAPIKeyRequest represents the update API key request payload
-type UpdateAPIKeyRequest struct {
-	Name                  string          `json:"name"`
-	GroupID               *int64          `json:"group_id"`
-	BackupGroupIDs        *[]int64        `json:"backup_group_ids"`
-	KeyRouteScope         *string         `json:"key_route_scope"`
-	KeyRouteRevision      json.RawMessage `json:"key_route_revision"`
-	KeyRouteFailurePolicy json.RawMessage `json:"key_route_failure_policy"`
-	KeyModelPolicy        json.RawMessage `json:"key_model_policy"`
-	Status                string          `json:"status" binding:"omitempty,oneof=active inactive"`
-	IPWhitelist           *[]string       `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
-	IPBlacklist           *[]string       `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
-	Quota                 *float64        `json:"quota"`        // 配额限制 (USD), 0=无限制
-	ExpiresAt             *string         `json:"expires_at"`   // 过期时间 (ISO 8601)
-	ResetQuota            *bool           `json:"reset_quota"`  // 重置已用配额
-
-	// Rate limit fields (nil = no change, 0 = unlimited)
-	RateLimit5h         *float64 `json:"rate_limit_5h"`
-	RateLimit1d         *float64 `json:"rate_limit_1d"`
-	RateLimit7d         *float64 `json:"rate_limit_7d"`
-	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
-}
+type UpdateAPIKeyRequest = dto.APIKeyUpdateRequest
 
 func validAPIKeyLimit(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 }
 
@@ -274,63 +253,10 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var keyRouteFailurePolicy *service.KeyRouteFailurePolicy
-	keyRouteFailurePolicySet := req.KeyRouteFailurePolicy != nil
-	if keyRouteFailurePolicySet && string(req.KeyRouteFailurePolicy) != "null" {
-		var parsed service.KeyRouteFailurePolicy
-		if err := json.Unmarshal(req.KeyRouteFailurePolicy, &parsed); err != nil {
-			response.BadRequest(c, "Invalid key_route_failure_policy: "+err.Error())
-			return
-		}
-		keyRouteFailurePolicy = &parsed
-	}
-
-	var keyModelPolicy *service.KeyModelPolicy
-	if req.KeyModelPolicy != nil && string(req.KeyModelPolicy) != "null" {
-		var parsed service.KeyModelPolicy
-		if err := json.Unmarshal(req.KeyModelPolicy, &parsed); err != nil {
-			response.BadRequest(c, "Invalid key_model_policy: "+err.Error())
-			return
-		}
-		keyModelPolicy = &parsed
-	}
-	svcReq := service.UpdateAPIKeyRequest{
-		KeyModelPolicy:           keyModelPolicy,
-		KeyModelPolicySet:        req.KeyModelPolicy != nil,
-		BackupGroupIDs:           req.BackupGroupIDs,
-		KeyRouteScope:            req.KeyRouteScope,
-		KeyRouteFailurePolicy:    keyRouteFailurePolicy,
-		KeyRouteFailurePolicySet: keyRouteFailurePolicySet,
-		IPWhitelist:              req.IPWhitelist,
-		IPBlacklist:              req.IPBlacklist,
-		Quota:                    req.Quota,
-		ResetQuota:               req.ResetQuota,
-		RateLimit5h:              req.RateLimit5h,
-		RateLimit1d:              req.RateLimit1d,
-		RateLimit7d:              req.RateLimit7d,
-		ResetRateLimitUsage:      req.ResetRateLimitUsage,
-	}
-	if req.Name != "" {
-		svcReq.Name = &req.Name
-	}
-	svcReq.GroupID = req.GroupID
-	if req.Status != "" {
-		svcReq.Status = &req.Status
-	}
-	// Parse expires_at if provided
-	if req.ExpiresAt != nil {
-		if *req.ExpiresAt == "" {
-			// Empty string means clear expiration
-			svcReq.ExpiresAt = nil
-			svcReq.ClearExpiration = true
-		} else {
-			t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
-			if err != nil {
-				response.BadRequest(c, "Invalid expires_at format: "+err.Error())
-				return
-			}
-			svcReq.ExpiresAt = &t
-		}
+	svcReq, err := req.ToServiceRequest()
+	if err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
 	}
 
 	key, err := h.apiKeyService.Update(c.Request.Context(), keyID, subject.UserID, svcReq)

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -61,7 +62,9 @@ func TestFirstContentDispatchWaitsForCleanupAndDiscardsPrelude(t *testing.T) {
 	require.Equal(t, http.StatusOK, c.Writer.Status())
 	require.Contains(t, c.Writer.Header().Get("Content-Type"), "application/json")
 	require.Empty(t, c.Writer.Header().Get("X-Upstream-Request-ID"), "headers from a safely discarded account attempt must not leak")
-	require.NotContains(t, c.Writer.Body.String(), "account-a-only", "discarded SSE frames must not leak into the backup response")
+	recorder, ok := c.Get("test.response_recorder")
+	require.True(t, ok)
+	require.NotContains(t, recorder.(*httptest.ResponseRecorder).Body.String(), "account-a-only", "discarded SSE frames must not leak into the backup response")
 	require.Len(t, selector.latencies, 2)
 	events, ok := c.MustGet(service.OpsUpstreamErrorsKey).([]*service.OpsUpstreamErrorEvent)
 	require.True(t, ok)

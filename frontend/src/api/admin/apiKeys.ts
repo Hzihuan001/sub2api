@@ -4,13 +4,19 @@
  */
 
 import { apiClient } from '../client'
-import type { ApiKey, KeyRouteScope } from '@/types'
+import type { ApiKey, KeyRouteScope, UpdateApiKeyRequest } from '@/types'
 
 export interface UpdateApiKeyGroupResult {
   api_key: ApiKey
   auto_granted_group_access: boolean
   granted_group_id?: number
   granted_group_name?: string
+}
+
+/** Full editor uses the owner's native key validation and cache invalidation. */
+export async function updateApiKey(id: number, updates: UpdateApiKeyRequest): Promise<UpdateApiKeyGroupResult> {
+  const { data } = await apiClient.put<UpdateApiKeyGroupResult>(`/admin/api-keys/${id}`, updates)
+  return data
 }
 
 /**
@@ -43,6 +49,7 @@ export async function deleteApiKey(id: number): Promise<{ message: string }> {
 }
 
 export const apiKeysAPI = {
+  updateApiKey,
   updateApiKeyGroup,
   updateApiKeyRouteScope,
   deleteApiKey

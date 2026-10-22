@@ -61,7 +61,11 @@ func (s *dispatchTestSelector) PrepareRouteContext(ctx context.Context, key *ser
 func newDispatchTestContext(t *testing.T) (*gin.Context, *dispatchTestSelector) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	// Keep the underlying recorder available to tests that need to inspect the
+	// buffered body after a key-local failover attempt.
+	c.Set("test.response_recorder", recorder)
 	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"model","messages":[]}`))
 	ctx := context.WithValue(request.Context(), ctxkey.KeyRoutingActive, true)
 	ctx = context.WithValue(ctx, ctxkey.KeyRoutingPrimaryGroupID, int64(1))

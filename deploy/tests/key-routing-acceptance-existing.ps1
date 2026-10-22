@@ -24,7 +24,7 @@ param(
 # A fresh labelled mock and API-created resources are removed by exact recorded ID.
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 required' }
-if (-not $Execute) { Write-Output 'Use -Execute after reviewing this script. Reuses an acceptance-only project; ten synthetic gateway requests per selected site (sixteen with -ExtendedKeyRules, three with -RemainingSafetyCasesOnly, eleven with -SLACasesOnly, four with -AccountPriorityFallbackOnly, eleven with main-only -SharedStateFaultOnly, three total with three-site -LongConnectionOnly, two with -CatalogueCasesOnly; zero with -CatalogueCasesOnly -CatalogueMetadataOnly). Shared-state mode briefly pauses/unpauses its exact synthetic main Redis and removes its private peer. Long-connection mode runs three concurrent synthetic 660-second SSE requests. Includes exact-ID cleanup and redacted evidence. Compliance remains untouched unless explicitly opted in.'; return }
+if (-not $Execute) { Write-Output 'Use -Execute after reviewing this script. Reuses an acceptance-only project; eleven synthetic gateway requests per selected site (seventeen with -ExtendedKeyRules, three with -RemainingSafetyCasesOnly, eleven with -SLACasesOnly, four with -AccountPriorityFallbackOnly, eleven with main-only -SharedStateFaultOnly, three total with three-site -LongConnectionOnly, two with -CatalogueCasesOnly; zero with -CatalogueCasesOnly -CatalogueMetadataOnly). Shared-state mode briefly pauses/unpauses its exact synthetic main Redis and removes its private peer. Long-connection mode runs three concurrent synthetic 660-second SSE requests. Includes exact-ID cleanup and redacted evidence. Compliance remains untouched unless explicitly opted in.'; return }
 function Check([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
 function Docker {
   $result = & docker.exe @args
@@ -59,7 +59,7 @@ Check (-not (Test-Path -LiteralPath $OutputDirectory)) 'Report directory must be
 $containers = @{}; $initial = @{}; $mockId = ''; $site = ''; $token = ''; $userToken = ''; $apiKey = ''; $userId = 0; $keyId = 0
 $resources = @{}; $gatewayCalls = 0; $cleanupStandalone = $false; $longFixtures=@{}; $longProcess=$null; $mockRemovedEarly=$false
 if ($RemainingSafetyCasesOnly) { $ExtendedKeyRules = $true }
-$gatewayLimit=$(if($LongConnectionOnly){3}elseif($SharedStateFaultOnly){11}elseif($CatalogueMetadataOnly){0}elseif($CatalogueCasesOnly){2}elseif($SLACasesOnly){11}elseif($AccountPriorityFallbackOnly){4}elseif($RemainingSafetyCasesOnly){3}elseif($ExtendedKeyRules){16}else{10})*$(if($LongConnectionOnly){1}else{$Sites.Count})
+$gatewayLimit=$(if($LongConnectionOnly){3}elseif($SharedStateFaultOnly){11}elseif($CatalogueMetadataOnly){0}elseif($CatalogueCasesOnly){2}elseif($SLACasesOnly){11}elseif($AccountPriorityFallbackOnly){4}elseif($RemainingSafetyCasesOnly){3}elseif($ExtendedKeyRules){17}else{11})*$(if($LongConnectionOnly){1}else{$Sites.Count})
 $evidence = [ordered]@{status='running';run=$run;project=$Project;image=$ExpectedImageId;started_at=[DateTime]::UtcNow.ToString('o');sites=@{};findings=[Collections.Generic.List[object]]::new();cleanup=[Collections.Generic.List[object]]::new();fixture_sha256=(Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash.ToLowerInvariant();limits=@{gateway_requests=$gatewayLimit;paid_models=$false;application_restarts=$false;data_service_changes=$false;mock_published_ports=$false}}
 $httpClient = @'
 const fs=require('node:fs'),p=JSON.parse(fs.readFileSync(0,'utf8'));
@@ -141,7 +141,7 @@ function Rotate-SLAPrimary([string]$Scenario) {
   $resources[$site].accounts.Add($next);$script:accountIds[0]=$next;Save
   Start-Sleep -Seconds 3
 }
-function Gateway([string]$Label,[string]$ExpectedSlot,[long]$ExpectedGroup,[decimal]$Rate,[bool]$Stream=$false,[string]$Mode='success',[string]$Model='gpt-4o-mini',[long]$ExpectedAccountId=0) {
+function Gateway([string]$Label,[string]$ExpectedSlot,[long]$ExpectedGroup,[decimal]$Rate,[bool]$Stream=$false,[string]$Mode='success',[string]$Model='gpt-4o-mini',[long]$ExpectedAccountId=0,[string[]]$AllowedFailedSlots=@('primary')) {
   Check ($script:gatewayCalls -lt $gatewayLimit) 'Fixed gateway request budget exhausted'
   $before=Ledger; $statsBefore=Stats; $script:gatewayCalls++; Save
   $clock=[Diagnostics.Stopwatch]::StartNew()
@@ -153,7 +153,7 @@ function Gateway([string]$Label,[string]$ExpectedSlot,[long]$ExpectedGroup,[deci
     Check ($r.Status -eq 200 -and $r.Content.Contains('backup-ok')) "$site $Label did not complete successfully"
     $selected=@($calls|Where-Object {$_.slot -eq $ExpectedSlot})
     Check ($selected.Count -eq 1 -and $selected[0].stream -eq $Stream) "$site $Label selected/replayed wrong target"
-    Check (@($calls|Where-Object {$_.slot -ne $ExpectedSlot -and $_.slot -ne 'primary'}).Count -eq 0) "$site $Label contacted an unexpected backup"
+    Check (@($calls|Where-Object {$_.slot -ne $ExpectedSlot -and $_.slot -notin $AllowedFailedSlots}).Count -eq 0) "$site $Label contacted an unexpected backup"
     $deadline=[DateTime]::UtcNow.AddSeconds(20)
     do { $after=Ledger; if($after.usage_count -gt $before.usage_count){break};Start-Sleep -Milliseconds 250 } while([DateTime]::UtcNow -lt $deadline)
     $u=$after.last_usage
@@ -554,6 +554,8 @@ try {
       $null=Api POST "/admin/accounts/$originalPrimaryId/schedulable" $token @{schedulable=$false}
       Start-Sleep -Seconds 3
       $keyId=$routeTestKeyId;$apiKey=$routeTestAPIKey
+      $cooldownSequenceStart=Ledger
+      $cooldownSequencePhaseStart=$evidence.sites[$site].phases.Count
 
       # A's first request returns a synthetic 502; B must finish the same
       # request, and the following request must stay in this group on B.
@@ -563,6 +565,23 @@ try {
       Gateway 'key-account-cooldown-next-request-stays-primary-b' 'primary-b' $primaryGroup 2 $false 'success' 'gpt-4o-mini' $routeTestAccountB
       $nextAttempts=@($evidence.sites[$site].last_attempt.upstream)
       Check ($nextAttempts.Count -eq 1 -and $nextAttempts[0].slot -eq 'primary-b') 'Cooled account A was retried, or routing left the group despite healthy B'
+
+      # Keep A cooling and inject an actual failure from B before leaving group 1.
+      $null=Api PUT "/admin/accounts/$routeTestAccountB" $token @{credentials=(Credentials 'server' 'primary-b')}
+      Start-Sleep -Seconds 3
+      Gateway 'key-account-cooldown-b-fails-uses-group-2' 'backup' $backupGroup 0.5 $false 'success' 'gpt-4o-mini' $accountIds[1] @('primary-b')
+      $group2Attempts=@($evidence.sites[$site].last_attempt.upstream)
+      Check ($group2Attempts.Count -ge 2 -and $group2Attempts[0].slot -eq 'primary-b' -and $group2Attempts[0].scenario -eq 'server' -and $group2Attempts[-1].slot -eq 'backup' -and $group2Attempts[-1].scenario -eq 'success' -and @($group2Attempts|Where-Object {$_.slot -ne 'primary-b' -and $_.slot -ne 'backup'}).Count -eq 0 -and @($group2Attempts|Where-Object {$_.slot -eq 'primary-b' -and $_.scenario -ne 'server'}).Count -eq 0) 'B did not actually fail before group 2, or cooled account A was retried'
+      $cooldownSequencePhases=@($evidence.sites[$site].phases|Select-Object -Skip $cooldownSequencePhaseStart)
+      Check ($cooldownSequencePhases.Count -eq 3 -and @($cooldownSequencePhases|Where-Object {$_.usage.group_id -eq $primaryGroup}).Count -eq 2 -and @($cooldownSequencePhases|Where-Object {$_.usage.group_id -eq $backupGroup}).Count -eq 1) 'Failure sequence did not settle two group 1 requests and one group 2 request'
+      $cooldownSequenceCharge=[decimal]0
+      foreach($phase in $cooldownSequencePhases){$cooldownSequenceCharge += [decimal]$phase.charged}
+      Start-Sleep -Seconds 2
+      $cooldownSequenceEnd=Ledger
+      Check ($cooldownSequenceEnd.usage_count - $cooldownSequenceStart.usage_count -eq 3 -and $cooldownSequenceEnd.dedup_count - $cooldownSequenceStart.dedup_count -eq 3) 'Failure sequence settled more or fewer than three times after the delayed settlement observation'
+      Check ([decimal]$cooldownSequenceStart.balance-[decimal]$cooldownSequenceEnd.balance -eq $cooldownSequenceCharge -and [decimal]$cooldownSequenceEnd.quota_used-[decimal]$cooldownSequenceStart.quota_used -eq $cooldownSequenceCharge) 'Failure sequence cumulative balance/quota debit differs'
+      $evidence.sites[$site].account_failure_sequence=@{account_a_id=$routeTestAccountA;account_b_id=$routeTestAccountB;account_a_failed_then_b_succeeded=$true;next_request_stayed_on_b=$true;account_b_failed_then_group_2_succeeded=$true;group_1_settlements=2;group_2_settlements=1;exactly_once_settlement=$true;delayed_settlement_observation_ms=2000;charged=$cooldownSequenceCharge;before=$cooldownSequenceStart;after=$cooldownSequenceEnd}
+      Save
 
       # Disable B, then prove a second Key sharing A does not inherit Key 1's
       # cooldown. Restore A's mock to success so any request through it succeeds.

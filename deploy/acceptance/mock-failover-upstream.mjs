@@ -50,7 +50,7 @@ http.createServer(async (req, res) => {
     clearInterval(heartbeat)
     if (res.destroyed) return
   }
-  if (slot === 'primary') {
+  if (slot === 'primary' || (slot === 'primary-b' && scenario === 'server')) {
     const errors = {
       overload: [503, 'server_is_overloaded'], quota: [429, 'insufficient_quota'],
       model: [404, 'model_not_found'], server: [502, 'server_error'],

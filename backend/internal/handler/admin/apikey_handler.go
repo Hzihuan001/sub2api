@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -35,13 +34,7 @@ func NewAdminAPIKeyHandler(adminService service.AdminService) *AdminAPIKeyHandle
 }
 
 // AdminUpdateAPIKeyGroupRequest represents the request to update an API key.
-type AdminUpdateAPIKeyGroupRequest struct {
-	BackupGroupIDs      *[]int64        `json:"backup_group_ids"`
-	KeyRouteScope       *string         `json:"key_route_scope"`
-	KeyRouteRevision    json.RawMessage `json:"key_route_revision"`
-	GroupID             *int64          `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
-	ResetRateLimitUsage *bool           `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
-}
+type AdminUpdateAPIKeyGroupRequest = dto.APIKeyUpdateRequest
 
 // UpdateGroup handles updating an API key's admin-managed fields.
 // PUT /api/v1/admin/api-keys/:id
@@ -59,6 +52,32 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 	}
 	if err := service.ValidateKeyRouteWriteMetadata(req.KeyRouteScope, req.KeyRouteRevision); err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+	if req.HasFullEditFields() {
+		svcReq, err := req.ToServiceRequest()
+		if err != nil {
+			response.BadRequest(c, "Invalid request: "+err.Error())
+			return
+		}
+		mutator, ok := h.adminService.(interface {
+			AdminUpdateAPIKey(context.Context, int64, service.UpdateAPIKeyRequest) (*service.AdminUpdateAPIKeyGroupIDResult, error)
+		})
+		if !ok {
+			response.Error(c, 500, "API_KEY_SERVICE_UNAVAILABLE: API key editing is not configured")
+			return
+		}
+		result, err := mutator.AdminUpdateAPIKey(c.Request.Context(), keyID, svcReq)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, gin.H{
+			"api_key":                   dto.APIKeyFromService(result.APIKey),
+			"auto_granted_group_access": result.AutoGrantedGroupAccess,
+			"granted_group_id":          result.GrantedGroupID,
+			"granted_group_name":        result.GrantedGroupName,
+		})
 		return
 	}
 

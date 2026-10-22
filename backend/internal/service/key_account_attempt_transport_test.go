@@ -258,7 +258,7 @@ func TestKeyAccountInferenceTransportConcurrentDispatchAndFinishBlocked(t *testi
 	_, err = scope.Finish(nil, keyrouting.AccountAttemptResult{Outcome: keyrouting.OutcomeFailure})
 	require.NoError(t, err)
 	require.True(t, scope.CleanupAck())
-	require.True(t, scope.CanStartNext())
+	require.False(t, scope.CanStartNext(), "cleanup must not authorize replay of an ambiguous network failure")
 }
 
 func TestKeyAccountInferenceTransportObservationFailureDoesNotAbortRetryOrFinish(t *testing.T) {
