@@ -11,7 +11,7 @@ upstream:
 features:
   - id: key-routing
     owner: custom/key-routing
-    description: Ordered API key backup groups, independent per-key failure/SLA/TTFT/status rules, model admission and authorized multi-group catalogue aggregation, bounded safe pre-output dispatch, effective-group native billing, and fail-closed same-source Responses continuations.
+    description: Ordered API key backup groups, independent per-key failure/SLA/TTFT/status rules, model admission and authorized multi-group catalogue aggregation, bounded safe pre-output dispatch, effective-group native billing, and bounded fail-closed Responses continuation recovery for supported official API-key state.
     tests:
       - backend/internal/keyrouting
       - backend/internal/keyrouting/failure_tracker_test.go
