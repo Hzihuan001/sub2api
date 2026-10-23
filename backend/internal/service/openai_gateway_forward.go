@@ -1189,9 +1189,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				)
 				continue
 			}
+			storedResponseReferenceRejected := !shouldApplyOpenAIFailoverSideEffects(body, resp.StatusCode, respBody)
 			shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody)
-			if !shouldFailover && strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != "" &&
-				IsOpenAIStoredResponseReferenceRejection(resp.StatusCode, respBody) {
+			if !shouldFailover && storedResponseReferenceRejected {
 				// A provider-confirmed stale/foreign response pointer is the one
 				// deterministic 4xx that can become valid by retrying without that
 				// pointer. Keep the exception scoped to continuation requests; do not
@@ -1220,7 +1220,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					Detail:             upstreamDetail,
 				})
 
-				shouldDisable := s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
+				shouldDisable := false
+				if !storedResponseReferenceRejected {
+					shouldDisable = s.handleFailoverSideEffects(ctx, resp, account, respBody, upstreamModel)
+				}
 				return nil, s.newOpenAIAccountFailoverError(
 					account,
 					resp.StatusCode,

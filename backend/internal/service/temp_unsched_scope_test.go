@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -262,6 +263,54 @@ func TestOpenAIFailoverSideEffects_401FollowsTempUnschedScope(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpenAIForward_StoredResponseReferenceRejectionSkipsAccountFailureSideEffects(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+		Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+			Enabled:           false,
+			AllowInsecureHTTP: true,
+		}},
+	}
+	repo := &tempUnschedScopeRepoStub{}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"previous_response_not_found","message":"Response not found"}}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		rateLimitService: &RateLimitService{accountRepo: repo, cfg: cfg},
+	}
+	account := newTempUnschedScopeAccount(TempUnschedScopeAccount, map[string]any{
+		"error_code": float64(http.StatusBadRequest),
+		"keywords":   []any{"not found"},
+	})
+	account.Credentials["api_key"] = "sk-test"
+	account.Credentials["base_url"] = "http://upstream.example"
+	account.Extra = map[string]any{
+		openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
+		openai_compat.ExtraKeyResponsesSupported: true,
+	}
+	account.Concurrency = 1
+	body := []byte(`{"model":"gpt-5.6-sol","previous_response_id":"resp_stale","input":"continue"}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+
+	var failover *UpstreamFailoverError
+	require.ErrorAs(t, err, &failover, "explicit stale response references should let the handler try another account")
+	require.True(t, failover.ShouldRetryNextAccount())
+	require.Equal(t, 1, len(upstream.requests))
+	require.Zero(t, repo.errorCalls, "a stale/foreign response reference is not evidence of account failure")
+	require.Zero(t, repo.tempCalls, "a stale/foreign response reference must not trigger temp unscheduling")
+	require.Empty(t, repo.modelRateLimitCalls, "a stale/foreign response reference must not cool a model")
 }
 
 func TestHandleUpstreamError_ExplicitModelScope401(t *testing.T) {

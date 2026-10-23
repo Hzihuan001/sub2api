@@ -308,6 +308,14 @@ func IsOpenAIStoredResponseReferenceRejection(statusCode int, upstreamBody []byt
 		(strings.Contains(message, "response with id") && strings.Contains(message, "not found"))
 }
 
+func shouldApplyOpenAIFailoverSideEffects(requestBody []byte, statusCode int, upstreamBody []byte) bool {
+	if strings.TrimSpace(gjson.GetBytes(requestBody, "previous_response_id").String()) != "" &&
+		IsOpenAIStoredResponseReferenceRejection(statusCode, upstreamBody) {
+		return false
+	}
+	return true
+}
+
 func isOpenAICompatibleModelNotFound400(respBody []byte) bool {
 	return isOpenAICompatibleModelNotFoundBody(respBody)
 }

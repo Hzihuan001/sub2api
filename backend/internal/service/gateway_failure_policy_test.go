@@ -57,6 +57,14 @@ func TestOpenAIStoredResponseReferenceRejectionIsNarrow(t *testing.T) {
 	}
 }
 
+func TestOpenAIStoredResponseReferenceRejectionSkipsAccountFailureSideEffects(t *testing.T) {
+	requestWithReference := []byte(`{"model":"gpt-5.6-sol","previous_response_id":"resp_old"}`)
+	staleReference := []byte(`{"error":{"code":"previous_response_not_found","message":"Response not found"}}`)
+	require.False(t, shouldApplyOpenAIFailoverSideEffects(requestWithReference, http.StatusBadRequest, staleReference))
+	require.True(t, shouldApplyOpenAIFailoverSideEffects(requestWithReference, http.StatusBadRequest, []byte(`{"error":{"code":"invalid_parameter"}}`)))
+	require.True(t, shouldApplyOpenAIFailoverSideEffects([]byte(`{"model":"gpt-5.6-sol","input":"hello"}`), http.StatusBadRequest, staleReference))
+}
+
 func TestOpenAIGatewayFailurePolicyExplicitAccountSignalsIgnoreStatus(t *testing.T) {
 	tests := []struct {
 		name string

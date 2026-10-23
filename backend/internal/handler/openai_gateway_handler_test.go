@@ -1985,6 +1985,45 @@ type openAIHTTPPassthroughAuthFailoverUpstream struct {
 	statusCode int
 }
 
+type openAIHTTPStoredResponseReferenceFailoverUpstream struct {
+	service.HTTPUpstream
+	mu          sync.Mutex
+	accountIDs  []int64
+	requestBody [][]byte
+}
+
+func (u *openAIHTTPStoredResponseReferenceFailoverUpstream) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	body, _ := io.ReadAll(req.Body)
+	_ = req.Body.Close()
+	u.mu.Lock()
+	u.accountIDs = append(u.accountIDs, accountID)
+	u.requestBody = append(u.requestBody, append([]byte(nil), body...))
+	u.mu.Unlock()
+	if accountID == 9911 {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_recovered","object":"response","model":"gpt-5.2","status":"completed","usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}`)),
+		}, nil
+	}
+	return &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"previous_response_not_found","message":"Response not found"}}`)),
+	}, nil
+}
+
+func (u *openAIHTTPStoredResponseReferenceFailoverUpstream) calls() ([]int64, [][]byte) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	ids := append([]int64(nil), u.accountIDs...)
+	bodies := make([][]byte, len(u.requestBody))
+	for i := range u.requestBody {
+		bodies[i] = append([]byte(nil), u.requestBody[i]...)
+	}
+	return ids, bodies
+}
+
 func (u *openAIHTTPPassthroughAuthFailoverUpstream) Do(_ *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
 	u.mu.Lock()
 	u.accountIDs = append(u.accountIDs, accountID)
@@ -2345,6 +2384,100 @@ func TestOpenAIResponses_APIKeyPassthroughPoolAuthFailureRetriesThenSwitchesToHe
 			require.Equal(t, "resp_healthy", gjson.GetBytes(rec.Body.Bytes(), "id").String())
 		})
 	}
+}
+
+func TestOpenAIResponses_StaleStoredResponseReferenceRetriesNextAccountAndKeepsCurrentInput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(4205)
+	accounts := []service.Account{
+		{
+			ID: 9910, Name: "first-api-key", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 1,
+			Credentials: map[string]any{"api_key": "sk-first", "base_url": "https://api.example.test"},
+			Extra:       map[string]any{"openai_passthrough": true},
+		},
+		{
+			ID: 9911, Name: "second-api-key", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 2,
+			Credentials: map[string]any{"api_key": "sk-second", "base_url": "https://api.example.test"},
+			Extra:       map[string]any{"openai_passthrough": true},
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.Default.RateMultiplier = 1
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Gateway.MaxAccountSwitches = 1
+
+	accountRepo := &openAIWSFailoverHandlerAccountRepoStub{accounts: accounts}
+	upstream := &openAIHTTPStoredResponseReferenceFailoverUpstream{}
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billingCacheSvc.Stop)
+	gatewaySvc := service.NewOpenAIGatewayService(
+		accountRepo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+		nil,
+		nil,
+		service.NewBillingService(cfg, nil),
+		nil,
+		billingCacheSvc,
+		upstream,
+		&service.DeferredService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	h := NewOpenAIGatewayHandler(
+		gatewaySvc,
+		service.NewConcurrencyService(nil),
+		billingCacheSvc,
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		cfg,
+	)
+
+	const requestBody = `{"model":"gpt-5.2","previous_response_id":"resp_stale","input":[{"role":"user","content":"continue with this turn"}],"instructions":"keep this instruction","stream":false}`
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(requestBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID: 1805, GroupID: &groupID,
+		User:  &service.User{ID: 1705, Status: service.StatusActive},
+		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1705, Concurrency: 0})
+	// The response belongs to this key/group, but there is no account pin. This
+	// intentionally exercises a pointer rejection on an unpinned account route.
+	require.NoError(t, gatewaySvc.BindOpenAIHTTPResponseOwner(context.Background(), groupID, "resp_stale", 1705, 1805))
+
+	h.Responses(c)
+
+	accountIDs, forwardedBodies := upstream.calls()
+	t.Logf("response status=%d body=%s", rec.Code, rec.Body.String())
+	require.Equal(t, []int64{9910, 9911}, accountIDs, "the rejecting account must not be selected again")
+	require.Len(t, forwardedBodies, 2)
+	firstBody := gjson.ParseBytes(forwardedBodies[0])
+	require.Equal(t, "resp_stale", firstBody.Get("previous_response_id").String())
+	secondBody := gjson.ParseBytes(forwardedBodies[1])
+	require.False(t, secondBody.Get("previous_response_id").Exists(), "opaque reference must not be sent to another credential")
+	require.Equal(t, "continue with this turn", secondBody.Get("input.0.content").String())
+	require.Equal(t, "keep this instruction", secondBody.Get("instructions").String())
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "resp_recovered", gjson.GetBytes(rec.Body.Bytes(), "id").String())
 }
 
 func TestOpenAIResponses_APIKeyPassthroughSSERateLimitUsesConfiguredPoolRetry(t *testing.T) {

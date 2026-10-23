@@ -1192,12 +1192,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						)
 						return
 					}
-					if !openAIForwardMayFailover(c, writerSizeBeforeForward, failoverErr) {
+					storedResponseReferenceRejected := previousResponseID != "" && isOpenAIResponseReferenceRejectedError(failoverErr)
+					if !storedResponseReferenceRejected && !openAIForwardMayFailover(c, writerSizeBeforeForward, failoverErr) {
 						h.gatewayService.ObserveOpenAIAccountHealthFailure(c.Request.Context(), account, err)
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
 					}
-					if previousResponseID != "" && isOpenAIResponseReferenceRejectedError(failoverErr) {
+					if storedResponseReferenceRejected {
 						// A deterministic rejection proves this account did not accept the
 						// continuation. First try to rebuild the complete conversation from
 						// its verified source account. If that history is unavailable or not
@@ -1219,17 +1220,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 							h.handleFailoverExhausted(c, failoverErr, streamStarted)
 							return
 						}
+						if switchCount >= maxAccountSwitches {
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+							return
+						}
+						sourceAccountIDForLog := verifiedResponseSourceAccountID
+						h.gatewayService.RecordOpenAIAccountSwitch()
+						switchCount++
+						failedAccountIDs[account.ID] = struct{}{}
+						keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
+						lastFailoverErr = failoverErr
 						if pinnedResponseSource {
-							if switchCount >= maxAccountSwitches {
-								h.handleFailoverExhausted(c, failoverErr, streamStarted)
-								return
+							fallbackGroupID := verifiedResponseSourceGroupID
+							if fallbackGroupID <= 0 && apiKey.GroupID != nil {
+								fallbackGroupID = *apiKey.GroupID
 							}
-							h.gatewayService.RecordOpenAIAccountSwitch()
-							switchCount++
-							failedAccountIDs[account.ID] = struct{}{}
-							keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
-							lastFailoverErr = failoverErr
-							if !enableOpenAIResponseAccountFallback(c, verifiedResponseSourceGroupID) {
+							if !enableOpenAIResponseAccountFallback(c, fallbackGroupID) {
 								h.handleFailoverExhausted(c, failoverErr, streamStarted)
 								return
 							}
@@ -1247,7 +1253,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						previousResponseID = ""
 						selectionPreviousResponseID = ""
 						reqLog.Warn("openai.response_reference_dropped_using_current_input",
-							zap.Int64("source_account_id", verifiedResponseSourceAccountID),
+							zap.Int64("source_account_id", sourceAccountIDForLog),
 							zap.Int64("rejected_account_id", account.ID),
 							zap.Bool("history_recovered", false),
 						)
