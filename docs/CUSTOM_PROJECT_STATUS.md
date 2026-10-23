@@ -9,16 +9,16 @@
 
 ## 1. 当前快照
 
-### 2026-10-23 — `custom.16`：Responses 引用拒绝后跨账号恢复（GHCR 已发布，生产待 SSH 目标）
+### 2026-10-23 — `custom.16`：Responses 引用拒绝后跨账号恢复（已部署三站）
 
-- `0.2.16-custom.16` 的发布标签 `custom-0.2.16.16`、分支和 GHCR 镜像已推送；正式镜像已按不可变 digest 拉回，operator-container smoke 通过。此前已部署版本仍为 `.14`。早期 `.15` 源码标签曾先推送，但最终复核发现缺陷；它没有构建/发布 GHCR 镜像或部署，标签保持不变并由 `.16` 修正替代。详见 [`custom.16 发布追踪`](CUSTOM_RELEASE_0_2_16_CUSTOM16_20261023.md)。
+- `0.2.16-custom.16` 标签 `custom-0.2.16.16`、源码分支和 GHCR 镜像已推送；正式镜像已按不可变 digest 拉回并通过 operator-container smoke。主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 已顺序部署 `.16`，三站 healthy、restart 0、运行同一 digest。早期 `.15` 源码标签保持不可变，未构建/发布镜像或部署，由 `.16` 修正替代。详见 [`custom.16 发布追踪`](CUSTOM_RELEASE_0_2_16_CUSTOM16_20261023.md)。
 - 多组 Key 不再因中转站自有状态请求限制而预先拒绝；本次新增验收聚焦 Responses 上游明确拒绝 `previous_response_id` 后清理该指针、保留当前请求内容并切换账号。不能安全清理时禁止携带原引用跨凭证；耗尽时优先返回实际发生的上游错误。普通 HTTP/WebSocket 失败继续走既有行为。
 - 不代表新账号能取得旧账号完整会话历史：只有增量输入时，上游仍可能给出真实历史校验错误。超时/断连下已执行的工具或外部副作用仍有重复执行风险。无新增长期正文存储和数据库迁移，也未验证所有 provider/所有状态都能无错续接。
-- 最终 `.16` 源码在 Docker Go 1.27.2 环境通过三包完整回归：service 267.528 秒、handler 42.874 秒、middleware 0.135 秒；覆盖此前遗漏的真实 API-key passthrough handler 路径，明确引用拒绝后确实由账号 A 切到 B 并返回成功。修复不会把确定的引用拒绝计为账号健康/暂停失败，并在请求级排除拒绝账号。镜像 `ghcr.io/hzihuan001/sub2api:0.2.16-custom.16` 的 digest 为 `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`，已拉回验证并通过 operator-container smoke。GitHub Actions 禁用，dispatch HTTP 422，无成功 CI。部署前只读探测三站公网 `/health` 均为 200，但此接口不提供版本信息。生产仍按 `.14` 记录；当前没有可解析 SSH host，未备份、未部署，禁止将本地验收表述为生产验证。
+- 最终 `.16` 源码在 Docker Go 1.27.2 环境通过三包完整回归：service 267.528 秒、handler 42.874 秒、middleware 0.135 秒；覆盖真实 API-key passthrough handler 路径，明确引用拒绝后确实由账号 A 切到 B 并成功响应。镜像 digest 为 `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`，拉回后 operator-container smoke 通过。2026-10-23 三站已按主站→L1→COS 顺序部署；精确版本、备份和生产验收范围见发布报告。Actions 禁用，dispatch HTTP 422，无成功 CI。
 
-### 2026-10-23 — 上一正式版本 `custom.14` 已完成三站发布（当前线上基线，待后续候选替换）
+### 2026-10-23 — 上一正式版本 `custom.14`（已由 `.16` 替换）
 
-- 当前生产主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 均运行 `0.2.16-custom.14`。运行提交 `09e885d4eb2098a48758b9b5309e166bd85737ce`，标签 `custom-0.2.16.14`；镜像摘要 `sha256:61468c96ecbafb5e79f959e06a74291773fae77db235fff130ad9d67df4f2ca7`。
+- 上一发布周期中，主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 曾运行 `0.2.16-custom.14`。运行提交 `09e885d4eb2098a48758b9b5309e166bd85737ce`，标签 `custom-0.2.16.14`；镜像摘要 `sha256:61468c96ecbafb5e79f959e06a74291773fae77db235fff130ad9d67df4f2ca7`。当前生产已由上方 `.16` 替换。
 - 本轮新增的受限 OpenAI Responses 恢复适配器已通过本地三站隔离验收 `12/12`；只允许官方 OpenAI API Key、已存储且可完整读取的 Responses 文本链，其他状态/工具/文件/图片/兼容 provider 均 fail closed。无数据库迁移。
 - 三站已按主站→L1→COS 顺序仅重建应用容器。部署前备份 `/opt/sub2api-backups/v0.2.16-custom.14-20261022T195945Z` 已验证可读；各站在途请求为 0，健康检查、版本/完整提交、匿名权限、关键启动日志均通过，PostgreSQL/Redis、卷、网络和反代保持不变。详细坐标与限制见 [`custom.14 发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM14_20261023.md)。
 
