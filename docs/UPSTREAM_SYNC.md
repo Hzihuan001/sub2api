@@ -10,7 +10,7 @@
 - 已复核定制功能：角色与菜单、审计、生图工作台、错误/响应标记、Key 多分组优先级与账号级故障切换、请求级计费/价格快照、管理员完整 Key 编辑。特别恢复了 Chat/Responses 的 `keyAccount*`、prompt injection、分组上下文、`tryKeyRouteSelectionUnavailable` 和 `keyAccountForwardContext` 接线，避免官方文件覆盖定制路由。
 - 已通过：前端 key-routing 94 项、typecheck、build；Docker Go 1.27.3 中 `go test ./internal/... -count=1` 全部通过；custom isolation、architecture-negative 34/34、custom contracts 18/18、upstream sync 5/5、workflow 11/11。候选镜像 `sha256:7a3eaee680b7708628cd1f8565818d22e830b836676b35d099f640e3397b0dbc` 在隔离 Compose 项目 `moshu-reseller-acceptance-v018c1` 的主站/L1/COS（18280/18281/18282）均 healthy，/health、管理员登录、Redis、重启持久化通过；每站 329 条迁移，最新 9004。迁移锁、幂等及定制 Key 路由测试通过。迁移回退演练尚未执行。
 - 官方新迁移 `246_enable_gemini_image_generation_groups.sql` 已保留；`9000–9004` 定制迁移不改不删。重复数字前缀按完整文件名排序，必须通过 PostgreSQL 升级/回退演练后才能发布。实验性 `backend/internal/keyrouting/replay/` 明确排除。
-- 生产不变：三站继续运行 `0.2.16-custom.16`。源码分支 `codex/v0.2.18-merge-20261023` 与 `custom/integration` 共同指向 `fc0d798bf2d6a08a074970d0485c567291e02660`，发布标签为 `custom-0.2.18.1`；GHCR 不可变镜像为 `ghcr.io/hzihuan001/sub2api@sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，已完成本地回拉验证。尚未部署；生产发布前仍需核对实时版本、Compose/1Panel 路径、备份和可用 SSH 目标，不能猜测历史地址。
+- 生产不变：三站继续运行 `0.2.16-custom.16`。发布源提交为 `fc0d798bf2d6a08a074970d0485c567291e02660`；两个分支随后仅追加文档收尾提交 `f07fd11e1`。发布标签为 `custom-0.2.18.1`；GHCR 不可变镜像为 `ghcr.io/hzihuan001/sub2api@sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，已完成本地回拉验证。尚未部署；生产发布前仍需核对实时版本、Compose/1Panel 路径、备份和可用 SSH 目标，不能猜测历史地址。
 
 ## 最新状态（2026-10-23）：custom.16 已完成三站生产部署
 

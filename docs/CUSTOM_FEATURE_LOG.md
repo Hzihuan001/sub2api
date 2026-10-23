@@ -8,7 +8,7 @@
 - **实现边界**：人工合并官方配额/图像门禁/流结算/安全和定价更新；保留定制角色、审计、生图、Key 优先级路由与故障切换。恢复 Chat/Responses 的价格、提示词、分组上下文、账号切换和最终失败接线；未接入实验性 `backend/internal/keyrouting/replay/`。
 - **数据库/迁移**：新增官方 `246_enable_gemini_image_generation_groups.sql`；已发布定制 `9000–9004` 原样保留，不重排、不改名、不删除。重复数字前缀需在 PostgreSQL 演练中确认排序与回退。
 - **测试**：前端 key-routing 9 文件 94/94、typecheck、build、Docker Go 1.27.3 的 `go test ./internal/... -count=1`、isolation、architecture-negative 34/34、custom contracts 18/18、sync 5/5、workflow 11/11 通过。镜像 `sha256:7a3eaee680b7708628cd1f8565818d22e830b836676b35d099f640e3397b0dbc` 在隔离 Compose 三站 `18280–18282` 健康运行；/health、管理员登录、Redis、应用重启和数据持久化通过；三站各 329 条迁移，最新 9004；迁移并发锁/幂等与定制路由测试通过。迁移回退演练尚未执行。
-- **提交/PR**：合并 `885edb605702a4af52b0bb8ac0060b58698c872d`；路由语义修复 `a688883f1bc09fbce2c38a7253be7e1577793678`；流桥接/Gemini计费修复 `305afd7f9`；功能清单合同修复 `8b5726b0c`。文档收尾后已推送 `codex/v0.2.18-merge-20261023` 与 `custom/integration` 至 `77a0e620e7798d743f08557ab167f59d1f3236e9`，未创建 PR、未打发布标签。
+- **提交/PR**：合并 `885edb605702a4af52b0bb8ac0060b58698c872d`；路由语义修复 `a688883f1bc09fbce2c38a7253be7e1577793678`；流桥接/Gemini计费修复 `305afd7f9`；功能清单合同修复 `8b5726b0c`。发布源提交为 `fc0d798bf2d6a08a074970d0485c567291e02660`；两个分支随后仅追加文档收尾提交 `f07fd11e1`，未创建 PR。
 - **发布镜像**：标签 `custom-0.2.18.1` 已推送；`ghcr.io/hzihuan001/sub2api:0.2.18-custom.1` digest 为 `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，按 digest 回拉、版本/提交/架构及 PostgreSQL 工具检查通过。
 - **部署站点**：尚未部署；生产仍为 `0.2.16-custom.16`，三站旧 digest 不变。当前没有可解析的 OVH SSH 目标，且旧运行手册与历史发布记录的生产状态不一致，不能猜测目标执行变更。
 - **回滚**：代码层回退至 `custom.16`；迁移为 forward-only，旧镜像可启动但不会反向恢复批量折扣归一化等数据语义，不覆盖业务数据库，不纳入未跟踪 replay 草稿。发布前仍需完成现场备份和应用镜像回退演练。
