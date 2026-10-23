@@ -8,7 +8,7 @@
 - **实现边界**：人工合并官方配额/图像门禁/流结算/安全和定价更新；保留定制角色、审计、生图、Key 优先级路由与故障切换。恢复 Chat/Responses 的价格、提示词、分组上下文、账号切换和最终失败接线；未接入实验性 `backend/internal/keyrouting/replay/`。
 - **数据库/迁移**：新增官方 `246_enable_gemini_image_generation_groups.sql`；已发布定制 `9000–9004` 原样保留，不重排、不改名、不删除。重复数字前缀需在 PostgreSQL 演练中确认排序与回退。
 - **测试**：前端 key-routing 9 文件 94/94、typecheck、build、Docker Go 1.27.3 的 `go test ./internal/... -count=1`、isolation、architecture-negative 34/34、custom contracts 18/18、sync 5/5、workflow 11/11 通过。真实数据库/Redis、迁移回退和 Compose 验收未执行。
-- **提交/PR**：合并 `885edb605702a4af52b0bb8ac0060b58698c872d`；路由语义修复 `a688883f1bc09fbce2c38a7253be7e1577793678`；流桥接/Gemini计费修复 `305afd7f9`；功能清单合同修复 `8b5726b0c`。本轮待推送，未创建 PR。
+- **提交/PR**：合并 `885edb605702a4af52b0bb8ac0060b58698c872d`；路由语义修复 `a688883f1bc09fbce2c38a7253be7e1577793678`；流桥接/Gemini计费修复 `305afd7f9`；功能清单合同修复 `8b5726b0c`。已推送 `codex/v0.2.18-merge-20261023` 与 `custom/integration` 至 `7152136b21d7cbdff224e58f2d51f47582add51b`，未创建 PR、未打发布标签。
 - **发布镜像**：无；候选版本 `0.2.18-custom.1`，未创建 tag。
 - **部署站点**：未部署；生产仍为 `0.2.16-custom.16`，三站旧 digest 不变。
 - **回滚**：代码层回退至 `custom.16`；发布前仍需完成迁移/镜像回退演练，不覆盖业务数据库，不纳入未跟踪 replay 草稿。

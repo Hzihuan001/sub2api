@@ -10,7 +10,7 @@
 - 已复核定制功能：角色与菜单、审计、生图工作台、错误/响应标记、Key 多分组优先级与账号级故障切换、请求级计费/价格快照、管理员完整 Key 编辑。特别恢复了 Chat/Responses 的 `keyAccount*`、prompt injection、分组上下文、`tryKeyRouteSelectionUnavailable` 和 `keyAccountForwardContext` 接线，避免官方文件覆盖定制路由。
 - 已通过：前端 key-routing 94 项、typecheck、build；Docker Go 1.27.3 中 `go test ./internal/... -count=1` 全部通过；custom isolation、architecture-negative 34/34、custom contracts 18/18、upstream sync 5/5、workflow 11/11。尚未完成真实 PostgreSQL/Redis 集成、迁移回退和隔离 Docker Compose，因此仍不能直接发布。
 - 官方新迁移 `246_enable_gemini_image_generation_groups.sql` 已保留；`9000–9004` 定制迁移不改不删。重复数字前缀按完整文件名排序，必须通过 PostgreSQL 升级/回退演练后才能发布。实验性 `backend/internal/keyrouting/replay/` 明确排除。
-- 生产不变：三站继续运行 `0.2.16-custom.16`，本轮不构建/推送镜像、不创建发布 tag、不部署。下一步先在可用 Docker/Go 环境完成后端与隔离 Compose 验收，再决定 `custom-0.2.18.1` 标签和生产发布。
+- 生产不变：三站继续运行 `0.2.16-custom.16`。候选源码已推送到 `codex/v0.2.18-merge-20261023` 与 `custom/integration`，共同指向 `7152136b21d7cbdff224e58f2d51f47582add51b`；本轮尚未构建发布镜像、创建 tag 或部署。下一步先完成数据库/Redis/Compose 验收，再决定 `custom-0.2.18.1` 标签和生产发布。
 
 ## 最新状态（2026-10-23）：custom.16 已完成三站生产部署
 

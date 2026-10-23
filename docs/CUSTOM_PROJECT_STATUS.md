@@ -16,6 +16,7 @@
 - 保留 `operator`、`prompt-audit`、`image-studio`、`branding`、`usage-extras`、`gateway-resilience` 和 `key-routing`。重点复核了 Chat/Responses 的价格快照、提示词注入、分组上下文、账号级故障切换、备用分组及最终上游错误透传；官方 v0.2.18 的 Vertex 配额、Gemini/Antigravity 图像分组门禁、流断开结算收口、Cloudflare 1010 分类、模型限流并发安全、Gemini 工具兼容、DeepSeek 图片载荷修复、异步图片 SSRF 防护及 Grok 4.7 Fast 定价修复均保留。
 - 模块化结论：定制层已有 manifest/contracts、独立 `backend/internal/custom*`、`keyrouting`、`frontend/src/features/key-routing` 等边界，静态隔离和负向契约有效；但网关 handler/service 仍通过薄宿主接线进入官方热路径，后续主线仍需人工语义复核，不能声称完全零冲突自动合并。
 - 检查：Key-routing 前端 9 个文件 94/94；前端 typecheck、build；Docker Go 1.27.3 中 `go test ./internal/... -count=1` 全部通过，关键 service/handler/middleware 回归也通过；custom isolation、architecture-negative 34/34、custom contracts 18/18、sync 5/5、workflow 11/11 均通过。真实 PostgreSQL/Redis 集成、迁移回退和隔离 Docker Compose 尚未执行，因此本候选仍不可直接发布。
+- 已推送：`codex/v0.2.18-merge-20261023` 与 `custom/integration` 均指向 `7152136b21d7cbdff224e58f2d51f47582add51b`；尚未创建发布标签、构建发布镜像或部署。
 - 迁移：官方新增 `246_enable_gemini_image_generation_groups.sql`，候选继续保留已发布的 `9000–9004` 定制迁移；官方与历史定制存在重复数字前缀，运行器按完整文件名排序，禁止重命名或改写已发布迁移，需在 Docker/PostgreSQL 演练中验证升级与回退。
 - 生产仍运行 `0.2.16-custom.16` / `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`；本轮没有构建镜像、创建发布标签或部署。实验性 `backend/internal/keyrouting/replay/` 未跟踪且不属于候选。
 
