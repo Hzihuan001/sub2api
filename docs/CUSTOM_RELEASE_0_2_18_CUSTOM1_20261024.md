@@ -1,7 +1,7 @@
 # v0.2.18-custom.1 合并验收记录
 
 日期：2026-10-24
-状态：代码已合并，后端回归通过；源码已推送，未打发布标签、未构建发布镜像、未部署
+状态：代码已合并，本地 Docker/数据库验收通过；源码已推送，未打发布标签、未构建发布镜像、未部署
 
 ## 版本与基线
 
@@ -11,7 +11,7 @@
 - 路由语义修复：`a688883f1bc09fbce2c38a7253be7e1577793678`
 - 流桥接/Gemini 推理计费修复：`305afd7f9`
 - 功能清单测试合同修复：`8b5726b0c`
-- 已推送 ref：`codex/v0.2.18-merge-20261023`、`custom/integration` → `7152136b21d7cbdff224e58f2d51f47582add51b`
+- 已推送 ref：`codex/v0.2.18-merge-20261023`、`custom/integration` → `77a0e620e7798d743f08557ab167f59d1f3236e9`
 - 候选版本：`0.2.18-custom.1`
 
 ## 合并处理
@@ -34,12 +34,23 @@
 - `git diff --check`
 - Docker Go 1.27.3：`go test ./internal/... -count=1 -timeout=900s` 全部通过；其中 service、handler、middleware、key-routing 和 repository 回归均通过。
 
-未执行：真实 PostgreSQL/Redis 集成、迁移回退演练及隔离 Docker Compose；这些仍是发布门槛，不应解释为生产数据库和三站联合验收已通过。
+## 隔离 Docker 与数据库验收
+
+- 构建镜像：`sub2api:0.2.18-custom.1-acceptance`，镜像 ID `sha256:7a3eaee680b7708628cd1f8565818d22e830b836676b35d099f640e3397b0dbc`；容器内版本输出为 `Sub2API 0.2.18-custom.1`。
+- Compose 项目：`moshu-reseller-acceptance-v018c1`；主站/L1/COS 分别使用 `18280/18281/18282`，独立 PostgreSQL 18、Redis 8 数据卷和网络，配置校验通过。
+- 三站最终状态：应用、PostgreSQL、Redis 均 healthy；三个 `/health` 均返回 HTTP 200 `{"status":"ok"}`；三套管理员登录均返回 HTTP 200；三套 Redis 均返回 `PONG`。
+- 迁移：三站 `schema_migrations` 各 329 条，最新定制迁移为 `9004_custom_key_route_site.sql`；官方 246 与定制 9000–9004 迁移保持原文件名，迁移并发锁、幂等性、定制 Key 路由/站点命名空间和批量生图不折扣迁移测试全部通过。
+- 持久化：重启三站应用后仍 healthy；主站合成管理员用户数量重启前后均为 1；重启后 45 秒内无新的错误、panic 或连接失败日志。
+- 启动观察：首次并行 `up` 时主站和 COS 各出现一次 PostgreSQL 就绪竞态并退出，依赖健康后重新启动即恢复；重启和最终健康检查均通过。该现象属于验收 Compose 首次启动时序，不是代码构建或迁移失败；生产发布前应按“依赖 healthy 后启动应用”的顺序执行。
+
+以上完成了本地 PostgreSQL/Redis/Compose 门禁；未做生产数据库回退和真实模型调用，不能解释为生产三站已升级。
 
 ## 迁移与回滚
 
 官方新增 `246_enable_gemini_image_generation_groups.sql`；已发布 `9000–9004` 定制迁移保持原名和原内容。官方和历史定制存在重复数字前缀，运行器按完整文件名排序，发布前必须在 PostgreSQL 环境确认升级、重启和回退，不得修改生产校验值。实验性未跟踪目录 `backend/internal/keyrouting/replay/` 不属于本候选。
 
+迁移为前向幂等结构变更，没有自动 down 迁移；旧镜像可以启动并忽略新增结构，但 `9000_custom_batch_image_no_discount.sql` 对历史批量折扣的归一化属于数据语义变更，回退旧镜像不会反向恢复旧折扣。生产回滚只能更换应用镜像并保留新增表/触发器，不能用旧备份覆盖上线后的业务数据库。
+
 ## 发布决定
 
-生产三站仍为 `0.2.16-custom.16`，镜像 digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`。本记录只说明代码合并，不代表镜像可上线。下一步：执行数据库/Redis/Compose 验收 → 构建并拉回不可变镜像复验 → 再由用户明确批准推送、打标签和部署。
+生产三站仍为 `0.2.16-custom.16`，镜像 digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`。本记录说明源码和本地候选验收已完成，但尚未构建发布镜像、打标签或部署。下一步：若批准发布，先构建并拉回不可变 GHCR 镜像复验，再按主站→L1→COS 顺序备份、发布和验收。
