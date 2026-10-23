@@ -129,6 +129,7 @@ func TestBuiltInFeatureManifestsAreStableAndValid(t *testing.T) {
 		FeatureBranding,
 		FeatureGatewayResilience,
 		FeatureImageStudio,
+		FeatureKeyRouting,
 		FeatureOperator,
 		FeaturePromptAudit,
 		FeatureUsageExtras,
