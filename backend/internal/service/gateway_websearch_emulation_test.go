@@ -5,7 +5,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -13,50 +12,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	"github.com/stretchr/testify/require"
 )
-
-func TestWriteSSEMessageStart_IncludesCacheUsageFields(t *testing.T) {
-	rec := httptest.NewRecorder()
-	err := writeSSEMessageStart(rec, "msg_test", "claude-sonnet-4-5", ClaudeUsage{
-		InputTokens:              10,
-		CacheCreationInputTokens: 7,
-		CacheReadInputTokens:     3,
-	})
-	require.NoError(t, err)
-
-	body := rec.Body.String()
-	require.Contains(t, body, `"input_tokens":10`)
-	require.Contains(t, body, `"cache_creation_input_tokens":7`)
-	require.Contains(t, body, `"cache_read_input_tokens":3`)
-}
-
-func TestBuildWebSearchClaudeUsage_UsesCacheEmulationUsage(t *testing.T) {
-	usage := buildWebSearchClaudeUsage(100, 5, &kiroCacheEmulationUsage{
-		InputTokens:                40,
-		CacheReadInputTokens:       20,
-		CacheCreationInputTokens:   40,
-		CacheCreation5mInputTokens: 40,
-	})
-	require.Equal(t, 40, usage.InputTokens)
-	require.Equal(t, 5, usage.OutputTokens)
-	require.Equal(t, 20, usage.CacheReadInputTokens)
-	require.Equal(t, 40, usage.CacheCreationInputTokens)
-	require.Equal(t, 40, usage.CacheCreation5mTokens)
-}
-
-func TestWriteSSEServerToolUse_UsesInputJSONDelta(t *testing.T) {
-	rec := httptest.NewRecorder()
-	err := writeSSEServerToolUse(rec, "srvtoolu_test", "golang concurrency", 0)
-	require.NoError(t, err)
-
-	body := rec.Body.String()
-	require.Contains(t, body, `event: content_block_start`)
-	require.Contains(t, body, `"type":"server_tool_use"`)
-	require.Contains(t, body, `"input":{}`)
-	require.Contains(t, body, `event: content_block_delta`)
-	require.Contains(t, body, `"type":"input_json_delta"`)
-	require.Contains(t, body, `"{\"query\":\"golang concurrency\"}"`)
-	require.Contains(t, body, `event: content_block_stop`)
-}
 
 // --- isOnlyWebSearchToolInBody ---
 
@@ -145,24 +100,6 @@ func TestExtractSearchQueryFromBody_ArrayContentNoTextBlock(t *testing.T) {
 	require.Equal(t, "", extractSearchQueryFromBody([]byte(body)))
 }
 
-func TestWebSearchQueryForParsedRequestPrefersOriginalQuery(t *testing.T) {
-	original := "client query"
-	parsed := &ParsedRequest{
-		Body:              NewRequestBodyRef([]byte(`{"messages":[{"role":"user","content":"client query\n\nrule content"}]}`)),
-		OriginalUserQuery: &original,
-	}
-	require.Equal(t, "client query", webSearchQueryForParsedRequest(parsed))
-}
-
-func TestWebSearchQueryForParsedRequestPreservesCapturedEmptyQuery(t *testing.T) {
-	original := ""
-	parsed := &ParsedRequest{
-		Body:              NewRequestBodyRef([]byte(`{"messages":[{"role":"user","content":"rule content"}]}`)),
-		OriginalUserQuery: &original,
-	}
-	require.Empty(t, webSearchQueryForParsedRequest(parsed))
-}
-
 // --- buildSearchResultBlocks ---
 
 func TestBuildSearchResultBlocks_WithResults(t *testing.T) {
@@ -174,12 +111,12 @@ func TestBuildSearchResultBlocks_WithResults(t *testing.T) {
 	require.Len(t, blocks, 2)
 	require.Equal(t, "web_search_result", blocks[0]["type"])
 	require.Equal(t, "https://a.com", blocks[0]["url"])
-	require.Equal(t, "snippet a", blocks[0]["encrypted_content"])
+	require.Equal(t, "snippet a", blocks[0]["page_content"])
 	require.Equal(t, "2 days", blocks[0]["page_age"])
 	// Second result has no PageAge
 	require.Equal(t, "https://b.com", blocks[1]["url"])
-	require.Equal(t, "snippet b", blocks[1]["encrypted_content"])
-	require.Nil(t, blocks[1]["page_age"])
+	_, hasPageAge := blocks[1]["page_age"]
+	require.False(t, hasPageAge)
 }
 
 func TestBuildSearchResultBlocks_Empty(t *testing.T) {
@@ -189,8 +126,8 @@ func TestBuildSearchResultBlocks_Empty(t *testing.T) {
 
 func TestBuildSearchResultBlocks_SnippetEmpty(t *testing.T) {
 	blocks := buildSearchResultBlocks([]websearch.SearchResult{{URL: "https://x.com", Title: "X", Snippet: ""}})
-	require.Equal(t, "", blocks[0]["encrypted_content"])
-	require.Nil(t, blocks[0]["page_age"])
+	_, hasContent := blocks[0]["page_content"]
+	require.False(t, hasContent)
 }
 
 // --- buildTextSummary ---
@@ -450,6 +387,91 @@ func TestShouldEmulateWebSearch_DefaultMode_NilChannelService(t *testing.T) {
 	require.False(t, svc.shouldEmulateWebSearch(context.Background(), account, &groupID, webSearchToolBody))
 }
 
+func TestShouldEmulateWebSearchFor_OpenAIAPIKeyAccountEnabled(t *testing.T) {
+	mgr := websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil)
+	SetWebSearchManager(mgr)
+	defer SetWebSearchManager(nil)
+
+	setGlobalWebSearchConfig(&WebSearchEmulationConfig{
+		Enabled:   true,
+		Providers: []WebSearchProviderConfig{{Type: "brave", APIKey: "k"}},
+	})
+	defer clearGlobalWebSearchConfig()
+
+	settingSvc := newSettingServiceForWebSearchTest(true)
+	account := &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{featureKeyWebSearchEmulation: WebSearchModeEnabled},
+	}
+	groupID := int64(0)
+	require.True(t, shouldEmulateWebSearchFor(context.Background(), settingSvc, nil, account, &groupID, webSearchToolBody))
+	require.False(t, shouldEmulateWebSearchFor(context.Background(), settingSvc, nil, account, &groupID, nonWebSearchToolBody))
+}
+
+// Exercise the shared interception gate, including channel inheritance.
+func TestShouldEmulateWebSearchFor_AccountChannelModes(t *testing.T) {
+	previousManager := getWebSearchManager()
+	previousConfig := webSearchEmulationCache.Load()
+	SetWebSearchManager(websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil))
+	t.Cleanup(func() {
+		SetWebSearchManager(previousManager)
+		if previousConfig == nil {
+			clearGlobalWebSearchConfig()
+		} else {
+			webSearchEmulationCache.Store(previousConfig)
+		}
+	})
+
+	settingSvc := newSettingServiceForWebSearchTest(true)
+	groupID := int64(42)
+	for _, platform := range []string{PlatformOpenAI, PlatformAnthropic} {
+		for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth, AccountTypeSetupToken} {
+			for _, mode := range []string{WebSearchModeDefault, WebSearchModeEnabled, WebSearchModeDisabled} {
+				for _, channelEnabled := range []bool{false, true} {
+					channelMode := "channel_off"
+					if channelEnabled {
+						channelMode = "channel_on"
+					}
+					t.Run(platform+"/"+accountType+"/"+mode+"/"+channelMode, func(t *testing.T) {
+						account := &Account{
+							Platform: platform, Type: accountType,
+							Extra: map[string]any{featureKeyWebSearchEmulation: mode},
+						}
+						channelSvc := newChannelServiceWithCache(groupID, &Channel{
+							ID: 10, Status: StatusActive,
+							FeaturesConfig: map[string]any{
+								featureKeyWebSearchEmulation: map[string]any{platform: channelEnabled},
+							},
+						})
+						want := channelEnabled
+						if accountType == AccountTypeAPIKey {
+							switch mode {
+							case WebSearchModeEnabled:
+								want = true
+							case WebSearchModeDisabled:
+								want = false
+							}
+						} else if platform == PlatformOpenAI {
+							want = false
+						}
+						for _, globalEnabled := range []bool{false, true} {
+							setGlobalWebSearchConfig(&WebSearchEmulationConfig{
+								Enabled:   globalEnabled,
+								Providers: []WebSearchProviderConfig{{Type: "brave", APIKey: "k"}},
+							})
+							require.Equal(t, globalEnabled && want, shouldEmulateWebSearchFor(
+								context.Background(), settingSvc, channelSvc, account, &groupID, webSearchToolBody),
+								"globalEnabled=%v", globalEnabled)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
 func TestShouldEmulateWebSearch_KiroChannelEnabled(t *testing.T) {
 	mgr := websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil)
 	SetWebSearchManager(mgr)
@@ -477,7 +499,7 @@ func TestShouldEmulateWebSearch_KiroChannelEnabled(t *testing.T) {
 	require.True(t, svc.shouldEmulateWebSearch(context.Background(), account, &groupID, webSearchToolBody))
 }
 
-func TestShouldEmulateWebSearch_KiroChannelDisabledFallsBack(t *testing.T) {
+func TestShouldEmulateWebSearch_KiroChannelDisabled(t *testing.T) {
 	mgr := websearch.NewManager([]websearch.ProviderConfig{{Type: "brave", APIKey: "k"}}, nil)
 	SetWebSearchManager(mgr)
 	defer SetWebSearchManager(nil)
@@ -517,7 +539,6 @@ func TestShouldEmulateWebSearch_KiroRequiresChannelConfig(t *testing.T) {
 
 	settingSvc := newSettingServiceForWebSearchTest(true)
 	svc := &GatewayService{settingService: settingSvc}
-
 	account := newKiroOAuthAccount()
 	require.False(t, svc.shouldEmulateWebSearch(context.Background(), account, nil, webSearchToolBody))
 }

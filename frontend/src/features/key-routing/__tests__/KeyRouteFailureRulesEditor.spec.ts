@@ -27,7 +27,9 @@ describe('KeyRouteFailureRulesEditor', () => {
   })
 
   it('describes inheritance from the actually selected group in both languages', () => {
-    for (const key of ['rulesHint', 'keyRulesInheritHint', 'keyRulesInheritedHint'] as const) {
+    expect(zh.rulesHint).toContain('实际处理请求所选分组')
+    expect(en.rulesHint).toContain('group selected for the request')
+    for (const key of ['keyRulesInheritHint', 'keyRulesInheritedHint'] as const) {
       expect(zh[key]).toContain('当前实际选中分组')
       expect(en[key]).toContain('group actually selected for the request')
     }
