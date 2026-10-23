@@ -31,6 +31,7 @@
 - 生产目标为已确认的 OVH `15.204.82.242`。部署前备份位于 `/opt/sub2api-backups/0.2.16-custom.16-20261023T091138Z`：三站 PostgreSQL custom dump/角色导出、Compose 与环境文件、应用数据归档、主站 1Panel PostgreSQL 配置及 OpenResty 实际挂载配置均已生成；`pg_restore --list`、tar 读取及 SHA256 校验通过。备份目录仅 root 可读写，含轮换前配置，属于敏感数据，勿外传。没有执行 live restore 演练。
 - 此前运行日志曾在工具输出中包含数据库凭据，因此部署前轮换了主站 PostgreSQL 管理角色及 L1/COS 数据库角色口令，并同步更新相应配置；不在本报告记录任何口令。PostgreSQL 服务按新配置重建并 healthy，L1/COS Redis 未重建，原数据库与应用数据目录保持。
 - 按主站 → L1 → COS 顺序，仅更新 Sub2API 应用镜像为同一个不可变 digest；没有改反代规则、端口、网络、Redis 或业务数据。为同步轮换后的连接配置，L1/COS PostgreSQL 容器亦使用原数据目录按原 Compose 重建。三站均报告版本 `0.2.16-custom.16`、发布提交 `fb02af3ece9ebf2cd54633bbfb6b839c6ba0051b`、镜像 `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`，容器 healthy / restart 0。
+- 按 Docker 容器 UTC 创建时间换算为北京时间：主站应用约 `17:24:38`，L1 应用 `17:26:03`，COS 应用 `17:26:13`；数据库口令轮换对应 PostgreSQL 重建分别约 `17:21:40`（主站）、`17:27:51`（L1）、`17:27:58`（COS）。L1/COS PostgreSQL 新容器使用原 bind data 目录，Redis 三站容器 ID 与启动时间均保持。
 - 公网 `ai.moshu.cloud`、`api.moshu.cloud`、`cos.moshu.cloud` 的 `/health`、`/keys`、`/image-studio`、`/docs/tools/codex` 均返回 200，匿名管理 API 返回 401。部署后数据库活动查询为 0；最近 15 分钟关键启动错误匹配为 0。迁移与 `.14` 完全一致：主站 `328` 条、最大 `9004_custom_key_route_site.sql`、指纹 `631b9a14b22231de548f93b4e1e5a506`；L1/COS 各 `337` 条、最大迁移相同、指纹 `85f0448525583d4cff64f88d982936c0`。无 schema 迁移。
 - 未执行付费模型调用、生产故障注入、登录后的 UI 矩阵或长时间观察；生产基础健康通过不等于全部供应商、端点及并发容量均已验收。
 
