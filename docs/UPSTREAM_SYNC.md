@@ -2,15 +2,15 @@
 
 本仓库把官方主线、长期定制集成分支和临时升级分支分开。预期流程是每次官方发布后，先由同步工作流生成升级分支、冲突报告和测试结果，再由人工确认定制功能边界；同步工作流不负责构建、部署或修改生产环境。
 
-## 最新状态（2026-10-24）：v0.2.18 已合并，本地三站 Docker/数据库验收通过，尚未发布
+## 最新状态（2026-10-24）：v0.2.18 已合并并发布镜像，生产未部署
 
 - 官方 `v0.2.18` 为 `ac1b8f1271be0d674fa6f074403c1410f30a3a81`；`upstream/main` 仅把版本文件推进到 `5c185c5c5`，候选以正式 tag 内容为准并明确设置版本 `0.2.18-custom.1`。
 - 合并基线为 `custom.16` 生产同步提交 `4356fafb7707ab0334338a56ef4ff02e004164db`。候选合并提交 `885edb605702a4af52b0bb8ac0060b58698c872d`，路由选择语义补丁 `a688883f1bc09fbce2c38a7253be7e1577793678`。实际三方 merge 探针发现 Chat/Responses、网关转发、定价、管理页和迁移等 16 组语义冲突，均人工处理；不能把本次合并视为自动无冲突升级。
 - 合并修复提交 `305afd7f9` 修复了 Chat/Responses 流桥接、Kiro 错误传递和 Gemini Chat 推理档位计费记录；`8b5726b0c` 补齐 `key-routing` 内建功能清单测试。上述修复已纳入候选，实验性 `backend/internal/keyrouting/replay/` 仍排除。
 - 已复核定制功能：角色与菜单、审计、生图工作台、错误/响应标记、Key 多分组优先级与账号级故障切换、请求级计费/价格快照、管理员完整 Key 编辑。特别恢复了 Chat/Responses 的 `keyAccount*`、prompt injection、分组上下文、`tryKeyRouteSelectionUnavailable` 和 `keyAccountForwardContext` 接线，避免官方文件覆盖定制路由。
-- 已通过：前端 key-routing 94 项、typecheck、build；Docker Go 1.27.3 中 `go test ./internal/... -count=1` 全部通过；custom isolation、architecture-negative 34/34、custom contracts 18/18、upstream sync 5/5、workflow 11/11。候选镜像 `sha256:7a3eaee680b7708628cd1f8565818d22e830b836676b35d099f640e3397b0dbc` 在隔离 Compose 项目 `moshu-reseller-acceptance-v018c1` 的主站/L1/COS（18280/18281/18282）均 healthy，/health、管理员登录、Redis、重启持久化通过；每站 329 条迁移，最新 9004。迁移锁、幂等及定制 Key 路由测试通过。迁移回退演练尚未执行，因此仍不能直接发布。
+- 已通过：前端 key-routing 94 项、typecheck、build；Docker Go 1.27.3 中 `go test ./internal/... -count=1` 全部通过；custom isolation、architecture-negative 34/34、custom contracts 18/18、upstream sync 5/5、workflow 11/11。候选镜像 `sha256:7a3eaee680b7708628cd1f8565818d22e830b836676b35d099f640e3397b0dbc` 在隔离 Compose 项目 `moshu-reseller-acceptance-v018c1` 的主站/L1/COS（18280/18281/18282）均 healthy，/health、管理员登录、Redis、重启持久化通过；每站 329 条迁移，最新 9004。迁移锁、幂等及定制 Key 路由测试通过。迁移回退演练尚未执行。
 - 官方新迁移 `246_enable_gemini_image_generation_groups.sql` 已保留；`9000–9004` 定制迁移不改不删。重复数字前缀按完整文件名排序，必须通过 PostgreSQL 升级/回退演练后才能发布。实验性 `backend/internal/keyrouting/replay/` 明确排除。
-- 生产不变：三站继续运行 `0.2.16-custom.16`。候选源码已推送到 `codex/v0.2.18-merge-20261023` 与 `custom/integration`，共同指向 `77a0e620e7798d743f08557ab167f59d1f3236e9`；本轮仅构建并验收本地候选镜像，尚未创建发布 tag 或部署。下一步是用户批准后构建并拉回不可变发布镜像，随后按发布手册执行生产流程。
+- 生产不变：三站继续运行 `0.2.16-custom.16`。源码分支 `codex/v0.2.18-merge-20261023` 与 `custom/integration` 共同指向 `fc0d798bf2d6a08a074970d0485c567291e02660`，发布标签为 `custom-0.2.18.1`；GHCR 不可变镜像为 `ghcr.io/hzihuan001/sub2api@sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，已完成本地回拉验证。尚未部署；生产发布前仍需核对实时版本、Compose/1Panel 路径、备份和可用 SSH 目标，不能猜测历史地址。
 
 ## 最新状态（2026-10-23）：custom.16 已完成三站生产部署
 

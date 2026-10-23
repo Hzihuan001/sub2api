@@ -1,5 +1,13 @@
 # Sub2API custom release runbook
 
+## Current candidate: custom-0.2.18.1 (2026-10-24; published, production not deployed)
+
+- Source branch: `codex/v0.2.18-merge-20261023`; source and integration refs point to `fc0d798bf2d6a08a074970d0485c567291e02660`.
+- Source version: `0.2.18-custom.1`; immutable source tag: `custom-0.2.18.1`.
+- Published image: `ghcr.io/hzihuan001/sub2api:0.2.18-custom.1`; immutable deployment reference: `ghcr.io/hzihuan001/sub2api@sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`.
+- The image was built from the root `Dockerfile`, pulled back by digest, and checked for embedded version/commit, `linux/amd64` architecture, `pg_dump`, and `psql`. The local three-site PostgreSQL/Redis Compose gate and restart persistence checks passed. Migration rollback remains forward-only: the old image must not overwrite the new database, and historical batch-discount normalization is not reversed by an application rollback.
+- **Production is not deployed.** This workstation has no resolvable production SSH alias/configuration, and the older runbook sections and release records disagree about the live `.14`/`.16` state. Before any production mutation, obtain a valid target/connection and perform a read-only live preflight to establish the actual version, Compose/1Panel owner, service names, active requests, migration ledger, backups and rollback compatibility. Do not guess historical OVH addresses or Compose paths.
+
 ## Current candidate: custom.16 (2026-10-23; GHCR published, production deployment blocked)
 
 This candidate supersedes `.14` only after the approved main → L1 → COS production rollout. The exact immutable GHCR image passed local pull-back and operator-container smoke acceptance. Until production rollout, all three sites remain documented at `.14`.
