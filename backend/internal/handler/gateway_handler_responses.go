@@ -204,7 +204,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			if len(fs.FailedAccountIDs) == 0 && tryKeyRouteSelectionUnavailable(c, err) {
 				return
 			}
-			if len(fs.FailedAccountIDs) == 0 {
+			if len(fs.FailedAccountIDs) == 0 || (keyRoutingRequestActive(c.Request.Context()) && !errors.Is(err, service.ErrNoAvailableAccounts)) {
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, effectiveAPIKeyPlatform(c, apiKey))
 				cls = classifySelectionFailureError(err, cls)
 				if !cls.ModelNotFound {
@@ -228,7 +228,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				if fs.LastFailoverErr != nil {
 					h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 				} else {
-					if tryKeyRouteUnavailable(c) {
+					if tryKeyRouteSelectionUnavailable(c, err) {
 						return
 					}
 					h.responsesErrorResponse(c, http.StatusBadGateway, "server_error", "All available accounts exhausted")
