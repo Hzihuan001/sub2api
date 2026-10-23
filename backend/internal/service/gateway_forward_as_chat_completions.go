@@ -560,7 +560,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		return resultWithUsage(), nil
 	}
 
-	if result, err := keyAccountKiroNativeResult(resp, resultWithUsage(), scanner.Err(), originalModel, mappedModel, true, startTime); err != nil && hasKeyAccountKiroProtocol(resp) {
+	if result, err := keyAccountKiroNativeResult(resp, resultWithUsage(), stream.readErr, originalModel, mappedModel, true, startTime); err != nil && hasKeyAccountKiroProtocol(resp) {
 		return result, err
 	}
 	// Finalize both state machines

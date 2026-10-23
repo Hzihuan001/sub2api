@@ -210,12 +210,11 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		c.Header("x-request-id", requestID)
 	}
 
-	// Chat Completions → Gemini conversion does not forward OpenAI's
-	// reasoning_effort field (the generated Gemini request has no
-	// thinkingConfig). Do not bill or expose an effort that the upstream never
-	// received; native Gemini requests derive it from their actual
-	// generationConfig instead.
-	var reasoningEffort *string
+	// Record the effort represented by the actual Gemini request.  The
+	// compatibility bridge maps Chat Completions' reasoning_effort into
+	// generationConfig.thinkingConfig; deriving the billing value from that
+	// payload keeps usage accounting aligned with what Gemini received.
+	reasoningEffort := extractGeminiReasoningEffortFromBody(geminiReq)
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
