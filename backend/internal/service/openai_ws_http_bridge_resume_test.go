@@ -18,7 +18,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestBuildOpenAIWSCurrentTurnRetryPayloadRejectsOrphanToolOutput(t *testing.T) {
+func TestBuildOpenAIWSCurrentTurnRetryPayloadPreservesAvailableOrphanToolOutput(t *testing.T) {
 	payload := []byte(`{"type":"response.create","model":"mapped-model","previous_response_id":"resp_old"}`)
 	fullInput := []json.RawMessage{
 		json.RawMessage(`{"type":"function_call_output","call_id":"missing_call","output":"done"}`),
@@ -27,8 +27,22 @@ func TestBuildOpenAIWSCurrentTurnRetryPayloadRejectsOrphanToolOutput(t *testing.
 	retryPayload, retrySafe, err := buildOpenAIWSCurrentTurnRetryPayload(payload, fullInput, true, "gpt-5.6-sol")
 
 	require.NoError(t, err)
-	require.False(t, retrySafe)
-	require.Nil(t, retryPayload)
+	require.True(t, retrySafe)
+	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(retryPayload, "model").String())
+	require.False(t, gjson.GetBytes(retryPayload, "previous_response_id").Exists())
+	require.Equal(t, "function_call_output", gjson.GetBytes(retryPayload, "input.0.type").String())
+	require.Equal(t, "done", gjson.GetBytes(retryPayload, "input.0.output").String())
+}
+
+func TestBuildOpenAIWSCurrentTurnRetryPayloadWithoutReplayHistoryKeepsCurrentInput(t *testing.T) {
+	payload := []byte(`{"type":"response.create","model":"mapped-model","previous_response_id":"resp_old","input":[{"role":"user","content":"keep this turn"}]}`)
+
+	retryPayload, retrySafe, err := buildOpenAIWSCurrentTurnRetryPayload(payload, nil, false, "gpt-5.6-sol")
+
+	require.NoError(t, err)
+	require.True(t, retrySafe)
+	require.False(t, gjson.GetBytes(retryPayload, "previous_response_id").Exists())
+	require.Equal(t, "keep this turn", gjson.GetBytes(retryPayload, "input.0.content").String())
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnLaterTurn429FailsOverBeforeClientWrite(t *testing.T) {

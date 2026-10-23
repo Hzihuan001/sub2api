@@ -64,17 +64,41 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 	}
 	previousResponseID, hasPreviousResponseID, validPreviousResponseID := keyRoutingPreviousResponseID(body)
 	if !validPreviousResponseID {
-		AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_INVALID_REQUEST", "previous_response_id must be a non-empty string")
-		return nil, false
+		// An unusable provider reference is not a reason for the relay to reject
+		// the user's turn. Remove the opaque pointer and keep the request content.
+		var stripErr error
+		body, stripErr = keyRoutingDropStoredResponseReferences(body)
+		if stripErr == nil {
+			requestmodel.ResetRequestBody(c.Request, body)
+			slog.WarnContext(c.Request.Context(), "key_route_invalid_response_reference_using_current_input", "api_key_id", key.ID)
+			hasPreviousResponseID = false
+			previousResponseID = ""
+		} else {
+			slog.WarnContext(c.Request.Context(), "key_route_response_reference_strip_failed_using_primary", "api_key_id", key.ID, "error", stripErr)
+			return key, true
+		}
 	}
 	if hasPreviousResponseID && endpoint != service.CompositeRouteEndpointResponses {
-		AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_STATEFUL_UNSUPPORTED", "Stored response references are supported only on the Responses API")
-		return nil, false
+		// Do not impose an endpoint restriction at the relay. A reference from
+		// another protocol cannot safely cross credentials, so retry only the
+		// content explicitly present in this request.
+		var stripErr error
+		body, stripErr = keyRoutingDropStoredResponseReferences(body)
+		if stripErr == nil {
+			requestmodel.ResetRequestBody(c.Request, body)
+			previousResponseID = ""
+			hasPreviousResponseID = false
+			slog.WarnContext(c.Request.Context(), "key_route_non_responses_reference_using_current_input", "api_key_id", key.ID, "endpoint", endpoint)
+		} else {
+			slog.WarnContext(c.Request.Context(), "key_route_non_responses_reference_strip_failed_using_primary", "api_key_id", key.ID, "endpoint", endpoint, "error", stripErr)
+			return key, true
+		}
 	}
-	if keyRoutingHasBoundStateExceptPreviousResponse(body, hasPreviousResponseID) || c.GetHeader("x-codex-turn-state") != "" {
-		AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_STATEFUL_UNSUPPORTED", "Multi-group keys currently require stateless text requests; use a single-group key for stored response or conversation references")
-		return nil, false
-	}
+	// Stateful references are deliberately preserved and dispatched, rather
+	// than rejected here. Responses references are pinned to their source when
+	// known; if that account cannot serve the request, the gateway first tries
+	// history recovery, then removes only unavailable provider-owned pointers
+	// before routing the current request content through another account/group.
 	// This branch has already established that the body is JSON. A forged
 	// multipart Content-Type must not suppress duplicate/case-folded candidates.
 	models := requestmodel.FromBodyCandidates(c.FullPath(), "application/json", body)
@@ -89,26 +113,11 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 			return nil, false
 		}
 	}
-	// Native remote compaction, media and provider-executed tools have an
-	// independent lifecycle. A provider may execute a tool before emitting any
-	// visible content, so these requests must never be replayed to a backup.
-	primaryOnlyIntent := service.IsExplicitImageGenerationIntent(c.Request.URL.Path, model.String(), body) || keyRoutingHasPrimaryOnlyIntent(body)
-	if hasPreviousResponseID && primaryOnlyIntent {
-		AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_STATEFUL_UNSUPPORTED", "Stored response references cannot be combined with image generation or provider-managed tools on a multi-group key")
-		return nil, false
-	}
-	if primaryOnlyIntent {
-		return key, true
-	}
 	if selector == nil {
 		AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_UNAVAILABLE", "Multi-group routing is unavailable")
 		return nil, false
 	}
 	if key.KeyRouteScope == service.KeyRouteScopeAccountV2 {
-		if hasPreviousResponseID {
-			AbortWithError(c, http.StatusBadRequest, "KEY_ROUTE_STATEFUL_UNSUPPORTED", "Stored response references are not supported with account-scoped multi-group routing")
-			return nil, false
-		}
 		preparer, ok := selector.(interface {
 			PrepareAccountRouteContext(context.Context, *service.APIKey, service.KeyRoutingRequest) (context.Context, error)
 		})
@@ -132,27 +141,53 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 	if hasPreviousResponseID {
 		sourceSelector, supported := selector.(apiKeyHTTPResponseSourceSelector)
 		if !supported {
-			AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_RESPONSE_SOURCE_UNAVAILABLE", "Unable to resolve the stored response source; retry later")
-			return nil, false
-		}
-		effective, sourceAccountID, err = sourceSelector.SelectHTTPResponseSource(c.Request.Context(), key, routingRequest, previousResponseID)
-		if err != nil {
-			if errors.Is(err, service.ErrOpenAIHTTPResponseSourceUnavailable) {
-				AbortWithError(c, http.StatusConflict, "KEY_ROUTE_RESPONSE_SOURCE_UNAVAILABLE", "Stored response source is unavailable for this key")
-			} else {
-				slog.WarnContext(c.Request.Context(), "key_route_response_source_lookup_failed", "api_key_id", key.ID, "error", err)
-				AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_RESPONSE_SOURCE_LOOKUP_FAILED", "Unable to resolve the stored response source; retry later")
+			// The referenced server-side state cannot be trusted or retrieved, so
+			// never forward the opaque ID to another credential. Drop only that
+			// provider-owned pointer and route the content actually present in this
+			// request through the normal group selector.
+			body, err = keyRoutingDropStoredResponseReferences(body)
+			if err != nil {
+				slog.WarnContext(c.Request.Context(), "key_route_response_reference_strip_failed_using_primary", "api_key_id", key.ID, "error", err)
+				return key, true
 			}
-			return nil, false
-		}
-		if hasPreviousResponseID {
-			if sourceAccountID <= 0 || effective == nil || effective.GroupID == nil || effective.Group == nil {
-				AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_RESPONSE_SOURCE_UNAVAILABLE", "Stored response source is unavailable for this key")
-				return nil, false
+			requestmodel.ResetRequestBody(c.Request, body)
+			hasPreviousResponseID = false
+			previousResponseID = ""
+			slog.WarnContext(c.Request.Context(), "key_route_response_source_unavailable_using_current_input", "api_key_id", key.ID)
+		} else {
+			effective, sourceAccountID, err = sourceSelector.SelectHTTPResponseSource(c.Request.Context(), key, routingRequest, previousResponseID)
+			if err != nil {
+				// A missing/expired owner mapping and a lookup failure both mean the
+				// gateway cannot safely fetch that state. Since it will strip the ID,
+				// falling back to the current request input cannot expose the foreign
+				// response; it only avoids failing a request that already carries its
+				// own user content.
+				slog.WarnContext(c.Request.Context(), "key_route_response_source_unavailable_using_current_input", "api_key_id", key.ID, "error", err)
+				body, err = keyRoutingDropStoredResponseReferences(body)
+				if err != nil {
+					slog.WarnContext(c.Request.Context(), "key_route_response_reference_strip_failed_using_primary", "api_key_id", key.ID, "error", err)
+					return key, true
+				}
+				requestmodel.ResetRequestBody(c.Request, body)
+				hasPreviousResponseID = false
+				previousResponseID = ""
+			} else if sourceAccountID <= 0 || effective == nil || effective.GroupID == nil || effective.Group == nil {
+				body, err = keyRoutingDropStoredResponseReferences(body)
+				if err != nil {
+					slog.WarnContext(c.Request.Context(), "key_route_response_reference_strip_failed_using_primary", "api_key_id", key.ID, "error", err)
+					return key, true
+				}
+				requestmodel.ResetRequestBody(c.Request, body)
+				effective = nil
+				hasPreviousResponseID = false
+				previousResponseID = ""
 			}
-			plan.SelectedGroupID = *effective.GroupID
+			if hasPreviousResponseID {
+				plan.SelectedGroupID = *effective.GroupID
+			}
 		}
-	} else {
+	}
+	if !hasPreviousResponseID {
 		effective, plan, err = selector.Select(c.Request.Context(), key, routingRequest)
 	}
 	if err != nil {
@@ -184,11 +219,15 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 	}
 	routingCtx := c.Request.Context()
 	if hasPreviousResponseID {
-		// A stored Responses ID is bound to the group/account that created it.
-		// Do not install group dispatch here: a retry on another group/account
-		// would submit provider state outside its ownership scope.
+		// A stored Responses ID starts pinned to its source, but can be routed
+		// through the normal bounded failover path if that account is unavailable.
+		// Preserve the verified owner group separately so a backup-group retry
+		// does not validate the ID against the backup's local ownership map.
+		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingActive, true)
+		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingPrimaryGroupID, *effective.GroupID)
 		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingResponseSourceGroupID, *effective.GroupID)
 		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingResponseSourceAccountID, sourceAccountID)
+		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingResponseOwnerGroupID, *effective.GroupID)
 	} else {
 		routingCtx = context.WithValue(routingCtx, ctxkey.KeyRoutingActive, true)
 		if primaryGroupID > 0 {
@@ -213,6 +252,12 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 	c.Set("custom.key_route_root_key", &rootSnapshot)
 	c.Set("custom.key_route", plan)
 	if key.GroupID != nil && *effective.GroupID != *key.GroupID {
+		if !hasPreviousResponseID && c.Request.Header != nil {
+			// This opaque Codex state is minted by an upstream identity. When the
+			// request is routed by model to another group, do not send that state to
+			// the unrelated account; the current request content remains intact.
+			c.Request.Header.Del("X-Codex-Turn-State")
+		}
 		slog.InfoContext(c.Request.Context(), "key_route_selected", "api_key_id", key.ID, "primary_group_id", *key.GroupID, "selected_group_id", *effective.GroupID, "reason", plan.Reason)
 	}
 	SetOpsFallbackAPIKey(c, effective)
@@ -233,124 +278,6 @@ func keyRoutingTextEndpoint(method, path string) string {
 	default:
 		return ""
 	}
-}
-
-// Protocol keys can bind case-insensitively in downstream JSON structs. Inspect
-// only protocol-owned positions so function schemas and user content remain
-// ordinary text, even when they describe image or context-management fields.
-func keyRoutingHasPrimaryOnlyIntent(body []byte) bool {
-	primaryOnly := false
-	gjson.ParseBytes(body).ForEach(func(field, value gjson.Result) bool {
-		switch {
-		case strings.EqualFold(field.String(), "context_management"):
-			primaryOnly = true
-		case strings.EqualFold(field.String(), "input"):
-			if value.IsArray() {
-				value.ForEach(func(_, item gjson.Result) bool {
-					if item.IsObject() {
-						item.ForEach(func(name, kind gjson.Result) bool {
-							primaryOnly = strings.EqualFold(name.String(), "type") && kind.Type == gjson.String && kind.String() == "compaction_trigger"
-							return !primaryOnly
-						})
-					}
-					return !primaryOnly
-				})
-			}
-		case strings.EqualFold(field.String(), "web_search_options"), strings.EqualFold(field.String(), "mcp_servers"):
-			// Chat search and the Anthropic MCP connector can enable provider
-			// execution outside the tools array.
-			primaryOnly = value.Type != gjson.Null
-		case strings.EqualFold(field.String(), "tools"):
-			if value.IsArray() {
-				value.ForEach(func(_, tool gjson.Result) bool {
-					primaryOnly = keyRoutingToolRequiresPrimary(tool)
-					return !primaryOnly
-				})
-			} else {
-				primaryOnly = value.Type != gjson.Null
-			}
-		case strings.EqualFold(field.String(), "tool_choice"):
-			primaryOnly = keyRoutingToolChoiceRequiresPrimary(value)
-		}
-		return !primaryOnly
-	})
-	return primaryOnly
-}
-
-// Only client-executed tool declarations are replay-safe. Unknown future
-// provider tool types fail closed, without needing a constantly growing list
-// of web_search, code_interpreter, computer, MCP, image and other built-ins.
-// Never inspect a function's schema or arguments for tool-like field names.
-func keyRoutingToolRequiresPrimary(tool gjson.Result) bool {
-	if !tool.IsObject() {
-		return true
-	}
-	toolType, hasType := keyRoutingToolType(tool)
-	if hasType {
-		return toolType != "function" && toolType != "custom"
-	}
-	// Anthropic custom tools omit type and use name + input_schema. Restrict
-	// this exception to the known declaration shape; unknown wrappers could
-	// describe a provider-executed tool and must stay on the primary group.
-	hasName, hasSchema, unknownField := false, false, false
-	tool.ForEach(func(field, value gjson.Result) bool {
-		switch strings.ToLower(field.String()) {
-		case "name":
-			hasName = value.Type == gjson.String && strings.TrimSpace(value.String()) != ""
-		case "input_schema":
-			hasSchema = value.IsObject()
-		case "description", "cache_control", "strict", "defer_loading", "input_examples", "eager_input_streaming":
-		default:
-			unknownField = true
-		}
-		return !unknownField
-	})
-	return !hasName || !hasSchema || unknownField
-}
-
-func keyRoutingToolChoiceRequiresPrimary(choice gjson.Result) bool {
-	if choice.Type == gjson.Null {
-		return false
-	}
-	if choice.Type == gjson.String {
-		switch strings.TrimSpace(choice.String()) {
-		case "auto", "none", "required":
-			return false
-		default:
-			return true
-		}
-	}
-	if !choice.IsObject() {
-		return true
-	}
-	toolType, hasType := keyRoutingToolType(choice)
-	if !hasType {
-		return true
-	}
-	switch toolType {
-	case "function", "custom", "auto", "any", "none", "tool":
-		return false
-	default:
-		return true
-	}
-}
-
-func keyRoutingToolType(tool gjson.Result) (toolType string, hasType bool) {
-	tool.ForEach(func(field, value gjson.Result) bool {
-		if strings.EqualFold(field.String(), "type") {
-			hasType = true
-			if value.Type == gjson.String {
-				toolType = strings.TrimSpace(value.String())
-			}
-			return false
-		}
-		return true
-	})
-	return toolType, hasType
-}
-
-func keyRoutingHasBoundState(body []byte) bool {
-	return keyRoutingHasBoundStateExceptPreviousResponse(body, false)
 }
 
 func keyRoutingPreviousResponseID(body []byte) (responseID string, present bool, valid bool) {
@@ -374,90 +301,10 @@ func keyRoutingPreviousResponseID(body []byte) (responseID string, present bool,
 	return responseID, present, valid
 }
 
-func keyRoutingHasBoundStateExceptPreviousResponse(body []byte, ignorePreviousResponse bool) bool {
-	bound := false
-	gjson.ParseBytes(body).ForEach(func(k, v gjson.Result) bool {
-		switch strings.ToLower(k.String()) {
-		case "previous_response_id":
-			bound = !ignorePreviousResponse && v.Type != gjson.Null && v.Raw != `""`
-		case "conversation":
-			bound = v.Type != gjson.Null && v.Raw != `""`
-		case "background":
-			bound = v.Type != gjson.Null && v.Type != gjson.False
-		case "input", "messages":
-			v.ForEach(func(_, item gjson.Result) bool {
-				item.ForEach(func(field, value gjson.Result) bool {
-					if strings.EqualFold(field.String(), "type") && value.String() == "item_reference" {
-						bound = true
-					}
-					if strings.EqualFold(field.String(), "file_id") && keyRoutingReferencePresent(value) {
-						bound = true
-					}
-					if strings.EqualFold(field.String(), "content") {
-						bound = bound || keyRoutingContentHasFileReference(value)
-					}
-					return !bound
-				})
-				return !bound
-			})
-		case "tools":
-			v.ForEach(func(_, item gjson.Result) bool {
-				item.ForEach(func(field, value gjson.Result) bool {
-					switch strings.ToLower(field.String()) {
-					case "vector_store_ids":
-						bound = len(value.Array()) > 0
-					case "container":
-						bound = value.Type == gjson.String && value.String() != "auto" && value.String() != ""
-						if value.IsObject() {
-							value.ForEach(func(k, v gjson.Result) bool {
-								if strings.EqualFold(k.String(), "file_ids") && len(v.Array()) > 0 {
-									bound = true
-								}
-								return !bound
-							})
-						}
-					}
-					return !bound
-				})
-				return !bound
-			})
-		}
-		return !bound
-	})
-	return bound
-}
-
-func keyRoutingReferencePresent(value gjson.Result) bool {
-	return value.Type != gjson.Null && value.Raw != `""`
-}
-
-// Only protocol content blocks are inspected, not user text, JSON tool
-// arguments or function schemas that happen to describe a file_id property.
-func keyRoutingContentHasFileReference(content gjson.Result) bool {
-	bound := false
-	if !content.IsArray() && !content.IsObject() {
-		return false
-	}
-	inspect := func(block gjson.Result) {
-		block.ForEach(func(field, value gjson.Result) bool {
-			if strings.EqualFold(field.String(), "file_id") && keyRoutingReferencePresent(value) {
-				bound = true
-			}
-			if strings.EqualFold(field.String(), "file") && value.IsObject() {
-				value.ForEach(func(k, v gjson.Result) bool {
-					if strings.EqualFold(k.String(), "file_id") && keyRoutingReferencePresent(v) {
-						bound = true
-					}
-					return !bound
-				})
-			}
-			return !bound
-		})
-	}
-	if content.IsObject() {
-		inspect(content)
-	} else {
-		content.ForEach(func(_, block gjson.Result) bool { inspect(block); return !bound })
-	}
-	return bound
+// keyRoutingDropStoredResponseReferences removes only provider-owned
+// continuation pointers. It deliberately preserves the current request input,
+// instructions, tools, and all other user-supplied content for a stateless
+// retry when the referenced server-side history cannot be retrieved.
+func keyRoutingDropStoredResponseReferences(body []byte) ([]byte, error) {
+	return service.RemoveOpenAIStoredResponseReferencesFromBody(body)
 }

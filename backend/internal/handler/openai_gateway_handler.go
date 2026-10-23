@@ -523,9 +523,36 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
+	selectionPreviousResponseID := previousResponseID
 	responseSourceGroupID, _ := c.Request.Context().Value(ctxkey.KeyRoutingResponseSourceGroupID).(int64)
 	responseSourceAccountID, _ := c.Request.Context().Value(ctxkey.KeyRoutingResponseSourceAccountID).(int64)
+	verifiedResponseSourceGroupID := responseSourceGroupID
+	verifiedResponseSourceAccountID := responseSourceAccountID
+	responseOwnerGroupID, _ := c.Request.Context().Value(ctxkey.KeyRoutingResponseOwnerGroupID).(int64)
 	pinnedResponseSource := responseSourceGroupID > 0 || responseSourceAccountID > 0
+	dropUnavailableResponseReference := func(reason string) bool {
+		fallbackGroupID := responseSourceGroupID
+		if fallbackGroupID <= 0 && apiKey.GroupID != nil {
+			fallbackGroupID = *apiKey.GroupID
+		}
+		updated, stripErr := dropOpenAIStoredResponseForFallback(c, body, fallbackGroupID)
+		if stripErr != nil {
+			reqLog.Warn("openai.response_reference_strip_failed", zap.String("reason", reason), zap.Error(stripErr))
+			return false
+		}
+		body = updated
+		sessionHashBody = updated
+		previousResponseID = ""
+		selectionPreviousResponseID = ""
+		responseSourceGroupID = 0
+		responseSourceAccountID = 0
+		verifiedResponseSourceGroupID = 0
+		verifiedResponseSourceAccountID = 0
+		responseOwnerGroupID = 0
+		pinnedResponseSource = false
+		reqLog.Warn("openai.response_reference_dropped_using_current_input", zap.String("reason", reason), zap.Int64("fallback_group_id", fallbackGroupID))
+		return true
+	}
 	if pinnedResponseSource {
 		keyGroupID := int64(0)
 		if apiKey.GroupID != nil {
@@ -537,50 +564,60 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int64("source_group_id", responseSourceGroupID),
 				zap.Int64("source_account_id", responseSourceAccountID),
 			)
-			h.errorResponse(c, http.StatusConflict, "invalid_request_error", "Stored response source is unavailable for this key")
-			return
+			if !dropUnavailableResponseReference("source_pin_unavailable") {
+				// Keep the verified source pin. If the opaque reference cannot be
+				// removed, do not allow a different credential to receive it.
+			}
 		}
 	}
 	if previousResponseID != "" {
-		previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 		reqLog = reqLog.With(
 			zap.Bool("has_previous_response_id", true),
-			zap.String("previous_response_id_kind", previousResponseIDKind),
+			zap.String("previous_response_id_kind", service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)),
 			zap.Int("previous_response_id_len", len(previousResponseID)),
 		)
-		if previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
-			reqLog.Warn("openai.request_validation_failed",
-				zap.String("reason", "previous_response_id_looks_like_message_id"),
-			)
-			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*), not a message id")
-			return
-		}
+		// Opaque provider identifiers are not format-gated by the relay. If the
+		// source cannot be verified below, we drop only that pointer and keep the
+		// request's current message content for ordinary routing.
 		groupID := int64(0)
 		if apiKey.GroupID != nil {
 			groupID = *apiKey.GroupID
+		}
+		if responseOwnerGroupID > 0 {
+			// A verified response may now be retried through a backup group. Its
+			// ownership remains scoped to the group that created it.
+			groupID = responseOwnerGroupID
+			if apiKey.GroupID != nil && *apiKey.GroupID != responseOwnerGroupID {
+				selectionPreviousResponseID = ""
+			}
 		}
 		if pinnedResponseSource && groupID != responseSourceGroupID {
 			reqLog.Warn("openai.response_source_group_mismatch",
 				zap.Int64("key_group_id", groupID),
 				zap.Int64("source_group_id", responseSourceGroupID),
 			)
-			h.errorResponse(c, http.StatusConflict, "invalid_request_error", "Stored response source is unavailable for this key")
-			return
+			if !dropUnavailableResponseReference("source_group_mismatch") {
+				// Keep the source pin on rewrite failure; never move an opaque
+				// provider reference across credentials.
+			}
 		}
-		owned, ownershipErr := h.gatewayService.ValidateOpenAIHTTPResponseOwner(
-			c.Request.Context(),
-			groupID,
-			previousResponseID,
-			subject.UserID,
-			apiKey.ID,
-		)
-		if ownershipErr != nil {
-			reqLog.Warn("openai.previous_response_owner_lookup_failed", zap.Error(ownershipErr))
-		}
-		if !owned {
-			reqLog.Warn("openai.request_validation_failed", zap.String("reason", "previous_response_owner_mismatch"))
-			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is not available for this user")
-			return
+		if previousResponseID != "" {
+			owned, ownershipErr := h.gatewayService.ValidateOpenAIHTTPResponseOwner(
+				c.Request.Context(),
+				groupID,
+				previousResponseID,
+				subject.UserID,
+				apiKey.ID,
+			)
+			if ownershipErr != nil {
+				reqLog.Warn("openai.previous_response_owner_lookup_failed", zap.Error(ownershipErr))
+			}
+			if !owned {
+				if !dropUnavailableResponseReference("source_history_unavailable") {
+					// Keep the source pin on rewrite failure; never move an opaque
+					// provider reference across credentials.
+				}
+			}
 		}
 	}
 	service.SetOpenAIHTTPResponseOwner(c, subject.UserID, apiKey.ID)
@@ -625,11 +662,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		forwardModel,
 		legacyCompact,
 	))
-
-	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
-	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
-		return
-	}
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
@@ -697,6 +729,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	lastFailoverErr := retryState.Failover.LastFailoverErr
 	oauth429FailoverState := retryState.OAuth429
 	passthroughFailoverState := retryState.Passthrough
+	reportUnavailableResponseSource := func(cause error) {
+		if lastFailoverErr != nil {
+			h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+			return
+		}
+		cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
+		if cause != nil {
+			cls = classifySelectionFailureError(cause, cls)
+		}
+		if !cls.ModelNotFound {
+			markOpsRoutingCapacityLimitedIfNoAvailable(c, cause)
+		}
+		h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
+	}
 	defer func() {
 		retryState.activeSwitchCount = nil
 		retryState.Failover.SwitchCount, retryState.Failover.LastFailoverErr = switchCount, lastFailoverErr
@@ -728,11 +774,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// A stored Responses continuation is initially pinned to its source
 	// account. If that account is unavailable, the only safe way to make the
 	// request portable is to retrieve the completed source response and replay
-	// its ordered items as a stateless request. The provider adapter is narrow
-	// and fail-closed; unsupported providers, OAuth state, external items and
-	// ambiguous transport failures still return the original error.
+	// its ordered items as a stateless request. If history cannot be retrieved,
+	// a provider's explicit rejection of the reference triggers a last-resort
+	// retry with the current request content and only the opaque continuation
+	// pointers removed.
 	recoverResponsesContinuation := func() bool {
-		if !pinnedResponseSource || responseSourceAccountID <= 0 || previousResponseID == "" {
+		if verifiedResponseSourceAccountID <= 0 || previousResponseID == "" {
 			return false
 		}
 		// Recovery installs a new request context and API-key snapshot before the
@@ -746,7 +793,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		oldRootKey, oldRootKeyOK := c.Get("custom.key_route_root_key")
 		oldBaseContext, oldBaseContextOK := c.Get("custom.key_route_base_context")
 		oldRouteBody, oldRouteBodyOK := c.Get("custom.key_route_body")
-		recoveredKey, recoveredBody, ok := h.recoverOpenAIResponsesContinuation(c, apiKey, responseSourceAccountID, previousResponseID, body, forwardModel)
+		recoveredKey, recoveredBody, ok := h.recoverOpenAIResponsesContinuation(c, apiKey, verifiedResponseSourceAccountID, previousResponseID, body, forwardModel)
 		if !ok || recoveredKey == nil || len(recoveredBody) == 0 {
 			return false
 		}
@@ -793,6 +840,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		body = recoveredBody
 		forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 		previousResponseID = ""
+		selectionPreviousResponseID = ""
 		responseSourceGroupID = 0
 		responseSourceAccountID = 0
 		pinnedResponseSource = false
@@ -813,7 +861,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
 			c.Request.Context(),
 			apiKey.GroupID,
-			previousResponseID,
+			selectionPreviousResponseID,
 			sessionHash,
 			forwardModel,
 			failedAccountIDs,
@@ -837,10 +885,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				continue
 			}
 			if pinnedResponseSource {
-				// A previous_response_id is owned by exactly one source account.
-				// Never let ordinary scheduler fallback substitute another account.
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Stored response source account is unavailable; retry with a new response", streamStarted)
-				return
+				failedAccountIDs[responseSourceAccountID] = struct{}{}
+				keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, responseSourceAccountID)
+				if !dropUnavailableResponseReference("source_account_unavailable") {
+					reportUnavailableResponseSource(err)
+					return
+				}
+				forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+				pinnedResponseSource = false
+				selectionPreviousResponseID = ""
+				responseSourceGroupID = 0
+				continue
 			}
 			if len(failedAccountIDs) == 0 && tryKeyRouteSelectionUnavailable(c, err) {
 				return
@@ -865,7 +920,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				if tryKeyRouteSelectionUnavailable(c, err) {
 					return
 				}
-				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
+				// If every candidate was already unavailable before this request
+				// reached an upstream, report routing capacity rather than fabricating
+				// an upstream 502. A real upstream failure is returned above.
+				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
+				cls = classifySelectionFailureError(err, cls)
+				if !cls.ModelNotFound {
+					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+				}
+				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 			}
 			return
 		}
@@ -874,7 +937,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				continue
 			}
 			if pinnedResponseSource {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Stored response source account is unavailable; retry with a new response", streamStarted)
+				failedAccountIDs[responseSourceAccountID] = struct{}{}
+				keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, responseSourceAccountID)
+				if !dropUnavailableResponseReference("source_account_unavailable") {
+					reportUnavailableResponseSource(service.ErrNoAvailableAccounts)
+					return
+				}
+				forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+				pinnedResponseSource = false
+				selectionPreviousResponseID = ""
+				responseSourceGroupID = 0
+				continue
+			}
+			if lastFailoverErr != nil {
+				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				return
 			}
 			if tryKeyRouteUnavailable(c) {
@@ -893,15 +969,24 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int64("selected_account_id", selection.Account.ID),
 				zap.Bool("sticky_previous_hit", scheduleDecision.StickyPreviousHit),
 			)
+			failedAccountIDs[responseSourceAccountID] = struct{}{}
+			keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, responseSourceAccountID)
+			if !dropUnavailableResponseReference("source_account_unavailable") {
+				if selection.ReleaseFunc != nil {
+					selection.ReleaseFunc()
+					selection.ReleaseFunc = nil
+				}
+				reportUnavailableResponseSource(service.ErrNoAvailableAccounts)
+				return
+			}
+			forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 			if selection.ReleaseFunc != nil {
 				selection.ReleaseFunc()
 				selection.ReleaseFunc = nil
 			}
-			if recoverResponsesContinuation() {
-				continue
-			}
-			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Stored response source account is unavailable; retry with a new response", streamStarted)
-			return
+			pinnedResponseSource = false
+			selectionPreviousResponseID = ""
+			responseSourceGroupID = 0
 		}
 		if previousResponseID != "" && selection != nil && selection.Account != nil {
 			reqLog.Debug("openai.account_selected_with_previous_response_id", zap.Int64("account_id", selection.Account.ID))
@@ -917,38 +1002,43 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		)
 		account := selection.Account
 		if previousResponseID != "" && requestPlatform == service.PlatformOpenAI && !account.IsOpenAIApiKey() {
-			if pinnedResponseSource {
+			// Some account types cannot dereference another provider response. Try
+			// source history reconstruction first; if it is not available, retain
+			// the request's actual input and send that stateless turn through this
+			// account instead of inventing a relay-owned 400.
+			if recoverResponsesContinuation() {
+				continue
+			}
+			fallbackGroupID := int64(0)
+			if apiKey.GroupID != nil {
+				fallbackGroupID = *apiKey.GroupID
+			}
+			statelessBody, stripErr := dropOpenAIStoredResponseForFallback(c, body, fallbackGroupID)
+			if stripErr != nil {
+				reqLog.Warn("openai.response_reference_strip_failed", zap.Error(stripErr))
 				if selection.ReleaseFunc != nil {
 					selection.ReleaseFunc()
 					selection.ReleaseFunc = nil
 				}
-				if recoverResponsesContinuation() {
-					continue
-				}
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Stored response source account cannot continue this request", streamStarted)
+				reportUnavailableResponseSource(service.ErrNoAvailableAccounts)
 				return
+			} else {
+				body = statelessBody
+				sessionHashBody = statelessBody
+				forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+				previousResponseID = ""
+				selectionPreviousResponseID = ""
+				responseSourceGroupID = 0
+				responseSourceAccountID = 0
+				verifiedResponseSourceGroupID = 0
+				verifiedResponseSourceAccountID = 0
+				responseOwnerGroupID = 0
+				pinnedResponseSource = false
+				reqLog.Warn("openai.response_reference_dropped_using_current_input",
+					zap.String("reason", "account_type_cannot_reuse_provider_reference"),
+					zap.Int64("account_id", account.ID),
+				)
 			}
-			// The public Responses HTTP API supports previous_response_id on API-key
-			// accounts. OAuth/SetupToken upstreams do not, so keep searching instead
-			// of silently deleting continuation state from a mixed account pool.
-			failedAccountIDs[account.ID] = struct{}{}
-			if selection.ReleaseFunc != nil {
-				selection.ReleaseFunc()
-				selection.ReleaseFunc = nil
-			}
-			lastFailoverErr = &service.UpstreamFailoverError{
-				StatusCode:       http.StatusBadRequest,
-				Stage:            service.GatewayFailureStageInference,
-				Scope:            service.GatewayFailureScopeRequest,
-				Reason:           service.OpenAIHTTPContinuationUnsupportedReason,
-				ClientStatusCode: http.StatusBadRequest,
-				ClientMessage:    "previous_response_id requires an OpenAI API-key account for HTTP requests",
-			}
-			reqLog.Debug("openai.account_skipped_http_continuation_unsupported",
-				zap.Int64("account_id", account.ID),
-				zap.String("account_type", account.Type),
-			)
-			continue
 		}
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
@@ -957,8 +1047,21 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
 			if pinnedResponseSource {
-				h.handleOpenAIProfitVetoExhausted(c, streamStarted, reqLog, profitVetoCount+1)
-				return
+				failedAccountIDs[account.ID] = struct{}{}
+				keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
+				if !dropUnavailableResponseReference("source_account_unavailable") {
+					if selection.ReleaseFunc != nil {
+						selection.ReleaseFunc()
+						selection.ReleaseFunc = nil
+					}
+					reportUnavailableResponseSource(service.ErrNoAvailableAccounts)
+					return
+				}
+				forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+				pinnedResponseSource = false
+				selectionPreviousResponseID = ""
+				responseSourceGroupID = 0
+				continue
 			}
 			// 利润终检否决：排除该账号重新选号，全池耗尽由下一轮选号报错；
 			// 否决次数达上限则直接终止，避免排队抢槽后才终检的延迟放大。
@@ -1094,6 +1197,62 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
 					}
+					if previousResponseID != "" && isOpenAIResponseReferenceRejectedError(failoverErr) {
+						// A deterministic rejection proves this account did not accept the
+						// continuation. First try to rebuild the complete conversation from
+						// its verified source account. If that history is unavailable or not
+						// portable, preserve the request's current input and remove only the
+						// provider-owned state pointers before retrying.
+						if recoverResponsesContinuation() {
+							continue
+						}
+						fallbackGroupID := verifiedResponseSourceGroupID
+						if fallbackGroupID <= 0 && apiKey.GroupID != nil {
+							fallbackGroupID = *apiKey.GroupID
+						}
+						statelessBody, stripErr := dropOpenAIStoredResponseForFallback(c, body, fallbackGroupID)
+						if stripErr != nil || len(statelessBody) == 0 {
+							reqLog.Warn("openai.response_reference_strip_failed", zap.Error(stripErr))
+							// Never replace the actual upstream reason with a relay-owned
+							// reference error. If rewriting unexpectedly fails, surface the
+							// provider's rejection as the final real error.
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+							return
+						}
+						if pinnedResponseSource {
+							if switchCount >= maxAccountSwitches {
+								h.handleFailoverExhausted(c, failoverErr, streamStarted)
+								return
+							}
+							h.gatewayService.RecordOpenAIAccountSwitch()
+							switchCount++
+							failedAccountIDs[account.ID] = struct{}{}
+							keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
+							lastFailoverErr = failoverErr
+							if !enableOpenAIResponseAccountFallback(c, verifiedResponseSourceGroupID) {
+								h.handleFailoverExhausted(c, failoverErr, streamStarted)
+								return
+							}
+							pinnedResponseSource = false
+							responseSourceGroupID = 0
+							responseSourceAccountID = 0
+							verifiedResponseSourceGroupID = 0
+							verifiedResponseSourceAccountID = 0
+							responseOwnerGroupID = 0
+						}
+						body = statelessBody
+						forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+						requestmodel.ResetRequestBody(c.Request, body)
+						c.Set("custom.key_route_body", append([]byte(nil), body...))
+						previousResponseID = ""
+						selectionPreviousResponseID = ""
+						reqLog.Warn("openai.response_reference_dropped_using_current_input",
+							zap.Int64("source_account_id", verifiedResponseSourceAccountID),
+							zap.Int64("rejected_account_id", account.ID),
+							zap.Bool("history_recovered", false),
+						)
+						continue
+					}
 					// openAIForwardMayFailover 已确认写出的字节不含语义输出，
 					// 但重试耗尽时仍须按已提交的 SSE 响应返回流内错误。
 					if c.Writer.Written() {
@@ -1106,6 +1265,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
+					// Retain the real upstream failure before leaving a pinned source.
+					// If the next group has no selectable account, return this failure
+					// (for example overload) rather than replacing it with a generic 502.
+					lastFailoverErr = failoverErr
 					if openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputTimeoutSwitchCount) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
@@ -1132,22 +1295,40 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						}
 					}
 					if pinnedResponseSource {
-						// Once same-account retries are exhausted, an explicit HTTP
-						// rejection can be recovered by replaying the stored response
-						// history. Transport ambiguity is rejected by the helper.
-						if isOpenAIResponseRecoveryEligibleError(failoverErr) {
-							failedAccountIDs[account.ID] = struct{}{}
-							keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
-							lastFailoverErr = failoverErr
-							if recoverResponsesContinuation() {
-								continue
-							}
+						// Ambiguous upstream failures still use the normal failover path.
+						// History replay is reserved for the explicit reference rejection
+						// handled above, where the provider proves it did not accept the turn.
+						if !failoverErr.ShouldRetryNextAccount() || switchCount >= maxAccountSwitches {
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+							return
 						}
-						// Recovery is unavailable or unsupported. Do not substitute a
-						// different account while the request still carries a stored
-						// response ID, because that would produce a provider-level 400.
-						h.handleFailoverExhausted(c, failoverErr, streamStarted)
-						return
+						h.gatewayService.RecordOpenAIAccountSwitch()
+						if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount+1, &oauth429FailoverState) {
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+							return
+						}
+						switchCount++
+						failedAccountIDs[account.ID] = struct{}{}
+						keyAccountExcludeFailed(c.Request.Context(), apiKey.GroupID, account.ID)
+						if dropUnavailableResponseReference("source_account_upstream_failure") {
+							forwardBody = openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+							requestmodel.ResetRequestBody(c.Request, body)
+							c.Set("custom.key_route_body", append([]byte(nil), body...))
+						} else {
+							// Preserve the actual provider failure; never retry an
+							// opaque source-account reference with another credential.
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+							return
+						}
+						pinnedResponseSource = false
+						selectionPreviousResponseID = ""
+						responseSourceGroupID = 0
+						reqLog.Warn("openai.response_source_account_failover",
+							zap.Int64("account_id", account.ID),
+							zap.Int("upstream_status", failoverErr.StatusCode),
+							zap.Int("switch_count", switchCount),
+						)
+						continue
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
@@ -1891,39 +2072,6 @@ func (h *OpenAIGatewayHandler) ensureAnthropicErrorResponse(c *gin.Context, stre
 	}
 	h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", streamStarted)
 	return true
-}
-
-func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context, body []byte, reqLog *zap.Logger) bool {
-	if !gjson.GetBytes(body, `input.#(type=="function_call_output")`).Exists() {
-		return true
-	}
-
-	validation := service.ValidateFunctionCallOutputContextBytes(body)
-	if !validation.HasFunctionCallOutput {
-		return true
-	}
-
-	previousResponseID := gjson.GetBytes(body, "previous_response_id").String()
-	if strings.TrimSpace(previousResponseID) != "" || validation.HasToolCallContext {
-		return true
-	}
-
-	if validation.HasFunctionCallOutputMissingCallID {
-		reqLog.Warn("openai.request_validation_failed",
-			zap.String("reason", "function_call_output_missing_call_id"),
-		)
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
-		return false
-	}
-	if validation.HasItemReferenceForAllCallIDs {
-		return true
-	}
-
-	reqLog.Warn("openai.request_validation_failed",
-		zap.String("reason", "function_call_output_missing_item_reference"),
-	)
-	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
-	return false
 }
 
 func normalizeCodexDelegationBootstrap(body []byte) ([]byte, bool) {
@@ -2810,12 +2958,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(firstMessage, "previous_response_id").String())
 	previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
-	if previousResponseID != "" && previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "previous_response_id must be a response.id (resp_*), not a message id")
-		return
-	}
 	firstMessageToolCoverage := service.AnalyzeToolCallOutputContextCoverageBytes(firstMessage)
 	previousResponseCanMove := !firstMessageToolCoverage.HasFunctionCallOutput || firstMessageToolCoverage.ContextCoversAllCallIDs
+	responseReferenceFallbackTried := false
 	reqLog = reqLog.With(
 		zap.Bool("ws_ingress", true),
 		zap.String("session_initial_model", reqModel),
@@ -3020,6 +3165,21 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			zap.Int("switch_count", switchCount),
 			zap.Int("max_switches", maxAccountSwitches),
 		)
+		// Never carry provider-owned continuation state to another credential.
+		// If complete replay history is unavailable, preserve whatever current
+		// input is present and let the next provider validate it.
+		retryCtx, safeRetryMessage, sanitizeErr := prepareOpenAIWSAccountFallback(ctx, wsAttemptMessage)
+		if sanitizeErr != nil {
+			reqLog.Warn("openai.websocket_failover_reference_sanitize_failed", zap.Error(sanitizeErr))
+			closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
+			return false
+		}
+		ctx = retryCtx
+		wsAttemptMessage = safeRetryMessage
+		previousResponseID = ""
+		if c.Request != nil && c.Request.Header != nil {
+			c.Request.Header.Del("X-Codex-Turn-State")
+		}
 		if ctx.Err() != nil {
 			return false
 		}
@@ -3062,6 +3222,28 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			requestPlatform,
 		)
 		if err != nil {
+			if previousResponseID != "" && !responseReferenceFallbackTried {
+				// The source account may be unavailable before the first upstream
+				// attempt. Remove only account-bound references, retain this turn's
+				// content and give the ordinary scheduler one chance to select B.
+				retryCtx, safeMessage, sanitizeErr := prepareOpenAIWSAccountFallback(ctx, wsAttemptMessage)
+				if sanitizeErr == nil {
+					responseReferenceFallbackTried = true
+					ctx = retryCtx
+					firstMessage = safeMessage
+					wsAttemptMessage = safeMessage
+					previousResponseID = ""
+					previousResponseCanMove = true
+					if c.Request != nil && c.Request.Header != nil {
+						c.Request.Header.Del("X-Codex-Turn-State")
+					}
+					reqLog.Warn("openai.websocket_response_reference_dropped_before_account_retry",
+						zap.String("previous_response_id_kind", previousResponseIDKind),
+					)
+					continue
+				}
+				reqLog.Warn("openai.websocket_response_reference_sanitize_failed", zap.Error(sanitizeErr))
+			}
 			reqLog.Warn("openai.websocket_account_select_failed",
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
@@ -3074,6 +3256,21 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
+			if previousResponseID != "" && !responseReferenceFallbackTried {
+				retryCtx, safeMessage, sanitizeErr := prepareOpenAIWSAccountFallback(ctx, wsAttemptMessage)
+				if sanitizeErr == nil {
+					responseReferenceFallbackTried = true
+					ctx = retryCtx
+					firstMessage = safeMessage
+					wsAttemptMessage = safeMessage
+					previousResponseID = ""
+					previousResponseCanMove = true
+					if c.Request != nil && c.Request.Header != nil {
+						c.Request.Header.Del("X-Codex-Turn-State")
+					}
+					continue
+				}
+			}
 			if lastFailoverErr != nil {
 				closeOpenAIWSFailoverExhausted(c, wsConn, lastFailoverErr)
 			} else {
@@ -3453,16 +3650,38 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		wsFirstMessage := wsAttemptMessage
-		// 切组/会话失配防护：previous_response_id 未在当前分组命中粘连账号（StickyPreviousHit=false），
-		// 说明该会话链不属于本次调度到的账号，原样转发会触发上游会话链鉴权失败（“鉴权失败，请检查 API Key”）。
-		// 故剥离首包里的 previous_response_id，改用首包内 input 重建上下文；带 function_call_output 的
-		// 工具续链无法重建，保持原样。仅作用于首轮首包，后续 turn 的续链由 WS 转发层既有逻辑处理。
-		if previousResponseID != "" && !scheduleDecision.StickyPreviousHit && previousResponseCanMove {
-			wsFirstMessage = service.RemovePreviousResponseIDFromBody(wsFirstMessage)
-			reqLog.Debug("openai.websocket_previous_response_id_stripped_cross_group",
-				zap.Int64("account_id", account.ID),
-				zap.String("schedule_layer", scheduleDecision.Layer),
-			)
+		// The scheduler did not find the credential that owns this response ID.
+		// Never send an opaque provider reference to an unrelated credential,
+		// even if function_call_output history is incomplete. Preserve all
+		// current input that is actually present; the provider can accept it or
+		// return its genuine validation error, but the relay must not block it.
+		if previousResponseID != "" && !scheduleDecision.StickyPreviousHit {
+			retryCtx, safeMessage, sanitizeErr := prepareOpenAIWSAccountFallback(ctx, wsFirstMessage)
+			if sanitizeErr != nil {
+				reqLog.Warn("openai.websocket_cross_account_reference_sanitize_failed", zap.Error(sanitizeErr))
+				// Never leak a source credential's opaque state to the newly selected
+				// account. Preserve the last real upstream failure where available;
+				// otherwise close without making an unsafe cross-account dispatch.
+				if lastFailoverErr != nil {
+					closeOpenAIWSFailoverExhausted(c, wsConn, lastFailoverErr)
+				} else {
+					closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "unable to safely continue this request; please retry")
+				}
+				return
+			} else {
+				ctx = retryCtx
+				wsFirstMessage = safeMessage
+				wsAttemptMessage = append([]byte(nil), safeMessage...)
+				previousResponseID = ""
+				if c.Request != nil && c.Request.Header != nil {
+					c.Request.Header.Del("X-Codex-Turn-State")
+				}
+				reqLog.Debug("openai.websocket_previous_response_id_stripped_cross_account",
+					zap.Int64("account_id", account.ID),
+					zap.String("schedule_layer", scheduleDecision.Layer),
+					zap.Bool("input_history_complete", previousResponseCanMove),
+				)
+			}
 		}
 
 		// WebSocket 首包可能很大，hash 必须在 hooks 外算成字符串，避免 AfterTurn 闭包保活请求体。
@@ -3806,14 +4025,6 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 			service.OpenAIRequestBodyTooLargeClientMessage,
 			streamStarted,
 		)
-		return
-	}
-	if failoverErr.Reason == service.OpenAIHTTPContinuationUnsupportedReason {
-		message := strings.TrimSpace(failoverErr.ClientMessage)
-		if message == "" {
-			message = "previous_response_id requires an OpenAI API-key account for HTTP requests"
-		}
-		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", message, streamStarted)
 		return
 	}
 	if failoverErr.Reason == service.OpenAIImagesInsufficientBalanceReason {

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,14 @@ import (
 type openAIWSRejectedFieldRetryError struct {
 	body   []byte
 	reason string
+}
+
+func shouldRestoreOpenAIWSStoredSessionState(ctx context.Context) bool {
+	if ctx == nil {
+		return true
+	}
+	disabled, _ := ctx.Value(ctxkey.OpenAIWSDisableStoredTurnState).(bool)
+	return !disabled
 }
 
 func (e *openAIWSRejectedFieldRetryError) Error() string {
@@ -307,14 +316,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		promptCacheKey := strings.TrimSpace(values[2].String())
 		previousResponseID := strings.TrimSpace(values[3].String())
-		previousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
-		if previousResponseID != "" && previousResponseIDKind == OpenAIPreviousResponseIDKindMessageID {
-			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(
-				coderws.StatusPolicyViolation,
-				"previous_response_id must be a response.id (resp_*), not a message id",
-				nil,
-			)
-		}
 		if turnMetadata := strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)); turnMetadata != "" {
 			next, setErr := applyPayloadMutation(normalized, "client_metadata."+openAIWSTurnMetadataHeader, turnMetadata)
 			if setErr != nil {
@@ -547,7 +548,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			// inherit another connection's native WS turn state or socket binding.
 			return
 		}
-		if turnState == "" && stateStore != nil && sessionHash != "" {
+		if shouldRestoreOpenAIWSStoredSessionState(ctx) && turnState == "" && stateStore != nil && sessionHash != "" {
 			if savedTurnState, ok := stateStore.GetSessionTurnState(groupID, sessionHash); ok {
 				turnState = savedTurnState
 			}
@@ -559,7 +560,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 
-		if stateStore != nil && storeDisabled && payload.previousResponseID == "" && sessionHash != "" {
+		if shouldRestoreOpenAIWSStoredSessionState(ctx) && stateStore != nil && storeDisabled && payload.previousResponseID == "" && sessionHash != "" {
 			if connID, ok := stateStore.GetSessionConn(groupID, sessionHash); ok {
 				preferredConnID = connID
 			}

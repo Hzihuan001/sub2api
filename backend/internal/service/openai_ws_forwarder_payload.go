@@ -812,23 +812,26 @@ func buildOpenAIWSCurrentTurnRetryPayload(
 	fullInputExists bool,
 	originalModel string,
 ) ([]byte, bool, error) {
-	if !fullInputExists {
-		return nil, false, nil
+	// Keep any current-turn content that is available. A missing or partial
+	// replay history must not make the relay reject a cross-account retry; the
+	// destination provider can return its own meaningful validation error.
+	retryPayload := append([]byte(nil), payload...)
+	var err error
+	if fullInputExists {
+		retryPayload, err = setOpenAIWSPayloadInputSequence(retryPayload, fullInput, true)
+		if err != nil {
+			return nil, false, err
+		}
 	}
-	retryPayload, err := setOpenAIWSPayloadInputSequence(payload, fullInput, true)
+	retryPayload, err = RemoveOpenAIStoredResponseReferencesFromBody(retryPayload)
 	if err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("remove account-bound websocket response references: %w", err)
 	}
-	retryPayload = RemovePreviousResponseIDFromBody(retryPayload)
 	if model := strings.TrimSpace(originalModel); model != "" {
 		retryPayload, err = sjson.SetBytes(retryPayload, "model", model)
 		if err != nil {
 			return nil, false, err
 		}
-	}
-	coverage := AnalyzeToolCallOutputContextCoverageBytes(retryPayload)
-	if coverage.HasFunctionCallOutput && !coverage.ContextCoversAllCallIDs {
-		return nil, false, nil
 	}
 	return retryPayload, true, nil
 }

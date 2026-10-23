@@ -65,7 +65,30 @@ func (h *OpenAIGatewayHandler) recoverOpenAIResponsesContinuation(
 	return &recoveredKey, result.Body, true
 }
 
-func isOpenAIResponseRecoveryEligibleError(err error) bool {
+// enableOpenAIResponseAccountFallback releases the source pin only after the
+// caller has recovered the source history or prepared a safe request body for
+// another account. It only resets routing context; it does not rewrite payloads.
+func enableOpenAIResponseAccountFallback(c *gin.Context, sourceGroupID int64) bool {
+	if c == nil || c.Request == nil || sourceGroupID <= 0 {
+		return false
+	}
+	ctx := c.Request.Context()
+	ctx = context.WithValue(ctx, ctxkey.KeyRoutingResponseSourceGroupID, int64(0))
+	ctx = context.WithValue(ctx, ctxkey.KeyRoutingResponseSourceAccountID, int64(0))
+	ctx = context.WithValue(ctx, ctxkey.KeyRoutingResponseOwnerGroupID, int64(0))
+	ctx = context.WithValue(ctx, ctxkey.KeyRoutingActive, true)
+	ctx = context.WithValue(ctx, ctxkey.KeyRoutingPrimaryGroupID, sourceGroupID)
+	c.Request = c.Request.WithContext(ctx)
+	// Re-entry after account/group exhaustion must restore this enabled routing
+	// context, not the originally pinned source context.
+	c.Set("custom.key_route_base_context", ctx)
+	return true
+}
+
+// isOpenAIResponseReferenceRejectedError only matches deterministic provider
+// errors that explicitly reject the stored response reference. Generic 4xx,
+// 5xx, timeouts, and transport failures are not evidence that a replay is safe.
+func isOpenAIResponseReferenceRejectedError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -73,21 +96,37 @@ func isOpenAIResponseRecoveryEligibleError(err error) bool {
 	if !errors.As(err, &failoverErr) {
 		return false
 	}
-	// A replay is only considered after the forwarding layer has returned an
-	// explicit HTTP failure with no semantic bytes. Transport timeouts/EOFs do
-	// not prove that the provider rejected the original request and therefore
-	// must never be replayed automatically.
-	if len(failoverErr.ResponseBody) == 0 {
-		return false
+	return service.IsOpenAIStoredResponseReferenceRejection(failoverErr.StatusCode, failoverErr.ResponseBody)
+}
+
+// dropOpenAIStoredResponseReferences preserves the current request payload and
+// removes only provider-owned continuation pointers. It is the last-resort
+// stateless path when source history cannot be retrieved.
+func dropOpenAIStoredResponseReferences(body []byte) ([]byte, error) {
+	return service.RemoveOpenAIStoredResponseReferencesFromBody(body)
+}
+
+// dropOpenAIStoredResponseForFallback clears the opaque source pin only after
+// the source history is unavailable. The route resumes at the source group,
+// then follows the key's normal configured backup order.
+func dropOpenAIStoredResponseForFallback(c *gin.Context, body []byte, groupID int64) ([]byte, error) {
+	updated, err := dropOpenAIStoredResponseReferences(body)
+	if err != nil {
+		return nil, err
 	}
-	switch failoverErr.StatusCode {
-	case 429, 500, 502, 503, 504:
-		return true
-	default:
-		// Client validation, authorization, missing-model and not-found
-		// responses are deterministic request errors, not account failover
-		// signals. Replaying them would add latency and could hide the real
-		// error from the caller.
-		return false
+	requestmodel.ResetRequestBody(c.Request, updated)
+	if c.Request != nil && c.Request.Header != nil {
+		c.Request.Header.Del("X-Codex-Turn-State")
 	}
+	ctx := c.Request.Context()
+	ctx = context.WithValue(ctx, ctxkey.KeyRoutingResponseSourceGroupID, int64(0))
+	ctx = context.WithValue(ctx, ctxkey.KeyRoutingResponseSourceAccountID, int64(0))
+	ctx = context.WithValue(ctx, ctxkey.KeyRoutingResponseOwnerGroupID, int64(0))
+	if active, _ := ctx.Value(ctxkey.KeyRoutingActive).(bool); active && groupID > 0 {
+		ctx = context.WithValue(ctx, ctxkey.KeyRoutingPrimaryGroupID, groupID)
+	}
+	c.Request = c.Request.WithContext(ctx)
+	c.Set("custom.key_route_base_context", ctx)
+	c.Set("custom.key_route_body", append([]byte(nil), updated...))
+	return updated, nil
 }

@@ -35,6 +35,28 @@ func TestOpenAIGatewayFailurePolicyRequestRejectionPrecedesStatus(t *testing.T) 
 	}
 }
 
+func TestOpenAIStoredResponseReferenceRejectionIsNarrow(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{"explicit code", http.StatusBadRequest, `{"error":{"code":"previous_response_not_found","message":"not found"}}`, true},
+		{"explicit param", http.StatusBadRequest, `{"error":{"param":"previous_response_id","message":"not available for this user"}}`, true},
+		{"response envelope", http.StatusNotFound, `{"response":{"error":{"code":"previous_response_id_not_found"}}}`, true},
+		{"ordinary invalid request", http.StatusBadRequest, `{"error":{"param":"input","message":"previous_response_id is not available"}}`, false},
+		{"generic bad request", http.StatusBadRequest, `{"error":{"message":"invalid request"}}`, false},
+		{"wrong status", http.StatusForbidden, `{"error":{"code":"previous_response_not_found"}}`, false},
+		{"non json", http.StatusBadRequest, `previous_response_id not found`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsOpenAIStoredResponseReferenceRejection(tt.status, []byte(tt.body)))
+		})
+	}
+}
+
 func TestOpenAIGatewayFailurePolicyExplicitAccountSignalsIgnoreStatus(t *testing.T) {
 	tests := []struct {
 		name string

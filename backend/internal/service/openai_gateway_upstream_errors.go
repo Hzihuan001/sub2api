@@ -266,6 +266,48 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Acc
 	}).shouldFailover
 }
 
+// IsOpenAIStoredResponseReferenceRejection recognizes only explicit provider
+// errors for an invalid stored Responses reference. It is intentionally
+// narrower than general request-error classification: ordinary invalid input,
+// policy, permission, and model errors must not become account failovers.
+func IsOpenAIStoredResponseReferenceRejection(statusCode int, upstreamBody []byte) bool {
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusNotFound {
+		return false
+	}
+	if len(upstreamBody) == 0 || !gjson.ValidBytes(upstreamBody) {
+		return false
+	}
+	code := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		gjson.GetBytes(upstreamBody, "error.code").String(),
+		gjson.GetBytes(upstreamBody, "response.error.code").String(),
+	)))
+	param := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		gjson.GetBytes(upstreamBody, "error.param").String(),
+		gjson.GetBytes(upstreamBody, "response.error.param").String(),
+	)))
+	message := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		gjson.GetBytes(upstreamBody, "error.message").String(),
+		gjson.GetBytes(upstreamBody, "response.error.message").String(),
+	)))
+	if code == "previous_response_not_found" || code == "previous_response_id_not_found" {
+		return true
+	}
+	if param != "" && param != "previous_response_id" {
+		return false
+	}
+	if param == "previous_response_id" {
+		return strings.Contains(message, "not found") || strings.Contains(message, "not available") ||
+			strings.Contains(message, "does not exist") || strings.Contains(message, "invalid") ||
+			strings.Contains(message, "unsupported") || strings.Contains(message, "not supported")
+	}
+	return strings.Contains(message, "previous_response_id") &&
+		(strings.Contains(message, "not found") || strings.Contains(message, "not available") ||
+			strings.Contains(message, "does not exist") || strings.Contains(message, "invalid") ||
+			strings.Contains(message, "unsupported") || strings.Contains(message, "not supported")) ||
+		strings.Contains(message, "no response found with id") ||
+		(strings.Contains(message, "response with id") && strings.Contains(message, "not found"))
+}
+
 func isOpenAICompatibleModelNotFound400(respBody []byte) bool {
 	return isOpenAICompatibleModelNotFoundBody(respBody)
 }
@@ -388,9 +430,6 @@ const (
 	// OpenAIUpstreamAccessStateReason marks a provider credential whose
 	// account, workspace, or organization is unavailable.
 	OpenAIUpstreamAccessStateReason = GatewayFailureReason("openai_upstream_access_state")
-	// OpenAIHTTPContinuationUnsupportedReason identifies accounts that cannot
-	// preserve an official Responses HTTP continuation without dropping state.
-	OpenAIHTTPContinuationUnsupportedReason = GatewayFailureReason("openai_http_continuation_unsupported")
 )
 
 // isOpenAIUpstreamAccessStateError recognizes provider-side credential state

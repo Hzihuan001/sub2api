@@ -78,6 +78,15 @@ const (
 	// configured group scopes; downstream adapters must fail closed on a miss.
 	KeyRoutingResponseSourceGroupID   Key = "ctx_key_routing_response_source_group_id"
 	KeyRoutingResponseSourceAccountID Key = "ctx_key_routing_response_source_account_id"
+	// KeyRoutingResponseOwnerGroupID preserves the verified group ownership of
+	// a previous_response_id after its original account pin is released for
+	// failover. It is set only by authenticated routing middleware.
+	KeyRoutingResponseOwnerGroupID Key = "ctx_key_routing_response_owner_group_id"
+
+	// OpenAIWSDisableStoredTurnState prevents a retry on a different upstream
+	// credential from restoring opaque per-session state created by the prior
+	// credential from the WebSocket state store.
+	OpenAIWSDisableStoredTurnState Key = "ctx_openai_ws_disable_stored_turn_state"
 
 	// IsMaxTokensOneHaikuRequest 标识当前请求是否为 max_tokens=1 + haiku 模型的探测请求
 	// 用于 ClaudeCodeOnly 验证绕过（绕过 system prompt 检查，但仍需验证 User-Agent）

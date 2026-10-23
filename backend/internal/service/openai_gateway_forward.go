@@ -1189,7 +1189,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				)
 				continue
 			}
-			if s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody) {
+			shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(account, resp.StatusCode, upstreamMsg, respBody)
+			if !shouldFailover && strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) != "" &&
+				IsOpenAIStoredResponseReferenceRejection(resp.StatusCode, respBody) {
+				// A provider-confirmed stale/foreign response pointer is the one
+				// deterministic 4xx that can become valid by retrying without that
+				// pointer. Keep the exception scoped to continuation requests; do not
+				// make generic client errors account failovers or health failures.
+				shouldFailover = true
+			}
+			if shouldFailover {
 				upstreamDetail := ""
 				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
