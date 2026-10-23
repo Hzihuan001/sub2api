@@ -24,6 +24,7 @@
 - 正式候选从干净 Git tag 归档、根目录 `Dockerfile` 构建：`linux/amd64`，build date `2026-10-23T07:59:26Z`。镜像内 `--version` 显示版本和发布提交 `fb02af3ece9ebf2cd54633bbfb6b839c6ba0051b`；`pg_dump` / `psql` 均为 PostgreSQL `18.6`。构建不包含未跟踪的实验目录 `backend/internal/keyrouting/replay/`。
 - GHCR 镜像：`ghcr.io/hzihuan001/sub2api:0.2.16-custom.16`；不可变摘要 `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`。已按摘要重新拉回；镜像 ID 与发布摘要一致。拉回镜像运行 `deploy/tests/operator-container-test.ps1` 全部通过，隔离 HTTP 权限矩阵、重启持久性和健康检查通过，临时容器/数据卷/网络已清理。此脚本不代替代理路由测试；路由特例以 Docker handler 集成回归为证。
 - GitHub Actions 对 `.16` 标签 push 没有启动作业，手动 dispatch 返回 HTTP 422：该仓库 Actions 已禁用。因此没有成功 CI 证据，发布采用仓库既有授权的本地 Docker 构建、GHCR 推送和摘要拉回流程。
+- 本轮部署前只读探测 `https://ai.moshu.cloud/health`、`https://api.moshu.cloud/health`、`https://cos.moshu.cloud/health` 均返回 HTTP 200。健康接口不返回可核实的镜像版本，因此这只证明探测时站点健康，不作为 `.14`/`.16` 版本证据，也没有对线上容器作修改。
 - 生产备份、Main → L1 → COS 部署和线上健康核验尚未完成。当前环境没有 `~/.ssh/config`/可解析的 SSH 主机别名，不能安全定位生产服务器；不得猜测主机或改生产容器。需提供可用 SSH host/alias 后，按现有生产顺序和备份流程继续。不得把以上单元测试或容器冒烟写成生产验收。
 
 ## 发布结果与剩余生产步骤
