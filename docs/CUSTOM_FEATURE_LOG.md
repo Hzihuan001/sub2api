@@ -1,5 +1,12 @@
 # 定制功能日志
 
+### 2026-10-23 — `custom.16` Responses 引用拒绝后跨账号恢复（候选，发布/部署待完成）
+
+- 移除多组 Key Responses 状态请求的中转站自有拒绝码 `KEY_ROUTE_STATEFUL_UNSUPPORTED`。当上游明确拒绝无效/不可用的 `previous_response_id` 时，仅删除被拒绝的指针并保留当前请求内容，再通过既有请求级调度尝试其他账号；未确认明确引用拒绝的普通错误走原有处理。
+- 账号选择耗尽时优先透传已经发生的真实上游失败；没有先前上游错误时沿用原有 no-account 分类。未新增会话正文长期存储、数据库迁移、计费器或用户使用记录。
+- 边界：这不能从不完整增量请求中恢复缺失的对话历史；若上游已执行但发生超时/断连，工具等副作用可能重复。上游仍可返回自己的历史/参数错误，不能承诺所有会话均无感续接。
+- 范围仅覆盖 Responses 请求中上游明确拒绝 `previous_response_id` 的特例，不代表任意 provider-managed 状态、增量对话、工具调用或协议都能无感迁移。最终源码在 Docker Go 1.27.2 环境通过 `go test -tags unit ./internal/service ./internal/handler ./internal/server/middleware -count=1`：service 267.528 秒、handler 42.874 秒、middleware 0.135 秒；真实 API-key passthrough handler 回归通过。`git diff --check` 通过。`custom-0.2.16.15` 标签保持不可变但由 `.16` 修正取代；`.15` 未构建、未发布或部署。镜像构建/拉回及生产发布仍待完成。候选细节见 [`custom.16 候选发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM16_20261023.md)。
+
 ### 2026-10-23 — `custom.14` 已推送并部署三站
 
 - 发布提交 `09e885d4eb2098a48758b9b5309e166bd85737ce`、标签 `custom-0.2.16.14`，GHCR 不可变摘要 `sha256:61468c96ecbafb5e79f959e06a74291773fae77db235fff130ad9d67df4f2ca7`。
