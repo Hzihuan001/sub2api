@@ -1,7 +1,7 @@
 # v0.2.18-custom.1 合并验收记录
 
 日期：2026-10-24
-状态：代码已合并，待后端/Docker 验收；未推送、未打发布标签、未部署
+状态：代码已合并，后端回归通过；未推送、未打发布标签、未部署
 
 ## 版本与基线
 
@@ -9,13 +9,15 @@
 - 定制基线：`0.2.16-custom.16` / `4356fafb7707ab0334338a56ef4ff02e004164db`
 - 合并提交：`885edb605702a4af52b0bb8ac0060b58698c872d`
 - 路由语义修复：`a688883f1bc09fbce2c38a7253be7e1577793678`
+- 流桥接/Gemini 推理计费修复：`305afd7f9`
+- 功能清单测试合同修复：`8b5726b0c`
 - 候选版本：`0.2.18-custom.1`
 
 ## 合并处理
 
 真实三方 merge 探针发现 16 组语义冲突，涉及版本、README、Chat/Responses/Gemini 网关、账号/分组管理、计费测试、OpenAI 转发、定价服务和前端管理页。冲突均按定制功能清单人工处理；没有用整文件 ours/theirs 静默覆盖。
 
-官方 v0.2.18 的配额与通知、Gemini/Antigravity 图像分组门禁、流断开结算收口、Cloudflare 1010 分类、限流并发安全、Gemini 工具兼容、DeepSeek 图片载荷修复、图片下载 SSRF 防护及 Grok 4.7 Fast 定价修复已保留。Chat/Responses 的 Key 路由价格、提示词注入、分组上下文、账号级故障切换和备用分组接线已复核；合并后发现的选择失败语义回退已在 `a688883f1` 修复。
+官方 v0.2.18 的配额与通知、Gemini/Antigravity 图像分组门禁、流断开结算收口、Cloudflare 1010 分类、限流并发安全、Gemini 工具兼容、DeepSeek 图片载荷修复、图片下载 SSRF 防护及 Grok 4.7 Fast 定价修复已保留。Chat/Responses 的 Key 路由价格、提示词注入、分组上下文、账号级故障切换和备用分组接线已复核；合并后发现的选择失败语义回退已在 `a688883f1` 修复。另修复流桥接迁移残留的旧 `scanner` 引用、Kiro 错误传递、Gemini Chat 实际 thinking 档位计费记录，以及官方新增构造器参数造成的测试调用缺口。
 
 ## 检查结果
 
@@ -29,8 +31,9 @@
 - upstream sync：5/5
 - upstream workflow：11/11
 - `git diff --check`
+- Docker Go 1.27.3：`go test ./internal/... -count=1 -timeout=900s` 全部通过；其中 service、handler、middleware、key-routing 和 repository 回归均通过。
 
-未执行：本机当前没有可用 Go，Docker Desktop daemon 也未运行，因此未执行 `go test ./...`、真实 PostgreSQL/Redis 集成、迁移回退演练及隔离 Docker Compose。未执行项是发布门槛，不应解释为后端已通过。
+未执行：真实 PostgreSQL/Redis 集成、迁移回退演练及隔离 Docker Compose；这些仍是发布门槛，不应解释为生产数据库和三站联合验收已通过。
 
 ## 迁移与回滚
 
@@ -38,4 +41,4 @@
 
 ## 发布决定
 
-生产三站仍为 `0.2.16-custom.16`，镜像 digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`。本记录只说明代码合并，不代表镜像可上线。下一步：恢复 Go/Docker → 执行后端及数据库/Redis/Compose 验收 → 构建并拉回不可变镜像复验 → 再由用户明确批准推送、打标签和部署。
+生产三站仍为 `0.2.16-custom.16`，镜像 digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`。本记录只说明代码合并，不代表镜像可上线。下一步：执行数据库/Redis/Compose 验收 → 构建并拉回不可变镜像复验 → 再由用户明确批准推送、打标签和部署。
