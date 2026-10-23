@@ -1,5 +1,19 @@
 # 定制功能日志
 
+### 2026-10-24 — `v0.2.18-custom.1` 官方合并候选（未发布）
+
+- **需求**：在不丢失现有定制的前提下合并官方 v0.2.18；优先保持模块化边界和后续主线可复核性。
+- **Feature ID**：`operator` / `prompt-audit` / `image-studio` / `branding` / `usage-extras` / `gateway-resilience` / `key-routing`
+- **官方基线**：tag `v0.2.18`，commit `ac1b8f1271be0d674fa6f074403c1410f30a3a81`；定制基线 `custom.16`/`4356fafb7707ab0334338a56ef4ff02e004164db`。
+- **实现边界**：人工合并官方配额/图像门禁/流结算/安全和定价更新；保留定制角色、审计、生图、Key 优先级路由与故障切换。恢复 Chat/Responses 的价格、提示词、分组上下文、账号切换和最终失败接线；未接入实验性 `backend/internal/keyrouting/replay/`。
+- **数据库/迁移**：新增官方 `246_enable_gemini_image_generation_groups.sql`；已发布定制 `9000–9004` 原样保留，不重排、不改名、不删除。重复数字前缀需在 PostgreSQL 演练中确认排序与回退。
+- **测试**：前端 key-routing 9 文件 94/94、typecheck、build、isolation、architecture-negative 34/34、custom contracts 18/18、sync 5/5、workflow 11/11 通过。因本机无 Go 且 Docker daemon 未运行，后端全量/真实数据库/Compose 验收未执行。
+- **提交/PR**：合并 `885edb605702a4af52b0bb8ac0060b58698c872d`；路由语义修复 `a688883f1bc09fbce2c38a7253be7e1577793678`。本轮待推送，未创建 PR。
+- **发布镜像**：无；候选版本 `0.2.18-custom.1`，未创建 tag。
+- **部署站点**：未部署；生产仍为 `0.2.16-custom.16`，三站旧 digest 不变。
+- **回滚**：代码层回退至 `custom.16`；发布前仍需完成迁移/镜像回退演练，不覆盖业务数据库，不纳入未跟踪 replay 草稿。
+- **备注**：定制代码已明显集中到独立 feature/custom 层，但官方网关热路径仍有薄宿主接线；每次主线升级必须继续做语义冲突审查，不能仅依赖静态隔离检查。
+
 ### 2026-10-23 — `custom.16` Responses 引用拒绝后跨账号恢复（已推送并部署三站）
 
 - 移除多组 Key Responses 状态请求的中转站自有拒绝码 `KEY_ROUTE_STATEFUL_UNSUPPORTED`。当上游明确拒绝无效/不可用的 `previous_response_id` 时，仅删除被拒绝的指针并保留当前请求内容，再通过既有请求级调度尝试其他账号；未确认明确引用拒绝的普通错误走原有处理。
