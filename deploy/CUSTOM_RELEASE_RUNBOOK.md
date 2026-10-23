@@ -1,21 +1,22 @@
 # Sub2API custom release runbook
 
-## Current candidate: custom.16 (2026-10-23; publication/deployment pending)
+## Current candidate: custom.16 (2026-10-23; GHCR published, production deployment blocked)
 
-This candidate supersedes `.14` only after its exact release image passes pull-back acceptance and the approved main → L1 → COS production rollout. Until then, all three sites remain documented at `.14`.
+This candidate supersedes `.14` only after the approved main → L1 → COS production rollout. The exact immutable GHCR image passed local pull-back and operator-container smoke acceptance. Until production rollout, all three sites remain documented at `.14`.
 
-- Source version: `0.2.16-custom.16`; runtime commit/tag/image digest are pending.
-- Source branch: `codex/key-account-routing-stability-20261022`; intended custom runtime tag `custom-0.2.16.16`.
+- Source version: `0.2.16-custom.16`; fix commit `0ba89f7d13fa7acb639d450c84614e9c62d21b5f`; release commit `fb02af3ece9ebf2cd54633bbfb6b839c6ba0051b`.
+- Source branch: `codex/key-account-routing-stability-20261022`; pushed runtime tag `custom-0.2.16.16` points to the release commit above.
 - Scope: for Responses requests only, remove the relay-owned multi-group stateful-request rejection and add a narrow recovery path after an upstream explicitly rejects `previous_response_id`: do not count that deterministic pointer rejection as account health failure, preserve current request content, remove the rejected opaque pointer, and retry another eligible account within existing budgets. Ordinary account failures retain existing HTTP/WebSocket behavior. No database migration or persistent conversation-body storage.
 - Known boundary: the relay cannot recreate history absent from the current request after stripping an opaque pointer. Upstream may return a genuine history/validation error; ambiguous timeout/disconnect after upstream side effects can cause duplicate execution/cost. This is not a guarantee of seamless continuation for every provider/protocol.
-- Final `.16` source backend regression passed in Docker Go `1.27.2`: service `267.528s`, handler `42.874s`, middleware `0.135s`; the API-key passthrough handler test confirms account A is skipped and account B succeeds after explicit pointer rejection. `git diff --check` passed. This does not prove every provider/protocol can resume complete history. Image build/pull-back, backup validation and three-site evidence are pending.
+- Final `.16` source backend regression passed in Docker Go `1.27.2`: service `267.528s`, handler `42.874s`, middleware `0.135s`; the API-key passthrough handler test confirms account A is skipped and account B succeeds after explicit pointer rejection. `git diff --check` passed. Published image `ghcr.io/hzihuan001/sub2api:0.2.16-custom.16` has immutable digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`; digest pull-back and isolated operator-container smoke passed. This does not prove every provider/protocol can resume complete history. GitHub Actions are disabled; tag push started no job, and manual dispatch returned HTTP 422, so no successful CI run is claimed.
+- Production backup and rollout are pending. This workspace has no configured/resolvable SSH host alias; do not guess a production host. The current production baseline remains `.14` until a valid target is supplied and the approved backup → main → L1 → COS procedure is completed.
 - Prior image/fallback is `.14`: `ghcr.io/hzihuan001/sub2api@sha256:61468c96ecbafb5e79f959e06a74291773fae77db235fff130ad9d67df4f2ca7`. Reconfirm this digest and live site state immediately before production change.
 
 The immutable source tag `custom-0.2.16.15` was pushed before final review exposed two recovery-path defects; it was not built into a published image or deployed. It remains unchanged for traceability and is superseded by `.16`.
 
 See [`custom.16 candidate/release record`](../docs/CUSTOM_RELEASE_0_2_16_CUSTOM16_20261023.md). Do not treat this candidate as deployed until that record is completed.
 
-## Current release: custom.14 deployed to all three sites (2026-10-23)
+## Current production: custom.14 deployed to all three sites (2026-10-23)
 
 This section overrides the historical `.13`/`.12` coordinates and rollback examples below. **The exact `.14` published image passed local pull-back acceptance and the main → L1 → COS production rollout. All three sites now run the version/commit/digest below.** No newer official release was merged in this round; the official base remains `v0.2.16`.
 
