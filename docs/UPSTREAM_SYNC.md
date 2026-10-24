@@ -11,6 +11,7 @@
 - 已通过：前端 key-routing 94 项、typecheck、build；Docker Go 1.27.3 中 `go test ./internal/... -count=1` 全部通过；custom isolation、architecture-negative 34/34、custom contracts 18/18、upstream sync 5/5、workflow 11/11。候选镜像 `sha256:7a3eaee680b7708628cd1f8565818d22e830b836676b35d099f640e3397b0dbc` 在隔离 Compose 项目 `moshu-reseller-acceptance-v018c1` 的主站/L1/COS（18280/18281/18282）均 healthy，/health、管理员登录、Redis、重启持久化通过；每站 329 条迁移，最新 9004。迁移锁、幂等及定制 Key 路由测试通过。迁移回退演练尚未执行。
 - 官方新迁移 `246_enable_gemini_image_generation_groups.sql` 已保留；`9000–9004` 定制迁移不改不删。重复数字前缀按完整文件名排序，必须通过 PostgreSQL 升级/回退演练后才能发布。实验性 `backend/internal/keyrouting/replay/` 明确排除。
 - 生产已按主站→L1→COS 顺序运行 `0.2.18-custom.1`。发布源提交为 `fc0d798bf2d6a08a074970d0485c567291e02660`；发布标签为 `custom-0.2.18.1`；GHCR 不可变镜像为 `ghcr.io/hzihuan001/sub2api@sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`。三站应用 healthy、restart 0，公网 `/health` 均 HTTP 200，关键启动错误匹配为 0。发布前备份 `/opt/sub2api-backups/v0.2.18-custom.1-20261024T000000Z` 已验证；生产迁移主站 329 条、L1/COS 各 338 条，定制 `9000–9004` 与官方 `246` 均在。未调用付费模型、未做长期容量或故障注入；`.16` digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7` 为应用回退目标，回退不得覆盖新业务数据库。
+- 上线后短时复核继续通过：三站 `/image-studio` 与 `/docs/tools/codex` 均 200，未授权 `/v1/models` 均 401，最近 15 分钟关键启动/数据库/Redis 错误匹配为 0。
 
 ## 最新状态（2026-10-23）：custom.16 已完成三站生产部署
 

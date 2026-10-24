@@ -58,6 +58,7 @@
 - 内网与公网健康检查均通过：`https://ai.moshu.cloud/health`、`https://api.moshu.cloud/health`、`https://cos.moshu.cloud/health` 全部 HTTP 200 `{"status":"ok"}`；部署后关键启动错误匹配为 0。
 - 生产 `schema_migrations`：主站 329 条、L1/COS 各 338 条；三站均保留定制 `9000–9004`，并在启动时幂等应用官方 `246_enable_gemini_image_generation_groups.sql`。生产数据服务启动时间未因本轮应用更新改变。
 - 本轮没有调用付费模型，不据此宣称所有 provider、长连接或生产容量已完成长期验收。应用回退目标为 `.16` digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`；回退只更换应用镜像，不覆盖上线后的数据库。
+- 上线后短时复核：三站应用与 PostgreSQL 仍 healthy、restart 0，Redis 认证连通；`/health`、`/image-studio`、`/docs/tools/codex` 均 HTTP 200，未授权 `/v1/models` 均按预期返回 401；最近 15 分钟关键启动/数据库/Redis 错误匹配为 0。
 
 ## 迁移与回滚
 

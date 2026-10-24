@@ -13,6 +13,7 @@
 - **部署站点**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 已按顺序部署同一不可变 digest `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`；应用 healthy、restart 0，三个公网 `/health` 均 HTTP 200，部署后关键启动错误匹配为 0。部署前无活动并发槽、等待队列或生图任务。
 - **备份与迁移**：发布前备份 `/opt/sub2api-backups/v0.2.18-custom.1-20261024T000000Z` 的 SHA256、压缩包和 PostgreSQL dump 清单均验证通过；生产主站 `schema_migrations` 329 条、L1/COS 各 338 条，定制 `9000–9004` 和官方 `246` 均存在。PostgreSQL、Redis、卷、网络和反代未重建。
 - **边界**：本轮未调用付费模型、未做故障注入或长期容量监控；回退只更换应用镜像到 `.16`，不覆盖新业务数据库。实验性 `backend/internal/keyrouting/replay/` 未纳入发布。
+- **上线后复核**：三站应用/PostgreSQL healthy、restart 0，Redis 连通；`/health`、`/image-studio`、`/docs/tools/codex` 全部 200，未授权 `/v1/models` 全部 401，最近 15 分钟关键错误匹配为 0。
 - **回滚**：代码层回退至 `custom.16`；迁移为 forward-only，旧镜像可启动但不会反向恢复批量折扣归一化等数据语义，不覆盖业务数据库，不纳入未跟踪 replay 草稿。发布前仍需完成现场备份和应用镜像回退演练。
 - **备注**：定制代码已明显集中到独立 feature/custom 层，但官方网关热路径仍有薄宿主接线；每次主线升级必须继续做语义冲突审查，不能仅依赖静态隔离检查。
 
