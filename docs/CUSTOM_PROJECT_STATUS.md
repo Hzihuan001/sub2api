@@ -9,16 +9,16 @@
 
 ## 1. 当前快照
 
-### 2026-10-24 — `v0.2.18-custom.1` 已形成发布镜像（生产未部署）
+### 2026-10-24 — `v0.2.18-custom.1` 已合并并部署三站
 
 - 以生产基线 `0.2.16-custom.16` 的集成提交 `4356fafb7707ab0334338a56ef4ff02e004164db` 为起点，人工合并官方 `v0.2.18`（`ac1b8f1271be0d674fa6f074403c1410f30a3a81`），合并提交为 `885edb605702a4af52b0bb8ac0060b58698c872d`；随后补回主线冲突中被覆盖的 Key 路由选择/切组语义，修复提交 `a688883f1bc09fbce2c38a7253be7e1577793678`。候选版本文件为 `0.2.18-custom.1`。
 - 合并后修复提交 `305afd7f9` 修正 Chat/Responses SSE 兼容层的流读取和 Kiro 错误传递、清理无用导入，并让 Gemini Chat 兼容层按实际发送的 thinking 配置记录推理档位；测试合同补丁 `8b5726b0c` 将 `key-routing` 纳入稳定内建功能清单。
 - 保留 `operator`、`prompt-audit`、`image-studio`、`branding`、`usage-extras`、`gateway-resilience` 和 `key-routing`。重点复核了 Chat/Responses 的价格快照、提示词注入、分组上下文、账号级故障切换、备用分组及最终上游错误透传；官方 v0.2.18 的 Vertex 配额、Gemini/Antigravity 图像分组门禁、流断开结算收口、Cloudflare 1010 分类、模型限流并发安全、Gemini 工具兼容、DeepSeek 图片载荷修复、异步图片 SSRF 防护及 Grok 4.7 Fast 定价修复均保留。
 - 模块化结论：定制层已有 manifest/contracts、独立 `backend/internal/custom*`、`keyrouting`、`frontend/src/features/key-routing` 等边界，静态隔离和负向契约有效；但网关 handler/service 仍通过薄宿主接线进入官方热路径，后续主线仍需人工语义复核，不能声称完全零冲突自动合并。
 - 检查：Key-routing 前端 9 个文件 94/94；前端 typecheck、build；Docker Go 1.27.3 中 `go test ./internal/... -count=1` 全部通过，关键 service/handler/middleware 回归也通过；custom isolation、architecture-negative 34/34、custom contracts 18/18、sync 5/5、workflow 11/11 均通过。新构建的本地候选镜像 `sha256:7a3eaee680b7708628cd1f8565818d22e830b836676b35d099f640e3397b0dbc` 在隔离 Compose 三站健康运行，三个 `/health`、管理员登录、PostgreSQL/Redis、重启持久化均通过；每站 `schema_migrations` 329 条，最新 9004。迁移锁/幂等/定制路由测试也通过。真实生产回退演练仍未执行。
-- 发布源提交为 `fc0d798bf2d6a08a074970d0485c567291e02660`；两个分支随后仅追加文档收尾提交 `f07fd11e1`。发布标签为 `custom-0.2.18.1`。GHCR 镜像 `ghcr.io/hzihuan001/sub2api:0.2.18-custom.1` 的不可变 digest 为 `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，已回拉并核对版本、提交、架构及 PostgreSQL 工具。生产尚未部署。
+- 发布源提交为 `fc0d798bf2d6a08a074970d0485c567291e02660`；发布标签为 `custom-0.2.18.1`。GHCR 镜像 `ghcr.io/hzihuan001/sub2api:0.2.18-custom.1` 的不可变 digest 为 `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，已回拉并核对版本、提交、架构及 PostgreSQL 工具。
 - 迁移：官方新增 `246_enable_gemini_image_generation_groups.sql`，候选继续保留已发布的 `9000–9004` 定制迁移；官方与历史定制存在重复数字前缀，运行器按完整文件名排序，禁止重命名或改写已发布迁移，需在 Docker/PostgreSQL 演练中验证升级与回退。
-- 生产仍运行 `0.2.16-custom.16` / `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`；本轮已完成源码、标签和不可变镜像发布，但未部署。实验性 `backend/internal/keyrouting/replay/` 未跟踪且不属于候选。
+- 生产已按主站→L1→COS 顺序更新到 `0.2.18-custom.1`，三站容器 healthy、restart 0，公网 `/health` 全部 HTTP 200，部署后关键启动错误匹配为 0。发布前备份 `/opt/sub2api-backups/v0.2.18-custom.1-20261024T000000Z` 已核验；应用回退目标保留 `.16` digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`。生产迁移为主站 329 条、L1/COS 各 338 条，均含 `9000–9004` 和官方 `246`。本轮未调用付费模型、未做长期容量或故障注入。实验性 `backend/internal/keyrouting/replay/` 未跟踪且不属于候选。
 
 ### 2026-10-23 — `custom.16`：Responses 引用拒绝后跨账号恢复（已部署三站）
 

@@ -1,6 +1,6 @@
 # 定制功能日志
 
-### 2026-10-24 — `v0.2.18-custom.1` 官方合并发布（生产未部署）
+### 2026-10-24 — `v0.2.18-custom.1` 官方合并发布并部署三站
 
 - **需求**：在不丢失现有定制的前提下合并官方 v0.2.18；优先保持模块化边界和后续主线可复核性。
 - **Feature ID**：`operator` / `prompt-audit` / `image-studio` / `branding` / `usage-extras` / `gateway-resilience` / `key-routing`
@@ -10,7 +10,9 @@
 - **测试**：前端 key-routing 9 文件 94/94、typecheck、build、Docker Go 1.27.3 的 `go test ./internal/... -count=1`、isolation、architecture-negative 34/34、custom contracts 18/18、sync 5/5、workflow 11/11 通过。镜像 `sha256:7a3eaee680b7708628cd1f8565818d22e830b836676b35d099f640e3397b0dbc` 在隔离 Compose 三站 `18280–18282` 健康运行；/health、管理员登录、Redis、应用重启和数据持久化通过；三站各 329 条迁移，最新 9004；迁移并发锁/幂等与定制路由测试通过。迁移回退演练尚未执行。
 - **提交/PR**：合并 `885edb605702a4af52b0bb8ac0060b58698c872d`；路由语义修复 `a688883f1bc09fbce2c38a7253be7e1577793678`；流桥接/Gemini计费修复 `305afd7f9`；功能清单合同修复 `8b5726b0c`。发布源提交为 `fc0d798bf2d6a08a074970d0485c567291e02660`；两个分支随后仅追加文档收尾提交 `f07fd11e1`，未创建 PR。
 - **发布镜像**：标签 `custom-0.2.18.1` 已推送；`ghcr.io/hzihuan001/sub2api:0.2.18-custom.1` digest 为 `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，按 digest 回拉、版本/提交/架构及 PostgreSQL 工具检查通过。
-- **部署站点**：尚未部署；生产仍为 `0.2.16-custom.16`，三站旧 digest 不变。当前没有可解析的 OVH SSH 目标，且旧运行手册与历史发布记录的生产状态不一致，不能猜测目标执行变更。
+- **部署站点**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 已按顺序部署同一不可变 digest `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`；应用 healthy、restart 0，三个公网 `/health` 均 HTTP 200，部署后关键启动错误匹配为 0。部署前无活动并发槽、等待队列或生图任务。
+- **备份与迁移**：发布前备份 `/opt/sub2api-backups/v0.2.18-custom.1-20261024T000000Z` 的 SHA256、压缩包和 PostgreSQL dump 清单均验证通过；生产主站 `schema_migrations` 329 条、L1/COS 各 338 条，定制 `9000–9004` 和官方 `246` 均存在。PostgreSQL、Redis、卷、网络和反代未重建。
+- **边界**：本轮未调用付费模型、未做故障注入或长期容量监控；回退只更换应用镜像到 `.16`，不覆盖新业务数据库。实验性 `backend/internal/keyrouting/replay/` 未纳入发布。
 - **回滚**：代码层回退至 `custom.16`；迁移为 forward-only，旧镜像可启动但不会反向恢复批量折扣归一化等数据语义，不覆盖业务数据库，不纳入未跟踪 replay 草稿。发布前仍需完成现场备份和应用镜像回退演练。
 - **备注**：定制代码已明显集中到独立 feature/custom 层，但官方网关热路径仍有薄宿主接线；每次主线升级必须继续做语义冲突审查，不能仅依赖静态隔离检查。
 

@@ -1,7 +1,7 @@
 # v0.2.18-custom.1 合并验收记录
 
 日期：2026-10-24
-状态：代码已合并，本地 Docker/数据库验收通过；源码、发布标签和 GHCR 镜像已推送，生产未部署
+状态：代码已合并，本地 Docker/数据库验收通过；源码、发布标签和 GHCR 镜像已推送，三站生产已按主站→L1→COS 顺序部署并验收
 
 ## 版本与基线
 
@@ -11,7 +11,7 @@
 - 路由语义修复：`a688883f1bc09fbce2c38a7253be7e1577793678`
 - 流桥接/Gemini 推理计费修复：`305afd7f9`
 - 功能清单测试合同修复：`8b5726b0c`
-- 发布源提交：`fc0d798bf2d6a08a074970d0485c567291e02660`；两个分支随后仅追加文档收尾提交 `f07fd11e1`，当前分支指向该文档提交，发布标签和镜像仍固定在发布源提交。
+- 发布源提交：`fc0d798bf2d6a08a074970d0485c567291e02660`；当前分支后续仅追加文档收尾提交，不改变发布标签和镜像。
 - 候选版本：`0.2.18-custom.1`
 - 发布标签：`custom-0.2.18.1`
 - GHCR 镜像：`ghcr.io/hzihuan001/sub2api:0.2.18-custom.1`
@@ -47,7 +47,17 @@
 - 发布产物回拉：按上述 digest 从 GHCR 回拉后 image ID 仍为 `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，内置版本为 `0.2.18-custom.1`、提交为 `fc0d798bf2d6a08a074970d0485c567291e02660`，架构为 `amd64`；`pg_dump`/`psql` 18.6 存在。
 - 启动观察：首次并行 `up` 时主站和 COS 各出现一次 PostgreSQL 就绪竞态并退出，依赖健康后重新启动即恢复；重启和最终健康检查均通过。该现象属于验收 Compose 首次启动时序，不是代码构建或迁移失败；生产发布前应按“依赖 healthy 后启动应用”的顺序执行。
 
-以上完成了本地 PostgreSQL/Redis/Compose 门禁；未做生产数据库回退和真实模型调用，不能解释为生产三站已升级。
+以上完成了本地 PostgreSQL/Redis/Compose 门禁；本轮未做生产付费模型调用、故障注入或数据库回退演练。
+
+## 生产发布结果（2026-10-24）
+
+- 发布前只读排空通过：主站/L1/COS 均无活动并发槽、等待队列或 `image_task:*` 在途任务；主站的常驻调度器索引键不计为在途请求。
+- 发布前备份目录：`/opt/sub2api-backups/v0.2.18-custom.1-20261024T000000Z`。包含三站环境/Compose、应用数据、PostgreSQL custom-format dump、恢复清单和反代配置；SHA256、gzip 完整性和 dump 的 `TABLE DATA` 清单均已核验通过。
+- 主站约 `2026-10-24T00:13:04Z`、L1 约 `00:13:59Z`、COS 约 `00:14:53Z` 依次仅重建应用容器；PostgreSQL、Redis、卷、网络和反代均未重建。
+- 三站当前统一运行 `0.2.18-custom.1`，镜像均为 `ghcr.io/hzihuan001/sub2api@sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`；应用容器 healthy、restart 0。
+- 内网与公网健康检查均通过：`https://ai.moshu.cloud/health`、`https://api.moshu.cloud/health`、`https://cos.moshu.cloud/health` 全部 HTTP 200 `{"status":"ok"}`；部署后关键启动错误匹配为 0。
+- 生产 `schema_migrations`：主站 329 条、L1/COS 各 338 条；三站均保留定制 `9000–9004`，并在启动时幂等应用官方 `246_enable_gemini_image_generation_groups.sql`。生产数据服务启动时间未因本轮应用更新改变。
+- 本轮没有调用付费模型，不据此宣称所有 provider、长连接或生产容量已完成长期验收。应用回退目标为 `.16` digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`；回退只更换应用镜像，不覆盖上线后的数据库。
 
 ## 迁移与回滚
 
@@ -57,4 +67,4 @@
 
 ## 发布决定
 
-生产三站仍为 `0.2.16-custom.16`，镜像 digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`。本记录的源码、标签和不可变镜像均已完成，但尚未部署。下一步必须先核对实时生产版本、Compose/1Panel 路径、备份和可用 SSH 目标，再按主站→L1→COS 顺序更新；不能根据历史文档猜测生产目标。
+生产三站已运行 `0.2.18-custom.1` 及上述不可变 digest，现场备份、顺序发布和健康验收均已完成。后续如需回退，按本记录保留新增迁移结构，只回退应用镜像到 `.16`，不得用旧备份覆盖新业务数据。
