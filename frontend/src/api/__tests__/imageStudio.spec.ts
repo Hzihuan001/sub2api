@@ -283,6 +283,30 @@ describe('imageStudio API', () => {
     })).rejects.toMatchObject({ message: 'model is not enabled', code: 'model_disabled', status: 400 })
   })
 
+  it('forwards all 16 GPT Image references in upload order as separate multipart files', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: 'aW1hZ2U=' }] }),
+    } as Response)
+    const images = Array.from({ length: 16 }, (_, index) => new File([`image-${index}`], `reference-${index}.png`, { type: 'image/png' }))
+
+    await generateImageStudioImages('test-image-key', {
+      model: 'gpt-image-2.5-sunburst', prompt: 'Use every reference image', count: 1, images,
+    })
+
+    expect(fetch).toHaveBeenCalledOnce()
+    const [url, options] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toMatch(/\/v1\/images\/edits$/)
+    expect(options?.headers).toEqual({ Authorization: 'Bearer test-image-key' })
+    const form = options?.body as FormData
+    const uploaded = form.getAll('image') as File[]
+    expect(uploaded).toHaveLength(16)
+    expect(uploaded.map((file) => ({ name: file.name, size: file.size, type: file.type }))).toEqual(
+      images.map((file) => ({ name: file.name, size: file.size, type: file.type })),
+    )
+    expect(form.get('n')).toBe('1')
+  })
+
   it.each(['generations', 'edits', 'native Gemini'] as const)('keeps count normalization on the %s request path', async (transport) => {
     for (const [count, expected] of [[0, 1], [2.9, 2], [9, 4]]) {
       vi.mocked(fetch).mockReset().mockResolvedValue({

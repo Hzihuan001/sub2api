@@ -100,6 +100,48 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEdit(t *testing.T
 	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
 }
 
+func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEditPreservesSixteenReferences(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, fieldName := range []string{"image", "image[]"} {
+		t.Run(fieldName, func(t *testing.T) {
+			var body bytes.Buffer
+			writer := multipart.NewWriter(&body)
+			require.NoError(t, writer.WriteField("model", "gpt-image-2.5-sunburst"))
+			require.NoError(t, writer.WriteField("prompt", "use every reference in upload order"))
+			require.NoError(t, writer.WriteField("size", "1024x1024"))
+			expected := make([]OpenAIImagesUpload, 0, 16)
+			for i := 0; i < 16; i++ {
+				// Reverse filename order so an unintended filename sort is visible.
+				fileName := fmt.Sprintf("reference-%02d.png", 16-i)
+				data := []byte(fmt.Sprintf("distinct-reference-%02d:%s", i, strings.Repeat("x", i+1)))
+				header := make(textproto.MIMEHeader)
+				header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, fileName))
+				header.Set("Content-Type", "image/png")
+				part, err := writer.CreatePart(header)
+				require.NoError(t, err)
+				_, err = part.Write(data)
+				require.NoError(t, err)
+				expected = append(expected, OpenAIImagesUpload{
+					FieldName: fieldName, FileName: fileName, ContentType: "image/png", Data: data,
+				})
+			}
+			require.NoError(t, writer.Close())
+			req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body.Bytes()))
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = req
+
+			parsed, err := (&OpenAIGatewayService{}).ParseOpenAIImagesRequest(c, body.Bytes())
+			require.NoError(t, err)
+			require.NotNil(t, parsed)
+			require.True(t, parsed.Multipart)
+			require.Equal(t, "gpt-image-2.5-sunburst", parsed.Model)
+			require.Len(t, parsed.Uploads, 16)
+			require.Equal(t, expected, parsed.Uploads, "all references must retain their field, filename, MIME, bytes and upload order")
+		})
+	}
+}
+
 func TestOpenAIImagesRequestModerationBody_JSONEditIncludesInputImageURLs(t *testing.T) {
 	parsed := &OpenAIImagesRequest{
 		Endpoint:       openAIImagesEditsEndpoint,

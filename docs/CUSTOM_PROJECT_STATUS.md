@@ -9,6 +9,15 @@
 
 ## 1. 当前快照
 
+### 2026-10-26 — GPT-image 参考图 16 张（候选，尚未部署）
+
+- **Feature ID / 状态**：`image-studio` / `in-progress`。用户已要求验证后部署；候选 `0.2.18-custom.2`，基于最新已提交集成 `e5d4e8c16388a5f061a261997f5840f53ed65f38`，官方仍为 `v0.2.18`，不合并其他上游版本。
+- **隔离与归属**：本轮工作树 `D:/projects/sub2api-image-studio-16refs-20261026`、分支 `codex/image-studio-16refs-20261026`。既有 `group-routing-current` 的未提交共享文档和 `backend/internal/keyrouting/replay/` 不纳入本次发布，不覆盖其他会话修改。
+- **行为**：单生图 GPT-image 家族与 `chatgpt-image-latest` 的参考图上限从 4 调整为 16；Gemini/Nano 仍为 14、Seedream 仍为 10、未知兼容模型仍为 4。既有批量逐条 GPT-image 上限 16、共享参考图模式 1 不变。单文件 10 MiB、总请求/代理大小限制不变，不新增按钮，不显示实际图片尺寸，不做本地放大。
+- **实测证据**：2026-10-26 主站“GPT-image-超分”和“GPT-image-原生”各一次 `gpt-image-2.5-sunburst` 16 张合成参考图请求均 HTTP 200（37/39 秒）；输出的 16 个编号、形状、随机字符全部匹配。该测试验证小图/1K 单次请求，不代表所有模型、大文件、4K 或并发均已验证。
+- **发布边界**：无后端运行时代码、数据库迁移或配置变化。生产预检确认三站仍为 `0.2.18-custom.1`、digest `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`；候选须通过前端/后端定向、生产构建、正式 digest Docker 验收，再备份、只读排空并按主站→L1→COS 仅更新应用。
+- **完整记录**：[`custom.2 发布记录`](CUSTOM_RELEASE_0_2_18_CUSTOM2_20261026.md)。
+
 ### 2026-10-24 — 生产旧镜像清理完成
 
 已删除 15 个未被容器使用的旧 Sub2API 镜像，保留当前发布镜像与 `.16` 回滚镜像，释放约 2.75GB。清理后主站/L1/COS 仍 healthy、restart 0，公网健康检查均为 200；其他项目镜像、数据卷、数据库/Redis 和构建缓存未修改。

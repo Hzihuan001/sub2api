@@ -47,14 +47,23 @@ describe('shared image output policy', () => {
 
 describe('Studio-only model policy', () => {
   it.each([
-    { model: 'gpt-image-2', native: false, references: 4, advanced: true, single: false },
+    { model: 'gpt-image-2', native: false, references: 16, advanced: true, single: false },
+    { model: ' GPT-IMAGE-2.5-SUNBURST ', native: false, references: 16, advanced: true, single: false },
+    { model: 'gpt-image-2.5-flare', native: false, references: 16, advanced: true, single: false },
+    { model: 'gpt-image-2-2026-04-21', native: false, references: 16, advanced: true, single: false },
+    { model: 'vendor/gpt-image-1.5', native: false, references: 16, advanced: true, single: false },
+    { model: 'chatgpt-image-latest', native: false, references: 16, advanced: true, single: false },
+    { model: 'gpt-image-2', native: true, references: 14, advanced: false, single: false },
+    { model: 'custom-image-alias', native: false, references: 4, advanced: true, single: false },
+    { model: 'not-gpt-image-2', native: false, references: 4, advanced: true, single: false },
+    { model: 'gpt-imagery', native: false, references: 4, advanced: true, single: false },
     { model: 'seedream-5.0-pro', native: false, references: 10, advanced: false, single: true },
     { model: 'gemini-nano-banana-2.1-preview', native: false, references: 14, advanced: true, single: false },
     { model: 'gemini-3.1-flash-image', native: false, references: 4, advanced: true, single: false },
     { model: 'gemini-3.1-flash-image', native: true, references: 14, advanced: false, single: false },
     { model: 'custom-alias', native: true, references: 14, advanced: false, single: false },
     { model: 'seedream-5.0-pro', native: true, references: 14, advanced: false, single: true },
-  ])('preserves Studio limits for $model (native=$native) without adopting batch limits', ({ model, native, references, advanced, single }) => {
+  ])('applies the model-specific Studio limits for $model (native=$native)', ({ model, native, references, advanced, single }) => {
     expect(getImageStudioModelPolicy(model, native)).toEqual({
       referenceImageLimit: references,
       supportsAdvancedOptions: advanced,

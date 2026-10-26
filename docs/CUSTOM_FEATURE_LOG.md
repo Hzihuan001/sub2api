@@ -1,5 +1,13 @@
 # 定制功能日志
 
+### 2026-10-26 — image-studio GPT-image 参考图上限 16 张（候选，未部署）
+
+- **需求 / Feature ID**：将已实测支持 16 张参考图的 GPT-image 分组能力在单生图工作台开放；`image-studio`。
+- **基线与隔离**：`v0.2.18` / 当前生产 `0.2.18-custom.1`；从集成 `e5d4e8c16` 新建 `codex/image-studio-16refs-20261026`，不包含其他工作树未提交文档或 replay 实验。
+- **实现**：`frontend/src/utils/imageGenerationPolicy.ts` 只为明确 GPT-image 家族 / `chatgpt-image-latest` 返回 16；上传、追加、超限截断、模型切换裁剪及 Object URL 回收复用既有工作台逻辑。Gemini 14 / Seedream 10 / 未知模型 4，批量逐条 16 / 共享参考 1 不变；不新增功能按钮、不显示实际尺寸，不改生图协议。
+- **测试计划与边界**：新增 policy、16 张完整提交、第 17 张拦截、一次选择 17 张、切换较低上限模型及 multipart 顺序/内容回归。线上先前两组 `gpt-image-2.5-sunburst` 各一次16图请求 HTTP 200，编号/形状/随机字符16/16匹配；不将小图实测等同最大文件大小或所有模型验证。
+- **迁移/发布**：无新增迁移、后端运行时和生产配置变更。候选版本 `0.2.18-custom.2`，当前仍未部署；发布门禁及最终坐标追加到 [`custom.2 发布记录`](CUSTOM_RELEASE_0_2_18_CUSTOM2_20261026.md)。不记录测试密钥。
+
 ### 2026-10-24 — 生产旧镜像清理
 
 - 在三站健康复核通过后，仅清理未被任何容器使用的旧 `ghcr.io/hzihuan001/sub2api` 镜像，共 15 个，释放约 2.75GB。

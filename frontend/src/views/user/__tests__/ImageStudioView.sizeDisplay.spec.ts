@@ -36,7 +36,7 @@ vi.mock('@/features/image-studio/size', async (importOriginal) => ({
 }))
 vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
-  useI18n: () => ({ t: (key: string) => key, locale: { value: 'en' } }),
+  useI18n: () => ({ t: (key: string, values?: { max?: number }) => values?.max ? `${key}: ${values.max}` : key, locale: { value: 'en' } }),
 }))
 
 const mountView = () => shallowMount(ImageStudioView, {
@@ -97,6 +97,65 @@ async function attachReferences(files: File[]) {
 }
 
 describe('Image Studio actual size visibility', () => {
+  it('accepts and submits 16 GPT Image references, but ignores a seventeenth upload', async () => {
+    vi.mocked(URL.createObjectURL).mockImplementation((blob) => `blob:reference-${(blob as File).name}`)
+    wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.text()).toContain('imageStudio.referenceHint: 16')
+    const references = Array.from({ length: 16 }, (_, index) => new File(['image'], `reference-${index}.png`, { type: 'image/png' }))
+    await attachReferences(references.slice(0, 4))
+    const addButton = () => wrapper!.findAll('form button').find((button) => button.text().includes('imageStudio.addImages'))!
+    expect(addButton().attributes('disabled')).toBeUndefined()
+    await attachReferences(references.slice(4))
+    expect(wrapper.findAll('form img').map((image) => image.attributes('alt'))).toEqual(references.map((file) => file.name))
+    expect(addButton().attributes('disabled')).toBeDefined()
+    await attachReferences([new File(['extra'], 'seventeenth.png', { type: 'image/png' })])
+    expect(wrapper.findAll('form img')).toHaveLength(16)
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(16)
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('Use every reference image')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.generate).toHaveBeenCalledWith('test-key', expect.objectContaining({
+      model: 'gpt-image-2.5-sunburst', images: references,
+    }), expect.any(AbortSignal))
+  })
+
+  it('caps an oversized GPT Image file selection at the first 16 references', async () => {
+    vi.mocked(URL.createObjectURL).mockImplementation((blob) => `blob:reference-${(blob as File).name}`)
+    wrapper = mountView()
+    await flushPromises()
+    const references = Array.from({ length: 17 }, (_, index) => new File(['image'], `reference-${index}.png`, { type: 'image/png' }))
+    await attachReferences(references)
+    expect(wrapper.findAll('form img').map((image) => image.attributes('alt'))).toEqual(references.slice(0, 16).map((file) => file.name))
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(16)
+  })
+
+  it.each([
+    { model: 'gemini-nano-banana-2.1', limit: 14 },
+    { model: 'seedream-5.0-pro', limit: 10 },
+    { model: 'custom-image-alias', limit: 4 },
+  ])('trims GPT Image references and releases previews when switching to $model', async ({ model, limit }) => {
+    mocks.listModels.mockResolvedValue([
+      { id: 'gpt-image-2.5-sunburst', name: 'GPT Image' },
+      { id: model, name: 'Other image model' },
+    ])
+    vi.mocked(URL.createObjectURL).mockImplementation((blob) => `blob:reference-${(blob as File).name}`)
+    wrapper = mountView()
+    await flushPromises()
+    const references = Array.from({ length: 16 }, (_, index) => new File(['image'], `reference-${index}.png`, { type: 'image/png' }))
+    await attachReferences(references)
+    await wrapper.get('[data-test="image-studio-model"]').setValue(model)
+    expect(wrapper.findAll('form img').map((image) => image.attributes('alt'))).toEqual(references.slice(0, limit).map((file) => file.name))
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(16 - limit)
+    for (const file of references.slice(limit)) expect(URL.revokeObjectURL).toHaveBeenCalledWith(`blob:reference-${file.name}`)
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('Use the remaining reference images')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.generate).toHaveBeenCalledWith('test-key', expect.objectContaining({
+      model, images: references.slice(0, limit),
+    }), expect.any(AbortSignal))
+  })
+
   it('keeps actual dimensions internal without a mismatch toast after generation', async () => {
     wrapper = mountView()
     await flushPromises()

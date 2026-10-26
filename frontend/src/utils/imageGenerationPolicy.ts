@@ -24,9 +24,11 @@ export function normalizeImageOutputFormat(
 /** Studio limits differ from batch limits, so this policy is intentionally Studio-only. */
 export function getImageStudioModelPolicy(model: string, nativeGemini = false) {
   const seedream = isSeedreamImageModel(model)
+  const modelName = model.trim().toLowerCase().split('/').pop() || ''
+  const gptImage = modelName === 'gpt-image' || modelName.startsWith('gpt-image-') || modelName === 'chatgpt-image-latest'
   return {
     outputFormats: getImageOutputFormats(model, nativeGemini),
-    referenceImageLimit: nativeGemini || isGeminiNanoBananaModel(model) ? 14 : seedream ? 10 : 4,
+    referenceImageLimit: nativeGemini || isGeminiNanoBananaModel(model) ? 14 : seedream ? 10 : gptImage ? 16 : 4,
     countOptions: seedream ? [1] : [1, 2, 3, 4],
     forceSingleOutput: seedream,
     supportsAdvancedOptions: !nativeGemini && !seedream,
