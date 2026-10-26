@@ -1,6 +1,14 @@
 # Sub2API custom release runbook
 
-## Current release: custom-0.2.18.2 (2026-10-26; published and deployed)
+## Current release: custom-0.2.18.3 (2026-10-26; published and deployed)
+
+- Runtime source/tag: `c2dbbe786e844ee1df77bfd710ebaf438f625126` / `custom-0.2.18.3`; source branch `codex/image-batch-16refs-20261026`, workspace `D:/projects/sub2api-image-batch-16refs-20261026`. Official base remains `v0.2.18`; later documentation commits do not move the runtime tag.
+- Published deployment image: `ghcr.io/hzihuan001/sub2api@sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac`. Root-Dockerfile build, immutable pull-back, metadata, linux/amd64 and PostgreSQL18.6 client utilities passed. Frontend92, explicit `-tags=unit` backend reference/fan-out limits, operator permission/restart and mock16-reference batch acceptance passed. The prior `.18.2` missing-unit-tag test scope is corrected in its report.
+- GPT-image batch shared references now allow16, matching per-prompt references. Model-specific caps and total output/attachment/inline-byte limits remain. No backend runtime, database migration or production configuration change. Main → L1 → COS application-only deployment completed after verified backups and zero read-only work counts; all healthy/restart0, data services/configuration/namespaces/migration rows preserved.
+- Verified backup: `/opt/sub2api-backups/v0.2.18-custom.3-20261026T081840Z`; compatible application rollback: `.18.2` / `ghcr.io/hzihuan001/sub2api@sha256:c90609bc4546ec309a980929ec8f28eef3cef236022dd698700920439ce78412`. Keep current business data and all migration rows; do not restore an old database as an application rollback.
+- [Full `.18.3` release evidence](../docs/CUSTOM_RELEASE_0_2_18_CUSTOM3_20261026.md). No paid production model call, production rollback or successful Actions CI is claimed. Preserve other sessions' uncommitted work and recheck remote integration before the next release.
+
+## Historical release: custom-0.2.18.2 (2026-10-26; superseded by custom.3)
 
 - Version `0.2.18-custom.2`; immutable runtime source/tag `879a99a22e47a303604927104a6f67329dcd3b38` / `custom-0.2.18.2`; source branch `codex/image-studio-16refs-20261026` in `D:/projects/sub2api-image-studio-16refs-20261026`. Later commits update documentation only. The official base remains `v0.2.18`.
 - Published and pulled deployment image: `ghcr.io/hzihuan001/sub2api@sha256:c90609bc4546ec309a980929ec8f28eef3cef236022dd698700920439ce78412`. The root Dockerfile, embedded version/commit, linux/amd64 and PostgreSQL 18.6 client tools were verified. Exact-digest operator permission/restart and mock single/batch image acceptance passed. The first isolated empty-database startup readiness failure was retained and the complete gate rerun after the database stabilized; full frontend Vitest retains one unrelated baseline failure. See the report instead of claiming universal CI success.

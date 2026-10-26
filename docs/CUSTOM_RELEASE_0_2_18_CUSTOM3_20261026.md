@@ -1,7 +1,7 @@
 # 0.2.18-custom.3 — 批量共享16张参考图
 
 日期：2026-10-26（Asia/Shanghai）
-状态：候选，验证中，尚未部署。
+状态：正式源码/镜像已推送并完成回拉验收；主站/L1/COS已完成部署。
 
 ## 范围与隔离
 
@@ -28,4 +28,28 @@
 - Docker Go1.27.3：`go test -tags=unit ./internal/service -run 'TestBatchImageShared|TestMaxBatchImageReferenceImagesForModelSupportsGPTImage|TestValidateBatchImageReferenceLimitsForAccountResolvesModelAlias|TestAppManagedBatchImageProviderSendsGPTImageReferenceAsEdit' -count=1 -timeout=300s` 通过（0.449秒）。两Prompt以2+3输出展开，持久化与5次multipart各保留16个文件的顺序/名称/内容；992附件通过/1008拒绝，128MiB边界通过/多一输出拒绝。无后端运行时修改。
 - 依赖审计按现有例外检查通过，没有新增或续期例外。没有重跑此前包含1项既有密钥路由select失败的全量前端套件，不能把本次92项称为全量测试通过。
 - 三站基线已只读确认`.18.2`且healthy/restart0；本轮有效备份 `/opt/sub2api-backups/v0.2.18-custom.3-20261026T081840Z`，三份dump的restore list、配置/业务文件/代理归档及SHA256已验证。仅精确排除持续写入的运行日志，其他业务文件保留。
-- 完成后补齐源码/镜像坐标、正式镜像验收、部署及有限观察范围。GitHub Actions不可用时沿用已授权本地构建/GHCR回拉验收路径，不宣称CI成功。
+- custom隔离（`10b452931` / 官方`v0.2.18`）、架构契约（7模块/12执行组）和PowerShell验收脚本语法通过。没有新增或改写迁移。
+
+## 正式产物及验收
+
+- 运行源 `c2dbbe786e844ee1df77bfd710ebaf438f625126`；分支 `codex/image-batch-16refs-20261026`；不可变标签 `custom-0.2.18.3`，均已推送。
+- 正式镜像 `ghcr.io/hzihuan001/sub2api:0.2.18-custom.3`；不可变引用 `ghcr.io/hzihuan001/sub2api@sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac`。根Dockerfile构建，Go1.27.3/Node24；正式digest已在本地与OVH拉取，linux/amd64、嵌入版本/commit/OCI revision正确，pg_dump/psql18.6可执行。
+- 生产前端build通过（i18n、vue-tsc、Vite；保留既有大chunk/Browserslist提示）。源码与正式镜像经独立复核，没有发现本轮阻止发布的问题。
+- 正式digest在隔离项目 `sub2api-operator-test-batch16-20261026` 通过operator权限/JWT/WebSocket/重启持久化门禁；提前等待本地PostgreSQL/Redis稳定再启动应用，本轮首次完整门禁即通过。
+- `image-studio-smoke.ps1 -ReferenceImageCount 16 -VerifyNoBatchDiscount`通过：接口模型能力明确返回16；同一组16个PNG参考附件用于两个不同Prompt，2+1展开为3张输出，每次上游multipart均含完整16图，总计48附件；外加一次无参考单图请求，共4次mock上游请求，最大并发3。PNG/ZIP、幂等键、无额外批量折扣和合成费用0.03通过；无真实付费调用。内容/顺序逐项一致由后端unit与前端请求回归额外验证。
+- mock证据：`C:/Users/a/AppData/Local/Temp/moshu-image-smoke-1a0b035c50`；只读资源/发布工具证据：`D:/projects/image-batch16-release-20261026`。临时凭据不写Git。
+- 本地 `/batch-image` 验收入口 `index-CJ-ygdFX.js`；批量组件 `BatchImageGuideView-BQZRvQgz.js`，SHA256 `c0f319006385429922d8e46d9051631408570ee5254aadf559bfd33a15d37f95`。正式部署后已与三站实际资源比较。
+- 本轮沿用已授权本地构建/GHCR回拉验收路径，没有GitHub Actions成功结论。正式运行标签不随后续文档提交移动。
+
+## 三站部署及发布后核验
+
+| 站点 | UTC时间（2026-10-26） | 北京时间 | 迁移条数 |
+| --- | --- | --- | --- |
+| 主站 | 08:36:56–08:37:04 | 16:36:56–16:37:04 | 329 |
+| L1 | 08:39:49–08:39:57 | 16:39:49–16:39:57 | 338 |
+| COS | 08:40:50–08:40:58 | 16:40:50–16:40:58 | 338 |
+
+- 主站与L1等正常请求结束后，逐站只读确认请求/等待/批量/异步图片任务计数为0再更新；COS初检即空闲。未删除租约、强制取消或改业务数据库。三站仅重建应用，精确digest与嵌入版本/commit匹配，healthy/restart0；配置/挂载/端口/网络指纹、PostgreSQL/Redis身份与启动时间、namespace及完整迁移行均保持，无新增迁移。
+- 每站内网及公网 `/health`、`/keys`、`/image-studio`、`/batch-image`、`/docs/tools/codex` 均200；三个匿名受保护API均401，关键启动错误匹配0。私有结果位于有效备份目录各站 `*-release-result.json`。
+- 北京时间16:43:47资源比较通过：三站批量页面应用入口3/3一致，每站4个入口/单图/批量/策略JavaScript共12/12资源HTTP200、MIME及SHA256完全匹配。仅精确排除已核验Cloudflare beacon，不请求它；未知跨域仍拒绝。证据 `batch16-assets-manifest.json`、`batch16-public-assets-report.json`。
+- 16:44:40只读复核再次确认healthy/restart0、配置/迁移/内外网检查/关键日志；主站、L1、COS实际观察462/290/230秒，关键错误0，三个site namespace互不相同。属于约4–8分钟短时核验，不宣称长期监控、生产登录浏览器测试、付费推理、故障注入或真实回退。
