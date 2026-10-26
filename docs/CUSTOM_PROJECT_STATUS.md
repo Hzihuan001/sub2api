@@ -9,6 +9,13 @@
 
 ## 1. 当前快照
 
+### 2026-10-26 — 共享文档同步与既有清理记录归档（仅文档）
+
+- 当前权威树为 `D:/projects/sub2api-image-batch-16refs-20261026`，分支 `codex/image-batch-16refs-20261026`；本轮文档基线 `c8d14a1183f73cdefa28e698f45bbaf8f8c730b5`。生产版本仍为下述 `0.2.18-custom.3`，运行源 `c2dbbe786e844ee1df77bfd710ebaf438f625126`、标签 `custom-0.2.18.3` 和正式 digest 均不因文档同步改变；兼容应用回退目标仍为 `.18.2`。
+- 补齐当前功能表与路由验收台账入口：`.13` 的 `account_v2`、授权模型目录并集、完整优先级和管理员 Key 编辑继续保留；精确切组错误标签已在 `5521f3940ba315fcc5b7de87ccf6e832f73dc114` 提交并随 `.14` 起发布。各候选的“未发布/目录非并集”等阶段描述保留为历史，不作为当前结论。账号路由半开探测尚未实现，未跟踪 `replay/` 不属于发布代码。
+- 归档此前北京时间约15:57–16:04、`.18.2` 运行期间的[安全清理记录](CUSTOM_MAINTENANCE_20261026.md)：本地删除52个停止容器，保留12运行＋4测试现场及124卷；服务器Go/apt缓存减少918,528,000字节。清理时间段内14个服务器容器未重启，健康及指纹核对通过；该结果先于16:36–16:40的 `.18.3` 应用更新，不表示部署后的容器ID仍等于清理前。
+- 本次仅移植未提交的共享说明和维护记录，保留 `.18.3` 发布事实及 `.18.2` 后端unit标签遗漏勘误，没有新增测试、清理、部署或生产复核。旧工作树的其他会话修改保持，后续仍须重新核对远端引用。
+
 ### 2026-10-26 — 批量共享参考图16张（已部署三站）
 
 - **Feature ID / 状态**：`image-studio` / `deployed`；批量GPT-image“整组统一参考图”和逐条设置均最多16张。Nano/Gemini14、Seedream10、Flash3保留，不增加按钮或实际尺寸显示。
@@ -466,7 +473,7 @@
 | 发布分支 | `codex/image-batch-16refs-20261026` |
 | 本轮工作树 | `D:/projects/sub2api-image-batch-16refs-20261026` |
 | 官方合并 / 本轮生图提交 | 官方合并 `885edb605`；本轮运行源 `c2dbbe786`；其后仅补文档 |
-| 长期集成基线 | 本轮以 `10b452931` 为起点，运行源与发布文档普通快进至 `origin/custom/integration`；实际ref须重新核对 |
+| 长期集成基线 | `.18.3` 以 `10b452931` 为起点；本轮共享文档基线为 `c8d14a1183f73cdefa28e698f45bbaf8f8c730b5`，运行源与文档收尾分开，实际远端须重新核对 |
 | 历史隔离改造 PR | 草稿 PR #1（状态待另行核验）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
@@ -524,11 +531,11 @@
 | --- | --- | --- | --- |
 | `operator` | operator 角色、管理端固定权限、菜单/路由过滤、权限管理 | `backend/internal/authz`、`backend/internal/server/middleware`、`frontend/src/authz`、管理员视图 | 保留并受测试保护 |
 | `prompt-audit` | Prompt Audit、`capture_only`、事件列表/详情/筛选/导出/清理 | `backend/internal/securityaudit`、`frontend/src/features/prompt-audit` | 保留并受测试保护 |
-| `image-studio` | 生图工作台、批量任务、应用层拆分、参考图、单张/ZIP 下载 | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、用户生图视图 | 保留并受测试保护 |
+| `image-studio` | 生图工作台、批量任务、应用层拆分、单张/ZIP 下载；GPT-image/`chatgpt-image-latest` 单生图、批量共享及逐条参考图均最多16；其他模型按各自能力，批量Nano/Gemini14、Seedream10、Flash3 | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、`frontend/src/utils/imageGenerationPolicy.ts`、用户生图视图 | `0.2.18-custom.3` 已部署；保留文件/任务总量限制、尺寸与计费，无新增迁移 |
 | `branding` | 对客品牌和公共文案统一为 Moshu，隐藏不应出现在对客界面的上游项目名称 | `frontend/src/i18n`、公共页面和品牌处理逻辑 | 保留；每次升级需做文案扫描 |
 | `usage-extras` | 管理员使用记录增强，例如缓存命中率、分页和 API Key 管理辅助能力 | 管理员使用记录 handler/view 及对应测试 | 保留；管理员侧可见，用户侧按权限隐藏 |
-| `gateway-resilience` | 保留分组规则配置适配与原生安全重试；自定义规则不再全局暂停账号，官方认证/限流保护与人工恢复仍保留 | `group_failure_*`、网关窄适配、前端 `features/gateway-resilience` | `.12` 采用 Key 范围冷却，不恢复历史系统过载停号 |
-| `key-routing` | 1 主＋最多 4 备，模型/调度选组，Key 独立 TTFT/SLA/失败/状态码冷却和模型限制，按实际组原生计费；内容/已知用量/副作用后不重放 | 纯 `internal/keyrouting`、薄 service/handler、独立扩展仓储、前端 `features/key-routing` | `.12` 已部署；跨组限安全文本 HTTP/SSE，图片/WS/后台固定主组，目录非并集；9000/9001/9002、缓存 v28 |
+| `gateway-resilience` | 保留分组配置适配与原生安全重试/认证/限流保护；自定义规则不全局停账号；仅给导致成功切组的最后一条已有上游错误加目标组标签，使用记录不变 | `group_failure_*`、网关窄适配、`ops_route_switch_label.go`、前端 `features/gateway-resilience` | `0.2.18-custom.3` 保留；错误标签已随 `.14` 起发布，复用既有错误 JSON、无新增迁移 |
+| `key-routing` | 最多5个分组按优先级排列，支持组可调度性/模型选路；`account_v2` 按Key/账号/分组/模型/端点避让，先尝试同组其他账号，再安全切后续组；TTFT/SLA/失败/状态码等规则、Key模型限制、授权目录并集、管理员共享完整Key编辑；按实际使用组原生计费 | 纯 `internal/keyrouting`、薄 service/handler、独立扩展仓储/Redis、前端 `features/key-routing` | `0.2.18-custom.3` 保留 `.13` 账号级路由及旧 `group_v1` 兼容，迁移 `9000–9004`；`.16` 增加Responses明确引用拒绝后清理被拒指针、保留当前输入的恢复；内容/已知用量/副作用后不重放，不承诺缺失历史可恢复或图片/WS/后台任务任意跨组重放 |
 
 历史代理商/分站运行时功能已从当前定制层移除，不应在后续官方升级时被旧分支或旧 PR 自动带回。历史代理商阶段只在
 [`CUSTOM_FEATURE_LOG.md`](CUSTOM_FEATURE_LOG.md) 中留作变更记录。

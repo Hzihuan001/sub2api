@@ -1,5 +1,12 @@
 # 定制功能日志
 
+### 2026-10-26 — `custom.3` 共享文档补齐与维护历史移植（仅文档）
+
+- 以最新批量树 `D:/projects/sub2api-image-batch-16refs-20261026` / `codex/image-batch-16refs-20261026` / 文档基线 `c8d14a1183f73cdefa28e698f45bbaf8f8c730b5` 为当前入口，运行源仍为 `c2dbbe786e844ee1df77bfd710ebaf438f625126`，版本/标签仍为 `0.2.18-custom.3` / `custom-0.2.18.3`。正式镜像与兼容回退 `.18.2` 继续以本版发布记录为准，不移动运行标签。
+- 补齐当前功能清单的GPT-image单图/批量共享/逐条16图，以及既有 `account_v2`、授权目录并集、完整优先级/管理员Key编辑与迁移 `9000–9004`。精确切组错误标签已在 `5521f3940ba315fcc5b7de87ccf6e832f73dc114` 提交并随 `.14` 起发布，`.18.3` 保留；两份路由台账新增当前发布覆盖说明，旧候选与测试历史不改写。半开探测未实现，未跟踪 `replay/` 不属于发布代码。
+- 移植[安全清理记录](CUSTOM_MAINTENANCE_20261026.md)，保持 `.18.2` 时点原结果：约15:57–16:04本地删除52个停止容器，保留12运行＋4现场、124卷及镜像；服务器Go/apt缓存减少918,528,000字节，14个容器在清理时间段内未重启，三站健康200、指定关键日志0。首次挂载顺序指纹差异及后续只读匹配事实保留；本次清理先于16:36–16:40的 `.18.3` 发布，其容器身份核对不套用到部署后。
+- 保留 `.18.3` 全部发布/验收正文与 `.18.2` 后端unit标签遗漏勘误；本次文档同步没有新运行代码、测试、清理、部署或生产复核，也不将旧单图树的未提交内容视为 `.18.3` 运行源码。
+
 ### 2026-10-26 — 批量共享16张参考图完成发布与三站部署
 
 - **Feature ID / 行为**：`image-studio`；批量GPT-image的共享/逐条模式均最多16张，其他模型按自身上限。共享支持多选、追加和移除，异步读取结束再次检查限额；删空共享图后不再重新提交旧逐条引用。保留原文件/任务总量及计费，无后端运行时或迁移变化。
@@ -653,11 +660,11 @@
 | --- | --- | --- | --- |
 | `operator` | operator 认证、默认拒绝的管理路由、角色权限配置、菜单和页面守卫；admin 仍保留严格超级管理员语义 | `backend/internal/authz`、`backend/internal/server/middleware`、`frontend/src/authz`、角色/权限测试 | 已有迁移不可改/删；新增定制迁移使用 `9000–9999_custom_<feature>.sql` |
 | `prompt-audit` | `off`、`capture_only`、`async_audit`、`blocking`；捕获事件、类型筛选、详情、导出、删除和保留策略 | `backend/internal/securityaudit`、`frontend/src/features/prompt-audit`、对应后端/前端测试 | 追加式；不得修改已发布迁移 |
-| `image-studio` | Moshu 生图工作台、批量任务、应用层单图拆分、队列、参考图、单张下载和 ZIP 下载；默认生图尺寸为 2K | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、用户工作台视图、批量测试 | 追加式；对象/任务数据需兼容旧镜像 |
+| `image-studio` | Moshu生图工作台、批量任务、应用层单图拆分、队列、单张/ZIP下载；默认生图尺寸2K；GPT-image/`chatgpt-image-latest` 单图、批量共享及逐条参考图均最多16，其他模型按自身能力（批量Nano/Gemini14、Seedream10、Flash3） | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、`frontend/src/utils/imageGenerationPolicy.ts`、用户工作台视图、批量测试 | `custom.3` 无新增迁移；原文件/任务总量及计费保持，对象/任务数据需兼容旧镜像 |
 | `branding` | 对客页面、公共文案和图片工作台统一使用 Moshu，避免把上游项目名暴露给用户 | `frontend/src/i18n`、品牌工具、公共页面测试 | 无独立数据迁移 |
 | `usage-extras` | 管理员使用记录显示缓存命中率、分页跳转等增强；用户侧不显示管理员专属字段 | 管理员使用记录 handler/view 与前端测试 | 无破坏性迁移 |
-| `gateway-resilience` | 分组配置保留适配，原生安全重试/认证/限流保护和人工恢复不移除；自定义规则不再写账号全局暂停 | `group_failure_*`、网关窄适配、前端 `features/gateway-resilience` | 复用 settings，旧系统过载停号不恢复 |
-| `key-routing` | 1 主＋最多 4 备，Key 独立 TTFT/SLA/失败/状态码冷却与模型限制；安全前内容切组、实际组原生计费、共享 Key 额度；内容/已知用量/副作用后不重放 | 纯 `internal/keyrouting`、薄 service/handler、独立扩展仓储、前端 `features/key-routing` 与宿主测试 | 9000/9001/9002、认证缓存 v28；旧镜像忽略模型限制，启用受限 Key 后禁止无审核回退 |
+| `gateway-resilience` | 分组配置保留适配，原生安全重试/认证/限流保护和人工恢复不移除；自定义规则不全局停账号；导致成功切组的最后一条上游错误显示目标组标签，使用记录不变 | `group_failure_*`、网关窄适配、`ops_route_switch_label.go`、前端 `features/gateway-resilience` | 复用settings和既有错误JSON；标签无新增迁移，旧系统过载停号不恢复 |
+| `key-routing` | 最多5组统一优先级；`account_v2` 先避让同组账号再安全切后续组，健康状态按Key/账号/组/模型/端点隔离；TTFT/SLA/失败/状态码等规则、模型限制、授权目录并集、管理员复用完整编辑器；实际组原生计费及共享Key额度；`.16` 明确引用拒绝后保留当前输入恢复，不保证缺失历史可恢复；内容/已知用量/副作用后不重放 | 纯 `internal/keyrouting`、薄 service/handler、独立扩展仓储/Redis、前端 `features/key-routing` 与宿主测试；保留旧 `group_v1` | 迁移 `9000–9004` 原样保留，模型权限和 `account_v2` 不可在旧镜像静默降级；回退需先审查兼容性，不覆盖新账目 |
 
 ## 版本与功能时间线
 
