@@ -1,6 +1,15 @@
 # Sub2API custom release runbook
 
-## Current candidate: custom-0.2.18.1 (2026-10-24; published and deployed)
+## Current release: custom-0.2.18.2 (2026-10-26; published and deployed)
+
+- Version `0.2.18-custom.2`; immutable runtime source/tag `879a99a22e47a303604927104a6f67329dcd3b38` / `custom-0.2.18.2`; source branch `codex/image-studio-16refs-20261026` in `D:/projects/sub2api-image-studio-16refs-20261026`. Later commits update documentation only. The official base remains `v0.2.18`.
+- Published and pulled deployment image: `ghcr.io/hzihuan001/sub2api@sha256:c90609bc4546ec309a980929ec8f28eef3cef236022dd698700920439ce78412`. The root Dockerfile, embedded version/commit, linux/amd64 and PostgreSQL 18.6 client tools were verified. Exact-digest operator permission/restart and mock single/batch image acceptance passed. The first isolated empty-database startup readiness failure was retained and the complete gate rerun after the database stabilized; full frontend Vitest retains one unrelated baseline failure. See the report instead of claiming universal CI success.
+- GPT-image Studio references now allow16; Nano/Gemini14, Seedream10 and unknown4 remain. No backend runtime/schema/configuration change. Three production applications were updated main → L1 → COS after verified backups and zero read-only request/wait/image-task counts. All are healthy, restart0; config/mount/network fingerprints, PostgreSQL/Redis identities, namespaces and migration ledgers remain unchanged (main329, L1/COS338).
+- Valid backup: `/opt/sub2api-backups/v0.2.18-custom.2-20261026T050710Z`. Earlier incomplete attempts are not restore points; final archives exclude only the exact active runtime-log directories and retain all business/configuration files. Dump lists, archive readability and SHA256 checks passed. No production paid-model call or rollback was performed during release.
+- Compatible application rollback: `0.2.18-custom.1` / `ghcr.io/hzihuan001/sub2api@sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`. Retain current databases, data volumes and all migration rows. This supersedes older fallback examples below.
+- Full evidence: [custom.2 release record](../docs/CUSTOM_RELEASE_0_2_18_CUSTOM2_20261026.md). Preserve other sessions' dirty worktrees; use the tested source branch/integration reference for later releases.
+
+## Historical release: custom-0.2.18.1 (2026-10-24; superseded by custom.2)
 
 - Source branch: `codex/v0.2.18-merge-20261023`; the immutable release source is `fc0d798bf2d6a08a074970d0485c567291e02660` and later branch commits only update release documentation.
 - Source version: `0.2.18-custom.1`; immutable source tag: `custom-0.2.18.1`.
