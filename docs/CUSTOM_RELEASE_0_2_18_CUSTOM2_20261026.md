@@ -72,3 +72,7 @@
 - 初版只读资源脚本把Cloudflare额外注入的 `static.cloudflareinsights.com` module beacon误当应用入口，因此根入口检查失败，但3个应用资源已匹配。仅在私有验收脚本中精确识别并记录该HTTPS beacon路径，未知跨域仍拒绝，未请求beacon、未修改生产。脚本自检13/13；旧失败报告保留，最终证据为 `image16-assets-manifest-v2.json` 与 `image16-public-assets-report-v2.json`。
 - 13:29:35再次只读复核三站healthy/restart0、正式digest、配置指纹、完整迁移记录、内外网检查及关键日志；主站/L1/COS观测时间分别310/268/212秒，关键错误匹配0，三个site namespace互不相同。该范围是约3.5–5分钟的短时观察，不代表30分钟或长期监控。
 - 本次没有新增全局引用图大小限制、代理限制调整或服务端放大。当前发布仅开放已验证的GPT-image16张能力，复杂图片理解质量和其他上游账号能力仍由实际模型决定。
+
+## 2026-10-26 后端测试范围勘误
+
+本报告此前“后端定向”中列出的批量参考上限/别名两个目标位于带 `//go:build unit` 的文件，当时命令没有 `-tags=unit`，它们实际未执行。已执行的multipart16图解析及API-key编辑转发、前端和真实API证据保持有效；不能用此前无tag命令证明批量测试通过。后续 `.18.3` 显式带unit标签重测，包括共享16图展开与真实multipart构造，结果见 [`custom.3记录`](CUSTOM_RELEASE_0_2_18_CUSTOM3_20261026.md)。

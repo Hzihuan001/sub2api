@@ -705,15 +705,16 @@
               </div>
               <label
                 class="btn btn-secondary h-9 cursor-pointer justify-center text-sm"
-                :class="sharedReferenceImageDrafts.length >= 1 || selectedModelReferenceLimit <= 0 ? 'pointer-events-none opacity-60' : ''"
+                :class="sharedReferenceImageDrafts.length >= selectedModelReferenceLimit ? 'pointer-events-none opacity-60' : ''"
               >
                 <Icon name="upload" size="sm" class="mr-1.5" />
                 {{ t('batchImage.create.referenceImage') }}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
+                  multiple
                   class="hidden"
-                  :disabled="sharedReferenceImageDrafts.length >= 1 || selectedModelReferenceLimit <= 0"
+                  :disabled="sharedReferenceImageDrafts.length >= selectedModelReferenceLimit"
                   @change="handleSharedReferenceImageFiles"
                 />
               </label>
@@ -1339,7 +1340,7 @@ const parsedItems = computed<BatchImageSubmitItem[]>(() => {
 })
 
 const requestItems = computed<BatchImageSubmitItem[]>(() => {
-  if (referenceMode.value !== 'shared' || sharedReferenceImageDrafts.value.length === 0) {
+  if (referenceMode.value !== 'shared') {
     return parsedItems.value
   }
   const references = sharedReferenceImageDrafts.value.map(({ name: _name, size: _size, ...reference }) => ({ ...reference }))
@@ -1391,7 +1392,7 @@ ${endpointBase.value}
 2. 从用户要求或上下文推断任务名称；没有明确名称时用当前时间生成任务名。
 3. 从用户要求或上下文推断输出目录；如果用户没有说保存到哪里，才询问用户。
 4. 提交前必须先计算 expected_output_count = 所有 item 的 output_count 之和。单个批量任务硬性最多 200 张输出图；超过 200 张必须拆成多组任务，不能提交一个超大任务，也不能把参考图附件上限当成生成张数上限。
-5. 如果用户提供参考图，可选择整组任务统一复用一张，也可按用途绑定到具体 item。参考图只是输入附件，不是输出图数量。模型单条限制必须按模型执行：GPT-image 每条最多 16 张，Gemini 2.5 Flash Image 每条最多 3 张，Gemini 3 Pro Image 每条最多 14 张。不要把后端附件风控理解成单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
+5. 如果用户提供参考图，可选择整组任务统一复用同一组图片，也可按用途绑定到具体 item。共享参考图会完整应用到每条 item，两种方式使用相同的模型单条上限：GPT-image 最多 16 张，Gemini 2.5 Flash Image 最多 3 张，Gemini 3 Pro Image / Nano Banana 最多 14 张，Seedream 5.0 Pro 最多 10 张；以模型接口公布的能力为准。参考图只是输入附件，不是输出图数量。不要把后端附件风控理解成单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
 6. 参考图会按 output_count 重复消耗输入 token；大量任务、重复复用同一张参考图或参考图总体积较大时，优先使用 gs:// file_uri 或拆分成多组任务。
 7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。不要展示或询问内部 provider 名称。系统会自动选择后台拆单并发执行或上游原生批量通道。
 8. 调用批量生图 API 提交、轮询、下载，不要求用户去页面里手填。
@@ -1541,7 +1542,11 @@ async function handleReferenceImageFiles(event: Event) {
       size: file.size,
     })
   }
-  referenceImageDrafts.value = [...referenceImageDrafts.value, ...next]
+  const remaining = Math.max(0, selectedModelReferenceLimit.value - referenceImageDrafts.value.length)
+  referenceImageDrafts.value = [...referenceImageDrafts.value, ...next.slice(0, remaining)]
+  if (next.length > remaining) {
+    appStore.showError(t('batchImage.create.refLimitExceededIgnored', { limit: selectedModelReferenceLimit.value }))
+  }
 }
 
 async function handleSharedReferenceImageFiles(event: Event) {
@@ -1549,19 +1554,19 @@ async function handleSharedReferenceImageFiles(event: Event) {
   const files = Array.from(input.files || [])
   input.value = ''
   if (files.length === 0) return
-  const limit = Math.min(selectedModelReferenceLimit.value, 1)
+  const limit = selectedModelReferenceLimit.value
   if (limit <= 0) {
     appStore.showError(t('batchImage.create.modelNoReferenceImages'))
     return
   }
   const slots = Math.max(0, limit - sharedReferenceImageDrafts.value.length)
   if (slots <= 0) {
-    appStore.showError(t('batchImage.create.refLimitReached', { limit: 1 }))
+    appStore.showError(t('batchImage.create.refLimitReached', { limit }))
     return
   }
   const accepted = files.slice(0, slots)
   if (accepted.length < files.length) {
-    appStore.showError(t('batchImage.create.refLimitExceededIgnored', { limit: 1 }))
+    appStore.showError(t('batchImage.create.refLimitExceededIgnored', { limit }))
   }
   const next: ReferenceImageDraft[] = []
   for (const file of accepted) {
@@ -1583,7 +1588,11 @@ async function handleSharedReferenceImageFiles(event: Event) {
       size: file.size,
     })
   }
-  sharedReferenceImageDrafts.value = [...sharedReferenceImageDrafts.value, ...next]
+  const remaining = Math.max(0, selectedModelReferenceLimit.value - sharedReferenceImageDrafts.value.length)
+  sharedReferenceImageDrafts.value = [...sharedReferenceImageDrafts.value, ...next.slice(0, remaining)]
+  if (next.length > remaining) {
+    appStore.showError(t('batchImage.create.refLimitExceededIgnored', { limit: selectedModelReferenceLimit.value }))
+  }
 }
 
 function readFileAsBase64(file: File): Promise<string> {
@@ -2000,7 +2009,7 @@ function validateForm(): boolean {
     return false
   }
   const refLimit = selectedModelReferenceLimit.value
-  if (referenceMode.value === 'shared' && sharedReferenceImageDrafts.value.length > Math.min(refLimit, 1)) {
+  if (referenceMode.value === 'shared' && sharedReferenceImageDrafts.value.length > refLimit) {
     appStore.showError(batchImageText('tooManyReferenceImages'))
     return false
   }
@@ -3115,16 +3124,18 @@ watch(
     if (!responseMimeTypeOptions.value.some(option => option.value === form.responseMimeType)) {
       form.responseMimeType = responseMimeTypeOptions.value[0]?.value as string || 'image/png'
     }
-    const limit = selectedModelReferenceLimit.value
-    if (limit <= 0) {
-      referenceImageDrafts.value = []
-      return
-    }
-    if (referenceImageDrafts.value.length > limit) {
-      referenceImageDrafts.value = referenceImageDrafts.value.slice(0, limit)
-    }
   },
 )
+
+watch(selectedModelReferenceLimit, (limit) => {
+  const maximum = Math.max(0, limit)
+  if (referenceImageDrafts.value.length > maximum) {
+    referenceImageDrafts.value = referenceImageDrafts.value.slice(0, maximum)
+  }
+  if (sharedReferenceImageDrafts.value.length > maximum) {
+    sharedReferenceImageDrafts.value = sharedReferenceImageDrafts.value.slice(0, maximum)
+  }
+})
 
 onBeforeUnmount(() => {
   stopPolling()

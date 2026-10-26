@@ -4,6 +4,7 @@ param(
   [int]$Port = 18086,
   [int]$MockPort = 18087,
   [int]$TimeoutSeconds = 240,
+  [ValidateRange(1, 16)][int]$ReferenceImageCount = 1,
   [string]$ResumeBatchId = '',
   [string]$ResumeFixtureSuffix = '',
   [switch]$KeepFixtures,
@@ -124,15 +125,19 @@ try {
   $batchModel = @($batchModels.data | Where-Object { $_.id -eq 'gpt-image-2' -and $_.provider -eq 'app_managed' })
   Assert-True ($batchModel.Count -eq 1) 'App-managed image model is missing'
   Assert-True ($batchModel[0].mode -eq 'managed_fanout') 'Unexpected image execution mode'
+  Assert-True ([int]$batchModel[0].reference_image_limit -eq 16) 'GPT-image model discovery did not advertise sixteen reference images'
 
   if (-not $resume) {
     $single = Request-Json POST '/v1/images/generations' $apiKey @{ model = 'gpt-image-2'; prompt = 'local single fixture'; n = 1; size = '2048x2048'; output_format = 'jpeg'; response_format = 'b64_json' }
     Assert-Png ([Convert]::FromBase64String($single.data[0].b64_json)) 'Single-image response'
+    $sharedReferences = @(1..$ReferenceImageCount | ForEach-Object {
+      @{ id = ('shared-{0:d2}.png' -f $_); mime_type = 'image/png'; data = $reference }
+    })
     $payload = @{
       model = 'gpt-image-2'; provider = 'app_managed'; task_name = "local-image-smoke-$suffix"; image_size = '2K'; response_mime_type = 'image/jpeg'
       items = @(
-        @{ custom_id = 'shared'; prompt = 'local shared reference fixture'; output_count = 2; reference_images = @(@{ id = 'shared.png'; mime_type = 'image/png'; data = $reference }) },
-        @{ custom_id = 'individual'; prompt = 'local individual reference fixture'; output_count = 1; reference_images = @(@{ id = 'individual.png'; mime_type = 'image/png'; data = $reference }) }
+        @{ custom_id = 'shared'; prompt = 'local shared reference fixture'; output_count = 2; reference_images = $sharedReferences },
+        @{ custom_id = 'individual'; prompt = 'local second prompt with shared references'; output_count = 1; reference_images = $sharedReferences }
       )
     }
     $idempotency = [Guid]::NewGuid().ToString()
@@ -177,10 +182,12 @@ try {
   $edits = @($stats.requests | Where-Object { $_.path -eq '/v1/images/edits' })
   Assert-True ($edits.Count -eq 3) 'References were not sent to every expanded batch output'
   Assert-True (@($stats.requests | Where-Object { $null -ne $_.n -and $_.n -ne 1 }).Count -eq 0) 'An upstream request asked for more than one output'
-  Assert-True (@($edits | Where-Object { -not $_.idempotency_key -or $_.references.Count -ne 1 }).Count -eq 0) 'Batch reference or retry key was lost'
+  Assert-True (@($edits | Where-Object { -not $_.idempotency_key -or $_.references.Count -ne $ReferenceImageCount }).Count -eq 0) 'Batch reference or retry key was lost'
+  Assert-True (@($edits.references | Where-Object { -not $_.png }).Count -eq 0) 'Reference PNG content was corrupted'
   Assert-True (@($edits.idempotency_key | Select-Object -Unique).Count -eq 3) 'Different outputs shared an upstream retry key'
   [pscustomobject]@{
     status = 'passed'; project = $Project; batch_id = $job.id; images = 3; resumed = $resume
+    reference_images_per_output = $ReferenceImageCount
     upstream_requests = $stats.requests.Count; max_upstream_concurrency = $stats.max_active
     actual_cost = $current.actual_cost; artifact_directory = $artifactDir
   } | ConvertTo-Json
