@@ -1,0 +1,28 @@
+services:
+  auth:
+    image: ${DIRECT_ACCESS_IMAGE:?Set the immutable direct-access image digest}
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 96m
+    cpus: 0.5
+    environment:
+      DIRECT_ACCESS_LISTEN_ADDR: ":8080"
+      DIRECT_ACCESS_DSN_FILE: /run/secrets/auth.dsn
+    volumes:
+      - ./secrets/auth.dsn:/run/secrets/auth.dsn:ro
+    ports:
+      - "127.0.0.1:18190:8080"
+    networks: [main_database]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  main_database:
+    external: true
+    name: ${DIRECT_ACCESS_DB_NETWORK:?Set the existing main-site database network}

@@ -76,13 +76,16 @@
       "owner": "custom/operator",
       "entries": [
         "backend/internal/authz",
+        "backend/cmd/direct-access",
+        "deploy/direct-access",
         "frontend/src/authz",
         "frontend/src/custom/features/operatorRole.ts"
       ],
       "dependencies": [],
       "tests": [
         "backend-host",
-        "frontend-host"
+        "frontend-host",
+        "backend-direct-access"
       ]
     },
     {
@@ -331,6 +334,10 @@
     }
   ],
   "tests": {
+    "backend-direct-access": {
+      "cwd": "backend",
+      "argv": ["go", "test", "./cmd/direct-access"]
+    },
     "backend-key-account-routing": {
       "cwd": "backend",
       "argv": [

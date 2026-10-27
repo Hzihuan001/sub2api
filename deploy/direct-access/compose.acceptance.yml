@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: acceptance
+      POSTGRES_PASSWORD: acceptance-only-not-production
+      POSTGRES_DB: acceptance
+    volumes:
+      - acceptance-db:/var/lib/postgresql/data
+      - ./fixture.sql:/docker-entrypoint-initdb.d/10-fixture.sql:ro
+      - ./authorization.sql:/docker-entrypoint-initdb.d/20-authorization.sql:ro
+      - ./.acceptance/30-password.sql:/docker-entrypoint-initdb.d/30-password.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U acceptance -d acceptance]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [acceptance]
+  auth:
+    build:
+      context: ../..
+      dockerfile: deploy/direct-access/Dockerfile
+    environment:
+      DIRECT_ACCESS_LISTEN_ADDR: :8080
+      DIRECT_ACCESS_DSN_FILE: /run/secrets/direct-access-dsn
+    volumes:
+      - ./.acceptance/dsn.txt:/run/secrets/direct-access-dsn:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [acceptance]
+  mock:
+    image: python:3.12-alpine
+    command: [python, -u, /app/mock.py]
+    volumes:
+      - ./mock.py:/app/mock.py:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [acceptance]
+  nginx:
+    image: nginx:1.27-alpine
+    ports: [127.0.0.1:18390:80]
+    volumes:
+      - ./.acceptance/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [auth, mock]
+    networks: [acceptance, ingress]
+networks:
+  acceptance:
+    internal: true
+  ingress:
+    # Docker Desktop does not publish host ports on internal-only networks.
+    # Only Nginx joins this bridge; DB/auth/mock remain on the internal network.
+    driver: bridge
+volumes:
+  acceptance-db:

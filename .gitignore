@@ -139,6 +139,7 @@ deploy/docker-compose.override.yml
 .golangci-cache/
 vite.config.js
 docs/*
+!docs/CUSTOM_DIRECT_ACCESS_20261027.md
 !docs/CUSTOM_KEY_ROUTING_20261015.md
 !docs/CUSTOM_KEY_FAILOVER_RULES_20261019.md
 !docs/CUSTOM_KEY_EDITOR_ACCEPTANCE_20261020.md

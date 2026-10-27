@@ -1,0 +1,114 @@
+# Independent vhost. Included inside nginx's http{} context.
+# Credentials/query strings are deliberately absent from access logs.
+map $http_upgrade $moshu_nocf_connection {
+    default upgrade;
+    '' close;
+}
+
+log_format moshu_nocf '$remote_addr [$time_local] "$request_method $uri $server_protocol" '
+                       '$status $body_bytes_sent rt=$request_time';
+
+# HTTP_REDIRECT_START (the acceptance renderer removes this block)
+server {
+    listen 80;
+    server_name __DOMAIN__;
+    access_log off;
+    error_log /dev/null crit;
+    location ^~ /.well-known/acme-challenge/ {
+        root __ACME_ROOT__;
+        try_files $uri =404;
+    }
+    location / { return 308 https://__DOMAIN__$request_uri; }
+}
+# HTTP_REDIRECT_END
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name __DOMAIN__;
+    ssl_certificate __CERT_DIR__/fullchain.pem;
+    ssl_certificate_key __CERT_DIR__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log /var/log/nginx/nocf-access.log moshu_nocf;
+    # Nginx error logs include the raw URI (which may contain a Gemini key).
+    # Diagnose this ingress via the sanitized access status and auth health.
+    error_log /dev/null crit;
+    client_max_body_size 200m;
+    client_body_timeout 600s;
+    send_timeout 10h;
+
+    location = /_nocf_auth {
+        internal;
+        proxy_pass __AUTH_ORIGIN__/auth;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header X-Goog-API-Key $http_x_goog_api_key;
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Original-Method $request_method;
+        proxy_connect_timeout 1s;
+        proxy_read_timeout 3s;
+        proxy_send_timeout 3s;
+        proxy_cache off;
+    }
+
+    location = /health {
+        default_type application/json;
+        add_header Cache-Control no-store always;
+        return 200 '{"status":"ok","entry":"direct"}';
+    }
+
+    # Only API endpoints; management, login and settings remain on the main URL.
+    location ~ ^/(?:v1(?:/|$)|v1beta(?:/|$)|responses(?:/|$)|chat/completions(?:/|$)|messages(?:/|$)|models(?:/|$)|images(?:/|$)|embeddings(?:/|$)|audio(?:/|$)|videos(?:/|$)|batches(?:/|$)|custom-voices(?:/|$)|antigravity(?:/|$)|sora(?:/|$)) {
+        auth_request /_nocf_auth;
+        error_page 401 = @nocf_unauthenticated;
+        error_page 403 = @nocf_denied;
+        error_page 500 502 503 504 = @nocf_unavailable;
+        # auth subrequest errors must fail closed, never bypass the gate.
+        proxy_intercept_errors off;
+        proxy_pass __MAIN_ORIGIN__;
+        proxy_http_version 1.1;
+        proxy_set_header Host ai.moshu.cloud;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header CF-Connecting-IP "";
+        proxy_set_header True-Client-IP "";
+        proxy_set_header Forwarded "";
+        proxy_set_header X-Forwarded-Host __DOMAIN__;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Direct-Access "";
+        proxy_set_header X-Direct-User-ID "";
+        proxy_set_header X-Direct-Access-Authorized "";
+        proxy_set_header X-Original-URI "";
+        proxy_set_header X-Original-Method "";
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $moshu_nocf_connection;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 10h;
+        proxy_read_timeout 10h;
+        gzip off;
+        add_header X-Accel-Buffering no always;
+    }
+
+    location @nocf_unauthenticated {
+        default_type application/json;
+        return 401 '{"error":{"type":"authentication_error","code":"DIRECT_API_KEY_REQUIRED","message":"Provide an API key in an authentication header."}}';
+    }
+    location @nocf_denied {
+        default_type application/json;
+        return 403 '{"error":{"type":"permission_error","code":"DIRECT_ACCESS_DENIED","message":"Direct access is not enabled for this API key or user. Contact the administrator."}}';
+    }
+    location @nocf_unavailable {
+        default_type application/json;
+        return 503 '{"error":{"type":"api_error","code":"DIRECT_AUTH_UNAVAILABLE","message":"Direct access authentication is temporarily unavailable. Retry later."}}';
+    }
+    location / {
+        default_type application/json;
+        return 404 '{"error":{"type":"not_found","message":"API endpoint not found."}}';
+    }
+}

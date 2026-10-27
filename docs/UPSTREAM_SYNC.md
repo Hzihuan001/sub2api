@@ -1,5 +1,11 @@
 # 官方主线同步说明
 
+## 最新增量（2026-10-27）：独立受控直连入口
+
+本轮不合并官方或重建三站应用，主应用仍 `.18.4`。从 `28159e883499df18d6f0ef7819e500eab95a5896` 建立 `D:/projects/sub2api-direct-access-20261027` / `codex/direct-access-20261027`，新增 `backend/cmd/direct-access` 与 `deploy/direct-access` 独立入口，在 manifest 登记部署扩展、契约测试及升级保护路径；没有主程序接线、前端功能标志、新依赖或业务迁移。后续合并须保留该独立基础设施，并核对现有用户属性表列、原生 API 鉴权及可信 IP 头语义；升级主应用不必重建此侧车。
+
+`nocf.moshu.cloud` 已 DNS only + HTTPS 上线，管理员按用户授权，原 Key/计费保持；本地48项/真实PG集成及生产免费验收、模拟续期通过。发布坐标、证据边界和回退见[直连记录](CUSTOM_DIRECT_ACCESS_20261027.md)。最新源码仍以实际远端 `custom/integration` 为准，下文历史权威树描述保留为各轮事实，不作为回退当前代码的依据。
+
 ## 文档补充（2026-10-27）：发布后生图错误诊断
 
 上轮 `.18.4` 发布闭环 `a56bf0c0208f885e4fe4c4e3c2c5eebcfbca81d4` 已同步功能分支与 `custom/integration`，三个旧树保留原文及共享指针。此次追加[错误排查记录](CUSTOM_IMAGE_STUDIO_DIAGNOSTICS_20261027.md)和共享日志，运行源 `1524aa098`、标签 `custom-0.2.18.4`、正式digest保持，不合并上游、不修改运行代码或重部署。

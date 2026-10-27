@@ -1,0 +1,6 @@
+.acceptance/
+__pycache__/
+secrets/
+.env
+*.tar
+*.tar.gz

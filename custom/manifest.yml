@@ -135,3 +135,16 @@ policies:
   # Reserved custom numbering; already-published migrations remain immutable.
   custom_migration_pattern: '^9[0-9]{3}_custom_[a-z0-9][a-z0-9_-]*\.sql$'
   production_deploy_from_sync_pr: false
+
+# Optional infrastructure, built separately from the application image. No
+# frontend flag, main gateway hook, or migration is required for this ingress.
+deployment_extensions:
+  - id: direct-access
+    owner: custom/operator
+    source: backend/cmd/direct-access
+    deployment: deploy/direct-access
+    permission_attribute: moshu_direct_access
+    tests:
+      - backend/cmd/direct-access/main_test.go
+      - backend/cmd/direct-access/main_integration_test.go
+      - deploy/direct-access/acceptance.py
