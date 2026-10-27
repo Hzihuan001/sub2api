@@ -2030,7 +2030,11 @@ async function submitJob() {
   try {
     const selectedModelInfo = availableBatchImageModels.value.find(model => model.value === form.model)
     const selectedMode = String(selectedModelInfo?.mode || selectedModelInfo?.provider || '').toLowerCase()
-    const executionProvider = selectedMode.includes('managed') || selectedMode.includes('fanout')
+    // GPT-image/Seedream/Grok image batches are always the workbench's
+    // concurrent single-image fan-out. Keep this explicit for stale model
+    // catalogue entries that do not advertise `managed_fanout` yet.
+    const managedFanoutModel = /^(gpt-image-|grok-imagine|.*seedream-5[.-]0-pro)/i.test(form.model.trim())
+    const executionProvider = managedFanoutModel || selectedMode.includes('managed') || selectedMode.includes('fanout')
       ? 'app_managed'
       : undefined
     const requestedImageSize = requestImageSize.value

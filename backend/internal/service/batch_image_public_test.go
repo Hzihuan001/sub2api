@@ -445,6 +445,34 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.Equal(t, req.ImageSize, managed.submits[0].ImageSize)
 	})
 
+	t.Run("GPT image defaults to single-image fan-out when provider is omitted", func(t *testing.T) {
+		svc, _, _, _, _ := newTestBatchImagePublicService(true)
+		managed := configureTestAppManagedBatchService(svc)
+		req := validBatchImageSubmitRequest()
+		req.Provider = ""
+		req.Model = "gpt-image-2.5-sunburst"
+		req.ImageSize = "3840x2160"
+
+		got, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
+		require.NoError(t, err)
+		require.Equal(t, BatchImageProviderAppManaged, got.Provider)
+		require.Len(t, managed.submits, 1)
+		require.Equal(t, "3840x2160", managed.submits[0].ImageSize)
+	})
+
+	t.Run("GPT image cannot be redirected to a native batch provider", func(t *testing.T) {
+		svc, _, _, _, _ := newTestBatchImagePublicService(true)
+		managed := configureTestAppManagedBatchService(svc)
+		req := validBatchImageSubmitRequest()
+		req.Provider = BatchImageProviderGeminiAPI
+		req.Model = "gpt-image-2"
+
+		got, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
+		require.NoError(t, err)
+		require.Equal(t, BatchImageProviderAppManaged, got.Provider)
+		require.Len(t, managed.submits, 1)
+	})
+
 	t.Run("rejects too many items", func(t *testing.T) {
 		svc, _, _, _, _ := newTestBatchImagePublicService(true)
 		req := validBatchImageSubmitRequest()

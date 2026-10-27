@@ -837,6 +837,14 @@ func (s *BatchImagePublicService) validateSubmitRequest(req BatchImageSubmitRequ
 	req.ResponseMimeType = strings.TrimSpace(req.ResponseMimeType)
 	req.AspectRatio = strings.TrimSpace(req.AspectRatio)
 	req.ImageSize = strings.TrimSpace(req.ImageSize)
+	// OpenAI-compatible image models do not expose the Gemini/Vertex native
+	// batch contract. The workbench's batch API is deliberately a fan-out of
+	// ordinary single-image requests, so make that execution mode explicit even
+	// for older clients that omit `provider` or carry a stale native value.
+	if isBatchImageManagedFanoutModel(req.Model) &&
+		(req.Provider == "" || req.Provider == BatchImageProviderGeminiAPI || req.Provider == BatchImageProviderVertex) {
+		req.Provider = BatchImageProviderAppManaged
+	}
 	if req.Model == "" {
 		return req, ErrBatchImageInvalidModel
 	}
@@ -1043,6 +1051,10 @@ func maxBatchImageReferenceImagesForModel(model string) int {
 }
 
 func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, owner BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
+	if isBatchImageManagedFanoutModel(model) &&
+		(requestedProvider == "" || requestedProvider == BatchImageProviderGeminiAPI || requestedProvider == BatchImageProviderVertex) {
+		requestedProvider = BatchImageProviderAppManaged
+	}
 	providers := batchImageProviderSelectionOrder(requestedProvider)
 	for _, providerName := range providers {
 		provider, ok := s.ProviderRegistry.Get(providerName)
@@ -1431,6 +1443,17 @@ func batchImageProviderSelectionOrder(requestedProvider string) []string {
 		return []string{strings.TrimSpace(requestedProvider)}
 	}
 	return []string{BatchImageProviderGeminiAPI, BatchImageProviderVertex, BatchImageProviderAppManaged}
+}
+
+// isBatchImageManagedFanoutModel identifies image models whose batch work must
+// be expanded into ordinary single-image requests. Native Gemini/Vertex batch
+// providers are retained for Gemini accounts, but must never receive an
+// OpenAI-compatible image model by accident.
+func isBatchImageManagedFanoutModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return IsGPTImageGenerationModel(model) ||
+		isSeedreamImageGenerationModel(model) ||
+		isGrokImageGenerationModel(model)
 }
 
 func batchImageModelsFromAccountMapping(account *Account) []string {
