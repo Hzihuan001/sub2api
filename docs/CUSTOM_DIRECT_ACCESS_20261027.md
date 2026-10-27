@@ -10,6 +10,7 @@
 ## 实现与发布坐标
 
 - 本轮工作树 `D:/projects/sub2api-direct-access-20261027`，分支 `codex/direct-access-20261027`，基于集成 `28159e883499df18d6f0ef7819e500eab95a5896`；未从旧根工作树构建。
+- 入口源码提交 `4e746e82d`、不可变标签 `direct-access-20261027.1` 已推送；功能分支与 `custom/integration` 同步，后续文档收尾不移动入口标签或主应用运行标签。
 - 独立镜像 `ghcr.io/hzihuan001/moshu-direct-access:20261027.1`，不可变 digest `sha256:43175cca0723263ad44798a1f245454bc0fc3a3808936a15f8f873989b884508`，复用本地验收通过的构建产物。
 - 主站及两分站应用继续运行 `.18.4`，运行源 `1524aa0985f432df19c9144c726224d2852308d6`，digest `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`；没有重建/重启应用、PostgreSQL 或 Redis，原主站反代文件哈希保持。
 - 独立 Go 入口在 `backend/cmd/direct-access`，部署文件在 `deploy/direct-access`。无主程序接线、前端改动、新依赖或业务表结构/迁移改动；登记为 `custom/manifest.yml` 的部署扩展并纳入升级保护路径与可执行单元测试清单。
