@@ -1,6 +1,15 @@
 # Sub2API custom release runbook
 
-## Current release: custom-0.2.18.3 (2026-10-26; published and deployed)
+## Current release: custom-0.2.18.4 (2026-10-27; published and deployed)
+
+- Runtime source/tag: `1524aa0985f432df19c9144c726224d2852308d6` / `custom-0.2.18.4`; authoritative branch/workspace: `codex/image-batch-16refs-20261026` / `D:/projects/sub2api-image-batch-16refs-20261026`. Official base remains `v0.2.18`. Later documentation commits do not move the runtime tag.
+- Published and pulled image: `ghcr.io/hzihuan001/sub2api@sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`. Root-Dockerfile linux/amd64 build, embedded version/full commit, OCI revision and PostgreSQL18.6 client tools passed. Frontend99, explicit-unit backend shared-reference/provider/binding regressions, exact-digest operator permission/restart and mock16-reference 4K-parameter fan-out acceptance passed. The mock does not establish real-model native4K output.
+- Shared references upload once with capability negotiation and old-server fallback; each ordinary GPT-image fan-out request retains16 images. Specific JSON/body/Base64/read errors and expanded-total preflight checks replace ambiguous binding failures. Reference bytes, dimensions, quality, settlement and existing Gemini/Vertex/Nano paths remain. No database migration or production configuration change; the exact original user request failure was not uniquely established from old logs.
+- Main → L1 → COS application-only deployment completed after verified backups and natural read-only drain. All are healthy/restart0; database/Redis identities, configuration, volumes, namespaces and full migration rows are preserved (329/338/338). No forced cancellation, production paid-model call or successful Actions CI is claimed.
+- Verified backup: `/opt/sub2api-backups/v0.2.18-custom.4-20261027T024304Z`; compatible application rollback: `.18.3` / `ghcr.io/hzihuan001/sub2api@sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac`. Retain current business data and all migration rows; do not restore an old database for an application rollback.
+- [Full `.18.4` release evidence](../docs/CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md). Preserve other sessions' dirty work and recheck remote integration before the next release.
+
+## Historical release: custom-0.2.18.3 (2026-10-26; superseded by custom.4)
 
 - Runtime source/tag: `c2dbbe786e844ee1df77bfd710ebaf438f625126` / `custom-0.2.18.3`; source branch `codex/image-batch-16refs-20261026`, workspace `D:/projects/sub2api-image-batch-16refs-20261026`. Official base remains `v0.2.18`; later documentation commits do not move the runtime tag.
 - Published deployment image: `ghcr.io/hzihuan001/sub2api@sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac`. Root-Dockerfile build, immutable pull-back, metadata, linux/amd64 and PostgreSQL18.6 client utilities passed. Frontend92, explicit `-tags=unit` backend reference/fan-out limits, operator permission/restart and mock16-reference batch acceptance passed. The prior `.18.2` missing-unit-tag test scope is corrected in its report.

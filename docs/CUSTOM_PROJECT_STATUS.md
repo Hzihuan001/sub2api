@@ -1,17 +1,18 @@
 # 定制项目状态与官方升级说明
 
 > 本文是给后续维护会话、代码审查者和自动化工具使用的项目交接说明。
-> 先读本文，再读 [`当前候选/发布记录`](CUSTOM_RELEASE_0_2_18_CUSTOM3_20261026.md)、
+> 先读本文，再读 [`当前候选/发布记录`](CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md)、
 > [`UPSTREAM_SYNC.md`](UPSTREAM_SYNC.md) 和
 > [`custom/manifest.yml`](../custom/manifest.yml)。
 >
 > 本文不保存密码、Token、私钥、`.env` 内容或数据库备份路径中的敏感信息。
 
-### 2026-10-27 — 批量共享参考图上传及单图 fan-out 修复（候选，未发布）
+### 2026-10-27 — 批量共享参考图上传及单图 fan-out 修复（已部署三站）
 
-- 当前生产仍为 `0.2.18-custom.3` / `c2dbbe786e844ee1df77bfd710ebaf438f625126` / digest `sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac`；候选 `0.2.18-custom.4`，分支仍为 `codex/image-batch-16refs-20261026`，提交基线 `b2ec356187dc74214c38a1a47e47b011228df074`。初步provider防御提交 `c03720b7f` 已由本轮完整修复补充，不能单独称为本次线上根因证据。
+- 当前生产 `0.2.18-custom.4`，运行源 `1524aa0985f432df19c9144c726224d2852308d6`、标签 `custom-0.2.18.4`、digest `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`；权威树 `D:/projects/sub2api-image-batch-16refs-20261026`，分支 `codex/image-batch-16refs-20261026`，基线 `b2ec356187dc74214c38a1a47e47b011228df074`。运行标签不随文档收尾移动。
 - 昨日16张共享图会在每条prompt重复Base64，已用旧真实handler复现请求超限和Base64错误均返回 `BATCH_IMAGE_INVALID_ITEMS`。本轮共享图只上传一次，模型目录声明能力、旧服务降级避免丢图；后端仍按原item展开、持久化及计费。前端补1000附件/128MiB展开总量校验；后台返回具体绑定错误。未取得用户失败请求完整结构，不声称精确还原该次线上触发。
-- GPT-image、Seedream 5.0 Pro、Grok Imagine固定到 `app_managed` 普通单图并发，历史请求provider哈希保持；原生Gemini/Vertex和Nano Banana单图async路径保留。前端99项/typecheck/lint、后端显式unit标签共享/16图/幂等/边界/public service及真实handler/准入/审计回归、隔离/契约/依赖审计通过。Docker已恢复；正式镜像/生产验收待执行，没有付费模型调用，其他树修改未触碰。见[本轮发布记录](CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md)。
+- GPT-image、Seedream 5.0 Pro、Grok Imagine固定到 `app_managed` 普通单图并发，历史请求provider哈希保持；原生Gemini/Vertex和Nano Banana单图async路径保留。前端99项/typecheck/lint、后端显式unit标签共享/16图/幂等/边界/public service及真实handler/准入/审计回归、隔离/契约/依赖审计通过。正式digest的operator权限/重启和mock验收通过：4K参数原样、2prompt展开3个普通单图，每次16图；不是生产付费模型或原生4K输出实测。
+- 北京时间11:00–11:02按主站→L1→COS，在只读确认在途归零后仅更新应用；三站healthy/restart0，内外网页面/健康200、匿名受保护API401、关键错误0。数据库/Redis、配置/卷/网络、namespace和完整迁移保持（329/338/338，无新增）；备份验证通过，兼容应用回退目标 `.18.3`，不恢复旧业务数据库。最终资源核对和观察范围见[本轮发布记录](CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md)。初步provider根因判断证据不足已勘误；其他会话原文与代码保留。
 
 ## 1. 当前快照
 
@@ -471,21 +472,21 @@
 
 | 项目 | 最近发布记录 |
 | --- | --- |
-| 记录日期 | 2026-10-26 |
+| 记录日期 | 2026-10-27 |
 | 官方基线 | `v0.2.18` / `ac1b8f1271be0d674fa6f074403c1410f30a3a81` |
-| 当前定制版本 | `0.2.18-custom.3`（GPT-image单图/批量共享/批量逐条16张参考图） |
-| 最近生产版本 | 主站、L1、COS 均为 `0.2.18-custom.3` |
-| 最新已发布基线 | `custom-0.2.18.3` / `c2dbbe786e844ee1df77bfd710ebaf438f625126` |
+| 当前定制版本 | `0.2.18-custom.4`（批量共享图单次上传、普通单图并发；GPT参考图16张） |
+| 最近生产版本 | 主站、L1、COS 均为 `0.2.18-custom.4` |
+| 最新已发布基线 | `custom-0.2.18.4` / `1524aa0985f432df19c9144c726224d2852308d6` |
 | 发布分支 | `codex/image-batch-16refs-20261026` |
 | 本轮工作树 | `D:/projects/sub2api-image-batch-16refs-20261026` |
-| 官方合并 / 本轮生图提交 | 官方合并 `885edb605`；本轮运行源 `c2dbbe786`；其后仅补文档 |
-| 长期集成基线 | `.18.3` 以 `10b452931` 为起点；本轮共享文档基线为 `c8d14a1183f73cdefa28e698f45bbaf8f8c730b5`，运行源与文档收尾分开，实际远端须重新核对 |
+| 官方合并 / 本轮生图提交 | 官方合并 `885edb605`；本轮运行源 `1524aa098`；其后仅补文档 |
+| 长期集成基线 | `.18.4` 以 `b2ec356187dc74214c38a1a47e47b011228df074` 为起点；运行源与文档收尾分开，普通快进集成，实际远端须重新核对 |
 | 历史隔离改造 PR | 草稿 PR #1（状态待另行核验）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 主站生产镜像 digest | `sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac` |
-| L1/COS 生产镜像 digest | `sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac` |
-| 当前发布状态 | `.18.3` 三站健康/发布验收通过；兼容应用回退目标 `.18.2`，未执行生产回滚 |
+| 主站生产镜像 digest | `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6` |
+| L1/COS 生产镜像 digest | `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6` |
+| 当前发布状态 | `.18.4` 三站健康/发布验收通过；兼容应用回退目标 `.18.3`，未执行生产回滚 |
 
 生产健康检查最近确认通过的入口：
 
@@ -537,7 +538,7 @@
 | --- | --- | --- | --- |
 | `operator` | operator 角色、管理端固定权限、菜单/路由过滤、权限管理 | `backend/internal/authz`、`backend/internal/server/middleware`、`frontend/src/authz`、管理员视图 | 保留并受测试保护 |
 | `prompt-audit` | Prompt Audit、`capture_only`、事件列表/详情/筛选/导出/清理 | `backend/internal/securityaudit`、`frontend/src/features/prompt-audit` | 保留并受测试保护 |
-| `image-studio` | 生图工作台、批量任务、应用层拆分、单张/ZIP 下载；GPT-image/`chatgpt-image-latest` 单生图、批量共享及逐条参考图均最多16；其他模型按各自能力，批量Nano/Gemini14、Seedream10、Flash3 | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、`frontend/src/utils/imageGenerationPolicy.ts`、用户生图视图 | `0.2.18-custom.3` 已部署；保留文件/任务总量限制、尺寸与计费，无新增迁移 |
+| `image-studio` | 生图工作台、批量任务、应用层拆分、单张/ZIP 下载；GPT-image/`chatgpt-image-latest` 单生图、批量共享及逐条参考图均最多16；其他模型按各自能力，批量Nano/Gemini14、Seedream10、Flash3 | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、`frontend/src/utils/imageGenerationPolicy.ts`、用户生图视图 | `0.2.18-custom.4` 已部署；共享图仅传一次，具体绑定错误；保留总量、尺寸、质量与计费，无新增迁移 |
 | `branding` | 对客品牌和公共文案统一为 Moshu，隐藏不应出现在对客界面的上游项目名称 | `frontend/src/i18n`、公共页面和品牌处理逻辑 | 保留；每次升级需做文案扫描 |
 | `usage-extras` | 管理员使用记录增强，例如缓存命中率、分页和 API Key 管理辅助能力 | 管理员使用记录 handler/view 及对应测试 | 保留；管理员侧可见，用户侧按权限隐藏 |
 | `gateway-resilience` | 保留分组配置适配与原生安全重试/认证/限流保护；自定义规则不全局停账号；仅给导致成功切组的最后一条已有上游错误加目标组标签，使用记录不变 | `group_failure_*`、网关窄适配、`ops_route_switch_label.go`、前端 `features/gateway-resilience` | `0.2.18-custom.3` 保留；错误标签已随 `.14` 起发布，复用既有错误 JSON、无新增迁移 |

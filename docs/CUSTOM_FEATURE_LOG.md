@@ -1,6 +1,14 @@
 # 定制功能日志
 
-### 2026-10-27 — 批量共享参考图上传及单图 fan-out 修复（候选，待发布）
+### 2026-10-27 — 批量生图请求修复完成发布与三站部署
+
+- **Feature ID / 行为**：`image-studio`；GPT批量按普通单图并发执行，每张仍支持16参考图；共享图原始字节只上传一次，后台再分配到各item，避免重复Base64放大请求。增加兼容能力协商、旧服务降级、展开总量预检和具体绑定错误，不增加按钮、实际尺寸显示或本地超分。
+- **版本**：`0.2.18-custom.4`，运行源 `1524aa0985f432df19c9144c726224d2852308d6`、标签 `custom-0.2.18.4`，正式镜像 `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`；分支及权威树仍为 `codex/image-batch-16refs-20261026` / `D:/projects/sub2api-image-batch-16refs-20261026`。文档闭环不移动运行标签。
+- **验证**：前端99项、类型/lint/build、显式unit后端共享16图/哈希/边界/provider12种组合及真实handler/准入/审计、隔离/契约/依赖审计通过。正式digest operator权限/重启及mock通过：无provider的4K请求选managed、2prompt展开3单图、每次16图、PNG/ZIP、新旧格式幂等及无额外批量折扣。mock只验证尺寸转发，不宣称真实模型原生4K；未新增生产付费调用。
+- **部署**：北京时间主站11:00:16–11:00:29、L1 11:01:41–11:01:49、COS 11:02:14–11:02:22，逐站自然排空后只更新应用。三站healthy/restart0、页面/健康200、匿名权限401、关键错误0，数据库/Redis、配置/卷/网络、namespace及完整迁移保持，329/338/338，无新增迁移。三站备份验证通过；兼容应用回退 `.18.3`，保留当前业务数据。
+- **证据边界/交接**：旧日志只能确认两次提交400，不能确定用户那次唯一根因；初期provider归因过早已勘误。其他会话未提交工作保留，本轮隔离项目清理完成；最终公网资源、短时观察和完整坐标见[发布记录](CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md)。
+
+### 2026-10-27 — 批量共享参考图上传及单图 fan-out 修复（候选阶段历史记录，已由上节发布替代）
 
 - **排查阶段勘误**：最初将 provider 选择风险直接认定为本次线上根因，证据不足。昨天共享16图的直接变化是将同一组 Base64 重复写入每条 prompt，大图/多条任务会放大 JSON；handler 又将读体超限等绑定错误统一映射 `BATCH_IMAGE_INVALID_ITEMS`。该问题正在以真实 handler 回归复现和修复，尚未获得用户失败请求的完整结构，不能声称已还原那一次线上调用。
 - **修复**：新增 `shared_reference_images`，共享图只上传一次，后端规范化成原 item 后再展开单图请求。模型目录公布 `supports_shared_reference_images`；新前端只对支持的服务使用该字段，旧服务回退逐条输入，防止静默丢图。显式空数组清空旧逐条引用；前端按生成数量检查1000附件/128MiB总量，保留每图10MiB、GPT16图及200输出上限。
@@ -667,7 +675,7 @@
 | --- | --- | --- | --- |
 | `operator` | operator 认证、默认拒绝的管理路由、角色权限配置、菜单和页面守卫；admin 仍保留严格超级管理员语义 | `backend/internal/authz`、`backend/internal/server/middleware`、`frontend/src/authz`、角色/权限测试 | 已有迁移不可改/删；新增定制迁移使用 `9000–9999_custom_<feature>.sql` |
 | `prompt-audit` | `off`、`capture_only`、`async_audit`、`blocking`；捕获事件、类型筛选、详情、导出、删除和保留策略 | `backend/internal/securityaudit`、`frontend/src/features/prompt-audit`、对应后端/前端测试 | 追加式；不得修改已发布迁移 |
-| `image-studio` | Moshu生图工作台、批量任务、应用层单图拆分、队列、单张/ZIP下载；默认生图尺寸2K；GPT-image/`chatgpt-image-latest` 单图、批量共享及逐条参考图均最多16，其他模型按自身能力（批量Nano/Gemini14、Seedream10、Flash3） | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、`frontend/src/utils/imageGenerationPolicy.ts`、用户工作台视图、批量测试 | `custom.3` 无新增迁移；原文件/任务总量及计费保持，对象/任务数据需兼容旧镜像 |
+| `image-studio` | Moshu生图工作台、批量任务、应用层单图拆分、队列、单张/ZIP下载；默认生图尺寸2K；GPT-image/`chatgpt-image-latest` 单图、批量共享及逐条参考图均最多16，其他模型按自身能力（批量Nano/Gemini14、Seedream10、Flash3） | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、`frontend/src/utils/imageGenerationPolicy.ts`、用户工作台视图、批量测试 | `custom.4` 共享参考图只传一次，后台规范化并按单图并发；无新迁移，原文件/任务总量及计费保持 |
 | `branding` | 对客页面、公共文案和图片工作台统一使用 Moshu，避免把上游项目名暴露给用户 | `frontend/src/i18n`、品牌工具、公共页面测试 | 无独立数据迁移 |
 | `usage-extras` | 管理员使用记录显示缓存命中率、分页跳转等增强；用户侧不显示管理员专属字段 | 管理员使用记录 handler/view 与前端测试 | 无破坏性迁移 |
 | `gateway-resilience` | 分组配置保留适配，原生安全重试/认证/限流保护和人工恢复不移除；自定义规则不全局停账号；导致成功切组的最后一条上游错误显示目标组标签，使用记录不变 | `group_failure_*`、网关窄适配、`ops_route_switch_label.go`、前端 `features/gateway-resilience` | 复用settings和既有错误JSON；标签无新增迁移，旧系统过载停号不恢复 |
