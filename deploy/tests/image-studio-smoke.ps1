@@ -126,6 +126,7 @@ try {
   Assert-True ($batchModel.Count -eq 1) 'App-managed image model is missing'
   Assert-True ($batchModel[0].mode -eq 'managed_fanout') 'Unexpected image execution mode'
   Assert-True ([int]$batchModel[0].reference_image_limit -eq 16) 'GPT-image model discovery did not advertise sixteen reference images'
+  Assert-True ($batchModel[0].supports_shared_reference_images -eq $true) 'Shared reference upload capability is missing'
 
   if (-not $resume) {
     $single = Request-Json POST '/v1/images/generations' $apiKey @{ model = 'gpt-image-2'; prompt = 'local single fixture'; n = 1; size = '2048x2048'; output_format = 'jpeg'; response_format = 'b64_json' }
@@ -134,20 +135,27 @@ try {
       @{ id = ('shared-{0:d2}.png' -f $_); mime_type = 'image/png'; data = $reference }
     })
     $payload = @{
-      model = 'gpt-image-2'; provider = 'app_managed'; task_name = "local-image-smoke-$suffix"; image_size = '2K'; response_mime_type = 'image/jpeg'
+      model = 'gpt-image-2'; task_name = "local-image-smoke-$suffix"; image_size = '3840x2160'; response_mime_type = 'image/jpeg'
+      shared_reference_images = $sharedReferences
       items = @(
-        @{ custom_id = 'shared'; prompt = 'local shared reference fixture'; output_count = 2; reference_images = $sharedReferences },
-        @{ custom_id = 'individual'; prompt = 'local second prompt with shared references'; output_count = 1; reference_images = $sharedReferences }
+        @{ custom_id = 'shared'; prompt = 'local shared reference fixture'; output_count = 2 },
+        @{ custom_id = 'individual'; prompt = 'local second prompt with shared references'; output_count = 1 }
       )
     }
     $idempotency = [Guid]::NewGuid().ToString()
     $job = Request-Json POST '/v1/images/batches' $apiKey $payload @{ 'Idempotency-Key' = $idempotency }
+    Assert-True ($job.provider -eq 'app_managed' -and $job.execution_mode -eq 'managed_fanout') 'GPT-image did not choose concurrent single-image requests'
     Assert-True ($job.item_count -eq 3) 'Output fan-out did not create three single-image items'
     if ($VerifyNoBatchDiscount) {
       Assert-True ([Math]::Abs([double]$job.estimated_cost - 0.03) -lt 0.0000001) 'Three-image quote still contains an implicit batch discount'
     }
     $repeated = Request-Json POST '/v1/images/batches' $apiKey $payload @{ 'Idempotency-Key' = $idempotency }
     Assert-True ($repeated.id -eq $job.id) 'Repeated batch submission created a duplicate job'
+    $legacyPayload = @{} + $payload
+    $legacyPayload.Remove('shared_reference_images')
+    $legacyPayload.items = @($payload.items | ForEach-Object { $item = @{} + $_; $item.reference_images = $sharedReferences; $item })
+    $legacyRepeated = Request-Json POST '/v1/images/batches' $apiKey $legacyPayload @{ 'Idempotency-Key' = $idempotency }
+    Assert-True ($legacyRepeated.id -eq $job.id) 'Legacy per-item reference retry created a duplicate job'
   } else {
     $job = Request-Json GET "/v1/images/batches/$ResumeBatchId" $apiKey
   }
@@ -181,6 +189,7 @@ try {
   Assert-True (@($stats.requests).Count -eq 4) 'Unexpected upstream request count (single + three batch items expected)'
   $edits = @($stats.requests | Where-Object { $_.path -eq '/v1/images/edits' })
   Assert-True ($edits.Count -eq 3) 'References were not sent to every expanded batch output'
+  Assert-True (@($edits | Where-Object { $_.size -ne '3840x2160' }).Count -eq 0) 'The requested 4K dimensions changed during fan-out'
   Assert-True (@($stats.requests | Where-Object { $null -ne $_.n -and $_.n -ne 1 }).Count -eq 0) 'An upstream request asked for more than one output'
   Assert-True (@($edits | Where-Object { -not $_.idempotency_key -or $_.references.Count -ne $ReferenceImageCount }).Count -eq 0) 'Batch reference or retry key was lost'
   Assert-True (@($edits.references | Where-Object { -not $_.png }).Count -eq 0) 'Reference PNG content was corrupted'

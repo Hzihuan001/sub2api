@@ -33,11 +33,12 @@ func TestBatchImageSharedSixteenReferencesSurviveExpansionAndEdits(t *testing.T)
 	refs := sharedBatchImageTestReferences()
 	req := validBatchImageSubmitRequest()
 	req.Provider, req.Model = BatchImageProviderAppManaged, "gpt-image-2.5-sunburst"
-	// Shared references arrive on each prompt; the API has no separate shared
-	// reference field. Both prompts must retain them after repeat expansion.
+	// Upload shared bytes once; every output must still receive all 16 images
+	// through the ordinary single-image edits endpoint after repeat expansion.
+	req.SharedReferenceImages = refs
 	req.Items = []BatchImageSubmitItem{
-		{CustomID: "front", Prompt: "front", OutputCount: 2, ReferenceImages: refs},
-		{CustomID: "side", Prompt: "side", OutputCount: 3, ReferenceImages: refs},
+		{CustomID: "front", Prompt: "front", OutputCount: 2},
+		{CustomID: "side", Prompt: "side", OutputCount: 3},
 	}
 	got, err := svc.Submit(context.Background(), testBatchImageOwner(), req, "")
 	require.NoError(t, err)
@@ -103,6 +104,43 @@ func TestBatchImageSharedSixteenReferencesSurviveExpansionAndEdits(t *testing.T)
 	require.Equal(t, 5, upstream.calls)
 }
 
+func TestBatchImageSharedReferencesCanonicalizeLikeLegacyItems(t *testing.T) {
+	svc, _, _, _, _ := newTestBatchImagePublicService(true)
+	refs := sharedBatchImageTestReferences()
+	legacy := validBatchImageSubmitRequest()
+	legacy.Model, legacy.Provider = "gpt-image-2.5-sunburst", BatchImageProviderAppManaged
+	legacy.TaskName = "same-task"
+	legacy.Items[0].ReferenceImages, legacy.Items[1].ReferenceImages = refs, refs
+	shared := legacy
+	shared.SharedReferenceImages = refs
+	shared.Items = []BatchImageSubmitItem{{CustomID: "cover_001", Prompt: "hero"}, {CustomID: "cover_002", Prompt: "clean"}}
+	oldJSON, err := json.Marshal(legacy)
+	require.NoError(t, err)
+	sharedJSON, err := json.Marshal(shared)
+	require.NoError(t, err)
+	require.Equal(t, 2, bytes.Count(oldJSON, []byte(`"reference-16.png"`)))
+	require.Equal(t, 1, bytes.Count(sharedJSON, []byte(`"reference-16.png"`)))
+	oldNormalized, err := svc.validateSubmitRequest(legacy)
+	require.NoError(t, err)
+	newNormalized, err := svc.validateSubmitRequest(shared)
+	require.NoError(t, err)
+	require.Nil(t, newNormalized.SharedReferenceImages)
+	require.Equal(t, HashBatchImageSubmitRequest(oldNormalized), HashBatchImageSubmitRequest(newNormalized))
+}
+
+func TestBatchImageEmptySharedReferencesClearPerItemReferences(t *testing.T) {
+	svc, _, _, _, _ := newTestBatchImagePublicService(true)
+	req := validBatchImageSubmitRequest()
+	req.Model, req.Provider = "gpt-image-2.5-sunburst", BatchImageProviderAppManaged
+	req.SharedReferenceImages = []BatchImageReferenceInput{}
+	req.Items[0].ReferenceImages = sharedBatchImageTestReferences()
+	normalized, err := svc.validateSubmitRequest(req)
+	require.NoError(t, err)
+	for _, item := range normalized.Items {
+		require.Empty(t, item.ReferenceImages)
+	}
+}
+
 func TestBatchImageSharedReferencesKeepExpandedJobLimits(t *testing.T) {
 	t.Run("sixteen per prompt still counts every repeated attachment", func(t *testing.T) {
 		svc, _, _, _, _ := newTestBatchImagePublicService(true)
@@ -111,9 +149,10 @@ func TestBatchImageSharedReferencesKeepExpandedJobLimits(t *testing.T) {
 		refs := sharedBatchImageTestReferences()
 		req := validBatchImageSubmitRequest()
 		req.Provider, req.Model = BatchImageProviderAppManaged, "gpt-image-2.5-sunburst"
+		req.SharedReferenceImages = refs
 		req.Items = nil
 		for i := 0; i < 16; i++ {
-			req.Items = append(req.Items, BatchImageSubmitItem{CustomID: fmt.Sprintf("item_%d", i), Prompt: "cat", OutputCount: 4, ReferenceImages: refs})
+			req.Items = append(req.Items, BatchImageSubmitItem{CustomID: fmt.Sprintf("item_%d", i), Prompt: "cat", OutputCount: 4})
 		}
 		req.Items[15].OutputCount = 2 // 62 outputs x16 references = 992.
 		normalized, err := svc.validateSubmitRequest(req)
@@ -134,13 +173,14 @@ func TestBatchImageSharedReferencesKeepExpandedJobLimits(t *testing.T) {
 		}
 		req := validBatchImageSubmitRequest()
 		req.Provider, req.Model = BatchImageProviderAppManaged, "gpt-image-2.5-sunburst"
+		req.SharedReferenceImages = refs
 		req.Items = nil
 		for i := 0; i < 4; i++ {
-			req.Items = append(req.Items, BatchImageSubmitItem{CustomID: fmt.Sprintf("item_%d", i), Prompt: "cat", OutputCount: 4, ReferenceImages: refs})
+			req.Items = append(req.Items, BatchImageSubmitItem{CustomID: fmt.Sprintf("item_%d", i), Prompt: "cat", OutputCount: 4})
 		}
 		_, err := svc.validateSubmitRequest(req) // 16 outputs x8MiB = 128MiB.
 		require.NoError(t, err)
-		req.Items = append(req.Items, BatchImageSubmitItem{CustomID: "over", Prompt: "cat", ReferenceImages: refs})
+		req.Items = append(req.Items, BatchImageSubmitItem{CustomID: "over", Prompt: "cat"})
 		_, err = svc.validateSubmitRequest(req)
 		require.ErrorIs(t, err, ErrBatchImageReferenceImagesTooLarge)
 	})

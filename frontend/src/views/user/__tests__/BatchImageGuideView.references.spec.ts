@@ -2,7 +2,7 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BatchImageGuideView from '../BatchImageGuideView.vue'
-import type { BatchImageSubmitRequest } from '@/api/batchImage'
+import type { BatchImageReferenceImage, BatchImageSubmitRequest } from '@/api/batchImage'
 
 const mocks = vi.hoisted(() => ({
   listKeys: vi.fn(),
@@ -67,6 +67,8 @@ const mountView = () => shallowMount(BatchImageGuideView, {
 type ViewState = {
   availableBatchImageModels: Array<{ value: string; referenceImageLimit?: number }>
   handleSharedReferenceImageFiles: (event: Event) => Promise<void>
+  sharedReferenceImageDrafts: Array<{ id: string; type: string; mime_type: string; data: string; name: string; size: number }>
+  promptRows: Array<{ localId: string; custom_id: string; prompt: string; output_count: number; reference_images: BatchImageReferenceImage[] }>
 }
 
 let wrapper: ReturnType<typeof mountView> | undefined
@@ -74,7 +76,7 @@ let wrapper: ReturnType<typeof mountView> | undefined
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.listKeys.mockResolvedValue({ items: [{ id: 1, key: 'batch-test-key', name: 'Batch key', status: 'active', group: { status: 'active', allow_batch_image_generation: true } }] })
-  mocks.listModels.mockResolvedValue({ data: models.map(model => ({ ...model, provider: 'app_managed' })) })
+  mocks.listModels.mockResolvedValue({ data: models.map(model => ({ ...model, provider: 'app_managed', supports_shared_reference_images: true })) })
   mocks.listJobs.mockResolvedValue({ data: [], has_more: false })
   mocks.listItems.mockResolvedValue({ data: [] })
   mocks.submit.mockResolvedValue({ id: 'batch-test', task_name: 'Test', status: 'completed', model: models[0].id, provider: 'app_managed', item_count: 3, success_count: 3, fail_count: 0, created_at: 1 })
@@ -127,8 +129,27 @@ async function selectModel(model: string) {
   await wrapper!.findAll('form select')[1]!.setValue(model)
 }
 
+async function serializedRequest(request: BatchImageSubmitRequest) {
+  const api = await vi.importActual<typeof import('@/api/batchImage')>('@/api/batchImage')
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 'wire-test' }) })
+  vi.stubGlobal('fetch', fetchMock)
+  await api.submitBatchImageJob('wire-test-key', request, 'wire-test-idempotency')
+  expect(fetchMock.mock.calls[0]![0]).toMatch(/\/v1\/images\/batches$/)
+  return String(fetchMock.mock.calls[0]![1].body)
+}
+
+function promptRows(outputCounts: number[]) {
+  return outputCounts.map((count, index) => ({
+    localId: `local-${index}`,
+    custom_id: `prompt-${index}`,
+    prompt: `Prompt ${index}`,
+    output_count: count,
+    reference_images: [] as [],
+  }))
+}
+
 describe('Batch Image shared references', () => {
-  it('uploads 16 shared references and sends every reference in order to every prompt', async () => {
+  it('uploads 16 shared references once in the serialized request for multiple prompts and outputs', async () => {
     await openShared()
     expect(input().attributes('multiple')).toBeDefined()
     expect(wrapper!.text()).toContain('batchImage.create.sharedReferenceHint: 16')
@@ -147,12 +168,16 @@ describe('Batch Image shared references', () => {
     expect(request.model).toBe(models[0].id)
     expect(request.items.map(item => item.prompt)).toEqual(['First prompt', 'Second prompt'])
     expect(request.items.map(item => item.output_count || 1)).toEqual([2, 1])
-    for (const item of request.items) {
-      expect(item.reference_images).toEqual(files.map((file, index) => ({
-        id: file.name, type: 'reference', mime_type: 'image/png', data: btoa(`content-${index}`),
-      })))
+    expect(request.shared_reference_images).toEqual(files.map((file, index) => ({
+      id: file.name, type: 'reference', mime_type: 'image/png', data: btoa(`content-${index}`),
+    })))
+    expect(request.items.every(item => !('reference_images' in item))).toBe(true)
+    const body = await serializedRequest(request)
+    expect(JSON.parse(body)).toEqual(request)
+    for (const [index, file] of files.entries()) {
+      expect(body.split(file.name)).toHaveLength(2)
+      expect(body.split(JSON.stringify(btoa(`content-${index}`)))).toHaveLength(2)
     }
-    expect(request.items[0]!.reference_images).not.toBe(request.items[1]!.reference_images)
   })
 
   it('ignores a seventeenth reference and allows replacing a removed reference', async () => {
@@ -190,7 +215,11 @@ describe('Batch Image shared references', () => {
     await wrapper!.get('form').trigger('submit')
     await flushPromises()
     const request = mocks.submit.mock.calls[0]![1] as BatchImageSubmitRequest
-    expect(request.items[0]!.reference_images).toEqual([])
+    expect(request.shared_reference_images).toEqual([])
+    expect(request.items[0]).not.toHaveProperty('reference_images')
+    const body = JSON.parse(await serializedRequest(request))
+    expect(body.shared_reference_images).toEqual([])
+    expect(body.items[0]).not.toHaveProperty('reference_images')
   })
 
   it.each([
@@ -210,7 +239,8 @@ describe('Batch Image shared references', () => {
     await wrapper!.get('form').trigger('submit')
     await flushPromises()
     const request = mocks.submit.mock.calls[0]![1] as BatchImageSubmitRequest
-    expect(request.items[0]!.reference_images?.length || 0).toBe(limit)
+    expect(request.shared_reference_images?.length || 0).toBe(limit)
+    expect(request.items[0]).not.toHaveProperty('reference_images')
   })
 
   it('trims shared references when the advertised model limit changes without a model change', async () => {
@@ -248,7 +278,7 @@ describe('Batch Image shared references', () => {
     await wrapper!.get('form').trigger('submit')
     await flushPromises()
     const request = mocks.submit.mock.calls[0]![1] as BatchImageSubmitRequest
-    expect(request.items[0]!.reference_images).toHaveLength(3)
+    expect(request.shared_reference_images).toHaveLength(3)
   })
 
   it('keeps per-prompt GPT references at 16 and blocks incompatible saved prompt rows', async () => {
@@ -264,6 +294,149 @@ describe('Batch Image shared references', () => {
     await selectModel(models[0].id)
     await wrapper!.get('form').trigger('submit')
     await flushPromises()
-    expect((mocks.submit.mock.calls[0]![1] as BatchImageSubmitRequest).items[0]!.reference_images).toHaveLength(16)
+    const request = mocks.submit.mock.calls[0]![1] as BatchImageSubmitRequest
+    expect(request.items[0]!.reference_images).toHaveLength(16)
+    expect(request).not.toHaveProperty('shared_reference_images')
+    const body = JSON.parse(await serializedRequest(request))
+    expect(body.items[0].reference_images).toHaveLength(16)
+    expect(body).not.toHaveProperty('shared_reference_images')
+  })
+
+  it('preserves shared references on every item when an older server omits the compact capability', async () => {
+    mocks.listModels.mockResolvedValue({ data: [{ ...models[0], provider: 'app_managed' }] })
+    await openShared()
+    await upload(references(), 16)
+    await addPrompt('First legacy prompt', 2)
+    await addPrompt('Second legacy prompt')
+    await wrapper!.get('form').trigger('submit')
+    await flushPromises()
+    const request = mocks.submit.mock.calls[0]![1] as BatchImageSubmitRequest
+    expect(request).not.toHaveProperty('shared_reference_images')
+    expect(request.items.map(item => item.reference_images?.length)).toEqual([16, 16])
+    const body = JSON.parse(await serializedRequest(request))
+    expect(body.items[0].reference_images).toEqual(body.items[1].reference_images)
+    expect(body).not.toHaveProperty('shared_reference_images')
+  })
+
+  it('clears old per-prompt references in shared mode on an older server too', async () => {
+    mocks.listModels.mockResolvedValue({ data: [{ ...models[0], provider: 'app_managed', supports_shared_reference_images: false }] })
+    await openShared()
+    await wrapper!.get('input[type="radio"][value="per_item"]').setValue(true)
+    await upload(references(2), 2)
+    await addPrompt('Legacy prompt with removed references')
+    await wrapper!.get('input[type="radio"][value="shared"]').setValue(true)
+    await wrapper!.get('form').trigger('submit')
+    await flushPromises()
+    const request = mocks.submit.mock.calls[0]![1] as BatchImageSubmitRequest
+    expect(request).not.toHaveProperty('shared_reference_images')
+    expect(request.items[0]!.reference_images).toEqual([])
+  })
+
+  it.each([
+    [62, true],
+    [63, false],
+  ])('counts 16 shared references across %i outputs against the 1000 attachment limit', async (outputs, allowed) => {
+    await openShared()
+    await upload(references(), 16)
+    const state = wrapper!.vm as unknown as ViewState
+    state.promptRows = promptRows([...Array(15).fill(4), Number(outputs) - 60])
+    await wrapper!.get('form').trigger('submit')
+    await flushPromises()
+    if (allowed) {
+      expect(mocks.submit).toHaveBeenCalledOnce()
+    } else {
+      expect(mocks.submit).not.toHaveBeenCalled()
+      expect(mocks.showError).toHaveBeenLastCalledWith('batchImage.messages.tooManyReferenceAttachments')
+    }
+  })
+
+  it.each([
+    [16, true],
+    [17, false],
+  ])('counts decoded shared bytes across %i outputs against the 128 MiB limit', async (outputs, allowed) => {
+    await openShared()
+    const state = wrapper!.vm as unknown as ViewState
+    // One 8 MiB reference: padded base64 must count decoded bytes, rather
+    // than the larger string sent once in the HTTP body.
+    const bytes = 8 * 1024 * 1024
+    const encoded = `${'A'.repeat(Math.ceil(bytes / 3) * 4 - 1)}=`
+    state.sharedReferenceImageDrafts = [{
+      id: 'large.png', type: 'reference', mime_type: 'image/png',
+      data: encoded, name: 'large.png', size: bytes,
+    }]
+    state.promptRows = promptRows([...Array(4).fill(4), ...(Number(outputs) > 16 ? [1] : [])])
+    await wrapper!.get('form').trigger('submit')
+    await flushPromises()
+    if (allowed) {
+      expect(mocks.submit).toHaveBeenCalledOnce()
+    } else {
+      expect(mocks.submit).not.toHaveBeenCalled()
+      expect(mocks.showError).toHaveBeenLastCalledWith('batchImage.messages.referenceImagesTooLarge')
+    }
+  })
+
+  it('shows a clear error when the server rejects the request body size', async () => {
+    await openShared()
+    await addPrompt('A cat')
+    mocks.submit.mockRejectedValue(Object.assign(new Error('request body too large'), { code: 'BATCH_IMAGE_REQUEST_TOO_LARGE', status: 413 }))
+    await wrapper!.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.showError).toHaveBeenLastCalledWith('batchImage.messages.requestTooLarge')
+  })
+
+  it.each(['BATCH_IMAGE_INVALID_JSON', 'BATCH_IMAGE_INVALID_REQUEST'])('explains the %s format error', async (code) => {
+    await openShared()
+    await addPrompt('A cat')
+    mocks.submit.mockRejectedValue(Object.assign(new Error('invalid request'), { code, status: 400 }))
+    await wrapper!.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.showError).toHaveBeenLastCalledWith('batchImage.messages.invalidRequest')
+  })
+
+  it('explains an interrupted request upload', async () => {
+    await openShared()
+    await addPrompt('A cat')
+    mocks.submit.mockRejectedValue(Object.assign(new Error('request read failed'), { code: 'BATCH_IMAGE_REQUEST_READ_FAILED', status: 400 }))
+    await wrapper!.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.showError).toHaveBeenLastCalledWith('batchImage.messages.requestReadFailed')
+  })
+
+  it('enforces the expanded attachment limit for per-prompt references too', async () => {
+    await openShared()
+    await wrapper!.get('input[type="radio"][value="per_item"]').setValue(true)
+    const state = wrapper!.vm as unknown as ViewState
+    const refs = references().map(file => ({ id: file.name, mime_type: 'image/png', data: 'eA==' }))
+    state.promptRows = promptRows([...Array(15).fill(4), 3]).map(row => ({ ...row, reference_images: refs }))
+    await wrapper!.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.submit).not.toHaveBeenCalled()
+    expect(mocks.showError).toHaveBeenLastCalledWith('batchImage.messages.tooManyReferenceAttachments')
+  })
+
+  it('enforces decoded byte limits for per-prompt references too', async () => {
+    await openShared()
+    await wrapper!.get('input[type="radio"][value="per_item"]').setValue(true)
+    const state = wrapper!.vm as unknown as ViewState
+    const data = `${'A'.repeat(Math.ceil(8 * 1024 * 1024 / 3) * 4 - 1)}=`
+    state.promptRows = promptRows([4, 4, 4, 4, 1]).map(row => ({
+      ...row, reference_images: [{ id: 'large.png', mime_type: 'image/png', data }],
+    }))
+    await wrapper!.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.submit).not.toHaveBeenCalled()
+    expect(mocks.showError).toHaveBeenLastCalledWith('batchImage.messages.referenceImagesTooLarge')
+  })
+
+  it('keeps the server body-size error code through real API response parsing', async () => {
+    const api = await vi.importActual<typeof import('@/api/batchImage')>('@/api/batchImage')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 413, statusText: 'Request Entity Too Large',
+      headers: new Headers(),
+      json: async () => ({ error: { code: 'BATCH_IMAGE_REQUEST_TOO_LARGE', message: 'batch request body is too large' } }),
+    }))
+    await expect(api.submitBatchImageJob('wire-test-key', {
+      model: models[0].id, items: [{ custom_id: 'cat', prompt: 'A cat' }],
+    }, 'wire-test-idempotency')).rejects.toMatchObject({ code: 'BATCH_IMAGE_REQUEST_TOO_LARGE', status: 413 })
   })
 })

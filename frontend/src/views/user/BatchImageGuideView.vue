@@ -1005,6 +1005,8 @@ const PREVIEW_CACHE_MAX_ENTRIES = 120
 const PREVIEW_CACHE_MAX_BYTES = 48 * 1024 * 1024
 const BATCH_IMAGE_MAX_OUTPUTS_PER_ITEM = 4
 const BATCH_IMAGE_MAX_OUTPUTS_PER_JOB = 200
+const BATCH_IMAGE_MAX_REFERENCE_ATTACHMENTS = 1000
+const BATCH_IMAGE_MAX_INLINE_REFERENCE_BYTES = 128 * 1024 * 1024
 const batchPageSizeOptions: SelectOption[] = [20, 50, 100].map(size => ({ value: size, label: String(size) }))
 
 const appStore = useAppStore()
@@ -1109,7 +1111,7 @@ const itemPreviewUrls = reactive<Record<string, string>>({})
 const previewLoadingIds = ref(new Set<string>())
 const previewErrorIds = ref(new Set<string>())
 const previewImageItem = ref<BatchImageItem | null>(null)
-const availableBatchImageModels = ref<Array<{ value: string; label: string; provider?: string; mode?: string; referenceImageLimit?: number }>>([])
+const availableBatchImageModels = ref<Array<{ value: string; label: string; provider?: string; mode?: string; referenceImageLimit?: number; supportsSharedReferenceImages?: boolean }>>([])
 const modelLoadError = ref('')
 const openMoreJobId = ref('')
 const moreMenuStyle = ref<Record<string, string>>({})
@@ -1285,6 +1287,7 @@ const estimatedOutputCount = computed(() =>
 
 const customImageSize = computed(() => normalizeImageStudioCustomSize(form.model, customImageWidth.value, customImageHeight.value))
 const selectedBatchModelInfo = computed(() => availableBatchImageModels.value.find(model => model.value === form.model))
+const supportsCompactSharedReferences = computed(() => selectedBatchModelInfo.value?.supportsSharedReferenceImages === true)
 function isNativeGeminiImageModel(model: string) {
   const normalized = String(model || '').trim().toLowerCase()
   return isGeminiNanoBananaModel(normalized)
@@ -1343,11 +1346,40 @@ const requestItems = computed<BatchImageSubmitItem[]>(() => {
   if (referenceMode.value !== 'shared') {
     return parsedItems.value
   }
-  const references = sharedReferenceImageDrafts.value.map(({ name: _name, size: _size, ...reference }) => ({ ...reference }))
-  return parsedItems.value.map(item => ({
-    ...item,
-    reference_images: references.map(reference => ({ ...reference })),
-  }))
+  // Shared bytes travel once at the top level; the server applies them to
+  // every item before expanding output counts and enforcing job limits.
+  // Older servers need references on each item to avoid silently losing them.
+  return parsedItems.value.map(({ reference_images: _references, ...item }) => supportsCompactSharedReferences.value
+    ? item
+    : { ...item, reference_images: requestSharedReferences.value.map(reference => ({ ...reference })) })
+})
+
+const requestSharedReferences = computed(() =>
+  sharedReferenceImageDrafts.value.map(({ name: _name, size: _size, ...reference }) => ({ ...reference })),
+)
+
+function inlineReferenceByteLength(data = ''): number {
+  const encoded = data.replace(/\s/g, '')
+  const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor(encoded.length * 3 / 4) - padding)
+}
+
+const expandedReferenceUsage = computed(() => {
+  if (referenceMode.value === 'shared') {
+    const references = requestSharedReferences.value
+    const outputs = requestItems.value.reduce((sum, item) => sum + normalizeOutputCount(item.output_count), 0)
+    const bytes = references.reduce((sum, reference) => sum + inlineReferenceByteLength(reference.data), 0)
+    return { attachments: references.length * outputs, inlineBytes: bytes * outputs }
+  }
+  let attachments = 0
+  let inlineBytes = 0
+  for (const item of requestItems.value) {
+    const references = item.reference_images || []
+    const outputs = normalizeOutputCount(item.output_count)
+    attachments += references.length * outputs
+    inlineBytes += references.reduce((sum, reference) => sum + inlineReferenceByteLength(reference.data), 0) * outputs
+  }
+  return { attachments, inlineBytes }
 })
 
 function referenceImageLimitForModel(model: string) {
@@ -1393,8 +1425,8 @@ ${endpointBase.value}
 3. 从用户要求或上下文推断输出目录；如果用户没有说保存到哪里，才询问用户。
 4. 提交前必须先计算 expected_output_count = 所有 item 的 output_count 之和。单个批量任务硬性最多 200 张输出图；超过 200 张必须拆成多组任务，不能提交一个超大任务，也不能把参考图附件上限当成生成张数上限。
 5. 如果用户提供参考图，可选择整组任务统一复用同一组图片，也可按用途绑定到具体 item。共享参考图会完整应用到每条 item，两种方式使用相同的模型单条上限：GPT-image 最多 16 张，Gemini 2.5 Flash Image 最多 3 张，Gemini 3 Pro Image / Nano Banana 最多 14 张，Seedream 5.0 Pro 最多 10 张；以模型接口公布的能力为准。参考图只是输入附件，不是输出图数量。不要把后端附件风控理解成单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
-6. 参考图会按 output_count 重复消耗输入 token；大量任务、重复复用同一张参考图或参考图总体积较大时，优先使用 gs:// file_uri 或拆分成多组任务。
-7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。不要展示或询问内部 provider 名称。系统会自动选择后台拆单并发执行或上游原生批量通道。
+6. 整组复用参考图时，先检查模型目录 supports_shared_reference_images。为 true 时将图片数组放在顶层 shared_reference_images，只上传一次，不要在每条 item 重复 base64；该数组覆盖各条 reference_images，空数组也表示清空。旧服务未公布支持时，改为把共享图写到每条 item 的 reference_images，不传顶层字段，避免旧服务忽略图片。按条绑定时不传 shared_reference_images，保留各条 reference_images。附件数量和解码后总量仍按 output_count 展开计算，超过限制时拆分任务。gs:// file_uri 仅适用于明确支持它的原生 Gemini/Vertex 通道，GPT-image 和工作台拆单并发通道使用 inline base64。
+7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。工作台使用 provider: "app_managed"，把任务拆为多个单图请求并发执行；Nano Banana 保留单图异步任务轮询，不调用官方批量接口。不要展示或询问内部 provider 名称。
 8. 调用批量生图 API 提交、轮询、下载，不要求用户去页面里手填。
 
 API 调用规范：
@@ -1405,25 +1437,26 @@ API 调用规范：
 - 下载：GET ${joinEndpointPath(endpointBase.value, '/v1/images/batches/{id}/download')}
 - 取消：POST ${joinEndpointPath(endpointBase.value, '/v1/images/batches/{id}/cancel')}
 
-提交请求体：
+提交请求体（模型目录支持 shared_reference_images 时）：
 {
   "model": "<按所选 Key 可用模型填写>",
   "task_name": "<从聊天推断；为空则用当前时间>",
+  "provider": "app_managed",
   "image_size": "2K",
   "response_mime_type": "image/png",
+  "shared_reference_images": [
+    {
+      "id": "face",
+      "type": "subject",
+      "mime_type": "image/png",
+      "data": "<base64，不含 data:image/png;base64, 前缀>"
+    }
+  ],
   "items": [
     {
       "custom_id": "img_001",
       "prompt": "<第一条完整 prompt>",
-      "output_count": 1,
-      "reference_images": [
-        {
-          "id": "face",
-          "type": "subject",
-          "mime_type": "image/png",
-          "data": "<base64，不含 data:image/png;base64, 前缀>"
-        }
-      ]
+      "output_count": 1
     }
   ]
 }
@@ -1641,7 +1674,7 @@ async function loadAvailableModels() {
   try {
     const result = await listBatchImageModels(key.key)
     if (requestID !== modelRequestSeq) return
-    const modelMap = new Map<string, { value: string; label: string; provider?: string; mode?: string; referenceImageLimit?: number }>()
+    const modelMap = new Map<string, { value: string; label: string; provider?: string; mode?: string; referenceImageLimit?: number; supportsSharedReferenceImages?: boolean }>()
     for (const model of result.data || []) {
       const value = String(model.id || '').trim()
       if (!value) continue
@@ -1651,6 +1684,7 @@ async function loadAvailableModels() {
       provider: String(model.provider || '').trim() || undefined,
       mode: String(model.mode || model.execution_mode || '').trim() || undefined,
       referenceImageLimit: Number(model.reference_image_limit || 0) || undefined,
+      supportsSharedReferenceImages: model.supports_shared_reference_images === true,
       }
       const existing = modelMap.get(value)
       const candidateIsManaged = /managed|fanout/i.test(`${candidate.mode || ''} ${candidate.provider || ''}`)
@@ -2017,6 +2051,14 @@ function validateForm(): boolean {
     appStore.showError(batchImageText('tooManyReferenceImages'))
     return false
   }
+  if (expandedReferenceUsage.value.attachments > BATCH_IMAGE_MAX_REFERENCE_ATTACHMENTS) {
+    appStore.showError(batchImageText('tooManyReferenceAttachments'))
+    return false
+  }
+  if (expandedReferenceUsage.value.inlineBytes > BATCH_IMAGE_MAX_INLINE_REFERENCE_BYTES) {
+    appStore.showError(batchImageText('referenceImagesTooLarge'))
+    return false
+  }
   return true
 }
 
@@ -2047,6 +2089,7 @@ async function submitJob() {
         image_size: requestedImageSize,
         ...(nativeGeminiBatchAspectRatio.value ? { aspect_ratio: nativeGeminiBatchAspectRatio.value } : {}),
         response_mime_type: normalizedResponseMimeType.value,
+        ...(referenceMode.value === 'shared' && supportsCompactSharedReferences.value ? { shared_reference_images: requestSharedReferences.value } : {}),
         items: requestItems.value,
       },
       `moshu-ui-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
@@ -2932,11 +2975,15 @@ type BatchImageTextKey =
   | 'insufficientBalance'
   | 'invalidModel'
   | 'invalidItems'
+  | 'invalidRequest'
+  | 'requestReadFailed'
+  | 'requestTooLarge'
   | 'invalidImageSize'
   | 'duplicateCustomId'
   | 'promptTooLong'
   | 'invalidReferenceImage'
   | 'tooManyReferenceImages'
+  | 'tooManyReferenceAttachments'
   | 'referenceImagesTooLarge'
   | 'tooManyOutputImages'
   | 'idempotencyConflict'
@@ -3029,6 +3076,15 @@ function batchImageErrorMessage(error: any, fallback: string) {
   }
   if (code === 'BATCH_IMAGE_INVALID_ITEMS') {
     return batchImageText('invalidItems')
+  }
+  if (code === 'BATCH_IMAGE_INVALID_JSON' || code === 'BATCH_IMAGE_INVALID_REQUEST') {
+    return batchImageText('invalidRequest')
+  }
+  if (code === 'BATCH_IMAGE_REQUEST_READ_FAILED') {
+    return batchImageText('requestReadFailed')
+  }
+  if (code === 'BATCH_IMAGE_REQUEST_TOO_LARGE' || code === '413' || String(error?.status || '') === '413') {
+    return batchImageText('requestTooLarge')
   }
   if (code === 'BATCH_IMAGE_DUPLICATE_CUSTOM_ID') {
     return batchImageText('duplicateCustomId')

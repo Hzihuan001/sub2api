@@ -445,32 +445,38 @@ func TestBatchImagePublicService_Submit(t *testing.T) {
 		require.Equal(t, req.ImageSize, managed.submits[0].ImageSize)
 	})
 
-	t.Run("GPT image defaults to single-image fan-out when provider is omitted", func(t *testing.T) {
-		svc, _, _, _, _ := newTestBatchImagePublicService(true)
-		managed := configureTestAppManagedBatchService(svc)
-		req := validBatchImageSubmitRequest()
-		req.Provider = ""
-		req.Model = "gpt-image-2.5-sunburst"
-		req.ImageSize = "3840x2160"
+	t.Run("GPT image uses single-image fan-out even when native providers are available", func(t *testing.T) {
+		for _, provider := range []string{"", BatchImageProviderGeminiAPI, BatchImageProviderVertex} {
+			for _, imageSize := range []string{"1K", "2K", "4K", "3840x2160"} {
+				t.Run(fmt.Sprintf("provider=%s/size=%s", provider, imageSize), func(t *testing.T) {
+					svc, repo, _, gemini, vertex := newTestBatchImagePublicService(true)
+					managed := &publicBatchImageProvider{name: BatchImageProviderAppManaged}
+					const model = "gpt-image-2.5-sunburst"
+					// Both channels advertise this public model, as can happen with
+					// broad account mappings. The old native-first selection would
+					// choose Gemini here even though a single-image channel exists.
+					nativeAccount := testBatchImageMappedAccount(11, AccountTypeAPIKey, map[string]any{model: model})
+					openaiAccount := testBatchImageMappedAccount(22, AccountTypeAPIKey, map[string]any{model: model})
+					openaiAccount.Platform = PlatformOpenAI
+					svc.AccountRepo = &publicBatchImageAccountRepo{accounts: []Account{nativeAccount, openaiAccount}}
+					svc.ProviderRegistry = NewBatchImageProviderRegistry(gemini, vertex,
+						&publicBatchImagePlatformProvider{publicBatchImageProvider: managed, platform: PlatformOpenAI})
+					svc.Config.BatchImage.AppManagedEnabled = true
+					req := validBatchImageSubmitRequest()
+					req.Provider, req.Model, req.ImageSize = provider, model, imageSize
 
-		got, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
-		require.NoError(t, err)
-		require.Equal(t, BatchImageProviderAppManaged, got.Provider)
-		require.Len(t, managed.submits, 1)
-		require.Equal(t, "3840x2160", managed.submits[0].ImageSize)
-	})
-
-	t.Run("GPT image cannot be redirected to a native batch provider", func(t *testing.T) {
-		svc, _, _, _, _ := newTestBatchImagePublicService(true)
-		managed := configureTestAppManagedBatchService(svc)
-		req := validBatchImageSubmitRequest()
-		req.Provider = BatchImageProviderGeminiAPI
-		req.Model = "gpt-image-2"
-
-		got, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
-		require.NoError(t, err)
-		require.Equal(t, BatchImageProviderAppManaged, got.Provider)
-		require.Len(t, managed.submits, 1)
+					got, err := svc.Submit(ctx, testBatchImageOwner(), req, "")
+					require.NoError(t, err)
+					require.Equal(t, BatchImageProviderAppManaged, got.Provider)
+					require.Equal(t, "managed_fanout", got.ExecutionMode)
+					require.Equal(t, openaiAccount.ID, *repo.jobs[got.ID].AccountID)
+					require.Empty(t, gemini.submits)
+					require.Empty(t, vertex.submits)
+					require.Len(t, managed.submits, 1)
+					require.Equal(t, imageSize, managed.submits[0].ImageSize)
+				})
+			}
+		}
 	})
 
 	t.Run("rejects too many items", func(t *testing.T) {
@@ -748,15 +754,17 @@ func TestBatchImagePublicService_ListModels(t *testing.T) {
 		got, err := svc.ListModels(ctx, BatchImageOwner{UserID: 11, APIKeyID: 22, GroupID: &groupID})
 		require.NoError(t, err)
 		require.Equal(t, []BatchImagePublicModel{{
-			ID:                  "gemini-2.5-flash-image",
-			Object:              "image.batch.model",
-			Provider:            BatchImageProviderGeminiAPI,
-			ReferenceImageLimit: 3,
+			ID:                            "gemini-2.5-flash-image",
+			Object:                        "image.batch.model",
+			Provider:                      BatchImageProviderGeminiAPI,
+			ReferenceImageLimit:           3,
+			SupportsSharedReferenceImages: true,
 		}, {
-			ID:                  "gemini-2.5-flash-image",
-			Object:              "image.batch.model",
-			Provider:            BatchImageProviderVertex,
-			ReferenceImageLimit: 3,
+			ID:                            "gemini-2.5-flash-image",
+			Object:                        "image.batch.model",
+			Provider:                      BatchImageProviderVertex,
+			ReferenceImageLimit:           3,
+			SupportsSharedReferenceImages: true,
 		}}, got.Data)
 	})
 
@@ -1176,6 +1184,15 @@ type publicBatchImageProvider struct {
 	result         string
 	cleanupTargets []CleanupTarget
 	cleanupErr     error
+}
+
+type publicBatchImagePlatformProvider struct {
+	*publicBatchImageProvider
+	platform string
+}
+
+func (p *publicBatchImagePlatformProvider) SupportsAccount(account *Account) bool {
+	return account != nil && account.Platform == p.platform
 }
 
 func (p *publicBatchImageProvider) Name() string { return p.name }

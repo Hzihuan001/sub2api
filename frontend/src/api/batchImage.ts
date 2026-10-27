@@ -36,6 +36,8 @@ export interface BatchImageSubmitRequest {
   image_size?: '1K' | '2K' | '4K' | string
   response_mime_type?: string
   aspect_ratio?: string
+  /** Shared references are sent once and replace per-item references, including an explicit empty array. */
+  shared_reference_images?: BatchImageReferenceImage[]
   items: BatchImageSubmitItem[]
   metadata?: Record<string, string>
 }
@@ -103,6 +105,8 @@ export interface BatchImageModel {
   provider: string
   /** Maximum reference images accepted for the selected account's mapped model. */
   reference_image_limit?: number
+  /** Older servers ignore the top-level shared-reference field; require this capability before using it. */
+  supports_shared_reference_images?: boolean
   /** `managed_fanout` for OpenAI-compatible fan-out or `managed_async` for BananaRouter Gemini async fan-out. */
   mode?: string
   execution_mode?: string

@@ -53,16 +53,19 @@ type BatchImageUserGroupRateRepository interface {
 }
 
 type BatchImageSubmitRequest struct {
-	Model            string                 `json:"model"`
-	TaskName         string                 `json:"task_name"`
-	ParentBatchID    string                 `json:"parent_batch_id"`
-	Provider         string                 `json:"provider"`
-	Items            []BatchImageSubmitItem `json:"items"`
-	ResponseMimeType string                 `json:"response_mime_type"`
-	AspectRatio      string                 `json:"aspect_ratio"`
-	ImageSize        string                 `json:"image_size"`
-	Metadata         map[string]string      `json:"metadata"`
-	SessionID        *string                `json:"-"`
+	Model         string                 `json:"model"`
+	TaskName      string                 `json:"task_name"`
+	ParentBatchID string                 `json:"parent_batch_id"`
+	Provider      string                 `json:"provider"`
+	Items         []BatchImageSubmitItem `json:"items"`
+	// SharedReferenceImages is uploaded once and applied to each single-image
+	// task. A present empty array deliberately clears per-item references.
+	SharedReferenceImages []BatchImageReferenceInput `json:"shared_reference_images,omitempty"`
+	ResponseMimeType      string                     `json:"response_mime_type"`
+	AspectRatio           string                     `json:"aspect_ratio"`
+	ImageSize             string                     `json:"image_size"`
+	Metadata              map[string]string          `json:"metadata"`
+	SessionID             *string                    `json:"-"`
 }
 
 type BatchImageSubmitItem struct {
@@ -164,13 +167,14 @@ type BatchImagePublicListResponse struct {
 }
 
 type BatchImagePublicModel struct {
-	ID                  string `json:"id"`
-	Object              string `json:"object"`
-	Provider            string `json:"provider"`
+	ID       string `json:"id"`
+	Object   string `json:"object"`
+	Provider string `json:"provider"`
 	// Mode distinguishes app-managed protocol variants when one public model
 	// is available through more than one account platform.
-	Mode                string `json:"mode,omitempty"`
-	ReferenceImageLimit int    `json:"reference_image_limit,omitempty"`
+	Mode                          string `json:"mode,omitempty"`
+	ReferenceImageLimit           int    `json:"reference_image_limit,omitempty"`
+	SupportsSharedReferenceImages bool   `json:"supports_shared_reference_images"`
 }
 
 type BatchImagePublicModelsResponse struct {
@@ -337,7 +341,7 @@ func (s *BatchImagePublicService) Submit(ctx context.Context, owner BatchImageOw
 	}
 
 	input := BatchImageInput{
-		BatchID:          job.BatchID,
+		BatchID: job.BatchID,
 		// Keep the public alias on the job for billing/UI, but send the
 		// provider deployment ID to native Gemini/Vertex batch APIs.
 		Model:            account.GetMappedModel(normalized.Model),
@@ -722,11 +726,12 @@ func (s *BatchImagePublicService) ListModels(ctx context.Context, owner BatchIma
 		sort.Strings(models)
 		for _, model := range models {
 			out = append(out, BatchImagePublicModel{
-				ID:                  model,
-				Object:              "image.batch.model",
-				Provider:            providerName,
-				Mode:                managedModes[providerName][model],
-				ReferenceImageLimit: modelsByProvider[providerName][model],
+				ID:                            model,
+				Object:                        "image.batch.model",
+				Provider:                      providerName,
+				Mode:                          managedModes[providerName][model],
+				ReferenceImageLimit:           modelsByProvider[providerName][model],
+				SupportsSharedReferenceImages: true,
 			})
 		}
 	}
@@ -837,14 +842,6 @@ func (s *BatchImagePublicService) validateSubmitRequest(req BatchImageSubmitRequ
 	req.ResponseMimeType = strings.TrimSpace(req.ResponseMimeType)
 	req.AspectRatio = strings.TrimSpace(req.AspectRatio)
 	req.ImageSize = strings.TrimSpace(req.ImageSize)
-	// OpenAI-compatible image models do not expose the Gemini/Vertex native
-	// batch contract. The workbench's batch API is deliberately a fan-out of
-	// ordinary single-image requests, so make that execution mode explicit even
-	// for older clients that omit `provider` or carry a stale native value.
-	if isBatchImageManagedFanoutModel(req.Model) &&
-		(req.Provider == "" || req.Provider == BatchImageProviderGeminiAPI || req.Provider == BatchImageProviderVertex) {
-		req.Provider = BatchImageProviderAppManaged
-	}
 	if req.Model == "" {
 		return req, ErrBatchImageInvalidModel
 	}
@@ -878,7 +875,7 @@ func (s *BatchImagePublicService) validateSubmitRequest(req BatchImageSubmitRequ
 	// WIDTHxHEIGHT requests are supported by the app-managed GPT-image path.
 	// Reject custom geometry for an explicitly native provider before it can be
 	// serialized into an incompatible imageConfig.imageSize field.
-	if strings.Contains(normalizedImageSize, "x") {
+	if !isBatchImageManagedFanoutModel(req.Model) && strings.Contains(normalizedImageSize, "x") {
 		switch req.Provider {
 		case BatchImageProviderGeminiAPI, BatchImageProviderVertex:
 			return req, ErrBatchImageInvalidItems
@@ -888,11 +885,23 @@ func (s *BatchImagePublicService) validateSubmitRequest(req BatchImageSubmitRequ
 		}
 	}
 	// Vertex native batch prediction keeps its existing 1K-only contract.
-	if req.Provider == BatchImageProviderVertex && normalizedImageSize != ImageBillingSize1K {
+	if !isBatchImageManagedFanoutModel(req.Model) && req.Provider == BatchImageProviderVertex && normalizedImageSize != ImageBillingSize1K {
 		return req, ErrBatchImageInvalidItems
 	}
 	req.ImageSize = normalizedImageSize
 	req.Metadata = sanitizeBatchImageMetadata(req.Metadata)
+	if req.SharedReferenceImages != nil {
+		shared := BatchImageSubmitItem{ReferenceImages: req.SharedReferenceImages}
+		if _, _, err := normalizeBatchImageReferenceInputs(req.Model, &shared); err != nil {
+			return req, err
+		}
+		for i := range req.Items {
+			req.Items[i].ReferenceImages = append([]BatchImageReferenceInput(nil), shared.ReferenceImages...)
+		}
+		// Canonicalize to the existing per-item contract before hashing,
+		// persistence and fan-out. Old clients and their retries keep working.
+		req.SharedReferenceImages = nil
+	}
 
 	seen := make(map[string]struct{}, len(req.Items))
 	totalReferenceImages := 0

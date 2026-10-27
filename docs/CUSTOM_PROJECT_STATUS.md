@@ -7,6 +7,12 @@
 >
 > 本文不保存密码、Token、私钥、`.env` 内容或数据库备份路径中的敏感信息。
 
+### 2026-10-27 — 批量共享参考图上传及单图 fan-out 修复（候选，未发布）
+
+- 当前生产仍为 `0.2.18-custom.3` / `c2dbbe786e844ee1df77bfd710ebaf438f625126` / digest `sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac`；候选 `0.2.18-custom.4`，分支仍为 `codex/image-batch-16refs-20261026`，提交基线 `b2ec356187dc74214c38a1a47e47b011228df074`。初步provider防御提交 `c03720b7f` 已由本轮完整修复补充，不能单独称为本次线上根因证据。
+- 昨日16张共享图会在每条prompt重复Base64，已用旧真实handler复现请求超限和Base64错误均返回 `BATCH_IMAGE_INVALID_ITEMS`。本轮共享图只上传一次，模型目录声明能力、旧服务降级避免丢图；后端仍按原item展开、持久化及计费。前端补1000附件/128MiB展开总量校验；后台返回具体绑定错误。未取得用户失败请求完整结构，不声称精确还原该次线上触发。
+- GPT-image、Seedream 5.0 Pro、Grok Imagine固定到 `app_managed` 普通单图并发，历史请求provider哈希保持；原生Gemini/Vertex和Nano Banana单图async路径保留。前端99项/typecheck/lint、后端显式unit标签共享/16图/幂等/边界/public service及真实handler/准入/审计回归、隔离/契约/依赖审计通过。Docker已恢复；正式镜像/生产验收待执行，没有付费模型调用，其他树修改未触碰。见[本轮发布记录](CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md)。
+
 ## 1. 当前快照
 
 ### 2026-10-26 — 共享文档同步与既有清理记录归档（仅文档）

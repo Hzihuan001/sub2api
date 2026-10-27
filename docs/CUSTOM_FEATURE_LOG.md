@@ -1,5 +1,12 @@
 # 定制功能日志
 
+### 2026-10-27 — 批量共享参考图上传及单图 fan-out 修复（候选，待发布）
+
+- **排查阶段勘误**：最初将 provider 选择风险直接认定为本次线上根因，证据不足。昨天共享16图的直接变化是将同一组 Base64 重复写入每条 prompt，大图/多条任务会放大 JSON；handler 又将读体超限等绑定错误统一映射 `BATCH_IMAGE_INVALID_ITEMS`。该问题正在以真实 handler 回归复现和修复，尚未获得用户失败请求的完整结构，不能声称已还原那一次线上调用。
+- **修复**：新增 `shared_reference_images`，共享图只上传一次，后端规范化成原 item 后再展开单图请求。模型目录公布 `supports_shared_reference_images`；新前端只对支持的服务使用该字段，旧服务回退逐条输入，防止静默丢图。显式空数组清空旧逐条引用；前端按生成数量检查1000附件/128MiB总量，保留每图10MiB、GPT16图及200输出上限。
+- **路由/错误**：GPT-image、Seedream 5.0 Pro 和 Grok Imagine 固定使用 app-managed 单图 fan-out，不误入 Gemini/Vertex 原生批量；保留请求 provider 原值用于历史幂等哈希。绑定错误细分请求过大413、JSON/字段格式、Base64及上传中断，日志不记正文、图片或原始解码错误。原生 Gemini/Vertex 批量及 Nano Banana 单图异步路径不改，无新迁移/计费改动。
+- **验证**：前端99项、最终typecheck/lint、后端带unit标签的共享规范化/旧格式幂等/16图multipart/总量边界和public service回归通过；真实handler覆盖重复上传超限、一次上传通过绑定、Base64/类型/语法/未知长度及日志无正文，Key准入/审计回归通过。隔离/契约/依赖审计通过。Docker引擎启动后已补跑后端；候选 `0.2.18-custom.4`，镜像/生产验收尚未执行，生产仍 `.18.3`。详见[本轮记录](CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md)。
+
 ### 2026-10-26 — `custom.3` 共享文档补齐与维护历史移植（仅文档）
 
 - 以最新批量树 `D:/projects/sub2api-image-batch-16refs-20261026` / `codex/image-batch-16refs-20261026` / 文档基线 `c8d14a1183f73cdefa28e698f45bbaf8f8c730b5` 为当前入口，运行源仍为 `c2dbbe786e844ee1df77bfd710ebaf438f625126`，版本/标签仍为 `0.2.18-custom.3` / `custom-0.2.18.3`。正式镜像与兼容回退 `.18.2` 继续以本版发布记录为准，不移动运行标签。

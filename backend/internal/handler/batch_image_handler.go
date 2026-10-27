@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -35,7 +36,7 @@ func NewBatchImageHandler(service *service.BatchImagePublicService, download *se
 func (h *BatchImageHandler) Submit(c *gin.Context) {
 	var req service.BatchImageSubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		batchImageError(c, service.ErrBatchImageInvalidItems)
+		batchImageError(c, batchImageSubmitBindError(requestLogger(c, "handler.batch_image.submit"), c.Request, err))
 		return
 	}
 	owner, ok := batchImageOwnerFromContext(c)
@@ -59,6 +60,55 @@ func (h *BatchImageHandler) Submit(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, got)
+}
+
+// Do not collapse a truncated/oversized upload into an item validation error.
+// The decoder may have consumed only part of a reference-heavy request, so its
+// partial values and raw error must never be included in operator diagnostics.
+func batchImageSubmitBindError(reqLog *zap.Logger, req *http.Request, err error) error {
+	status := http.StatusBadRequest
+	code := "BATCH_IMAGE_INVALID_REQUEST"
+	message := "Batch request fields have invalid types; use an items array, string prompts, and integer output_count values"
+	kind := "invalid_request"
+	fields := []zap.Field{}
+	var syntaxErr *json.SyntaxError
+	var typeErr *json.UnmarshalTypeError
+	var base64Err base64.CorruptInputError
+	switch {
+	case errors.As(err, &syntaxErr):
+		code, kind = "BATCH_IMAGE_INVALID_JSON", "json_syntax"
+		message = "Batch request must be valid JSON"
+		fields = append(fields, zap.Int64("offset", syntaxErr.Offset))
+	case errors.As(err, &base64Err):
+		code, kind = "BATCH_IMAGE_INVALID_REFERENCE_IMAGE", "reference_base64"
+		message = "Reference image data must be valid base64 without a data URL prefix"
+	case errors.As(err, &typeErr):
+		kind = "json_type"
+		fields = append(fields, zap.Int64("offset", typeErr.Offset))
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		code, kind = "BATCH_IMAGE_INVALID_JSON", "incomplete_json"
+		message = "Batch request body is empty or incomplete; send a complete JSON object"
+	default:
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			status, code, kind = http.StatusRequestEntityTooLarge, "BATCH_IMAGE_REQUEST_TOO_LARGE", "max_bytes"
+			message = buildBodyTooLargeMessage(maxErr.Limit) + "; use shared_reference_images for shared inputs, reduce image sizes, or split the batch into smaller tasks"
+			fields = append(fields, zap.Int64("limit_bytes", maxErr.Limit))
+		} else if requestBodyReadErrorKind(err) != "io_read" {
+			code, kind = "BATCH_IMAGE_REQUEST_READ_FAILED", requestBodyReadErrorKind(err)
+			message = "Unable to read the complete batch request; retry the upload"
+		}
+	}
+	if reqLog != nil {
+		contentLength := int64(-1)
+		contentEncoding := "identity"
+		if req != nil {
+			contentLength = req.ContentLength
+			contentEncoding = requestContentEncodingCategory(req.Header.Get("Content-Encoding"))
+		}
+		fields = append(fields, zap.String("error_kind", kind), zap.Int64("content_length", contentLength), zap.String("content_encoding", contentEncoding))
+		reqLog.Warn("batch image request binding failed", fields...)
+	}
+	return infraerrors.New(status, code, message)
 }
 
 func (h *BatchImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, req *service.BatchImageSubmitRequest) bool {
