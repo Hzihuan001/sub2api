@@ -1,5 +1,20 @@
 # 定制功能日志
 
+
+### 2026-10-29 — 0.2.19-custom.1 — 主线合并与生产发布
+
+- **需求**：合并官方 v0.2.19，保留定制化功能，并完成三站发布。
+- **Feature ID**：`operator` / `prompt-audit` / `image-studio` / `branding` / `usage-extras` / `key-routing`。
+- **官方基线**：`v0.2.19` / `dece26153621959ccd7635814f4b2d08304e681a`；基线 `custom/integration` `86ae08dbb450eb1090c2a076c3d8da7865ac7cf7`。
+- **实现边界**：官方 API Key 管理、图片按张计费、Grok/Gemini 目录、迁移 247/248；冲突集中在 Ent Group 字段、账号处理器兼容构造、模型同步组件和 OpenAI 网关，采用最小手工兼容补丁，保留角色、审计、生图、路由、直连和品牌层。
+- **数据库/迁移**：保留官方新增迁移，使用现有数据库追加迁移；未执行破坏性降级。
+- **测试**：后端全包编译、前端类型检查、模型同步/Key 编辑 63 项、Docker 前端 i18n 4 项、三站隔离 Compose 健康检查通过。
+- **提交/PR**：`99d8b8f63`、`a02e2f1b7`；分支 `codex/v0.2.19-merge-20261029` 已推送，`custom/integration` 已快进，标签 `custom-0.2.19.1`。
+- **发布镜像**：`ghcr.io/hzihuan001/sub2api:0.2.19-custom.1` / `sha256:6f2e1c26aa491b67a038dd8ae98f9cc092c3aed5c38df8eed571ba7f388b5621`。
+- **部署站点**：`ai.moshu.cloud`、`api.moshu.cloud`、`cos.moshu.cloud`；容器 healthy/restart 0，公网首页和 `/health` 均 HTTP 200。
+- **回滚**：应用旧摘要 `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`；保留本轮新增迁移和业务数据。
+- **备注**：Docker 构建曾发现并修复 `discovery_source` 前端 API 类型遗漏；当前工作树已清洁，后续合并优先复用此分支边界。
+
 ### 2026-10-27 — 共享指针：受控直连入口已上线
 
 最新增量请读取 `D:/projects/sub2api-direct-access-20261027/docs/CUSTOM_PROJECT_STATUS.md`、`CUSTOM_DIRECT_ACCESS_20261027.md` 与 `deploy/direct-access/README.md`。入口代码 `4e746e82d` / `direct-access-20261027.1`，文档闭环 `c59f4c533` 已推送 `custom/integration` 和功能分支。`nocf.moshu.cloud` DNS only + HTTPS + 用户授权侧车已部署，用户 ID 4 已开通，本地48项/真实PG权限集成与生产免费验收通过；主站/分站应用仍 `.18.4`，没有重启或重建。旧树原文与其他修改保留，不从本树整树覆盖最新集成。

@@ -1,5 +1,17 @@
 # 定制项目状态与官方升级说明
 
+
+### 2026-10-29 — 0.2.19-custom.1 — 官方 v0.2.19 合并并三站生产发布
+
+- **官方基线**：`v0.2.19`，提交 `dece26153621959ccd7635814f4b2d08304e681a`；基于远端 `custom/integration` `86ae08dbb450eb1090c2a076c3d8da7865ac7cf7`。
+- **合并提交**：`99d8b8f63`（官方合并及定制冲突处理），`a02e2f1b7`（前端上游模型同步类型补齐）；标签 `custom-0.2.19.1`。
+- **保留的定制**：角色/权限、Moshu 生图工作台与批量队列、提示词审计、分组/Key 路由、直连入口及对客品牌；官方新增管理员 Key、图片按张计费、Grok/Gemini 模型目录和迁移均已合入。
+- **本地检查**：后端 `go test -run '^$' ./...` 全包编译通过；前端 `vue-tsc --noEmit` 通过；模型同步与 Key 编辑定向测试 63/63；Docker 生产构建（含 i18n 4/4）通过；隔离 Compose 主站/L1/COS 三套应用、PostgreSQL、Redis healthy，三个本地 `/health` 返回 200。
+- **生产镜像**：`ghcr.io/hzihuan001/sub2api:0.2.19-custom.1`，不可变摘要 `sha256:6f2e1c26aa491b67a038dd8ae98f9cc092c3aed5c38df8eed571ba7f388b5621`。
+- **生产部署**：按主站 `ai.moshu.cloud` → L1 `api.moshu.cloud` → COS `cos.moshu.cloud` 顺序，仅重建应用容器，保留数据库、Redis、卷、网络和反代。三站容器均 healthy、restart 0、摘要一致；公网 `/health` 与首页均返回 200，发布后关键启动错误扫描无匹配。
+- **备份/回滚**：部署前备份已在服务器生成并完成 SHA256 与 PostgreSQL dump 列表校验，标识为 `v0.2.19-custom.1-20261028T191356Z`；应用回退使用旧摘要 `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`，不恢复旧数据库覆盖新业务数据。
+- **共享文档**：本条同步至 `CUSTOM_PROJECT_STATUS.md`、`CUSTOM_FEATURE_LOG.md`、`UPSTREAM_SYNC.md`；后续版本从 `custom/integration` 和本标签继续。
+
 ### 2026-10-27 — 共享指针：受控直连入口已上线
 
 最新增量请读取 `D:/projects/sub2api-direct-access-20261027/docs/CUSTOM_PROJECT_STATUS.md`、`CUSTOM_DIRECT_ACCESS_20261027.md` 与 `deploy/direct-access/README.md`。入口代码 `4e746e82d` / `direct-access-20261027.1`，文档闭环 `c59f4c533` 已推送 `custom/integration` 和功能分支。`nocf.moshu.cloud` DNS only + HTTPS + 用户授权侧车已部署，用户 ID 4 已开通，本地48项/真实PG权限集成与生产免费验收通过；主站/分站应用仍 `.18.4`，没有重启或重建。旧树原文与其他修改保留，不从本树整树覆盖最新集成。

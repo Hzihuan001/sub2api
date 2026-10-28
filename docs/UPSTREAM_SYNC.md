@@ -1,5 +1,18 @@
 # Upstream upgrade PRs
 
+
+### 2026-10-29 — upstream v0.2.19
+
+- **上游**：`v0.2.19` → `dece26153621959ccd7635814f4b2d08304e681a`。
+- **基线**：`custom/integration` `86ae08dbb450eb1090c2a076c3d8da7865ac7cf7`。
+- **冲突**：Ent Group/Mutation/Runtime 的图片计费字段、账号处理器和测试服务构造签名、Gemini/Geminicli 模型目录、OpenAI 网关调用、模型白名单同步组件；均按最小范围保留定制并补入官方能力。
+- **检查**：后端全包编译、前端 `vue-tsc`、定向 63 项前端测试、Docker i18n 4 项、Linux/amd64 镜像构建、三站隔离 Compose 和公网健康检查通过。
+- **定制保留**：角色权限、提示词审计、Moshu 生图/批量任务、Key/分组路由、直连入口、品牌文案及使用记录增强。
+- **发布决定**：已创建 `custom-0.2.19.1` 并发布。
+- **镜像**：`ghcr.io/hzihuan001/sub2api:0.2.19-custom.1`，摘要 `sha256:6f2e1c26aa491b67a038dd8ae98f9cc092c3aed5c38df8eed571ba7f388b5621`。
+- **部署**：主站 → L1 → COS 顺序完成；三站 healthy/restart 0，首页和 `/health` HTTP 200，关键启动错误扫描无匹配。
+- **回滚证据**：旧应用摘要 `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`；部署前备份标识 `v0.2.19-custom.1-20261028T191356Z`，PostgreSQL dump 列表和 SHA256 已校验。
+
 ### 2026-10-27 — 共享指针：受控直连入口已上线
 
 最新增量请读取 `D:/projects/sub2api-direct-access-20261027/docs/CUSTOM_PROJECT_STATUS.md`、`CUSTOM_DIRECT_ACCESS_20261027.md` 与 `deploy/direct-access/README.md`。入口代码 `4e746e82d` / `direct-access-20261027.1`，文档闭环 `c59f4c533` 已推送 `custom/integration` 和功能分支。`nocf.moshu.cloud` DNS only + HTTPS + 用户授权侧车已部署，用户 ID 4 已开通，本地48项/真实PG权限集成与生产免费验收通过；主站/分站应用仍 `.18.4`，没有重启或重建。旧树原文与其他修改保留，不从本树整树覆盖最新集成。
