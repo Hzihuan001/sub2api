@@ -11,7 +11,7 @@
 - **发布决定**：已创建 `custom-0.2.19.1` 并发布。
 - **镜像**：`ghcr.io/hzihuan001/sub2api:0.2.19-custom.1`，摘要 `sha256:6f2e1c26aa491b67a038dd8ae98f9cc092c3aed5c38df8eed571ba7f388b5621`。
 - **部署**：主站 → L1 → COS 顺序完成；三站 healthy/restart 0，首页和 `/health` HTTP 200，关键启动错误扫描无匹配。
-- **回滚证据**：旧应用摘要 `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`；部署前备份标识 `v0.2.19-custom.1-20261028T191356Z`，PostgreSQL dump 列表和 SHA256 已校验。
+- **回滚证据**：旧应用摘要 `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`；部署前备份标识 `v0.2.19-custom.1-20261028T191356Z`，PostgreSQL dump 列表和 SHA256 已校验（主站按应用实际 `sub2api` 数据库重做）。
 
 ### 2026-10-27 — 共享指针：受控直连入口已上线
 
@@ -120,3 +120,4 @@ replay. A feature branch may be added only after it is recreated from
 tests and Docker acceptance. Until then, the sync workflow still provides the
 upstream merge, conflict report, range-diff and quality gates, but a human must
 review the custom feature boundaries before merging the draft PR.
+

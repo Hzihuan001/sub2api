@@ -7,7 +7,7 @@
 - **Feature ID**：`operator` / `prompt-audit` / `image-studio` / `branding` / `usage-extras` / `key-routing`。
 - **官方基线**：`v0.2.19` / `dece26153621959ccd7635814f4b2d08304e681a`；基线 `custom/integration` `86ae08dbb450eb1090c2a076c3d8da7865ac7cf7`。
 - **实现边界**：官方 API Key 管理、图片按张计费、Grok/Gemini 目录、迁移 247/248；冲突集中在 Ent Group 字段、账号处理器兼容构造、模型同步组件和 OpenAI 网关，采用最小手工兼容补丁，保留角色、审计、生图、路由、直连和品牌层。
-- **数据库/迁移**：保留官方新增迁移，使用现有数据库追加迁移；未执行破坏性降级。
+- **数据库/迁移**：保留官方新增迁移，使用现有数据库追加迁移；三站已核对 `247_scoped_admin_api_keys.sql`、`248_group_image_count_billing.sql`；未执行破坏性降级。
 - **测试**：后端全包编译、前端类型检查、模型同步/Key 编辑 63 项、Docker 前端 i18n 4 项、三站隔离 Compose 健康检查通过。
 - **提交/PR**：`99d8b8f63`、`a02e2f1b7`；分支 `codex/v0.2.19-merge-20261029` 已推送，`custom/integration` 已快进，标签 `custom-0.2.19.1`。
 - **发布镜像**：`ghcr.io/hzihuan001/sub2api:0.2.19-custom.1` / `sha256:6f2e1c26aa491b67a038dd8ae98f9cc092c3aed5c38df8eed571ba7f388b5621`。
@@ -443,3 +443,4 @@
 - 失败的升级、回滚或验收也要记录，但要明确标记为“失败/阻塞/未部署”，不能删除失败历史。
 - 日志引用 commit、PR、镜像 digest 和测试结果即可，不引用密码、Token、私钥、真实提示词或完整生产配置。
 - 日志和 PR 不得出现 JWT/TOTP、完整 Authorization/Header、可直接登录的 SSH 命令或数据库内容；测试凭据只放本地秘密配置。
+
