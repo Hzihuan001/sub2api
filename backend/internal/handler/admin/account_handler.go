@@ -93,20 +93,89 @@ func NewAccountHandler(
 	openaiOAuthService *service.OpenAIOAuthService,
 	geminiOAuthService *service.GeminiOAuthService,
 	antigravityOAuthService *service.AntigravityOAuthService,
-	kiroOAuthService *service.KiroOAuthService,
-	grokOAuthService service.GrokOAuthTokenService,
-	rateLimitService *service.RateLimitService,
-	accountUsageService *service.AccountUsageService,
-	accountTestService *service.AccountTestService,
-	concurrencyService *service.ConcurrencyService,
-	crsSyncService *service.CRSSyncService,
-	sessionLimitCache service.SessionLimitCache,
-	rpmCache service.RPMCache,
-	tokenCacheInvalidator ...service.TokenCacheInvalidator,
+	firstOptional any,
+	remaining ...any,
 ) *AccountHandler {
+	// v0.2.19 removed the Kiro constructor parameter while the customized
+	// branch still wires it. Accept both layouts during the merge so existing
+	// integrations and upstream tests compile against one stable constructor.
+	legacyWithKiro := len(remaining) >= 13
+	var kiroOAuthService *service.KiroOAuthService
+	var grokOAuthService service.GrokOAuthTokenService
+	var rateLimitService *service.RateLimitService
+	var accountUsageService *service.AccountUsageService
+	var accountTestService *service.AccountTestService
+	var concurrencyService *service.ConcurrencyService
+	var crsSyncService *service.CRSSyncService
+	var sessionLimitCache service.SessionLimitCache
+	var rpmCache service.RPMCache
 	var tokenCache service.TokenCacheInvalidator
-	if len(tokenCacheInvalidator) > 0 {
-		tokenCache = tokenCacheInvalidator[0]
+	get := func(i int) any {
+		if i < 0 || i >= len(remaining) {
+			return nil
+		}
+		return remaining[i]
+	}
+	if v, ok := firstOptional.(*service.KiroOAuthService); ok {
+		legacyWithKiro = true
+		kiroOAuthService = v
+	}
+	if legacyWithKiro {
+		if v, ok := get(0).(service.GrokOAuthTokenService); ok {
+			grokOAuthService = v
+		}
+		if v, ok := get(1).(*service.RateLimitService); ok {
+			rateLimitService = v
+		}
+		if v, ok := get(2).(*service.AccountUsageService); ok {
+			accountUsageService = v
+		}
+		if v, ok := get(3).(*service.AccountTestService); ok {
+			accountTestService = v
+		}
+		if v, ok := get(4).(*service.ConcurrencyService); ok {
+			concurrencyService = v
+		}
+		if v, ok := get(5).(*service.CRSSyncService); ok {
+			crsSyncService = v
+		}
+		if v, ok := get(6).(service.SessionLimitCache); ok {
+			sessionLimitCache = v
+		}
+		if v, ok := get(7).(service.RPMCache); ok {
+			rpmCache = v
+		}
+		if v, ok := get(8).(service.TokenCacheInvalidator); ok {
+			tokenCache = v
+		}
+	} else {
+		if v, ok := firstOptional.(service.GrokOAuthTokenService); ok {
+			grokOAuthService = v
+		}
+		if v, ok := get(0).(*service.RateLimitService); ok {
+			rateLimitService = v
+		}
+		if v, ok := get(1).(*service.AccountUsageService); ok {
+			accountUsageService = v
+		}
+		if v, ok := get(2).(*service.AccountTestService); ok {
+			accountTestService = v
+		}
+		if v, ok := get(3).(*service.ConcurrencyService); ok {
+			concurrencyService = v
+		}
+		if v, ok := get(4).(*service.CRSSyncService); ok {
+			crsSyncService = v
+		}
+		if v, ok := get(5).(service.SessionLimitCache); ok {
+			sessionLimitCache = v
+		}
+		if v, ok := get(6).(service.RPMCache); ok {
+			rpmCache = v
+		}
+		if v, ok := get(7).(service.TokenCacheInvalidator); ok {
+			tokenCache = v
+		}
 	}
 	return &AccountHandler{
 		adminService:            adminService,
@@ -3039,6 +3108,13 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	}
 
 	response.Success(c, models)
+}
+
+// respondAvailableModels is the object-based variant used by scoped admin
+// account routes. The route already carries the account id, so reuse the
+// existing response path to keep model discovery behavior identical.
+func (h *AccountHandler) respondAvailableModels(c *gin.Context, _ *service.Account) {
+	h.GetAvailableModels(c)
 }
 
 // antigravityAccountTestModels uses the stored mapping rather than GetModelMapping,

@@ -262,13 +262,59 @@ func NewAccountTestService(
 	accountRepo AccountRepository,
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
-	kiroTokenProvider *KiroTokenProvider,
-	grokTokenProvider *GrokTokenProvider,
-	antigravityGatewayService *AntigravityGatewayService,
-	httpUpstream HTTPUpstream,
-	cfg *config.Config,
-	tlsFPProfileService *TLSFingerprintProfileService,
+	firstOptional any,
+	remaining ...any,
 ) *AccountTestService {
+	var kiroTokenProvider *KiroTokenProvider
+	var grokTokenProvider *GrokTokenProvider
+	var antigravityGatewayService *AntigravityGatewayService
+	var httpUpstream HTTPUpstream
+	var cfg *config.Config
+	var tlsFPProfileService *TLSFingerprintProfileService
+	legacyWithKiro := len(remaining) >= 5
+	if v, ok := firstOptional.(*KiroTokenProvider); ok {
+		legacyWithKiro = true
+		kiroTokenProvider = v
+	}
+	get := func(i int) any {
+		if i < 0 || i >= len(remaining) {
+			return nil
+		}
+		return remaining[i]
+	}
+	if legacyWithKiro {
+		if v, ok := get(0).(*GrokTokenProvider); ok {
+			grokTokenProvider = v
+		}
+		if v, ok := get(1).(*AntigravityGatewayService); ok {
+			antigravityGatewayService = v
+		}
+		if v, ok := get(2).(HTTPUpstream); ok {
+			httpUpstream = v
+		}
+		if v, ok := get(3).(*config.Config); ok {
+			cfg = v
+		}
+		if v, ok := get(4).(*TLSFingerprintProfileService); ok {
+			tlsFPProfileService = v
+		}
+	} else {
+		if v, ok := firstOptional.(*GrokTokenProvider); ok {
+			grokTokenProvider = v
+		}
+		if v, ok := get(0).(*AntigravityGatewayService); ok {
+			antigravityGatewayService = v
+		}
+		if v, ok := get(1).(HTTPUpstream); ok {
+			httpUpstream = v
+		}
+		if v, ok := get(2).(*config.Config); ok {
+			cfg = v
+		}
+		if v, ok := get(3).(*TLSFingerprintProfileService); ok {
+			tlsFPProfileService = v
+		}
+	}
 	return &AccountTestService{
 		accountRepo:               accountRepo,
 		geminiTokenProvider:       geminiTokenProvider,
@@ -2541,6 +2587,14 @@ func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, accoun
 	}
 }
 
+// geminiDefaultTestModel 返回 Gemini 连接测试未指定模型时使用的模型；Google One 账号只能使用其保守模型集。
+func geminiDefaultTestModel(account *Account) string {
+	if account.IsGeminiGoogleOne() {
+		return geminicli.GoogleOneModels[0].ID
+	}
+	return geminicli.DefaultTestModel
+}
+
 // testGeminiAccountConnection tests a Gemini account's connection
 func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	ctx := c.Request.Context()
@@ -2548,7 +2602,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	// Determine the model to use
 	testModelID := modelID
 	if testModelID == "" {
-		testModelID = geminicli.DefaultTestModel
+		testModelID = geminiDefaultTestModel(account)
 	}
 
 	// For static upstream credentials with model mapping, map the model

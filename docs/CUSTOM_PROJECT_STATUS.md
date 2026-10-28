@@ -1,506 +1,190 @@
 # 定制项目状态与官方升级说明
 
+### 2026-10-27 — 共享指针：受控直连入口已上线
+
+最新增量请读取 `D:/projects/sub2api-direct-access-20261027/docs/CUSTOM_PROJECT_STATUS.md`、`CUSTOM_DIRECT_ACCESS_20261027.md` 与 `deploy/direct-access/README.md`。入口代码 `4e746e82d` / `direct-access-20261027.1`，文档闭环 `c59f4c533` 已推送 `custom/integration` 和功能分支。`nocf.moshu.cloud` DNS only + HTTPS + 用户授权侧车已部署，用户 ID 4 已开通，本地48项/真实PG权限集成与生产免费验收通过；主站/分站应用仍 `.18.4`，没有重启或重建。旧树原文与其他修改保留，不从本树整树覆盖最新集成。
+
+
+<!-- moshu-image-studio-20261027-diagnostics:start -->
+> **2026-10-27 生图工作台错误排查与共享文档同步**：本轮为 `.18.4` 部署后的只读错误排查和文档更新，运行版本、源码标签及正式镜像不变，没有重新部署。用户最终说明 `Failed to fetch` 出现在生成过程中；浏览器进度请求失败不等于后台任务已取消，先检查任务列表，避免盲目重复提交。尚未确定该错误的单一根因。
+>
+> 权威工作树 `D:/projects/sub2api-image-batch-16refs-20261026`，分支 `codex/image-batch-16refs-20261026`；运行源 `1524aa0985f432df19c9144c726224d2852308d6`，不可变标签 `custom-0.2.18.4`，正式镜像 `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`。本次诊断文档提交 `28159e883499df18d6f0ef7819e500eab95a5896`，不代表新增运行版本。
+>
+> [本轮诊断](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_IMAGE_STUDIO_DIAGNOSTICS_20261027.md)、[项目状态](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_PROJECT_STATUS.md)、[共享功能日志](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_FEATURE_LOG.md)、[主线同步说明](D:/projects/sub2api-image-batch-16refs-20261026/docs/UPSTREAM_SYNC.md)。此旧树仅追加诊断入口，原文与其他会话未提交修改全部保留；后续以权威文档的检查范围和证据边界为准，勿用旧树整树覆盖。
+<!-- moshu-image-studio-20261027-diagnostics:end -->
+
+
+<!-- moshu-image-studio-custom-0.2.18.4-shared-pointer:start -->
+> **2026-10-27 批量生图最新共享入口（已部署三站）**：当前正式版本为 `0.2.18-custom.4`。共享参考图只上传一次，后台再分配到各个普通单图并发任务；GPT-image 单图、批量共享和逐条参考图仍最多16张，其他模型及整组总量限制按各自能力执行。请求绑定错误已细分，原始参考图字节、质量及图片尺寸行为保留。旧日志仅确认两次400，不能据此锁定用户那次调用的具体原因。
+>
+> 权威工作树 `D:/projects/sub2api-image-batch-16refs-20261026`，分支 `codex/image-batch-16refs-20261026`；运行源 `1524aa0985f432df19c9144c726224d2852308d6`，不可变标签 `custom-0.2.18.4`，正式镜像 `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`。文档收尾提交 `a56bf0c0208f885e4fe4c4e3c2c5eebcfbca81d4`。后续先核对该工作树和最新集成引用，不从旧树整树覆盖发布。
+>
+> [项目状态](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_PROJECT_STATUS.md)、[共享功能日志](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_FEATURE_LOG.md)、[本轮发布验收](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md)。此旧树仅追加共享指针，原文、旧维护记录以及其他会话未提交修改全部保留；旧发布段落作为历史阅读，勿覆盖其他会话工作。应用回退目标为 `.18.3`，保留现有业务数据及迁移记录。
+<!-- moshu-image-studio-custom-0.2.18.4-shared-pointer:end -->
+
+
+> **共享文档已推送（2026-10-26）**：提交 `b2ec356187dc74214c38a1a47e47b011228df074` 已同步至 `codex/image-batch-16refs-20261026` 和远端 `custom/integration`。后续会话从[最新项目状态](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_PROJECT_STATUS.md)、[定制日志](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_FEATURE_LOG.md)及[维护记录](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_MAINTENANCE_20261026.md)继续；运行版本仍为 `0.2.18-custom.3`，本次只同步文档。旧树源码及其他会话修改保留。
+
+
+> **2026-10-26 批量参考图最新共享入口（已部署）**：三站已运行 `0.2.18-custom.3`，GPT-image单生图、批量整组统一参考图、批量逐条参考图均最多16张；其他模型仍按各自上限。运行源 `c2dbbe786e844ee1df77bfd710ebaf438f625126`，标签 `custom-0.2.18.3`，正式镜像 `sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac`。发布分支 `codex/image-batch-16refs-20261026` 与远端 `custom/integration` 已普通快进至文档收尾 `c8d14a1183f73cdefa28e698f45bbaf8f8c730b5`。
+>
+> 本轮记录位于 `D:/projects/sub2api-image-batch-16refs-20261026`：[项目状态](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_PROJECT_STATUS.md)、[功能日志](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_FEATURE_LOG.md)、[发布验收](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_RELEASE_0_2_18_CUSTOM3_20261026.md)。前端92项、后端unit及正式镜像16图mock验收通过；三站healthy/restart0、批量入口3/3与应用资源12/12匹配。无后端运行时/迁移/配置变化，应用回退目标`.18.2`。旧树仅追加此共享指针，原维护记录、其他会话未提交代码及文档完整保留；后续先核对最新远端，不从旧树整树覆盖发布。
+
+> **2026-10-26 运维收尾**：生图版本仍为下方 `0.2.18-custom.2`。已补齐权威树当前功能摘要；本地删除52个停止的旧测试容器，保留运行容器和全部卷。服务器仅清理约0.92GB编译/包缓存，14个运行容器无重启，三站健康200，日志、备份和回滚镜像保留。详见[安全清理记录](D:/projects/sub2api-image-studio-16refs-20261026/docs/CUSTOM_MAINTENANCE_20261026.md)。本目录其他会话内容不变。
+
+
+> **2026-10-26 生图工作台最新共享入口（已部署）**：三站已运行 `0.2.18-custom.2`，GPT-image参考图上限16；Nano/Gemini14、Seedream10和未知模型4保持。运行源 `879a99a22e47a303604927104a6f67329dcd3b38`，标签 `custom-0.2.18.2`，正式镜像 `sha256:c90609bc4546ec309a980929ec8f28eef3cef236022dd698700920439ce78412`。发布分支 `codex/image-studio-16refs-20261026` 与远端 `custom/integration` 已普通快进至文档收尾 `10b452931592de432db312ffc0a94972c1b89666`。
+>
+> 本轮权威记录位于 `D:/projects/sub2api-image-studio-16refs-20261026`：[项目状态](D:/projects/sub2api-image-studio-16refs-20261026/docs/CUSTOM_PROJECT_STATUS.md)、[功能日志](D:/projects/sub2api-image-studio-16refs-20261026/docs/CUSTOM_FEATURE_LOG.md)、[发布验收](D:/projects/sub2api-image-studio-16refs-20261026/docs/CUSTOM_RELEASE_0_2_18_CUSTOM2_20261026.md)。三站healthy/restart0，工作台入口3/3、相关JS资源9/9与验收镜像一致；无后端运行时/迁移/配置变化，兼容应用回退目标`.18.1`。本旧工作树仅追加此共享指针，其他会话未提交修改完整保留；下方旧发布坐标为历史，后续先核对最新远端，不从旧树整树覆盖发布。
+
 > 本文是给后续维护会话、代码审查者和自动化工具使用的项目交接说明。
-> 先读本文，再读 [`当前候选/发布记录`](CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md)、
-> [`UPSTREAM_SYNC.md`](UPSTREAM_SYNC.md) 和
-> [`custom/manifest.yml`](../custom/manifest.yml)。
+> 先读本文页首共享指针，再进入活动工作树阅读项目状态、发布记录、
+> `UPSTREAM_SYNC.md` 和 `custom/manifest.yml`；不要以本目录旧源码作为发布基线。
 >
 > 本文不保存密码、Token、私钥、`.env` 内容或数据库备份路径中的敏感信息。
 
-### 2026-10-27 — 新增受控直连入口（已部署，主应用仍 `.18.4`）
-
-- 最新增量源码位于 `D:/projects/sub2api-direct-access-20261027` / `codex/direct-access-20261027`，基于集成 `28159e883...`。仅新增独立侧车/部署扩展和交接文档，主站及两分站运行镜像/配置保持，后续以远端 `custom/integration` 最新提交为源码基线，不从旧树整树覆盖。
-- `nocf.moshu.cloud` DNS only 直达 OVH，独立有效 HTTPS；管理员在用户编辑属性中开通直连权限，当前用户 ID 4 已启用，其他用户默认拒绝。继续用原 API Key 和原生计费，主程序没有接线或业务迁移。
-- 本地48/48（含80MiB及127/130秒长连接）、真实PG权限集成、生产免费目录及拒绝测试、证书模拟续期通过；原三站应用/数据库未重启。独立镜像与完整限制见[直连部署记录](CUSTOM_DIRECT_ACCESS_20261027.md)，使用与回退见[运维说明](../deploy/direct-access/README.md)。
-- 入口功能提交 `4e746e82d` / 标签 `direct-access-20261027.1` 已推送功能分支与 `custom/integration`；文档闭环不移动主应用 `.18.4` 或该入口标签。
-
-### 2026-10-27 — 发布后错误排查与共享文档同步（仅文档）
-
-- 上轮发布说明已提交 `a56bf0c0208f885e4fe4c4e3c2c5eebcfbca81d4`，功能分支/集成同步，三个旧树已保留原文并追加共享指针；本轮补充[生图日志诊断](CUSTOM_IMAGE_STUDIO_DIAGNOSTICS_20261027.md)，不更改 `.18.4` 运行源、标签或digest，不重新部署。
-- 用户最终说明 `Failed to fetch` 出现在生成过程中。它表示浏览器某次请求/读取失败，可能是获取进度失败，不能等同后台任务已取消。17:43三站仍healthy/restart0；发布后主站3次批量POST均200、查询均200，无新批量绑定错误，但3任务6条目实际1成功/5上游502失败（4条17:19:23、1条17:21:57）。尚不能把浏览器网络提示与某次上游502锁定为同一原因。
-- 另有单图125/250秒502及内容策略分类错误，与上述批量失败分开登记；最近24小时可用反代日志无413/504，不代表边缘或浏览器层无错。新发现发布窗口11:00:18–11:00:21有3条其他接口 `/v1/responses` 短时连接错误；原排空为瞬时采样、关键启动错误0不等于部署零中断，发布记录已补充。
-- 后续最小方向：进度GET网络错误退避、清楚说明后台可能继续；提交结果不明时先查列表，稳定幂等Key需同时冻结payload，避免盲目新建整组；优先定位失败条目上游502。此轮只读核对/匿名OPTIONS及文档diff检查，不冒称建议已经修复，没有付费生图或业务数据改动。
-
-### 2026-10-27 — 批量共享参考图上传及单图 fan-out 修复（已部署三站）
-
-- 当前生产 `0.2.18-custom.4`，运行源 `1524aa0985f432df19c9144c726224d2852308d6`、标签 `custom-0.2.18.4`、digest `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6`；权威树 `D:/projects/sub2api-image-batch-16refs-20261026`，分支 `codex/image-batch-16refs-20261026`，基线 `b2ec356187dc74214c38a1a47e47b011228df074`。运行标签不随文档收尾移动。
-- 昨日16张共享图会在每条prompt重复Base64，已用旧真实handler复现请求超限和Base64错误均返回 `BATCH_IMAGE_INVALID_ITEMS`。本轮共享图只上传一次，模型目录声明能力、旧服务降级避免丢图；后端仍按原item展开、持久化及计费。前端补1000附件/128MiB展开总量校验；后台返回具体绑定错误。未取得用户失败请求完整结构，不声称精确还原该次线上触发。
-- GPT-image、Seedream 5.0 Pro、Grok Imagine固定到 `app_managed` 普通单图并发，历史请求provider哈希保持；原生Gemini/Vertex和Nano Banana单图async路径保留。前端99项/typecheck/lint、后端显式unit标签共享/16图/幂等/边界/public service及真实handler/准入/审计回归、隔离/契约/依赖审计通过。正式digest的operator权限/重启和mock验收通过：4K参数原样、2prompt展开3个普通单图，每次16图；不是生产付费模型或原生4K输出实测。
-- 北京时间11:00–11:02按主站→L1→COS，在只读确认在途归零后仅更新应用；三站healthy/restart0，内外网页面/健康200、匿名受保护API401、关键错误0。数据库/Redis、配置/卷/网络、namespace和完整迁移保持（329/338/338，无新增）；备份验证通过，兼容应用回退目标 `.18.3`，不恢复旧业务数据库。最终资源核对和观察范围见[本轮发布记录](CUSTOM_RELEASE_0_2_18_CUSTOM4_20261027.md)。初步provider根因判断证据不足已勘误；其他会话原文与代码保留。
-
 ## 1. 当前快照
 
-### 2026-10-26 — 共享文档同步与既有清理记录归档（仅文档）
-
-- 当前权威树为 `D:/projects/sub2api-image-batch-16refs-20261026`，分支 `codex/image-batch-16refs-20261026`；本轮文档基线 `c8d14a1183f73cdefa28e698f45bbaf8f8c730b5`。生产版本仍为下述 `0.2.18-custom.3`，运行源 `c2dbbe786e844ee1df77bfd710ebaf438f625126`、标签 `custom-0.2.18.3` 和正式 digest 均不因文档同步改变；兼容应用回退目标仍为 `.18.2`。
-- 补齐当前功能表与路由验收台账入口：`.13` 的 `account_v2`、授权模型目录并集、完整优先级和管理员 Key 编辑继续保留；精确切组错误标签已在 `5521f3940ba315fcc5b7de87ccf6e832f73dc114` 提交并随 `.14` 起发布。各候选的“未发布/目录非并集”等阶段描述保留为历史，不作为当前结论。账号路由半开探测尚未实现，未跟踪 `replay/` 不属于发布代码。
-- 归档此前北京时间约15:57–16:04、`.18.2` 运行期间的[安全清理记录](CUSTOM_MAINTENANCE_20261026.md)：本地删除52个停止容器，保留12运行＋4测试现场及124卷；服务器Go/apt缓存减少918,528,000字节。清理时间段内14个服务器容器未重启，健康及指纹核对通过；该结果先于16:36–16:40的 `.18.3` 应用更新，不表示部署后的容器ID仍等于清理前。
-- 本次仅移植未提交的共享说明和维护记录，保留 `.18.3` 发布事实及 `.18.2` 后端unit标签遗漏勘误，没有新增测试、清理、部署或生产复核。旧工作树的其他会话修改保持，后续仍须重新核对远端引用。
-
-### 2026-10-26 — 批量共享参考图16张（已部署三站）
-
-- **Feature ID / 状态**：`image-studio` / `deployed`；批量GPT-image“整组统一参考图”和逐条设置均最多16张。Nano/Gemini14、Seedream10、Flash3保留，不增加按钮或实际尺寸显示。
-- **隔离**：基于集成 `10b452931592de432db312ffc0a94972c1b89666`，本轮树 `D:/projects/sub2api-image-batch-16refs-20261026`、分支 `codex/image-batch-16refs-20261026`。此前单图树中的共享同步/维护记录等未提交内容属于其他会话，完整保留，不混入运行源码。
-- **范围**：修正共享多选、追加、移除、按模型降限和提交校验及中英文说明；异步读取完成后重算剩余额度，删空共享图不会回落到旧逐条引用。保留单文件10MiB、任务输出200、展开附件1000、inline总量128MiB、原计费/图片尺寸行为。无数据库迁移或后端运行时代码变更。
-- **验证**：前端92项、类型/定向lint/生产build、带 `-tags=unit` 的后端共享16图展开/持久化/multipart及总量边界、隔离/契约/依赖审计通过。正式digest的operator权限/重启与mock验收通过：两Prompt展开3输出，每次收到16图，PNG/ZIP/幂等/无额外批量折扣通过。没有重复付费模型请求；未将定向92项称为全量测试。
-- **发布**：`0.2.18-custom.3`，运行源 `c2dbbe786e844ee1df77bfd710ebaf438f625126`，标签 `custom-0.2.18.3`，正式digest `sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac`。北京时间16:36–16:40主站→L1→COS应用更新，三站healthy/restart0、内外网检查通过；数据库/Redis、配置/卷/网络、namespace及迁移完整记录保持，无新增迁移（329/338/338）。
-- **回退与交接**：有效三站备份已验证，兼容应用回退 `.18.2` / digest `sha256:c90609bc4546ec309a980929ec8f28eef3cef236022dd698700920439ce78412`，不恢复旧业务数据库。`.18.2`后端批量测试未带unit标签的记录已补勘误，本轮已显式启用并通过。完整范围见 [`custom.3发布记录`](CUSTOM_RELEASE_0_2_18_CUSTOM3_20261026.md)。
-- **线上复核**：批量页面入口3/3、单图/批量/策略/入口资源12/12与正式镜像一致；16:44:40再次检查三站健康、配置、完整迁移、匿名权限和关键日志均通过，实际观察462/290/230秒，namespace互不相同。没有生产付费调用或长期观测结论。
-
-### 2026-10-26 — GPT-image 参考图 16 张（已部署三站）
-
-- **Feature ID / 状态**：`image-studio` / `deployed`。三站已更新 `0.2.18-custom.2`，运行源 `879a99a22e47a303604927104a6f67329dcd3b38`、不可变标签 `custom-0.2.18.2`；基于集成 `e5d4e8c16388a5f061a261997f5840f53ed65f38`，官方仍为 `v0.2.18`。
-- **隔离与归属**：本轮工作树 `D:/projects/sub2api-image-studio-16refs-20261026`、分支 `codex/image-studio-16refs-20261026`。既有 `group-routing-current` 的未提交共享文档和 `backend/internal/keyrouting/replay/` 不纳入本次发布，不覆盖其他会话修改。
-- **行为**：单生图 GPT-image 家族与 `chatgpt-image-latest` 的参考图上限从 4 调整为 16；Gemini/Nano 仍为 14、Seedream 仍为 10、未知兼容模型仍为 4。既有批量逐条 GPT-image 上限 16、共享参考图模式 1 不变。单文件 10 MiB、总请求/代理大小限制不变，不新增按钮，不显示实际图片尺寸，不做本地放大。
-- **实测证据**：2026-10-26 主站“GPT-image-超分”和“GPT-image-原生”各一次 `gpt-image-2.5-sunburst` 16 张合成参考图请求均 HTTP 200（37/39 秒）；输出的 16 个编号、形状、随机字符全部匹配。该测试验证小图/1K 单次请求，不代表所有模型、大文件、4K 或并发均已验证。
-- **测试**：前端定向76/76、typecheck、lint和生产build；后端图片定向、隔离/契约、安全审计例外验证通过。全量前端3414通过/1项密钥路由页面基线失败，未改其他功能或豁免测试。正式digest回拉、operator容器权限/重启和mock单/批量生图通过；首次隔离空库启动的数据库就绪失败及重跑情况如实留档，不称全量CI通过。
-- **生产**：北京时间13:24–13:26按主站→L1→COS仅更新应用，三站同一digest `sha256:c90609bc4546ec309a980929ec8f28eef3cef236022dd698700920439ce78412`，healthy、restart 0；内外网页面/健康和匿名权限检查通过。三站备份已验证，各站发布前只读确认请求/等待/图片任务归零；主站因持续流量等待约10分钟，未强制取消请求。数据库/Redis、卷、配置、namespace和完整迁移记录保持；迁移主站329、L1/COS338，无新增迁移。
-- **回退与范围**：应用回退目标 `.18.1` / digest `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，保留现有业务数据。发布期间没有再次调用付费模型；此前16图实测与本次部署验收分开记录。
-- **线上复核**：三站工作台入口3/3、相关JS资源9/9与正式镜像SHA256一致。13:29:35短时复核均通过，主站/L1/COS观察310/268/212秒，三个namespace不同；未宣称生产登录浏览器测试或长期监控。
-- **完整记录**：[`custom.2 发布记录`](CUSTOM_RELEASE_0_2_18_CUSTOM2_20261026.md)。
-
-### 2026-10-24 — 生产旧镜像清理完成
-
-已删除 15 个未被容器使用的旧 Sub2API 镜像，保留当前发布镜像与 `.16` 回滚镜像，释放约 2.75GB。清理后主站/L1/COS 仍 healthy、restart 0，公网健康检查均为 200；其他项目镜像、数据卷、数据库/Redis 和构建缓存未修改。
-
-### 2026-10-24 — `v0.2.18-custom.1` 已合并并部署三站
-
-- 以生产基线 `0.2.16-custom.16` 的集成提交 `4356fafb7707ab0334338a56ef4ff02e004164db` 为起点，人工合并官方 `v0.2.18`（`ac1b8f1271be0d674fa6f074403c1410f30a3a81`），合并提交为 `885edb605702a4af52b0bb8ac0060b58698c872d`；随后补回主线冲突中被覆盖的 Key 路由选择/切组语义，修复提交 `a688883f1bc09fbce2c38a7253be7e1577793678`。候选版本文件为 `0.2.18-custom.1`。
-- 合并后修复提交 `305afd7f9` 修正 Chat/Responses SSE 兼容层的流读取和 Kiro 错误传递、清理无用导入，并让 Gemini Chat 兼容层按实际发送的 thinking 配置记录推理档位；测试合同补丁 `8b5726b0c` 将 `key-routing` 纳入稳定内建功能清单。
-- 保留 `operator`、`prompt-audit`、`image-studio`、`branding`、`usage-extras`、`gateway-resilience` 和 `key-routing`。重点复核了 Chat/Responses 的价格快照、提示词注入、分组上下文、账号级故障切换、备用分组及最终上游错误透传；官方 v0.2.18 的 Vertex 配额、Gemini/Antigravity 图像分组门禁、流断开结算收口、Cloudflare 1010 分类、模型限流并发安全、Gemini 工具兼容、DeepSeek 图片载荷修复、异步图片 SSRF 防护及 Grok 4.7 Fast 定价修复均保留。
-- 模块化结论：定制层已有 manifest/contracts、独立 `backend/internal/custom*`、`keyrouting`、`frontend/src/features/key-routing` 等边界，静态隔离和负向契约有效；但网关 handler/service 仍通过薄宿主接线进入官方热路径，后续主线仍需人工语义复核，不能声称完全零冲突自动合并。
-- 检查：Key-routing 前端 9 个文件 94/94；前端 typecheck、build；Docker Go 1.27.3 中 `go test ./internal/... -count=1` 全部通过，关键 service/handler/middleware 回归也通过；custom isolation、architecture-negative 34/34、custom contracts 18/18、sync 5/5、workflow 11/11 均通过。新构建的本地候选镜像 `sha256:7a3eaee680b7708628cd1f8565818d22e830b836676b35d099f640e3397b0dbc` 在隔离 Compose 三站健康运行，三个 `/health`、管理员登录、PostgreSQL/Redis、重启持久化均通过；每站 `schema_migrations` 329 条，最新 9004。迁移锁/幂等/定制路由测试也通过。真实生产回退演练仍未执行。
-- 发布源提交为 `fc0d798bf2d6a08a074970d0485c567291e02660`；发布标签为 `custom-0.2.18.1`。GHCR 镜像 `ghcr.io/hzihuan001/sub2api:0.2.18-custom.1` 的不可变 digest 为 `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`，已回拉并核对版本、提交、架构及 PostgreSQL 工具。
-- 迁移：官方新增 `246_enable_gemini_image_generation_groups.sql`，候选继续保留已发布的 `9000–9004` 定制迁移；官方与历史定制存在重复数字前缀，运行器按完整文件名排序，禁止重命名或改写已发布迁移，需在 Docker/PostgreSQL 演练中验证升级与回退。
-- 生产已按主站→L1→COS 顺序更新到 `0.2.18-custom.1`，三站容器 healthy、restart 0，公网 `/health` 全部 HTTP 200，部署后关键启动错误匹配为 0。发布后短时复核中，三个 `/image-studio`、`/docs/tools/codex` 均 200，未授权 `/v1/models` 均 401，Redis 认证连通。发布前备份 `/opt/sub2api-backups/v0.2.18-custom.1-20261024T000000Z` 已核验；应用回退目标保留 `.16` digest `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`。生产迁移为主站 329 条、L1/COS 各 338 条，均含 `9000–9004` 和官方 `246`。本轮未调用付费模型、未做长期容量或故障注入。实验性 `backend/internal/keyrouting/replay/` 未跟踪且不属于候选。
-
-### 2026-10-23 — `custom.16`：Responses 引用拒绝后跨账号恢复（已部署三站）
-
-- `0.2.16-custom.16` 标签 `custom-0.2.16.16`、源码分支和 GHCR 镜像已推送；正式镜像已按不可变 digest 拉回并通过 operator-container smoke。主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 已顺序部署 `.16`，三站 healthy、restart 0、运行同一 digest。早期 `.15` 源码标签保持不可变，未构建/发布镜像或部署，由 `.16` 修正替代。详见 [`custom.16 发布追踪`](CUSTOM_RELEASE_0_2_16_CUSTOM16_20261023.md)。
-- 多组 Key 不再因中转站自有状态请求限制而预先拒绝；本次新增验收聚焦 Responses 上游明确拒绝 `previous_response_id` 后清理该指针、保留当前请求内容并切换账号。不能安全清理时禁止携带原引用跨凭证；耗尽时优先返回实际发生的上游错误。普通 HTTP/WebSocket 失败继续走既有行为。
-- 不代表新账号能取得旧账号完整会话历史：只有增量输入时，上游仍可能给出真实历史校验错误。超时/断连下已执行的工具或外部副作用仍有重复执行风险。无新增长期正文存储和数据库迁移，也未验证所有 provider/所有状态都能无错续接。
-- 最终 `.16` 源码在 Docker Go 1.27.2 环境通过三包完整回归：service 267.528 秒、handler 42.874 秒、middleware 0.135 秒；覆盖真实 API-key passthrough handler 路径，明确引用拒绝后确实由账号 A 切到 B 并成功响应。镜像 digest 为 `sha256:037d353afff1a4e18c88ff9ad59fad6735195465a1dbb60ab5ace7c5d33223e7`，拉回后 operator-container smoke 通过。2026-10-23 三站已按主站→L1→COS 顺序部署；精确版本、备份和生产验收范围见发布报告。Actions 禁用，dispatch HTTP 422，无成功 CI。
-
-### 2026-10-23 — 上一正式版本 `custom.14`（已由 `.16` 替换）
-
-- 上一发布周期中，主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 曾运行 `0.2.16-custom.14`。运行提交 `09e885d4eb2098a48758b9b5309e166bd85737ce`，标签 `custom-0.2.16.14`；镜像摘要 `sha256:61468c96ecbafb5e79f959e06a74291773fae77db235fff130ad9d67df4f2ca7`。当前生产已由上方 `.16` 替换。
-- 本轮新增的受限 OpenAI Responses 恢复适配器已通过本地三站隔离验收 `12/12`；只允许官方 OpenAI API Key、已存储且可完整读取的 Responses 文本链，其他状态/工具/文件/图片/兼容 provider 均 fail closed。无数据库迁移。
-- 三站已按主站→L1→COS 顺序仅重建应用容器。部署前备份 `/opt/sub2api-backups/v0.2.16-custom.14-20261022T195945Z` 已验证可读；各站在途请求为 0，健康检查、版本/完整提交、匿名权限、关键启动日志均通过，PostgreSQL/Redis、卷、网络和反代保持不变。详细坐标与限制见 [`custom.14 发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM14_20261023.md)。
-
-### 2026-10-23 — 连续会话跨账号恢复适配器（本地实现，未发布）
-
-- **目标**：源账号明确返回可重试的 HTTP 失败时，尽量把已存储的 Responses 会话恢复为无状态文本请求，再交给既有多分组路由；不静默删除状态 ID，不把不完整上下文交给另一账号。
-- **已实现**：新增独立 `openai_response_retrieval.go` 适配器和 handler 协调层。仅允许官方 OpenAI API Key、官方 `api.openai.com`、`completed` 且已存储的 Responses；按 `previous_response_id` 链读取 `input_items` 与每个 response 的 `output`，限深度/页数/项目数/字节数，校验响应 ID、模型、重复项目和分页进度，然后仅在内存中重建本次请求。检索请求显式使用 OpenAI HTTP upstream profile。
-- **故障边界**：仅在尚未产生语义输出、上游明确返回 429/500/502/503/504 且响应体存在时尝试；超时、EOF、部分 SSE、未知 200、400/401/403/404/409、OAuth/Codex、DeepSeek/Kimi/兼容端点、工具/函数、文件/图片、conversation/background、加密推理和其他 provider-managed 状态全部 fail closed，继续返回原始错误。拒绝工具等有副作用状态可显著降低重复执行风险，但上游在生成后返回 5xx/429 时仍不能从协议上证明“绝未执行”，因此不宣称绝对零重复。
-- **计费边界**：恢复后的请求体会重新估算；若增量预留失败，会完整回滚 API Key、请求体、路由上下文，不能留下半切换状态。原有 usage/结算路径不改；本轮不新增长期会话存储。
-- **验证**：Docker Go 环境中 `internal/service`、`internal/server/middleware`、`internal/handler` 定向回归通过；新增恢复重建、链路校验、外部引用拒绝、错误码分类测试通过，`git diff --check` 通过。使用本地构建镜像 `sub2api-custom:group-routing-recovery-local-20261023`（digest `sha256:ea56e552f0ff8c44288093ebe8784cd9544e66f705a2a4892a847bcaee97de7a`）完成三站隔离 Compose 健康检查和合成账号优先级验收：12/12 请求成功，A→A→同组 B→后续分组、分组倍率/余额、exactly-once 结算、重复配置拦截和权限隔离均通过。验收容器/卷已按专用项目清理；报告 `D:/projects/key-route-recovery-20261023-r2/evidence.json`。
-- **阶段记录**：该实现随后合并到 `09e885d4e`，发布为 `custom-0.2.16.14` 并部署三站；本段保留实现边界与本地验收事实，不再代表当前生产版本。该适配器不是“所有 provider/所有对话都能迁移”的承诺；不支持场景必须保持明确错误。
-
-### 2026-10-22 — 降低多分组 Key 的状态请求失败率（进行中，未发布）
-
-- **目标**：在不长期保存完整会话上下文、不重复输出/扣费的前提下，减少上游账号故障导致的用户侧请求错误。先巩固已有无状态请求的安全故障切换，再评估可从原上游恢复的 Responses 状态链。
-- **实现边界**：不得仅删除 `previous_response_id` 后重试；增量请求缺少完整历史时必须拒绝该恢复路径。跨分组响应归属只能在当前 Key 授权分组范围内查找，不得全局按响应 ID 搜索。已经输出语义内容、工具副作用不明或状态不可完整恢复时不得透明重放。
-- **研究结论**：参考 OpenAI Responses 状态接口、LiteLLM 粘性路由、AWS 网关提交前故障转移，以及 Sub2API 关于 `previous_response_id` 缺失恢复的案例。采用“请求体本身完整则请求级重试；状态链可从源账号完整读取时限额恢复；其余保持原路由/明确失败”的分层策略。仅临时持有恢复数据，不建立长期会话存储。
-- **当前状态**：已完成第一阶段安全接线：多分组 Responses `previous_response_id` 只在当前 Key 的授权分组内解析来源组和来源账号，续接请求固定原组并在转发前强制校验原账号；缺少归属、归属冲突、缓存读取失败、原账号不可调度或粘滞未命中时 fail closed，不随机切换账号，也不删除响应 ID 重发。普通会话引用、工具/图片托管状态、WebSocket 和 account-v2 状态仍保持原有保护。middleware、service resolver 和 handler/key-route 定向测试已通过；本地 Docker 联合验收和生产发布尚未完成。不要将 `backend/internal/keyrouting/replay/` 中的实验性内存转录缓存视为已批准的通用恢复方案。
-- **发布**：未提交、未推送、未构建或部署；生产仍为 `0.2.16-custom.13`。需待实现和本地验收完成后再决定发布。
-- **参考**：[OpenAI Conversation state](https://developers.openai.com/api/docs/guides/conversation-state)、[LiteLLM Responses API](https://github.com/BerriAI/litellm/blob/main/docs/response_api.md)、[Sub2API #6524](https://github.com/Wei-Shaw/sub2api/issues/6524)。
-
-### 2026-10-22 — 错误日志精确标记触发切组的错误（本地验证通过，未发布）
-
-- 已在权威活动树补齐精确因果标记：成功选择后续优先级分组时，仅给本次尝试内实际导致切换的最后一条已有上游错误写入 `route_switch_group`。同组较早的失败、空分组、未成功选择目标组，以及之后备用组的新错误不会被错标。
-- 错误详情用独立 `gateway-resilience` 组件显示被标记事件的原序号、上游状态码、账号、原消息和“切换至后续优先级分组：目标组”标签。真实恢复摘要仍可显示标签；后续本地拒绝或备用组失败的最终摘要不继承历史标签。旧记录兼容，不反推历史因果。
-- 复用现有 `upstream_errors` JSON，不新增迁移、使用记录字段或错误行，不修改路由结果、计费、原 TTFT 过滤或 SLA/上游健康统计。没有原始错误事件时不补造状态码或错误记录。
-- 验证：后端 `go test ./internal/service ./internal/handler -run '^Test(MarkOpsRouteSwitch|Ops|KeyAccount|KeyRoute|FirstContent)' -count=1 -timeout=300s` 通过；前端 5 文件 39 项、类型检查、定向 ESLint 通过；模块契约检查及其 18 项测试通过。包含同组 A/B 耗尽、备用再失败、目标组本地拒绝、空组、账号不匹配、快照不变和队列 JSON 往返。
-- 此补丁尚未提交、推送、构建镜像或部署；生产与现有本地验收容器仍为下述 `.13`，不能通过刷新看到本补丁。
-
-### 2026-10-22 — `.13` 已推送并完成三站生产部署
-
-- 当前生产主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 均为 `0.2.16-custom.13`。运行提交 `90804511dcfd57d9e99d7df470cfa05282182664`，标签 `custom-0.2.16.13`；镜像摘要 `sha256:9d79c4378f3e4dc6dd4d1648cff7420947ccb7984a33d7bb2cbd11030c32c14f`。工作分支和 `custom/integration` 已同步运行源码，文档收尾另行提交，不移动运行标签。
-- 权威活动树 `C:/Users/a/.codex/worktrees/group-routing-current`，分支 `codex/key-account-routing-stability-20261022`；旧 `D:/projects/sub2api-custom` 仅保留其他会话源码和共享指针，不能作为当前发布基线。下方“待验收/未发布/生产仍.12”为阶段历史，均由本条与[正式发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM13_20261022.md)覆盖。
-- 已包含账号级Key路由、授权目录并集、完整优先级编辑和管理员完整Key编辑。用户管理→API密钥→编辑复用用户端共享表单及原生更新；按Key所有者校验，标准专属组授权与保存原子提交，订阅资格不绕过；普通保存不清用量、不自动升级旧scope。原角色、生图、公共文档等定制保留。
-- 正式GHCR镜像拉回后三站路由账务33/33、管理员HTTP5/5，48个临时资源清理成功；此前成功长测按候选证据复用。三站北京时间13:35–13:39顺序发布，各healthy/restart0，源站/公网与权限检查通过，18份前端资源SHA与正式镜像一致。未使用生产付费推理，不能当成全provider或150用户容量证明。
-- 备份已验证；只重建应用，配置和数据服务保持，旧迁移全行不变，仅增9003/9004；站点命名空间独立。回退`.12`需检查active account_v2，不能声称旧版本语义等价，不恢复旧库覆盖新数据。Actions本次仍422，使用授权本地GHCR流程，不宣称CI通过。
-
-### 2026-10-22 — 管理员复用完整 Key 编辑器（本地验收通过，待用户验收，未发布）
-
-- 用户管理 → 更多 → API密钥 → 编辑，现复用用户端同一个 `ApiKeyEditorDialog`；管理员可修改名称、分组顺序/增删/替换、故障规则、模型限制、状态、IP、额度、速率及有效期。原新建、复制、删除入口保留。
-- 管理端通过薄适配调用原生 Key 更新服务，按密钥所有者校验；标准专属组授权与保存同事务提交，非法重复组无副作用，订阅资格不绕过。普通保存不重置已有用量、不自动升级旧 Key 的路由范围；用量重置单独确认。没有新增数据库迁移或计费路径。
-- 前端相关回归初轮 91/91，随后补两项旧用户晚响应回归，Modal 最终 18/18；类型、定向 lint、后端原生更新/管理权限定向及模块契约通过，最终 Docker 构建成功。本地真实 HTTP 5/5（含专属组授权、完整持久化、403 隔离及字段清空）通过；浏览器已实测保存、重开、分组排序、规则与额度保持。
-- 三站本地应用已替换为 `sub2api-custom:admin-key-editor-acceptance-20261022`，ID `sha256:3be7acfaafd35211db0d2a0c927246bb3956ea73a7c8035110635e35a078b6f5`；入口仍 `18280–18282`，健康 200、重启 0，数据服务保持。先前长连接/路由/回退证据针对下节旧稳定性候选，不冒称在本镜像重跑。
-- HTTP 证据 `D:/projects/admin-key-edit-acceptance-20261022-r3/evidence.json`；6 个接口测试资源均已按 ID 清理，另保留主站管理员下 Key #42“本地验收-管理员完整编辑-已保存”供页面验收，无真实模型调用。源码、接口和本地镜像已更新；未提交、推送或部署，生产仍 `.12`。详情见本轮验收报告的管理员编辑补记。
-
-### 2026-10-22 — 账号路由稳定性收尾（本地自动验收通过，待用户验收，未发布）
-
-- 当前权威树已从归档快照恢复至 `C:/Users/a/.codex/worktrees/group-routing-current`，分支 `codex/key-account-routing-stability-20261022`；旧路径不再作为活动工作树。
-- 普通无头断线与插件明确未发送分开处理；补齐 SSE 暂存隔离回归、大账号池有界批读及实际 A/B 故障后换组账务验收。
-- 后端四包完整测试、大账号池定向回归、模块契约、前端类型及生产构建通过；三站路由/账务 33/33、共享 Redis 及双应用 11/11、三站 660 秒 SSE 3/3、custom.12 业务往返 6/6 通过。分组排序、条件显示、删除中间规则和重复状态码拦截已实测。
-- 三站候选镜像 `sub2api-custom:key-account-routing-acceptance-20261022`，ID `sha256:e6af1a2dd6b7986d0aefc3a85f771873f29ff31315ee9ccb2f8fcfaef7c4fb3c`，应用/数据服务均健康，入口 `18280–18282`。候选源仍为恢复基点加未提交补丁；正式发布前须固定提交和产物。
-- 当前可以交付用户本地人工验收，不能宣称全部 provider 生产账务、公网稳定性或 150 并发已验收。用户确认前不推送或部署；生产仍为 `.12`。
-- 最新证据和剩余门槛以 [`本轮验收报告`](CUSTOM_KEY_ROUTING_STABILITY_ACCEPTANCE_20261022.md) 为准；下文各“当前”是历史时点。
-
-### 2026-10-21 — 稳定性收敛与真实模拟派发补验（未发布）
-
-- 用户要求稳定可靠且不要过度复杂：停止扩充业务机制，继续复用原生调度、价格和计费；仅补关键边界证据。生产、数据库和现有候选容器未改。
-- Anthropic API Key 直通、Gemini Chat 兼容、SystemOne、Antigravity upstream 的实际模拟派发/原生 usage/终态/清理，以及 SystemOne/Gemini 未知 200 响应防重放，6 个顶层测试通过。Gemini native HTTP/SSE、Bedrock 和完整受影响后端三包仍在补验，不宣称全部 provider 或账务闭环完成。
-- 错误日志独立标签的三个前端文件 16/16 测试通过，包含历史真实前缀、长消息截断以及 rate limit/deadline 通用提示；无生产 UI 或数据库变更。
-- 后端完整测试首轮因选错旧只读模块缓存未进入测试，已换当前本机缓存离线重跑，不能视为通过。最终结果继续追加到本段。
-- 后续只保留必要门槛：固定产物、小规模并发/双应用/Redis故障、稳定版镜像业务回退、一次有限长连接资源检查和用户本地验收。当前仍不可发布；详细范围及证据见 [`执行台账`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md)。
-
-### 2026-10-21 — Key 内账号优先级故障切换三站定向实测（未发布）
-
-- 三站本地隔离容器各完成 4 个合成 OpenAI Responses HTTP 请求：A、A、停用 A 后 B、停用 B 后分组2。12/12 返回 200；每站实际账号/组/倍率与 usage、去重、余额及 Key quota 逐笔核对一致（group1 三笔、group2 一笔，每站总扣费 `0.00001755`）。33 项合成资源均清理，原容器未重启，未调用真实模型。
-- 证据：`D:/projects/key-route-existing-4d4f59ae9de0/evidence.json`；复现参数为 `deploy/tests/key-routing-acceptance-existing.ps1 -AccountPriorityFallbackOnly`。此证据不覆盖其他 provider、SSE、并发/Redis故障、完整回退或人工验收。
-- 复核纠正：当前源码已有 OpenAI HTTP/plugin 与 TTFT/未知响应竞态的定向测试；旧台账对这两项的部分描述已过时。跨 provider 的现有身份矩阵有部分在实际网络派发前取消，不能证明每个平台都通过真实发送、终态、防重放及原生账务验收。
-- 本轮复测：后端 `go test ./internal/keyrouting ./internal/service ./internal/handler -run 'Test(KeyAccount|AccountAttempt)' -count=1 -timeout=300s` 三包通过；前端密钥编辑、错误标签和宿主文案回归 `77/77`，`pnpm --dir frontend run typecheck`、受影响文件 ESLint 和 `git diff --check` 通过。三站 `/health` 仍为 200。此组测试不能替代真实 PostgreSQL/Redis 故障矩阵或逐 provider 账务验收。
-- **状态仍是开发中，不可上线**：B1–B7 还未闭环；生产未改、未推送、未部署。活动工作树及本地候选坐标见 [`账号级路由执行台账`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md)。
-
-### 2026-10-21 — 密钥分组编辑统一为优先级列表（本地未发布）
-
-- 用户确认所有 Key 分组只具有优先级顺序；任意后续项上移至首位后自然成为首选，不应显示固定主/备用身份。
-- Key 编辑器已统一为有序列表，操作和分组摘要已按完整路由显示；兼容 API 继续使用 `group_id + backup_group_ids`，无 schema 迁移。
-- 错误日志对新界面显示“切换至后续优先级分组”，解析仍兼容历史标签。
-- 定向前端测试 77/77 通过，TypeScript 检查通过；生产未改。本地镜像 `sub2api-custom:key-account-routing-priority-ui` (`sha256:ed9f20d39f18a0c0f626f5a89b0cdc0a7bfbe8c10471a34ee4a178a75c15f7aa`) 已包含该 UI 变更，三站健康检查 200，等待用户人工验收。
-- 本次变更细节与测试文件见 [`账号级路由执行台账`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md)。
-
-### 2026-10-21 — UI 标签补齐与账号路由候选 Docker 验收（未发布；其后补入优先级列表编辑器）
-
-- **最终候选覆盖说明**：本节初始镜像摘要已被上方“密钥分组编辑统一为优先级列表”记录中的最终镜像摘要取代；`18280–18282` 三站均以最终镜像 healthy，数据服务未重建。
-
-- **当前状态**：本地候选已构建并通过两轮隔离验收；生产仍为 `0.2.16-custom.12`，未提交、未推送、未发布、未改生产。
-- **活动树**：`C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`，分支 `codex/group-failover-rules-v0.2.16`，源码 HEAD `b0e9f4f67`。
-- **候选镜像**：`sub2api-custom:key-account-routing-priority-ui`，运行镜像 ID `sha256:d3637dc275af1337b44de259dfb755881fbdf59bced116526029445032664c08`。主站/L1/COS 均使用同一镜像；三个应用容器均 healthy，`/health` 均返回 200，六个数据服务容器未重建。
-- **本地入口**：主站 `http://127.0.0.1:18280`，L1 `http://127.0.0.1:18281`，COS `http://127.0.0.1:18282`。当前 Compose 项目为 `moshu-reseller-acceptance-key-routing`，使用独立合成数据库、Redis 和 mock 上游。
-- **候选验收**：基础套件 `30/30`、扩展套件 `48/48` gateway 请求通过，覆盖同组优先、备用组顺序、预算边界、TTFT/冷却、SSE、不可用账号、实际组结算、重放保护；临时资源按 ID 清理，无生产模型调用。证据分别为 `D:/projects/key-routing-ui1-final-20261021/evidence.json` 和 `D:/projects/key-routing-ui1-extended-20261021/evidence.json`。
-- **前端补丁**：错误日志跨组标签从长消息后缀解析为独立标签，列表和详情均显示；当前新增统一优先级列表编辑，摘要显示总分组数。前端相关 6 个测试文件 `77/77` 通过，`vue-tsc --noEmit` 通过。Go 定向包测试也已通过。
-- **尚未放行**：用户浏览器人工验收、真实 PostgreSQL/Redis 双实例与共享 Redis 故障注入、旧镜像回退/再升级、完整生产计费矩阵、所有已承诺 provider 的端到端证据和 B1–B6 发布门槛仍未完成。因此本候选**不能视为可上线**，也不能据此推送或部署。
-- **回退补验**：在同一隔离卷上短暂启动旧候选 `sub2api-custom:key-account-routing-b0e9f4f`（image `sha256:42c0342fd6620b58fe5d7a0162329ef0c613f15afce0dc9376547b98186131f5`），主站健康检查 200、容器重启 0；随后恢复新候选，三站健康 200、镜像 ID 一致，数据库/Redis 容器仍未重建。该证据只证明旧镜像可读本地当前 schema，不等于完整旧版本业务回归。
-- **运行时补验**：主站 Redis 重启后恢复 healthy，主站 `/health` 保持 200；同一主站数据库/Redis 网络内启动第二个应用实例，内部 `/health` 返回 200，随后已清理临时实例。三站应用仍 healthy、重启计数为 0。
-- **下一步**：请先打开三个本地入口进行页面/密钥编辑及错误标签人工验收；确认后再补齐剩余发布门槛，之后才决定是否提交、推送和按主站→L1→COS 发布。
-
-### 2026-10-21 — 账号级路由继续实施（开发中，未发布）
+### 2026-10-26 — 已发布至 `0.2.18-custom.1`（最新共享入口）
 
-- **当前状态**：账号级同组优先、备用组顺序、预算耗尽安全转备用、尝试生命周期、重放保护和原生结算窄适配已在活动树接线；本次补齐 Redis 站点分桶容量限制。生产保持 `0.2.16-custom.12`，未推送、未发布、未改生产。
-- **活动树**：`C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`，分支 `codex/group-failover-rules-v0.2.16`。用户根目录 `D:/projects/sub2api-custom` 不是本轮权威工作树。
-- **已验证**：keyrouting/repository 账号健康与站点分桶测试、Kiro 定向、service/handler/middleware 定向、运输层 WS/Grok/部分 usage/provider 定向、前端 84 项、契约 18 项均有通过记录；Wire 已重新生成。完整证据见 [`账号级路由执行台账`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md)。
-- **未完成门槛**：Docker Linux 引擎当前未运行；新镜像尚未构建，三站隔离 PG/Redis、双实例共享、受控 HTTP/SSE、故障/取消/账务核对、资源回收、旧镜像回退、生产构建和用户本地人工验收均未放行。旧目录 c 容器不计入本轮证据。
-- **下一步**：启动 Docker 后使用独立 Compose 项目构建候选，执行固定验收矩阵；所有门槛通过并经用户本地确认后，才允许本地提交、推送、构建不可变镜像和主站→L1→COS 发布。
-
-### 2026-10-20 — 账号路由继续实施：批准预算耗尽后安全转备用（未发布）
+- 权威活动树为 `C:/Users/a/.codex/worktrees/group-routing-current`，分支 `codex/v0.2.18-merge-20261023`。请先读该树的[项目状态](C:/Users/a/.codex/worktrees/group-routing-current/docs/CUSTOM_PROJECT_STATUS.md)、[定制功能日志](C:/Users/a/.codex/worktrees/group-routing-current/docs/CUSTOM_FEATURE_LOG.md)、[`.18 发布记录`](C:/Users/a/.codex/worktrees/group-routing-current/docs/CUSTOM_RELEASE_0_2_18_CUSTOM1_20261024.md)及 `UPSTREAM_SYNC.md`；此目录源码仍是旧预览，不从此构建发布，不覆盖其他会话修改。
+- `.13` 的账号级路由、授权模型目录并集、所有分组统一优先级编辑及管理员完整 Key 编辑已发布；精确错误切组标签已随 `.14` 起发布；`.16` 补充 Responses 明确引用拒绝后的窄恢复，`.18` 合并官方 `v0.2.18` 并保留既有角色、生图、审计、品牌和使用记录增强。下方“未发布/仍 `.13`”均为历史阶段，不代表当前状态。半开探测未实现，未跟踪 `replay/` 不属于发布功能。
+- 最近生产记录为 2026-10-24：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 已部署 `0.2.18-custom.1`，运行源 `fc0d798bf2d6a08a074970d0485c567291e02660`，标签 `custom-0.2.18.1`，三站同一镜像 `sha256:d7f365d1ba40b6c159d4155f7fbc2773d01f0fe6015af7906ebbece500ba1837`。验收范围和 `.16` 应用回退目标见权威报告，不恢复旧库覆盖新业务数据。
+- 本次核对前工作分支与本地 `origin/custom/integration` 文档基线为 `e5d4e8c16388a5f061a261997f5840f53ed65f38`，与运行源分开；后续会话须重新核对远端。本次仅补齐共享文档及过期指针，没有代码、配置或生产变更，也未重新做生产健康检查。
 
-- 用户已确认组内重试预算耗尽时可安全转备用组，未尝试账号不记失败/冷却；总预算、取消、已用量及副作用保护不变。handler 协调和定向用例已落实；下方“待确认/暂停扩展”为历史时点。
-- 本批补齐同组重入原生重试状态与价格时刻/利润门保留、真实发包后的冷却准入预算、取消与因果标签、Responses/Chat 部分用量的原生结算薄适配。已通过的定向命令与未覆盖范围登记在 [`执行台账最新补记`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md)，不冒充完整网关验收。
-- Kiro、插件真实 RPC/HTTP、内部 upstream WS 正分批补齐安全证明和资源边界。存储容量、Wire、真实 PostgreSQL/Redis 双实例、全部账务/回退和新三站 Docker 候选未完成，**当前不能上线**。
-- 生产仍 custom.12；本地页面仍旧目录 c 镜像。未推送、发布、部署或清理业务数据。完成固定候选联合验收、用户明确确认后才发布。
-
-### 2026-10-20 — 账号级方案再次复核：暂停扩展，先确认上线阻断（未发布）
-
-- 规划复核补记：GPT 统一发送入口、同组重选和重试状态保留已有在途补丁，但尚未稳定组合测试或构建；原生 parser 定向测试通过（0.096 秒）不等于全链路可用。Kiro opaque 异常可能被转换为空成功/估算用量、TTFT 探测缺少候选批读接口转发、同组重入的价格快照/清理/预算等列为硬门槛。最新真实状态与执行纪律见下述台账补充小节，后面的“尚未接入”为历史审计时点，不可冒称已验收。
-- 按用户“先详尽规划”的最新请求，暂停新增实现，只收尾已经启动的定向测试。完整行为契约、阶段顺序和 B1–B7 上线阻断登记在 [`账号级路由执行台账`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md) 顶部；下方较早进度保留为历史时点。
-- 已有 13 个 provider 文件、19 处真实推理薄适配以及部分 handler scope；provider 13 条用例通过（0.098 秒）。生命周期、runtime、独立 Redis 客户端也有定向通过记录，**均不等于完整调度/计费验收**。
-- 明确未闭环：GPT 插件/HTTP 接点、未知 2xx 与 TTFT 竞争的重放缺口、原生解析器明确错误证明、组内优先/503 排除/预算、完整资源释放屏障、Wire/cleanup、生产容量、真实 PG/Redis 双实例及账务/回滚。任一未通过不得上线。
-- 生产仍为下方 custom.12，本地仍旧目录 c 候选；未推送、未发布、未改生产、未清理镜像/数据。用户本地验收确认前不进入发布流程。
-
-### 2026-10-20 — Key 内账号级避让详细方案与基础开发（未发布，不可据此上线）
-
-- 用户将 Key 规则调整为“先按账号跳过，同组合法候选耗尽后才进备用组”。完整执行规格、六类规则、身份隔离、常驻安全重放、资源清理、账务、兼容、平台接点和逐阶段上线门槛见 [`账号级路由执行台账`](CUSTOM_KEY_ACCOUNT_ROUTING_20261020.md)。生产保持下方 `.12`，不夹带官方升级。
-- 活动树仍为 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`。此前目录并集源码已冻结为本地提交 `ec9b754c9`，未推送；账号级代码为未提交工作区。下方目录条目“未提交”仅是当时历史状态。
-- 基础核心/runtime/transport/调度 gate、独立元数据 9003/站点 UUID 9004 及 scope API/UI 已有开发成果。最新组合 service 定向命令通过（0.118 秒）；前端相关 97 项及类型检查、9003 单项真实 PG 有通过记录。**真实 provider/handler 派发、清理屏障与新账号级 Docker 候选尚未完成**，9004/真实 Redis/双实例/容量与慢故障/账务/回滚待验，不能把模块测试冒充端到端。
-- 本地 `18180/18181/18182` 仍是旧目录 c 镜像，不是新账号级功能；用户本地验收前禁止推送、发布和生产部署。预算先耗尽但还有未试账号时是否允许提前转备用仍未获确认，不暗定该例外。
-- 本次详尽复核未新增 provider 接线、未用生产模型、未清理数据。后续先补真实调用闭环和 Redis 独立短超时/容量门槛，再做受控联合验收；没有“绝对不出错”承诺。
-
-### 2026-10-20 — 主备模型目录合并（本地 c 候选，待用户验收，未发布）
-
-- 用户确认继续补齐普通模型列表并集。新增独立 service/middleware/handler 目录适配，按主备顺序去重，遵守实际权限、可调度账号、分组/Key 白名单；不选择路由、不改计费/规则计数，无新迁移。单组及 Codex/native/强制平台路径保持原状。
-- 当前本地三应用已换为 `sub2api-custom:key-catalogue-20261020c` / image ID `sha256:2454007241e32bc3c66f8e3d0d7375d7be407fc8de08c2ab8c7dd6ebde773a96`，构建 commit `local-key-catalogue-20261020c`；healthy/restart 0，六数据容器未重建。不要将本地 `.12` 版本文字误认作已发布的正式 digest。
-- 定向后端/Go vet/架构契约通过；b 上 DeepSeek/Kimi 独有模型 HTTP/SSE **2/2**、单次实际组结算通过。c 补齐中间组撤权/订阅/ClaudeOnly 时目录停止后向枚举，与原生选组一致；11 顶层/32 含子项 service 回归及零模型调用的最终 Docker 目录/权限/缓存补验通过，不重跑 b 已过网关。浏览器只读回显规则/模型限制正常，取消不保存。首次 mock 失败报告保留；L1/COS 本轮仅启动健康，生产/付费模型未调用。
-- 共享交接和精确证据见 [`目录合并验收记录`](CUSTOM_KEY_CATALOGUE_ACCEPTANCE_20261020.md)。代码尚在当前活动树工作区，未提交、推送或部署生产；`18180/keys` 等用户验收。下节是仍在生产的 `.12` 正式版本，不混淆已发布与本地新增功能。
+### 2026-10-22 — 错误日志切组因果标记补丁（最新共享指针，未发布）
 
-### 2026-10-20 — custom.12 已发布三站（当前状态）
-
-- 版本 `0.2.16-custom.12`，运行提交 `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4`，标签 `custom-0.2.16.12`；三站同一 GHCR digest `sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610`。
-- 独立 Key 主备编辑器、TTFT/SLA/故障规则、模型限制和安全重放已纳入发布；不重新引入自定义全局账号停号。原生调度/计费复用，按实际完成请求的分组结算。
-- 本地补验：同一正式镜像的主站 SLA 独立 Docker 矩阵 11/11、7 次成功单次结算及按实际组精确扣费通过；临时资源清理、原九个服务未重启。仅增加测试脚本和记录，没有再次发布；用户页面仍在 `http://127.0.0.1:18180/keys`。详见 [`本地验收记录`](CUSTOM_KEY_EDITOR_ACCEPTANCE_20261020.md)。
-- 最终完整 service 17,311 项（含子测试）/关键 137 项、前端 147 项通过；正式 digest 拉回后本地主站单轮 13/13 路由账务场景通过，三应用健康及保留新表的 custom.11 启动回退/恢复通过。主站→L1→COS 于 06:23–06:25 顺序仅重建应用；06:26:50 复核 healthy/restart 0、关键日志 0、公共 JS 与源站一致，配置/数据服务不变，仅增迁移 9001/9002。
-- Actions 本次实际 dispatch 仍返回 422，未产生运行；沿用已批准本地 GHCR 发布，不称 CI 成功。精确证据/备份/回滚见 [`custom.12 发布记录`](CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md)。发布/集成分支包含运行提交，收尾文档单独提交；实际 ref 以 Git 核验，不移动运行标签。
-- 下方 g“待用户验收/未发布”及更早阶段均为历史状态。L1/COS 本地完整管理矩阵未执行、正式生产模型目录只含主组、进程内计数重启清零等边界仍保留；本地新增目录候选见上节。没有付费生产调用或全角色生产登录验证。
-
-### 2026-10-20 — Key 编辑能力扩展：TTFT/SLA/模型限制（最新 g，本地验证完成，待用户验收，未发布）
-
-- 用户要求继续补齐万模密钥编辑功能，本轮在独立定制边界实现 TTFT guard、SLA 完整样本窗口、Key 精确模型限制及各入口准入/普通与 Codex 目录过滤；独立表 9002、认证缓存 v28，不复制 Ent/计费器。
-- 重放安全覆盖已知 usage（包括 native parser 隐藏 metadata）、输出/工具启动；统一切组门禁尊重 guard veto，超大/未知协议保守不重放。只取消上游子请求，最后一个合格候选不主动截断；不重新引入全局账号停号。provider 内置/未知工具固定主组。
-- 最终镜像 `sub2api-custom:key-routing-20261020g`，Engine image/OCI index `sha256:d972c627b4107cdfb57c892f77bd7ebfbf5fd1d4a58efcb1ef23e0af2324ef78`；隔离三应用 healthy/restart 0、健康 200、关键启动错误 0，六数据容器未重建。入口 `http://127.0.0.1:18180/keys`。
-- 前端 11 文件 147 项、类型/定向 ESLint、后端六包最终定向测试、service 全套基线（144.928 秒）及最后追加工具防重放定向回归、Go vet、架构边界与最终生产构建通过。真实本地主站前 10 场景通过后夹具重复写头崩溃，修夹具仅补验余下 3/3；保留失败原报告，不冒称单轮全绿。切组按实际组计费、已用量不重发、最后候选不截断、模型限制拒绝零调用/零扣款。SLA 由自动化覆盖。
-- 最终浏览器五默认规则、旧配置不覆盖、专用 Key TTFT/SLA/模型限制保存回读、空字段后首次准确删除、开关保留草稿及手机/桌面均已复验；截图及两个原始报告见验收记录。原参考站 Key 未保存/删除。L1/COS 管理矩阵仍待本人合规确认，仅健康检查通过。
-- `GET /v1/models` 仍非备用目录并集；UI 模型候选仅所选组明确公开精确白名单，手填可用。无隐藏 TTFT 默认；原生 backoff/反代仍可能限制等待。旧程序回滚不具备新 Key 模型限制、已建立 WS 沿用认证快照。
-- 详见 [`最新验收记录`](CUSTOM_KEY_EDITOR_ACCEPTANCE_20261020.md)。保持用户验收前不提交、不推送、不部署生产。
+- 权威树 `C:/Users/a/.codex/worktrees/group-routing-current` 已补：仅标记实际触发切换的已有错误事件，详情显示目标组、账号、状态与原消息；后续备用组/本地失败不继承旧标签。沿用现有 JSON，不改变使用记录、计费、TTFT 过滤或 SLA/健康统计。
+- 后端定向两包、前端39项及类型/lint、模块契约及18项测试通过；详见权威树同名状态和功能日志。补丁尚未提交/推送/部署，也未重建本地容器；生产仍为下述`.13`。本目录其他会话源码保持原样，不从本目录构建发布。
 
-### 2026-10-20 — Key 编辑器完整交互复验与 d 候选（历史阶段，未发布）
-
-- 当前活动树仍为 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`，分支 `codex/group-failover-rules-v0.2.16`；不要从旧 `D:/projects/sub2api-custom` 根检出全量发布。
-- 在实际万模未保存草稿逐项对照后，新增独立搜索分组选择器与高级折叠容器；主/备/添加一键打开、已有组安全交换、真实说明/右侧专属倍率保留，轻量图标排列。规则统一冷却，旧异值在明确编辑前原样保留；添加不自动插入重复状态码，增删/切开关防失焦布局误点。保存有重入锁，失败不丢草稿；高级原有字段保持序列化，隐藏校验自动展开。
-- 前端 131 项与额外 API/管理员弹窗 12 项通过，定向 ESLint、架构门禁、受影响后端七包及完整 service（143.783 秒、exit 0）通过。旧五项失败是废弃全局停号预期，本轮校正测试并显式禁止隐式停号；历史失败记录不删除。
-- 主站本地 7 项 HTTP/SSE/账务矩阵通过，五个成功请求均目标组计费、usage/dedup 各一条，输出后失败不重放。L1/COS 合成管理入口待本人确认合规，CRUD/网关矩阵未执行，不冒称三站全量通过。
-- 当前源码镜像 `sub2api-custom:key-routing-20261020d`，OCI index `sha256:e0b592a5f4fb63ccc194678a87c315fffbdbe5f6ba3044dd73a0d3c1eeb5f50c`。仅替换隔离三应用，三个 healthy/restart 0、健康接口 200、关键启动错误 0，数据服务/卷保留。主入口 `http://127.0.0.1:18180/keys`；浏览器最终产物保存回读、删除、搜索、主备交换、手机/桌面和嵌套 Escape 已复验。仅新增专用合成验收 Key，原 `1` 和万模现有 Key 未改。
-- **范围仍须明确**：完成的是既有四类规则的编辑与执行，不是万模全部能力复制；主动 TTFT、SLA、Key 模型白名单未做，`/v1/models` 仍只列主组。用户扩展选择未收到，不显示虚假可用控件。用户本地确认前不提交/推送/部署。
-- 详细证据与停止方式见 [`CUSTOM_KEY_EDITOR_ACCEPTANCE_20261020.md`](CUSTOM_KEY_EDITOR_ACCEPTANCE_20261020.md)。下方 c 镜像/每条冷却/行内 Select 等为已替代的历史阶段。
-
-### 2026-10-20 — Key 规则交互与参考站排版对照（待用户本地验收，未推送/部署）
-
-- 删除采用稳定草稿 ID，并阻止鼠标按下时的失焦布局变化。真实浏览器曾复现“清空字段后马上移除，首次点击无效”；索引导致误删的猜测未获证实，不能当作根因。最终镜像首次点击、首/中/尾规则与连续/键盘删除均已复验准确。
-- 已实际对照万模的未保存草稿，收紧规则区排版；开关关闭再开启保留本次草稿，非法字段只提示对应规则。主备区添加合成单一真实入口，动作顺序统一，上移首备可交换主组，名称可点击行内修改。四种已有规则及每规则冷却保持，不显示未实现的 TTFT/SLA。
-- 仅涉及独立 Key 路由前端编辑器、文案和测试；不改变规则协议、路由、计费或官方主线核心。受影响前端 97/97 测试通过，其中真实父级交互 10 项；定向 ESLint、类型检查、i18n 门禁与生产镜像构建通过。
-- 当前本地镜像 `sub2api-custom:key-routing-20261020c`，manifest list `sha256:b54b0e3d2d0dbbd5ac3f9d95a84ee0b16f0162114a6249ca9b101be4ba40f744`，项目仍为 `moshu-reseller-acceptance-c`，本机 `18180/18181/18182`。三应用 healthy、restart 0、`/health` 均 200，最近启动关键异常匹配 0。浏览器实测单一添加、首备升主/换回、点击名称编辑、错误局部提示、清空字段后首次准确删除、首/尾和键盘删除、开关保留草稿均通过。当前页面是未保存示例，原 Key 无持久化改动；万模草稿已取消，现有 Key 未改/未删。完整记录见 [`CUSTOM_KEY_FAILOVER_RULES_20261019.md`](CUSTOM_KEY_FAILOVER_RULES_20261019.md)。
+### 2026-10-22 — `.13` 已推送、三站生产已更新（当前共享指针）
 
-### 2026-10-19 — Key 独立故障规则与薄网关接线（待用户本地验收，未推送/部署）
-
-- API Key 主备卡片按参考站的排列、顺序调整及行内编辑方式实现；有备用才显示“故障自动切组”。支持连续失败、最近 N 次真实上游超时/429 和高级状态码窗口规则，未实现主动 TTFT/SLA 定时器。
-- 规则协议、校验、规划、计数与冷却位于纯 `internal/keyrouting`，不依赖 Gin、数据库或业务 service；Key 规则使用独立 `KeyRouteFailurePolicy`，配置在扩展表，认证缓存快照版本 27。继承分组规则只是 service 适配，不复用或修改官方计费器。
-- 每个 Key/组/模型/端点只记录一次分组最终结果，不重复计入组内重试。自定义规则不再写账号全局停止调度；单组 Key 不走故障切组，官方限流/凭证/账号安全保护仍保留。
-- 新增有界 dispatcher，只在 handler 边界接入最终结果和切换，先释放原组资源，再恢复原始 body/干净 context 并进入正确平台的原生 handler。已经输出（含已 flush 的响应头/心跳）或请求取消均不重放；真实无账号的备用选择与故障规则开关独立。
-- 原生计费/使用记录结构保持。新合成注册路由测试已覆盖连续失败、504、HTTP/SSE、下一请求冷却跳过和实际备用组计价/单次结算。规则模块有身份/计数器硬上限及空闲回收，不新增请求级数据库计数写入。
-- 最终本地镜像、三站健康和界面验收结果见下方本轮验收记录；较早 f/h 候选不能代替当前实现。用户本地确认前禁止推送或部署，生产仍为此前版本。
-- 详细边界、升级接线和发布门槛见 [`CUSTOM_KEY_FAILOVER_RULES_20261019.md`](CUSTOM_KEY_FAILOVER_RULES_20261019.md)。
+- 文档收尾 `daf9153f438918acc8d1d46359ddfe2d0a1a88b1` 已推送工作分支及远端 `custom/integration`，活动树干净；运行标签仍指向下述90804511提交。下一会话先同步远端集成分支，勿使用尚未同步的旧本地同名分支。
+- 当前主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 均运行 `0.2.16-custom.13`，提交 `90804511dcfd57d9e99d7df470cfa05282182664`，标签 `custom-0.2.16.13`，镜像摘要 `sha256:9d79c4378f3e4dc6dd4d1648cff7420947ccb7984a33d7bb2cbd11030c32c14f`。运行源码、集成分支和标签已推送，文档收尾独立提交，不移动标签。
+- 权威活动树仍是 `C:/Users/a/.codex/worktrees/group-routing-current`；先读取其 `docs/CUSTOM_PROJECT_STATUS.md`、`CUSTOM_FEATURE_LOG.md`、`CUSTOM_RELEASE_0_2_16_CUSTOM13_20261022.md` 及 `UPSTREAM_SYNC.md`，下次升级以最新 `custom/integration` 为底。本目录是旧预览源码，仅同步指针，其他会话改动未覆盖，不能从这里直接发布。
+- 本轮账号级Key路由、模型目录、完整优先级编辑及管理员完整Key编辑已一起上线。正式镜像本地网关33/33、管理员HTTP5/5、48项临时资源清理通过；生产三站healthy/restart0、配置/DB/Redis不变，旧迁移全行保持，仅增9003/9004，18份源站/公网前端资源SHA一致。备份已验证、没有生产付费调用或实际回退；Actions422走已授权本地GHCR，不声称CI通过。回退`.12`的account_v2限制见权威报告；下方“未发布/待确认”均为历史。
 
-**本轮验收坐标**：最终本地镜像 `sub2api-custom:key-routing-20261019k`（本地 manifest list `sha256:9dd1478206dc29acb3bccd8d332f6c3a6e392322351206e4c0561df0b3127654`），隔离项目 `moshu-reseller-acceptance-c`，本机 `18180/18181/18182`。Key API 往返、前端规则交互、注册 HTTP/SSE 合成路由与实际组单次计费、定向后端检查、架构门禁和生产构建通过。完整 service 测试仍复现 5 项已知顶层基线失败，详见上方详细文档，不能声称全量全绿。未使用收费生产模型、未推送或部署生产。配置用扩展表，但迁移 9001 仍在官方 `api_keys` 软删除边界附加清理触发器，后续合并需复核，不称作完全零触碰官方表。
+### 2026-10-22 — 管理员完整编辑用户 Key（最新开发共享指针，未发布）
 
-### 2026-10-16 — custom.11 已部署 — 账号列停止调度状态展示
+- 最新源码仍为 `C:/Users/a/.codex/worktrees/group-routing-current`。用户管理中“API密钥→编辑”已复用用户端完整表单，支持分组排序/替换/增删、故障规则、模型、状态及高级限制；后端使用原生更新服务，标准组授权与保存同事务，不重置用量。
+- 前端相关回归、类型/lint、后端定向及模块契约/构建通过；本地真实HTTP 5/5和浏览器保存重开通过。三站候选已换为 `sha256:3be7acfaafd35211db0d2a0c927246bb3956ea73a7c8035110635e35a078b6f5`，入口仍 `18280–18282` healthy、重启0。下节原路由/长连接/回退证据属于旧候选；本轮未重复整套压测。
+- 权威详细报告在该树 `docs/CUSTOM_KEY_ROUTING_STABILITY_ACCEPTANCE_20261022.md`、`CUSTOM_PROJECT_STATUS.md`、`CUSTOM_FEATURE_LOG.md`。生产未改，待用户本地验收，不推送或部署；本目录其他会话源码未覆盖。
 
-- 账号列表名称列在 `schedulable=false` 或有效限流/过载/临时不可调度冷却时显示“停止调度”；自动状态优先显示预计恢复时间，手动停止回退显示 `updated_at`。
-- `AccountStatusIndicator` 的状态列仍保留原有原因、恢复和恢复操作；本次没有新增后端字段、迁移或调度行为。
-- 18 项相关 Vitest、`vue-tsc`、定向 ESLint 和 `git diff --check` 已通过。源码提交 `0bb65a1087bbe38cb1fa8e88b09e6c2b6f15cc43`，标签 `custom-0.2.16.11`，GHCR digest `sha256:022704b184874c61ecd50587252867ad109f943afa75eed2b670fd3409aa916d`。主站、L1、COS 已仅重建应用容器，均 healthy、restart 0，公网 `/health` 全部返回 `{"status":"ok"}`；无数据库迁移。详见 [`CUSTOM_RELEASE_0_2_16_CUSTOM11_20261016.md`](CUSTOM_RELEASE_0_2_16_CUSTOM11_20261016.md)。
+### 2026-10-22 — 账号级 Key 路由本地验收（最新开发共享指针，未发布）
 
-### 2026-10-16 — custom.11 已部署 — 系统级过载自动停号已移除
+- 原升级工作树已归档；最新源码从归档快照 `4ca21d066` 恢复至 `C:/Users/a/.codex/worktrees/group-routing-current`，分支 `codex/key-account-routing-stability-20261022`。本目录其他会话改动保持原样。
+- 后端完整四包、1025 候选批读边界、模块契约及前端类型/构建通过；三站路由账务 33/33、共享 Redis/双应用 11/11、三站 660 秒 SSE 3/3、custom.12 往返 6/6 通过。候选镜像 ID `sha256:e6af1a2dd6b7986d0aefc3a85f771873f29ff31315ee9ccb2f8fcfaef7c4fb3c`，本地入口 `18280–18282`。生产仍为下节 `.12`，待用户本地验收，不推送或部署；不将合成验收视为生产容量或全 provider 证明。
+- 最新状态请读 `C:/Users/a/.codex/worktrees/group-routing-current/docs/CUSTOM_KEY_ROUTING_STABILITY_ACCEPTANCE_20261022.md` 及同目录 `CUSTOM_PROJECT_STATUS.md`、`CUSTOM_FEATURE_LOG.md`；下方旧活动树指针仅保留历史。
 
-- 当前工作树已移除旧的全局过载熔断和裸 `529` 默认冷却：没有分组状态码规则时，重复 `502/503/529/504` 不会写入 `overload_until`，也不会暂停账号；请求级 failover 仍可继续工作。
-- 只有分组显式状态码规则才会按账号、状态码、时间窗和阈值暂停调度；删除分组规则会清理对应计数/过载冷却。认证失效、配额/模型限制、账号自定义错误码及手动暂停仍是独立保护。
-- 已隐藏设置页中不再生效的全局“529 过载冷却”开关，并更新错误码提示。后端兼容配置接口暂留，不参与运行时调度。
-- 定向 Go 服务测试、受影响前端 Vitest、`vue-tsc`、受影响 ESLint、生产构建和 `git diff --check` 已通过；完整 service 单测仍有既有 `gateway_failure_attempt_*` 基线失败，与本轮无关，未将其隐瞒为全绿。本变更已随 `0.2.16-custom.11` 推送并部署三站；生产当前版本为 `0.2.16-custom.11`。
+### 2026-10-20 — `.12` 三站发布完成（最新共享指针）
 
-### 2026-10-16 — 暂停调度展示与规则删除清理已部署 custom.10
+- 三站已更新为 `0.2.16-custom.12`，运行提交 `f42b02f9ea0f43c3e34d9bbf778cd9e450cb05b4`，标签 `custom-0.2.16.12`，同一 digest `sha256:e6a53ec608abd463bfa41ccc6e939dca0175756adeb40e957ebe31a6b68c3610`。独立 Key 编辑器、TTFT/SLA/故障规则、模型限制已上线，自定义规则不再全局停账号。
+- 最终完整 service、147 项前端及正式镜像本地主站 13/13 路由/计费验收通过。北京时间 06:23–06:25 顺序 app-only 更新，06:26:50 三站健康/重启 0、配置与数据服务保持、旧迁移全行不变，仅增 9001/9002，公共 JS 与源站一致。Actions 实际 dispatch 422，不称 CI 成功；无生产付费调用，L1/COS 完整登录矩阵仍未执行。
+- 完整共享源：`C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom/docs/CUSTOM_PROJECT_STATUS.md`、`CUSTOM_FEATURE_LOG.md`、`CUSTOM_RELEASE_0_2_16_CUSTOM12_20261020.md`。发布及 `custom/integration` 同步运行代码与文档，实际 ref 用 Git 核验；下次开发先读这些文件，不以本旧树源码发布。原未提交文档/源码与其他会话文件保留。
 
-- 账号列表现在会明确标记限流、过载、临时不可调度和手动关闭调度的“暂停调度”状态；自动暂停状态可从账号操作菜单进入恢复。
-- 删除分组规则的最后一条规则会触发后台清除该分组账号的规则计数与过载冷却，不触碰独立限流/模型限额；通过 SettingService → RateLimitService 的窄回调接线，保持后续主线合并边界清晰。
-- Redis 共享计数器已允许并严格校验 `status_100`–`status_599`，修复状态码规则在多实例环境退回本地计数的问题；相关仓储回归测试已通过。
-- 当前运行版本为 `0.2.16-custom.10`，源码提交 `dbe323f47`，标签 `custom-0.2.16.10`，三站统一镜像 digest 为 `sha256:920325bd1400a617180fe3b8c4f404ba709527c6101ec852b2bfae2e8d083128`。主站、L1、COS 已完成应用容器更新并通过快速健康检查；发布详情见 `CUSTOM_RELEASE_0_2_16_CUSTOM10_20261016.md`。
+### 2026-10-16 — `.8` 三站发布完成 最新共享指针
 
-### 2026-10-16 — 分组切换规则状态码化改造已发布 custom.9
+- 本目录最新公共使用文档已独立移植到活动发布树，连同 Key 常驻范围提示删除，发布 `0.2.16-custom.8` / `custom-0.2.16.8` / 运行 `46083426af6cf993b0dfd86767fc35df9977dd22`。源码、标签、GHCR 及三站部署完成，digest `sha256:7eb13edccde298ea2b57721fd2581c8552291b81c65268c1b3f812a073d7647b` 本地/OVH 一致。
+- 本树原教程内容与 14 图保留并已上线；活动树只移植文档路由一行，保留模块化角色入口。106 项前端检查、类型/lint、构建、角色容器复验及本地/三站真实文档资源哈希核对通过。首轮 PG 初始化就绪竞争的失败记录保留；本次临时角色容器和合成卷已回收，证据保留。
+- 北京时间主站 01:11:28–01:11:42、L1 01:12:09–01:12:28、COS 01:12:52–01:13:17 部署通过；三站 healthy/restart 0，数据库/Redis、配置与迁移全行保持，备份 verified，回退 `.7`，未回滚。没有付费模型调用。
+- 完整共享源：`C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom/docs/CUSTOM_PROJECT_STATUS.md`、`CUSTOM_FEATURE_LOG.md` 和 `CUSTOM_RELEASE_0_2_16_CUSTOM8_20261016.md`。本目录仍是旧预览源码，禁止直接作为发布基线；下方“仅本地/未合入/待发布”文档条目均为发布前的历史记录。原未提交源码与其他会话文件未重置。
 
-- 当前开发把分组切换规则改为可添加的状态码规则列表：状态码可逗号分隔并共享同一组次数/窗口/暂停参数；每个状态码单独累计，同一状态码禁止跨规则重复；新增规则默认 `3/60/600`。
-- 前端编辑器与解析测试已更新，覆盖添加、删除、全角逗号、100–599 边界和重复拦截；后端兼容旧四类映射并向管理 API 输出规范化数组，运行时按状态码独立计数。
-- 流式超时会以 `504` 进入状态码规则；若未配置 `504`，继续使用旧 timeout 规则与原有平台处理，旧配置行为不变。
-- 未配置时返回空数组且不自动写默认值；未命中自定义状态码的错误仍走原有平台处理。读取旧 kind 映射时只做 API 层规范化，保存后才落新数组。
-- 本地后端、前端、架构契约、生产构建和差异检查已通过；后端受影响包全量测试通过。提交 `51732a2d93ebcebf2dde5e127e305da5273c0556`、标签 `custom-0.2.16.9` 已推送，GHCR 镜像 digest 为 `sha256:26a27d9793baf2bf074d73efc57b76ddc1c65852489b84578bd854cac0640db3`。
-- 三站已按主站→L1→COS 顺序更新，仅重建应用容器；三站 healthy、restart 0，内外 `/health` 返回 `{"status":"ok"}`，OpenResty 配置检查通过，最近日志无 panic/fatal/migration/database/redis 错误。备份目录为 `/opt/sub2api-backups/v0.2.16-custom.9-20261016T014500Z`，未重建 PostgreSQL、Redis、网络或数据卷。
-- GitHub Actions 因仓库级禁用未运行，本次质量门禁、镜像构建和 GHCR 推送均由本地完成；不将 Actions 误报为通过。完整坐标见 [本轮发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM9_20261016.md)。
+### 2026-10-16 — 文档菜单二次调整与 CC Switch 下载页（verified，仅本地）
 
-### 2026-10-16 — `.8` 文档和 Key 提示删除已部署三站
+- 按用户后续要求移除“接入其他工具”菜单项；工具顺序以本条为准：Codex → Claude CLI → Claude Desktop → WorkBuddy → Trae → Cherry Studio → Zcode → OpenCode。原 `/docs/tools` 及各篇深链接继续可用。
+- 手机端改为单一文档选择器，直接选择创建令牌、CCSwitch 或八种工具，不再有多余的工具分类选项。CC Switch 安装部分移除固定 v3.18.0 的 Windows/macOS 下载直链，统一链接至 `https://ccswitch.io/zh/download`；其余教程正文与图片不变。
+- 本轮文档交互测试 **20/20**、页面/测试定向 ESLint、类型检查与 diff check 通过。真实浏览器确认桌面新顺序、下载链接、390px 单下拉直接进入 Claude Desktop；已恢复默认窗口尺寸。仅修改本地文档与共享记录，未提交、推送或部署，生产仍按 `.7` 记录，下方旧源码禁止直接发布的边界不变。
 
-- 用户授权同步公共使用文档并推送部署三站。本轮发布版本为 `0.2.16-custom.8`，基于本活动树 `.7`，只移植原预览树的文档页面、文档测试、14 张 integrations 图片，以及路由 `/docs/:topic?/:tool?` 的一行改动；旧树其他路由未复制，模块化角色入口保留。
-- 八种工具菜单顺序、手机单选择器、CC Switch 下载页及新教程/配图已同步；之前待发布的 Key 常驻范围提示删除一起包含。前端 106 项相关测试、类型检查、定向 ESLint 和图片源文件哈希验证通过；后端逻辑、依赖与迁移未改。
-- **已发布**：运行提交 `46083426af6cf993b0dfd86767fc35df9977dd22`、标签 `custom-0.2.16.8`，GHCR/本地/OVH 同一 digest `sha256:7eb13edccde298ea2b57721fd2581c8552291b81c65268c1b3f812a073d7647b`。源码及发布/集成分支已推送；文档收尾随后同步，不改变运行镜像。
-- **验收**：Docker 前端生产构建（含 4 项 i18n）通过；角色验收首轮因 PG 首次初始化就绪竞争而日志失败，保留记录，预先确认 PG TCP 就绪后同一镜像 b 环境完整验收 exit 0。文档 chunk 及 14 图在本地和三站公网均逐张哈希核验通过。本次专属角色容器及合成卷已回收，其他项目和证据保留。
-- **生产**：北京时间主站 01:11:28–01:11:42、L1 01:12:09–01:12:28、COS 01:12:52–01:13:17 顺序部署通过；各站部署前在途均 0，最终 healthy/restart 0，配置、数据服务身份与全部迁移记录保持，新增迁移 0。健康/工作台/文档 200、匿名管理接口 401、关键启动错误 0。三站备份 `/opt/sub2api-backups/v0.2.16-custom.8-20261015T165932Z` verified，回退目标 `.7`，未回滚。
-- **后续边界**：运行提交在个人 Fork 的 Actions 查询为 0，不冒称 CI 通过；远端当前 enabled/workflow active，不能沿用旧“目前禁用”的判断。本机 gh 默认仓库已从上游校正为个人 Fork，后续仍显式指定 `-R`。未付费调用、未追加性能测试；GPT 上游问题、模型目录仅主组及原未决项保持。完整记录见 [本轮发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM8_20261016.md)。下方准备/未合入/`.7`“唯一当前”等条目均为历史阶段。
+### 2026-10-16 — 公共接入文档工具菜单（verified，仅本地）
 
-> **2026-10-16 文档后续调整**：根目录预览树已按用户要求移除“接入其他工具”菜单入口，Claude Desktop 移至 Claude CLI 后，手机合并单一文档选择器；CCSwitch 安装链接改为 `https://ccswitch.io/zh/download`。本轮 20 项交互、定向 lint/类型和浏览器验证通过。只更新本地文档及本共享指针，未合入本活动树应用源码、未推送部署；仍待独立移植到最新基线。详细记录见根目录 `docs/CUSTOM_FEATURE_LOG.md` 当日“菜单顺序调整及 CC Switch 下载入口”条目。
-
-### 2026-10-16 — 公共工具接入文档已在原预览工作区完成（未合入本树、未发布）
-
-- 文档会话按用户 `G:/接入工具/接入工具.md` 改好五份指南、图标菜单与 14 张截图，保留 Zcode/OpenCode/Claude Desktop；19 项交互测试、定向 lint/类型/前端构建和浏览器桌面/手机检查通过。
-- 变更只在 `D:/projects/sub2api-custom` 的旧文档预览分支 `codex/isolation-refactor-v0.2.13`（HEAD `c9dd2286d`）中，尚未提交/推送；本活动工作树应用源码及其他会话改动未动。精确范围和验证记录见该目录 `docs/CUSTOM_FEATURE_LOG.md` 的 2026-10-16 条目。
-- 后续需将公共文档页面、路由、测试和图片作为独立补丁移植到最新活动分支再验收，不能从旧根目录全量发布。无新 API/数据库迁移、镜像或部署；生产仍以下方 `.7` 记录为准，本轮未重新检查生产。
-
-### 2026-10-15 — 主备 Key 生产管理员实测完成，GPT 上游问题单列
-
-- 用户要求删除创建/编辑 Key 页的常驻范围说明。组件与中英文消息已删除该句；计费提示、实际路由限制、特定不兼容分组校验保持。4 个前端文件已改，21 项相关测试、定向 ESLint、类型检查及 diff check 通过，未提交/推送/部署；生产仍为下方 `.7`。
-- 用户自行创建管理员 Key `codex-routing-admin-20261015`（ID 167），主组 GPT-稳定（7）、备 1 Kimi（30）、备 2 DeepSeek（33）；授权费用上限 US$1。北京时间 22:35–22:40 完成一次模型目录 GET 和四次短文本 POST，无客户端自动重试。目录仅返回主组 11 个模型，未包含备用组；直接指定备用模型仍可调用。
-- Kimi 普通请求、DeepSeek 普通及 SSE 请求全部 200；分别落组 30、33、33，按实际组 0.2 倍率结算。SSE 完整结束、无错误事件，三条 usage 对应三条唯一 dedup，Key 额度增加与实际费用均为 **US$0.0007148**。主备顺序保持，未改 Key/分组/账号配置；Key 按用户要求保留，待用户自行删除。
-- GPT `gpt-5.6-luna` 首测 502 且未扣费：应用请求 `1c2ed278-5bc5-4ee3-a08d-940d414d9a0c` 在主组依次遇到账号 31 上游 404（映射模型不存在）、57 上游 502、32 上游 403，剩余账号不支持模型。应用及 OpenResty 均记录最终 502；无对应反代错误、panic 或重启。不能声称所有测试通过，需另查该模型的主组上游配置；本轮不自动改映射、恢复账号或追加重试。
-- 该生产实测验证模型缺失时选备用及实际组计费，不以人为停用生产账号验证“全部暂停”，也不证明长连接/负载稳定性。模型目录并集仍未实现，透传或空映射账号可能宣称支持全部模型的配置边界继续保留。完整结果见 [实现记录的生产实测节](CUSTOM_KEY_ROUTING_20261015.md#生产管理员实测)。
-- 本地 b 验收项目已停止，保留原卷和证据；临时浏览器转发容器已删除，其他项目未动。用户管理快捷 Key 弹窗仍只支持单组，用户通过自己的完整 API 密钥页建立多组 Key。本次没有推送、发布新镜像或部署，生产仍 `.7`。
-
-### 2026-10-15 — `.7` 三站部署完成（唯一当前发布状态）
-
-- **坐标**：`0.2.16-custom.7` / `custom-0.2.16.7`，运行提交 `f36de3d4a00400c66994a02c13c5d23f6a7feac8`；发布分支与 `custom/integration` 已推送 `3ce7de3ebe68263a3f0e8bf6a83393486747306f`，后续文档提交不改变运行镜像。GHCR digest `sha256:ec8860583ac3603fadc108e90b2036abf352d395b5035ee8f4cb51d1de66ac42` 本地及 OVH 回拉 image ID 一致，amd64，构建时间 `2026-10-15T13:15:08Z`。
-- **内容**：独立主备 Key 模块和分组显式默认值，不合并新官方版本。首期限已授权 standard 无资源绑定文本 HTTP/SSE；发送前选组，按实际组计费，共用 Key 额度，不跨组重播。图片/WS/模型目录仍走主组，绑定资源和 Claude 客户端专用组限制见 [实现记录](CUSTOM_KEY_ROUTING_20261015.md)。
-- **部署**：北京时间主站 21:42:45–21:42:58、L1 21:44:21–21:44:28、COS 21:45:01–21:45:12 顺序 app-only 更新，三个部署日志均 passed/exit 0。主站/L1 等在途归零才重建，未强制中断。三站最终 healthy、restart 0、版本/完整提交/digest 一致；env/挂载/网络/端口指纹与 PG/Redis 容器 ID/启动时间保持，旧迁移全行不变，仅新增预期迁移。内外健康/工作台 200、匿名管理设置/规则 401、关键日志 0；详见 [发布报告](CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md)。
-- **本地验证**：独立 b 环境 7 请求、5 成功上游/5 usage/5 dedup，余额 `10→9.99998919`、同 Key quota `0.00001081`；实际组倍率、SSE、全部无资源 503 和图片主组 403 的零调用零扣费、重启、`.6` 只读回退/恢复 `.7` 通过。独立角色/JWT/API Key/WebSocket/重启/日志验收 exit 0；本地浏览器检查 Keys/Groups 入口及未保存草稿，console error `[]`。首轮 a 的透传/白名单夹具配置失败保留，修夹具后 b 通过，运行源码未改。
-- **迁移与回退**：新增 `9000_custom_api_key_routes.sql`，trim SHA-256 `468f453bd5381c9a6a336371d893b1fc3a3396035f1ced20702825020fc17d2f`。三站备份 `/opt/sub2api-backups/v0.2.16-custom.7-20261015T131751Z` 已核验。回退目标 `.6` digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`；保留扩展表，旧镜像期间不得编辑多组 Key 主组或解绑，不恢复旧库覆盖新业务。本次未触发生产回滚。
-- **限制与收尾**：Actions 对 f36/3ce 查询均为空，沿用已批准本地 GHCR 路径，不冒称 CI 成功。SSE mixed、15 项 lint 基线欠账、P4 完整旧新账务矩阵、真实升级 PR 链路及未知图片结果待核对/冻结继续保留。生产无现成 admin API Key，未执行生产角色登录、付费模型测试或长期监控；完整角色矩阵是本地证据。a/b 测试容器按精确标签停止并保留卷/证据，角色项目自动回收，临时浏览器代理与空网络删除，其他项目未动。
-
-以下开发、准备及 `.6` 发布条目均为历史阶段；“未提交/未发布”“唯一当前”等仅描述当时，不覆盖本条和下方当前发布表。
-
-### 2026-10-15 — API Key 主备分组模块开发与本地回归（未发布）
-
-- 新增独立 `key-routing`：主组加最多 4 个有序备用组；主组无请求模型或没有可调度账号时依次选组，按实际组及用户专属倍率计费，仍共用同一个 Key/额度。临时并发满保留原排队，不增加 Key 级 TTFT/SLA 规则、不跨组重放已发送请求。
-- 模块拆分为纯策略、原调度只读适配、单一认证入口、扩展存储及独立前端编辑器。保留原主组字段，新增 `9000_custom_api_key_routes.sql` 和缓存 v25；manifest/contracts/feature registry 与真实宿主测试均登记，Wire 实际生成。
-- 首期支持 standard、已授权组的无资源绑定文本 HTTP/SSE；图片/WS/模型目录等仍走主组。已存储会话/文件引用及 Claude 客户端专用组有明确限制，不改它们原有单组行为。范围、合并接线及回退注意事项见 [实现记录](CUSTOM_KEY_ROUTING_20261015.md)。
-- 本地后端定向 441 顶层 / 776 含子测试通过，真实 PG/Redis 存储验证通过，真实注册网关 5 场景证明有效组倍率、同 Key 额度和 SSE 不跨组重播；前端相关测试、类型检查、受影响 lint、生产构建、架构门禁和 diff check 通过。后补的 Claude 专用组限制定向复验；具体证据和替身边界见实现记录。
-- 活动工作树与分支不变，基线 `3b0145c8a`；本轮未提交、推送、部署或调用生产模型。尚未完成本功能独立 Docker 应用/浏览器/新旧镜像回退验收，发布前继续完成。下条分组默认值编辑器改动也仍未发布，三站生产唯一状态仍 `.6`。
+- **范围 / 负责人**：公共文档会话，feature `branding`；按用户提供的 `G:/接入工具/接入工具.md` 更新本工作区原有文档改动。源码仍在 `D:/projects/sub2api-custom`、`codex/isolation-refactor-v0.2.13`，HEAD `c9dd2286df2d9db79ec184f57092a8f966840139`，版本文件仍为 `0.2.13-custom.6`；这是文档预览工作区，不是生产/升级基线。
+- **行为**：`/docs/tools/:tool` 独立文章与文档图标菜单，按 Markdown 顺序为 Codex、Claude CLI、WorkBuddy、Trae、Cherry Studio，再追加保留 Zcode、OpenCode、Claude Desktop。`/docs/tools` 默认 Codex，未知工具回退 Codex；桌面选中高亮，手机下拉导航。创建令牌和 CCSwitch 正文与截图保持不变。
+- **内容 / 资源**：替换五份指南，导入 WorkBuddy 3 / Trae 5 / Cherry Studio 6 张截图；无明文密钥，14 张源图与构建产物哈希一致。修正原稿 Windows Codex 的 `mmoshu` 为 `moshu`，Claude Windows 的 `api.ai.moshu.cloud` 为根地址 `ai.moshu.cloud`；保留前轮 Codex 的非 OAuth、禁用 WS 兼容配置。截图历史供应商地址附文字配置优先提示，保留可用模型查询折叠说明。
+- **验证**：真实 Vue mount + memory router 19 项、文档入口安全 7 项、路由回归 61 项共 87 项测试通过；定向 ESLint、`vue-tsc --noEmit`、`pnpm --dir frontend run build`（含 3 项 i18n 检查）、`git diff --check` 通过。12 个本地文档入口、14 张新图均 HTTP 200。真实浏览器验证桌面菜单跳转、390px 手机下拉切换及无横向溢出；未验证用户真实 API Key/模型调用。
+- **状态 / 下一步**：未提交、推送、建镜像或部署，无 API/数据库/迁移变化；三站生产记录仍为 `.7`，本轮未重新检查生产。后续发布必须仅将文档页面、路由、测试、图片的独立补丁移植到含 `.7` 的最新活动分支再验收，禁止从本旧源码直接发布。其他会话修改和 `%SystemDrive%/` 未跟踪目录原样保留。完整本轮记录见本目录 `CUSTOM_FEATURE_LOG.md` 的 2026-10-16 条目。
 
-### 2026-10-15 — 分组规则改为直接编辑默认值（本地开发，未发布）
+> **2026-10-15 主备 Key 限定生产实测完成**：用户创建 Key 167，GPT-稳定→Kimi→DeepSeek；目录仅返回主组 11 模型。Kimi/DeepSeek 普通请求及 DeepSeek SSE 成功，实际组账务正确，共扣 $0.0007148；GPT 首测因主组上游依次 404/502/403 而失败，未扣费，需另查模型映射及上游可用性。共四次生成请求，无追加重试；Key 留给用户删除。常驻范围提示已本地删除，21 项前端测试及类型/定向 lint 通过；未推送部署，生产仍 `.7`。完整状态及证据只维护于活动工作树 `docs/CUSTOM_PROJECT_STATUS.md` 与 `CUSTOM_KEY_ROUTING_20261015.md`；不从本目录旧源码发布。
 
-- 用户要求移除“沿用系统 / 自定义”选择。四类错误直接显示累计次数、统计窗口、暂停时长；已有规则原样保留，缺失项预填默认值，清空字段在失焦或保存时补回该项默认值，非法非空内容不能保存。
-- 编辑器默认值（次数 / 窗口秒 / 暂停秒）：过载 `3/300/600`、服务错误 `3/60/60`、超时 `2/60/60`、临时限流 `3/60/60`。不是宣称原有各平台的系统行为都相同。
-- 保存显式提交全部四类规则；空或部分旧配置无需先修改数值即可保存。只打开/关闭页面不写配置，不自动迁移其他分组，不改后端调度与 API；未保存的旧分组仍保持原运行规则。完整已保存配置按规范化键序比较，无修改不重复保存。
-- 源码限于 `frontend/src/features/gateway-resilience` 与真实分组页集成测试，权限、失败草稿、重复提交和过期请求隔离仍保留。本次没有提交、推送、构建发布镜像或部署；生产仍为下条 `.6`。
-- 检查：编辑器 43 项、真实分组页 16 项通过；其余分组/registry/i18n 5 文件 27 项通过；类型检查、受影响文件 ESLint、生产构建、diff check 通过。最初一项旧集成测试仍寻找已移除下拉，已更新为四类默认值完整保存断言并复验通过。无后端改动，未重复 Go/Docker/付费请求/SSE 性能验收；未做生产浏览器验收。
+> **2026-10-15 `.7` 已部署三站（当前指针）**：主备 Key 模块和分组显式默认值已上线。运行 `f36de3d4a00400c66994a02c13c5d23f6a7feac8` / `custom-0.2.16.7`，digest `sha256:ec8860583ac3603fadc108e90b2036abf352d395b5035ee8f4cb51d1de66ac42` 本地/OVH 回拉一致；发布和集成分支已推 `3ce7de3ebe68263a3f0e8bf6a83393486747306f`，文档随后单独提交同步，精确 ref 由 Git 核验。
+>
+> 北京时间主站 21:42:45–21:42:58、L1 21:44:21–21:44:28、COS 21:45:01–21:45:12 顺序更新均通过，主站/L1 等在途归零才操作。三站最终 healthy/restart 0、版本/提交/digest 一致，配置指纹及 PG/Redis 身份、旧迁移保持，仅新增预期迁移；健康/工作台 200、匿名管理接口 401、关键日志 0。独立 Docker 真实账务/迁移重启/`.6` 只读回退与恢复 `.7`、角色和限定本地浏览器检查通过，首次夹具配置失败保留。
+>
+> 新增主备扩展表；回退 `.6` 时禁止编辑多组 Key 主组或解绑，保留扩展表，不还原旧库覆盖新业务。本次无生产回滚、生产角色登录、付费模型或长期监控。Actions 无新运行，SSE mixed、15 lint 基线、P4 双跑矩阵和真实升级 PR 链路限制继续披露。a/b 测试容器已停并保留卷/证据，角色项目回收、临时浏览器代理及空网络删除，其他项目未动。
+>
+> 唯一完整交接源：`C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom/docs/CUSTOM_PROJECT_STATUS.md`、`CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md` 和 `CUSTOM_KEY_ROUTING_20261015.md`。本目录仅共享指针，不从旧源码发布，不动其他会话文件。
 
-### 2026-10-15 — `.6` 三站部署完成（上一发布的历史快照）
+以下指针均为历史阶段，“未提交/当前 `.6`/尚待 Docker”等不覆盖上方 `.7` 已部署状态；原始证据与决定保留。
 
-- **已完成**：源码/标签/GHCR 及三站生产发布。运行提交 `655a16868fc310d6dcc742c4bb60a2f740456a58`，版本 `0.2.16-custom.6`，标签 `custom-0.2.16.6`；三站统一 digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`。后续文档提交不改变运行源码。
-- **内容**：定制层模块化、取消结算/恢复、分组错误累计规则与全分组账号冷却/手动恢复；不含 API Key 主备分组新需求，不合并新官方版本。
-- **验证**：复用已验收源码范围；最终 GHCR 镜像回拉一致，独立容器角色/JWT/API Key/WebSocket/重启/日志验收退出 0。17:49–17:51 主站→L1→COS 顺序 app-only 更新，主站等在途槽位归零才操作。三站 healthy、restart 0，版本/commit/digest 一致，本地/公网健康与工作台入口 200、匿名管理接口 401、关键启动日志 0；配置、DB/Redis 容器、迁移指纹不变。
-- **备份**：`/opt/sub2api-backups/v0.2.16-custom.6-20261015T093931Z`，三站 PG dump 的 restore list、配置/数据/OpenResty tar 可读和 SHA-256 已核验。回滚仅应用至 `.5` digest `sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b`；不恢复旧库覆盖新业务。
-- **边界**：用户明确批准本地 GHCR 替代路径；Actions 实测禁用，不能称 CI 全绿或自动升级 PR 链路完成。SSE mixed 风险已接受；未知生图结果继续待核对/冻结；15 项基线 lint 及 P4 全组合旧新矩阵缺口继续披露。未做生产付费调用或长时间压测，生产无现成管理 Key，角色完整验证来自本地最终镜像。
-- **交接**：[完整发布记录](CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md)。下方“未发布/未授权/等待 SSE”均为历史阶段记录，不覆盖本条；长期集成分支本轮以普通快进同步本成果及文档，不强推、不改默认分支。
+> **2026-10-15 API Key 主备分组本地开发**：活动工作树已实现独立 `key-routing` 模块：1 主＋最多 4 备，按模型/账号可调度性顺序选组，按实际组计费，共用 Key 额度；不新增 Key 级规则、不跨组重播已发送请求。标准无资源绑定文本 HTTP/SSE 为首期范围，图片/WS/目录仍走主组，Claude 客户端专用组明确排除多组组合。后端定向 441 顶层/776 含子测试、真实 PG、挂载 HTTP/SSE 计费链及前端构建等验证通过，补充边界定向复验。未提交/推送/部署，独立 Docker 应用与浏览器/回退验收仍是发布前下一步。完整证据见活动工作树 `docs/CUSTOM_KEY_ROUTING_20261015.md`，不要从本目录旧源码发布。下方默认值编辑器也仍未发布，生产继续 `.6`。
 
-以下阶段记录均为历史快照；其中的“当前”“未部署”“等待授权”只描述当时，不覆盖页首唯一当前状态。
+> **2026-10-15 最新本地改动（尚未发布）**：分组切换规则已移除“沿用系统 / 自定义”选择，四类参数直接预填可编辑默认值；保留已有配置，空白补默认，保存才写入全四类规则，不自动修改其他分组。完整实现与验证见活动工作树 `docs/CUSTOM_PROJECT_STATUS.md` / `CUSTOM_FEATURE_LOG.md` 页首。没有推送或部署，三站生产仍为下方 `.6`。
 
-### 2026-10-15 — `.6` 源码已推送，GitHub 禁用 Actions 阻止自动发布（历史）
+> **文档收尾已推送并核验**：`3b0145c8abbf57d581f99084e88118ea7e759e3f`，远端 `codex/group-failover-rules-v0.2.16` 与 `custom/integration` 均指向此提交。15 份仓库文档统一更新；运行标签仍指向 `655a16868`，文档提交未改变 backend/frontend 源码，不另建镜像。以下活动工作树是后续会话唯一完整交接源。
 
-- 发布准备提交 `d2476c39f9a0f109f6bfc0d29a517013c125547c` 已推送 `origin/codex/group-failover-rules-v0.2.16`；版本 `0.2.16-custom.6`。未建版本标签、未发布新镜像、未改生产。
-- 本次实际执行 `gh workflow run custom-release.yml --repo Hzihuan001/sub2api --ref codex/group-failover-rules-v0.2.16`，返回 HTTP 422：`Actions has been disabled for this repository.`。未生成运行，不是 CI 测试失败；权限开关显示 active 不能覆盖此实际结果。不重复 dispatch。
-- 本地验收与独立审查支持进入发布，但不能将 15 项基线 lint 欠账说成全量绿，也不将 P4 缺失的旧新全矩阵实验或真实升级 PR 链路说成完成。SSE 疑点按用户决定不再阻塞。
-- 按原方案，等待确认采用“本地构建/验收 → 直发 GHCR → 回拉校验 → 备份 → 主站/L1/COS 顺序 app-only”替代发布；不能将旧次直接发布授权自动沿用到本轮。当前生产仍 `.5`；在途和连接检查必须在实际部署前重做。
+> **2026-10-15 `.6` 已部署三站（当前唯一入口）**：用户批准本地 GHCR 发布后，已于 17:49–17:51 完成主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` app-only 更新；17:54 复核均 healthy/restart 0、关键日志 0。版本 `0.2.16-custom.6`，标签 `custom-0.2.16.6`，运行提交 `655a16868fc310d6dcc742c4bb60a2f740456a58`，统一 digest `sha256:cb074f11766d9190f4e5f3479a0750c7a759a562bfc142aa3067a0d4bfbfc42e`。配置、数据库/Redis、卷、网络、迁移和反代保持，备份及旧 `.5` 镜像保留。
+>
+> 本轮发布模块化、取消结算恢复、分组切换规则/手动恢复；不包含 API Key 主备分组。SSE 风险已接受，不再追查；Actions disabled、15 项 lint 基线、P4 完整旧新矩阵及真实升级 PR 链路限制继续披露。本地最终 GHCR 角色/API Key/WebSocket/重启验收通过，不冒充生产逐角色登录或 CI 成功。
+>
+> 活动源码/完整文档：`C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`，分支 `codex/group-failover-rules-v0.2.16`。先读该目录 `docs/CUSTOM_PROJECT_STATUS.md` 和 `docs/CUSTOM_RELEASE_0_2_16_CUSTOM6_20261015.md`，再读本轮已同步的方案/执行/复核/维护说明。长期集成分支本轮普通快进到包含 `.6` 的文档收尾点；实际 ref 由 Git 核验。本根目录旧源码和其他会话改动不动；下方旧“等待授权/未部署/SSE阻塞”指针只作历史。
 
-### 2026-10-15 — `.6` 发布准备（已获条件授权，尚未部署）
+以下共享指针均为历史过程；“最新”“未部署”“等待授权”仅描述当时，不覆盖页首 `.6` 已部署状态。
 
-- 用户要求检查本轮目标，满足上线条件后推送部署；这取代历史“等待发布授权”，不包含新 API Key 主备分组功能。此次仅发布模块化、取消结算恢复与已验收的分组切换规则。
-- 两项独立只读复核未确认新增 P1/P2 阻塞；当前运行源码与 `0068815bd` 分组镜像一致（后续仅路由测试/文档），生图账务源码保留已验收恢复实现。准备版本 `0.2.16-custom.6`，不得将本记录当作已发布。
-- 现场三站仍 `.5` / `00e8f24a4` / digest `sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b`，healthy、restart 0，健康检查通过。主站批量任务仅 completed/failed/output_deleted，分站无批量任务；真正重建前仍需复核在途请求并备份。
-- SSE 风险已接受；未知图片结果仍保留待核对/冻结，不增加人工结算入口。P4 完整旧新组合矩阵、全量 lint 的 15 项基线欠账和自动升级远端链路限制继续披露，不冒称完整方案每项实验均通过。现有正确性证据支持进入发布流程；CI 不可用时按方案先确认替代发布方式。
+> **2026-10-15 发布通道阻塞（历史）**：用户批准满足条件后上线；本地模块化/分组规则与账务恢复复核未确认新增 P1/P2 阻断。准备提交 `d2476c39f`（`.6`）已推送 `codex/group-failover-rules-v0.2.16`，但正式 Actions dispatch 返回 HTTP 422 `Actions has been disabled for this repository.`。未建标签/镜像、未部署，三站现场仍 healthy 的 `.5`；按方案等待本地直发 GHCR 替代方式确认。细节只维护在活动工作树项目状态页首。SSE 疑点不再阻塞，其他证据限制保留。
 
-### 2026-10-15 — 用户决定停止追查 SSE 性能疑点
+> **2026-10-15 SSE 最新决定**：用户回复“那就不管”，停止追查 SSE 延迟疑点；接受该未决风险，此项不再作为当前阻塞项，不追加测试。保留原始 mixed 结论，不声称性能已通过。其他限制与暂缓发布不变，未推送部署。详见活动工作树 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom/docs/CUSTOM_PROJECT_STATUS.md` 页首；下方有关 SSE 阻塞的旧指针已被此决定取代。
 
-- 用户了解 INFO/CBBC 与有限 DEBUG 结果不一致、尚未证实稳定性能退化后，明确回复“那就不管”。本项记为**用户接受未决性能风险，不再作为当前阻塞项**；不追加诊断、压测或采样。
-- 原始 mixed 结论、样本、阈值及报告全部保留，不改写为性能通过，也不认定差异必然只是测试误差。下方要求继续定位或因本项阻塞的历史表述由本条取代。
-- 这是仅针对 SSE 疑点的范围决定，不是推送、远端 Actions 验证或生产部署授权；其他验收限制和既有暂缓发布决定不变。本轮只更新共享文档，不改代码、不运行负载。
+> **2026-10-15 分组规则 Docker 已通过（最新功能指针）**：精确 `0068815bd` 本地镜像完成 8 次合成网关请求 / 23 次模拟上游尝试，阈值、全分组暂停、手动恢复、两次重启及权限通过；8 条唯一 usage 与余额实扣一致。实际路由契约补齐 18 条并通过。新验收容器已停止、数据和证据保留；原性能/恢复项目未动。详情只维护在活动工作树 `docs/CUSTOM_PROJECT_STATUS.md` / `CUSTOM_MODULARIZATION_FINAL_GATES_20261015.md`。未推送部署，原 SSE mixed 与发布暂缓不变。
 
-### 2026-10-15 — 当前本地状态：分组规则已完成，升级 workflow 离线加固
+> **2026-10-15 升级 workflow 离线加固（最新维护指针）**：活动工作树及分组规则分支不变；本轮只修自动升级报告/提交/补丁顺序和失败状态处理，固定架构与脚本门禁共 33 项通过。原 SSE mixed 与真实 Actions 链路仍未闭环，未 push/dispatch/deploy，不追加负载。唯一细节仍在活动工作树 `docs/CUSTOM_PROJECT_STATUS.md` 和 `CUSTOM_MODULARIZATION_FINAL_GATES_20261015.md`；本目录旧源码不动。
 
-- 当前分支仍 `codex/group-failover-rules-v0.2.16`，分组功能提交 `caa717338`；workflow 加固 `0068815bd`，真实容器及 18 路由测试提交 `1c9875903`。后两次只改升级工具、测试和文档，不改应用运行源码；原模块化候选 `53fd17b5b` / 收尾点 `260f3c1b6` 单独保留。
-- workflow 修复报告反引号被 Bash 执行、未配置提交身份、补丁连续合并前未完成上次 merge、带斜杠分支日志路径及检查异常被误标成功的问题。测试直接执行 YAML 中真实 Bash，Git/gh 用无网络替身；详细结果见最终门禁报告新增节。离线成功不等于 Actions 已恢复。
-- **分组规则 Docker 已补齐**：精确 `0068815bd` 镜像在新建内部网络项目完成 8 次非流式合成请求 / 23 次模拟上游尝试，阈值 4/2、全分组暂停、手动恢复、两次重启持久化及新接口权限通过。8 条唯一使用记录实扣合计 `0.00002160`，与余额变动一致；四容器 healthy、关键启动/连接日志匹配 0。实际应用路由测试的旧 16 条清单补为 18 条，原鉴权/顺序断言保留并通过。没有改变应用源码或重跑 SSE 性能。准确镜像/脚本/证据见最终门禁报告的“分组规则独立 Docker 验收”。
-- 只读远端核验：Actions enabled/all、默认 workflow write、允许 PR；全仓最近运行 10-08，升级 workflow 最近为 10-05。`custom/integration` 仍 `fd7c1b91446a38666b7f5c32ab9d493f6431d071`，是 `260f3c1b6` 的祖先、相差 296 提交；这是图关系，不是整分支可发布证明。
-- **未关闭**：原 INFO/CBBC SSE 性能 mixed、真实 Actions/集成基线/草稿 PR 链路、用户暂缓发布。没有新压测、模型费用、push、dispatch、标签或生产操作；后续实验和远程写入需单独确认范围。
-- **当前停止边界**：已批准的 DEBUG 诊断和分组容器验收均终态完成，无待续跑负载；可在现有授权内补齐的本地工作已保留。原性能结论需要新的限定诊断范围，真实远端验证/发布需要另行授权；等待用户决定，不把自动续行理解为扩大这些权限，也不将原方案标为完成。
+> **2026-10-15 分组切换规则本地完成（最新共享入口）**：用户批准先做分组规则并确认“触发后全分组暂停账号”。活动工作树不变，分支 `codex/group-failover-rules-v0.2.16`，基线 `260f3c1b6`，实现提交 `caa717338`；配置、页面、失败累计及恢复已实现，后端 422 含子例、前端相关测试/类型/构建、架构门禁和差异 lint 通过。只以该工作树 `docs/CUSTOM_PROJECT_STATUS.md` 页首为准。未推送、未部署；旧模块化性能 mixed 和暂缓发布仍有效，不改本根目录旧源码。
 
-### 2026-10-15 — 分组切换规则开发完成（功能证据，本地未发布）
+> **2026-10-15 最新本地进度入口**：模块化主体已落地，不推送/部署。活动工作树 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom` 的 `docs/CUSTOM_PROJECT_STATUS.md` 页首是唯一当前快照；精确证据见同目录 `CUSTOM_MODULARIZATION_FINAL_GATES_20261015.md`。运行提交 `53fd17b5b` 的微基准和 11 故障通过；4,000 次 HTTP/SSE、固定 1,200 次 SSE 及用户批准的各版本 100 次 DEBUG 均已结束，日志配置已恢复。本次 DEBUG 未复现候选更慢，但不推翻原 mixed 门禁，不再追加负载。未知图片结果保留待核对，暂缓发布有效。本根目录源码及其他会话修改不动，下方旧判断只作历史。
 
-- 用户单独批准先开发分组规则；从 `260f3c1b6146949061897b0f7df81b7167d011da` 建立 `codex/group-failover-rules-v0.2.16`，工作树仍为 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`。旧模块化分支与其未决性能/发布门禁保留，不因本功能开发自动关闭。
-- 分组管理的行操作和编辑页新增“切换规则”：过载、服务端错误、超时、普通限流可分别配置累计次数、滚动窗口、暂停时长；未配置类别沿用原逻辑。次数 1–100，窗口 1–3600 秒，暂停 1–7200 秒。
-- 用户明确确认：按分组＋账号＋错误类型＋规则版本分别计数，触发后暂停该账号在**所有分组**的调度。当前请求仍遵守原有重试预算和安全边界；阈值不是“每个请求重试几次”。保留优先级、分组权限和原计费，不保证没有健康备用账号时仍能成功。
-- 复用 settings 持久化、现有账号冷却字段与“恢复状态”入口；无数据库迁移。配置只在失败路径读取，正常请求不新增远程读取。Redis 原子窗口计数/固定冷却，故障时使用有界本地兜底；手动恢复严格清理分组计数，自动恢复保留原来的 Redis 最佳努力行为。
-- 功能归入 `gateway-resilience`，API 使用 `groups.read/groups.write`；前端组件、消息、API 封装独立目录，宿主只保留窄入口。HTTP/SSE/WS 和原生平台均补接，保留明确配额/等待时间、图片/模型限流、账号规则及参数/安全拒绝，不重放已输出内容。
-- **功能开发时验证**：后端最终四包定向回归 157 个顶层 / 422 个含子例全部通过、0 skip；前端定向 52 项、类型检查、非修复 ESLint、生产构建通过；当时架构检查 22 项通过，相对 `260f3c1b6` 的 golangci-lint 差异检查 0 issues、diff check 通过。两处等价静态简化后计数器/Redis 定向复验通过。证据 `D:/projects/go-tmp/group-failover-final-20261015.jsonl`。后续 Docker 已通过，见页首；仍未生产验收，不复用旧候选性能结果作为本功能发布证据。
-- **发布边界**：没有 push、标签、生产操作；用户暂缓发布保持有效。生产最近记录仍 `.5`，本轮不重新查询。新功能在本地分支，不是当前生产已可用。
+> **批量取消修复中（2026-10-15，本地）**：用户确认“已发出继续正常结算，取消不退款；上游明确生成失败仍不收费，未发出不收费”。活动工作树正在修复取消导致整批释放冻结的问题；部分成功 + 在途 + 未发出的精确计费回归已通过，恢复/未知结果等验收继续。尚未推送、未部署，整体模块化不能标记完成；详情见活动工作树最新状态与复核报告。下条为修复前停止记录。
 
-### 2026-10-15 — 模块化主体落地，最终门禁收尾（上一任务快照，限制仍有效）
+> **本地坐标**：取消修复 `55765c473`；WS 既有问题复现 `3856b469a`（保留两项失败，未改 WS 协议）。取消相关单测、Go vet、真实 PostgreSQL CAS/取消三组测试及前端类型/定向 lint 通过；结果未知恢复仍待完善，不作为生产发布许可。
 
-- **目标不变**：隔离定制策略与官方宿主，减少重复规则和主线接入改动；不新增业务系统、不合并下一官方版本。活动分支 `codex/custom-modularization-v0.2.16`，工作树不变。下面旧阶段记录只作历史证据。
-- **本地运行提交**：取消保留结果 `55765c473`；结算确认丢失恢复及 hold 隔离 `8d5dba9a4`；WS 真实发送/response ID 关联 `3e78ebe2b`。独立修复与结构重构分开提交，不把业务修复计作解耦收益。旧测试契约修正 `9831e38c6` 不改运行代码或迁移。
-- **已验证**：前端完整 Vitest 409 文件 / 3176 项通过，frozen-lockfile、类型检查、非修复模式 lint 通过；批量相关单元 113 顶层 / 316 含子测试通过；真实 PostgreSQL 验证取消成功项结算、确认响应丢失重试、capture/release 并发及其他任务 hold 隔离通过。精确证据见 [账务报告](BATCH_CANCEL_RECOVERY_LOCAL_20261015.md)、[WS 报告](WS_ATTEMPT_IDENTITY_LOCAL_20261015.md)。
-- **当前运行候选**：`53fd17b5b46be47a216f55381beaac24eefe667f`，恢复原故障策略短路求值；受影响 113 项（含子测试）、差异 lint 0 issues 及同源微基准通过。后续报告/测试脚本不改变运行源码。
-- **完整门禁证据**：`d16ef65ce` 完整 Go 63 包、12,537 顶层 / 24,232 含子例通过，0 失败、22 skip；其中 11 个真实审计 PG/Redis 用例另行通过。前端 Node 20 完整 3176 测试及构建通过；577 独立干净 Wire/Ent 生成零差异。53fd 仅改变 4 个故障策略/测试文件，其他结果按相同源码范围复用，不声称每个提交都重跑全套。详见 [最终候选门禁](CUSTOM_MODULARIZATION_FINAL_GATES_20261015.md)。
-- **Docker**：577 角色、生图计费/下载与 3 次真实 SIGKILL/队列重投恢复通过；未知结果保持冻结、不重发。53fd 精确镜像另行完成 11 类故障与 4,000 次正常 HTTP/SSE 对照。故障专用合成项目已清理，恢复项目/未知任务和性能证据保留。
-- **未决门禁**：微基准原退化已经修复；初轮端到端 SSE 首字节 p95 的窗口中位约 23.806→32.203ms。固定 CBBC 诊断已结束（1,200 请求），合并原始样本 p95 39.921→48.522ms、两对约 +19%，按预注册规则仍未决。用户另行批准的有限 DEBUG 诊断也已结束：两版本各 100 次完整 SSE、精确 200 次模拟上游调用和 200 条 usage，原 INFO 日志配置及候选镜像已恢复；只离线关联，不再追加负载。DEBUG 小样本不能替代原性能门禁。全量 lint 15 项为基线同 blob 欠账，自动升级远端未验证；用户暂缓发布仍有效。
-- **用户决定**：请求已发出则正常结算，取消不退款；明确生成失败不收费。发送后结果未知且无查询能力时保留待核对/冻结，不自动重发、扣款或退款；**暂不新增管理员核对接口，暂缓发布**。本地验证继续，不把发布暂缓解释为任务全部暂停。
-- **发布边界**：本轮没有 push、标签、远程设置修改或生产操作。最近已记录生产仍 `.5`，本轮未重新查询现场。Actions 实际运行和集成分支推进仍未完成，不能称自动升级链路已恢复。
-- **后续只收尾**：有限诊断结论及剩余限制见 [性能报告](../deploy/acceptance/MODULAR_PERFORMANCE.md)，结构收益见 [耦合清单](CUSTOM_MODULARIZATION_COUPLING_20261015.md)。本轮到此停止追加负载，不重做已通过的完整测试，不顺带增加管理页面或扩大协议功能；新的性能实验或发布另行确定范围。
+> **模块化停止收尾（2026-10-15，本地、不发布）**：活动分支 `codex/custom-modularization-v0.2.16`。接口/前端/装配已实现，局部验收通过，但完整复核发现既有普通批量取消漏结算缺陷，候选和 989594099 均复现，触发方案停止条件；WS 跨轮身份、恢复/性能等还未全部闭环。此前活动工作树“P0–P6 全部完成”已撤回。先读活动工作树 `docs/CUSTOM_MODULARIZATION_REVIEW_20261015.md` 和执行记录，待用户确认独立修复范围。未推送、未部署，生产仍 `.5`；本根目录旧源码和其他会话修改保留。
 
-### 2026-10-15 — 批量取消账务独立修复中（历史阶段，已被页首更新）
+> **2026-10-14 最新状态（deployed）**：网关故障切换已部署三站 `0.2.16-custom.5`。同账号 5 分钟累计 3 次明确 overload 后默认冷却 10 分钟；额度/凭据/模型不可用和可恢复上游故障按类别限次切换；安全/参数拒绝和已输出的流不重放。相关 Go 测试、vet、隔离检查、Docker 11 场景通过，GHCR 回拉与验收镜像一致。无新迁移和计费改动，不要把本根目录旧源码作为发布起点。
 
-- 用户补充规则：**批量生图取消时，已发出的请求仍需计费**。取消不能整笔释放已成功或仍在途任务的预留金额；未发出项停止，保留已生成图片及下载。
-- 正在本地修复普通兼容模式的取消/结果保留/迟到成功结算，并补充回归。用户已明确：取消不退款，上游明确生成失败仍不收费；没有重算历史账目。
-- 本轮仍未推送、未部署。整体模块化验收尚未完成；下条停止项是修复前证据，不代表修复已通过。生产保持 `.5`。
-- 部分成功/在途/排队场景已精确验证扣 0.50、预留 0.75，重复取消幂等；明确失败与未知结果、101/501 项分页定向测试通过，真实 PostgreSQL CAS 三组测试、前端类型/定向 lint 通过。普通同步上游未知结果的核对恢复仍待闭环，详见复核报告；不把这条写作整轮验收完成。
-- 本地取消修复提交：`55765c473`；保留已通过测试和下述剩余门禁，不推送。此提交不改变生产版本号。
+> **最新发布（2026-10-14，deployed）**：`0.2.16-custom.5` 已于 20:32–20:33（Asia/Shanghai）完成三站 app-only 更新，20:34 复核 healthy、重启 0、健康和静态入口 200、关键启动错误 0。代码、标签和镜像已推送；保留 `.4` 批量不额外打折、`.3` Nano Banana 修复及现有定制。
 
-### 2026-10-15 — 模块化停止收尾（修复前证据）
+> **账务边界**：只对新任务取消批量折扣，不重算历史任务、不补扣历史费用、不对上游超额返回的图片加收。新任务的 usage 基础费用与实扣金额分开记录；成功请求项数继续作为计费数量。
 
-- `2ed6a3617` 曾把 P5/P6 标记完成，现明确撤回：接口/装配/前端改造及局部门禁已完成，但完整验收未通过。WS scope 已补接，仍保留 .5 跨轮身份的既有限制。
-- 合成复现发现普通批量部分成功后取消会整笔释放 hold 而未结算成功项；候选及原基线 989594099 同样失败。触发方案账务停止条件，未修运行账务、未查改生产历史费用。
-- 详情及下一步：[复核报告](CUSTOM_MODULARIZATION_REVIEW_20261015.md)。工作树/分支不变，只有本地成果；未推送、未部署，生产保持 `.5`。下方“全部完成”是已撤回的历史判断，不得作为发布许可。
-- 最新本地代码/测试：`31545ff8a`、`d596bae70`、`fa677d301`；最后一项保留明确失败的旧账务回归用例。差异 lint 0 issues 不代表本分支整体通过。
+> **2026-10-14 共享交接**：下表记录最新生产进度，不代表本目录的源码已经更新。最新已发布代码在 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`；请继续读取该工作树的 `docs/CUSTOM_PROJECT_STATUS.md`、`docs/CUSTOM_FEATURE_LOG.md`、`docs/CUSTOM_UPGRADE_ISSUES.md` 和 `docs/UPGRADE_V0_2_16_ACCEPTANCE.md`。本目录旧分支上的公共文档页和 DNS 等未提交改动仍保留，不得重置或当作已发布代码。
 
-### 2026-10-14 — 模块化实施中（本地，不发布）
-
-- 用户已明确执行 P0–P6；在本工作树切新分支 `codex/custom-modularization-v0.2.16`，起点 `989594099`。生产/发布分支仍 `.5`，未修改远程或生产。
-- P0 `b3dbe92d6`、P1 `fc16d0875`、P2 `6497dcb0b`、P3 `1e5c18ec6`、P4 `4cbcaafef`、P5 `57ed1ca2d` 已本地提交并通过对应门禁；P6 本地 Docker/PG/Redis 联合验收已通过。尚未推送、建标签或部署。
-- 前端完整扫描 409 文件后，修复 3 个测试契约并定向复跑 48 项通过（`ad24ff36a`）；其余 406 文件通过，运行源码未变，复用已通过的类型/构建结果。完整证据见执行记录。
-- 当前执行入口：[方案](CUSTOM_MODULARIZATION_PLAN.md)、[逐阶段证据](CUSTOM_MODULARIZATION_EXECUTION.md)。根目录旧源码不修改，推送/部署另行确认。
-
-### 2026-10-15 — P0–P6 本地实施完成（历史错误判断，已撤回）
-
-- 原先根据局部定向/Docker 验收判断 P0–P6 完成，后经完整复核确认不成立；当前以页首及复核报告为准。候选环境始终仅使用合成数据，生产三站仍保持 `.5`。
-- 阶段提交和局部证据见 [逐阶段执行记录](CUSTOM_MODULARIZATION_EXECUTION.md)。账务停止项解决前不能发布，推送/镜像/生产操作仍需另行授权。
-
-### 2026-10-14 — 方案编写阶段（历史，后已获准实施）
-
-- 已编写 [定制层解耦与主线升级减负执行方案](CUSTOM_MODULARIZATION_PLAN.md)，以当前 `.5` 为基线，分 P0–P6 推进基线/门禁、前端/品牌、后端装配、生图/审计接口、故障策略及联合验收。
-- 本轮仅文档：不改运行代码、不提交推送、不修改远程设置、不构建或部署。生产继续 `.5`，下面发布记录保持有效。
-- 目标是收窄实际依赖和主线接入点，不机械搬目录，不新增业务或拆微服务；API、权限、计费及数据库行为保持。审批执行后先做 P0，推送与生产发布需后续明确授权。
-
-### 2026-10-14 — `.5` 三站发布完成（最新）
-
-- **完成**：`gateway-resilience` 统一可恢复故障切换已发布；运行提交 `00e8f24a40eba481d1e61cfebb5f4ab3f9401a2b`，标签 `custom-0.2.16.5` 已推送。本页下方“准备中 / 未发布”是此前阶段记录，不是当前状态。
-- **行为**：同账号 5 分钟累计 3 次明确 overload，默认冷却 10 分钟；额度/凭据/模型不可用及可恢复上游故障按类别限次并换号。参数/安全拒绝、已输出流不自动重放。保留原调度权重、分组权限和计费，不保证无健康备用账号时仍可成功。
-- **验证**：相关 Go 单测及 vet、隔离检查、生产构建通过；Docker 11 类合成故障验证通过，无真实模型费用；正式 GHCR 产物回拉与验收 image ID 一致。Actions 仍 disabled，使用本地验收产物直发，不声称 CI 通过。
-- **生产**：20:32–20:33（Asia/Shanghai）主站/L1/COS 顺序更新同一 digest；20:34 复核三站 healthy、重启 0，健康与静态入口 HTTP 200、关键启动错误 0。仅重建应用，无新迁移，数据库/Redis/反代保持。
-- **备份 / 回滚**：`/opt/sub2api-backups/v0.2.16-custom.5-20261014T120809Z` 已验证。回退 `.4` digest `sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e`，只回退应用，不恢复旧库。
-- **完整交接**：[验收及回滚说明](GATEWAY_RESILIENCE_V0_2_16_5_ACCEPTANCE.md)。下一轮从包含 `.5` 的本分支继续，不从落后的集成分支或根目录旧源码发布。
-
-### 2026-10-14 — 网关故障切换统一（`.5` 发布准备中）
-
-- **授权**：用户已要求按错误分类改造、推送、部署三站并更新日志；生产目前仍为 `.4`，以下不是部署成功记录。
-- **范围**：保留既有 overload 5 分钟 3 次冷却；在 OpenAI-compatible HTTP/透传/SSE/WS 共用错误语义，明确安全/参数/上下文拒绝不重试，凭据/硬额度/模型不可用直接换号。原生其它提供商继续原有协议，不重写所有网关。
-- **策略**：OAuth 普通瞬时 429 同账号恢复窗口从 2 分钟缩至 8 秒；尊重 Retry-After，较长等待直接换号；硬额度无 reset 使用至少 10 分钟可恢复冷却。普通 5xx 复用账号×模型 10/45 秒冷却，pool 不再忽略；520–524 首错 90 秒，504/52x 不原账号反复等待。WS 同次尝试配对错误去重。
-- **不变**：分组/模型权限、原调度优先级/评分、真实输出后不自动重放、插件已经提交不盲目重提、计费与数据结构。无新迁移。保留 `.4` 镜像供 app-only 回滚。
-- **验证**：相关单测正在完成整合复核；新增 `deploy/tests/gateway-failover-smoke.ps1` 通过隔离容器模拟主备故障及不应重试情景。尚未记录 Docker/生产通过；完成后在下方追加验收记录。
-
-### 2026-10-14 — 本地待发布：跨请求 overload 冷却
-
-- **状态**：`verified`（仅相关本地代码测试）；基于 `custom-0.2.16.4`，改动保留在本工作树 `codex/v0.2.16-image-studio`。没有提交、推送、打标签、构建发布镜像或部署；三站生产继续运行 `.4`。
-- **需求**：用户选择同一账号短时间跨请求累计 3 次 overload 后暂时避开。实现为 OpenAI 网关已识别的容量错误在滚动 5 分钟内累计 3 次，冷却复用现有 `overload_cooldown_settings` 开关/时长（未配置默认启用、10 分钟）。首次及第二次保留原请求级重试；第三次不再原账号重试，按既有健康、权限、模型及优先级调度备用。成功请求不清零窗口；一次上游尝试的配对错误帧只能计一次。
-- **边界**：HTTP 错误和 HTTP 200 内的流式失败都累计；已输出内容不自动重放，但仍计数以保护后续请求。修正排队心跳被算作输出的独立缺陷，不放宽未知上游数据帧的重放规则。没有承诺已经输出一半的流可无缝续写。
-- **保存及恢复**：Redis 原子滚动计数，现有 `accounts.overload_until` 持久化，正常请求不新增 Redis/数据库查询；冷却不因在途错误续期，到期自动恢复。人工恢复同步清本实例计数和 Redis；缓存故障使用有界进程内备用状态。
-- **兼容**：新增 `gateway-resilience` 定制登记及升级保护路径；无数据库迁移、生成代码变化、计费或模型权限改动。其它平台原有 529 策略保持。
-- **限制**：DB 写入失败时本实例仍暂避账号，持久化补偿由后续 overload 触发，未加后台任务。若以后同一站扩展多应用实例，人工清除没有跨实例本地缓存广播，其它实例可能继续冷却到原截止；当前每站单实例。不要把本地验证写成已部署。
-- **验证完成**：服务/handler 相关 overload、重试、SSE 心跳和 runtime-block 回归通过（29.164s/6.994s）；Redis 原子计数、滚动窗口、租约补偿等 9 组通过。管理员恢复与并发清除、WS 三类配对错误回归通过。最终组合 `go test -tags=unit ./internal/custom ./internal/service ./internal/handler ./internal/repository -run 'TestAccountOverload|TestOpenAIRepeatedOverload|TestOpenAIQueueHeartbeat|TestProxyResponsesWebSocketFromClient_CountsOverloadOncePerUpstreamTurn|TestAdminService_ClearAccountError|TestRateLimitService_Clear|TestBuiltInFeatureManifests|TestSameAccount'` 全部通过；四包 `go vet` 通过。迁移/manifest/保护路径检查通过；未改生成文件，完整生成检查因工作树未提交要求 clean 未通过，未声称全量 CI 通过。完整发布门禁、Docker 和生产验收尚未执行。
-
-> **最新进度（2026-10-14）**：`0.2.16-custom.5` 已推送并部署主站、L1、COS，统一故障切换验收通过；包含 `.4` 批量不额外打折和 `.3` Nano Banana 修复。原计费及历史账目不改。详细证据见最新功能日志和验收文档。
-
-> **最近运维（2026-10-14）**：清理本地 15 个、OVH 2 个无引用旧镜像，当前版本和回滚镜像保留；没有删除容器、数据库、卷或缓存，三站仍 healthy、重启 0。详见功能日志的“运维清理”记录，生产版本不变。
-
-### 2026-10-14 批量计费 `.4` 发布完成交接
-
-- **已推送记录**：计费修复 `29945161c`，发布运行提交 `c9f6829730c8f74bbf171e03b7e384e93e2f9ea2`，标签 `custom-0.2.16.4`；发布结果文档随后追加在本分支，文档提交不改变镜像 commit。
-- **共享入口**：`D:/projects/sub2api-custom/docs/CUSTOM_PROJECT_STATUS.md` 和 `CUSTOM_FEATURE_LOG.md` 已同步生产快照及本工作树位置；根目录源码仍是旧分支，不得覆盖其中其他会话的未提交修改。
-- **当前状态 / 下一步**：本次修复及三站部署完成。后续另行恢复 GitHub Actions，并核对其他功能会话后推进落后的集成分支；恢复前不能认为定时升级可用，不能从旧集成引用丢失 `.3`/`.4` 修复。
-- **验证范围**：复用已通过的相关单元/真实 PostgreSQL/前端检查；正式 GHCR 镜像拉回确认 digest 一致，Docker 三图结算/参考图/下载验收通过。生产只重建应用，未发起付费生图，未重建数据库、Redis、网络或卷。
-
-### 当前发布快照（2026-10-26）
-
-本表为本轮实际核验的生产/发布坐标，历史过程以页首说明和发布报告区分。
-
-| 项目 | 最近发布记录 |
+| 项目 | 当前值 |
 | --- | --- |
-| 记录日期 | 2026-10-27 |
-| 官方基线 | `v0.2.18` / `ac1b8f1271be0d674fa6f074403c1410f30a3a81` |
-| 当前定制版本 | `0.2.18-custom.4`（批量共享图单次上传、普通单图并发；GPT参考图16张） |
-| 最近生产版本 | 主站、L1、COS 均为 `0.2.18-custom.4` |
-| 最新已发布基线 | `custom-0.2.18.4` / `1524aa0985f432df19c9144c726224d2852308d6` |
-| 发布分支 | `codex/image-batch-16refs-20261026` |
-| 本轮工作树 | `D:/projects/sub2api-image-batch-16refs-20261026` |
-| 官方合并 / 本轮生图提交 | 官方合并 `885edb605`；本轮运行源 `1524aa098`；其后仅补文档 |
-| 长期集成基线 | `.18.4` 以 `b2ec356187dc74214c38a1a47e47b011228df074` 为起点；运行源与文档收尾分开，普通快进集成，实际远端须重新核对 |
-| 历史隔离改造 PR | 草稿 PR #1（状态待另行核验）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
+| 记录日期 | 2026-10-14 |
+| 官方基线 | `v0.2.16` / `01842576b3d5c1e2545b5a99ad555d36e28ed306` |
+| 三站最近发布版本 | `0.2.16-custom.5`；`.2` 仅源码标签，未部署 |
+| 发布标签 / 运行代码提交 | `custom-0.2.16.5` / `00e8f24a40eba481d1e61cfebb5f4ab3f9401a2b` |
+| 最新发布分支 | `codex/v0.2.16-image-studio` |
+| 已推送发布文档 | `989594099`；活动工作树 `docs/GATEWAY_RESILIENCE_V0_2_16_5_ACCEPTANCE.md`，验收脚本 `3fed247fa`；文档不改变运行镜像 |
+| 本目录源码状态 | `D:/projects/sub2api-custom` 仍是 `codex/isolation-refactor-v0.2.13` / `c9dd2286d`，不能直接用作下次升级起点 |
+| 长期集成基线 | 本地远程跟踪引用 `origin/custom/integration` / `fd7c1b91446a38666b7f5c32ab9d493f6431d071`，尚不包含 `.5` |
+| 当前隔离改造 PR | 草稿 PR #1（如仍未合并）：`codex/isolation-refactor-v0.2.13` → `custom/integration` |
 | 官方远程 | `upstream = Wei-Shaw/sub2api` |
 | Fork 远程 | `origin = Hzihuan001/sub2api` |
-| 主站生产镜像 digest | `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6` |
-| L1/COS 生产镜像 digest | `sha256:80adc97b50213ba840e68d6c13b932701cff294f04fb5dcd291ffe12b63f49e6` |
-| 当前发布状态 | `.18.4` 三站健康/发布验收通过；兼容应用回退目标 `.18.3`，未执行生产回滚 |
+| 三站生产镜像 | `ghcr.io/hzihuan001/sub2api@sha256:3a2f925574266819adc3cddad9595170cd71404519f315326f83d61098b6a80b` |
+| 当前发布状态 | `deployed`：主站、L1、COS 已部署 `.5`；healthy、重启 0，内外健康与静态入口均为 200，无关键启动错误 |
+
+### 本次交接结论与待办（`.5`）
+
+- **实现 / 验证**：`gateway-resilience` 已登记升级保护。相关 Go 回归及 Docker 11 场景通过；正式镜像回拉一致。原调度权重、分组权限和计费保持，无新迁移。无健康备用时仍会失败，已输出流不保证无缝续写。
+- **备份 / 回滚**：`/opt/sub2api-backups/v0.2.16-custom.5-20261014T120809Z` 的三站 dump、数据 tar、部署配置和 SHA 校验通过；回退 `.4` digest `sha256:a4b7d421e233a1484c92b02780fd2a2421d4ea450fc2a184c82ac253289c045e`，只退应用不恢复旧库。
+- **新会话起点**：从包含 `custom-0.2.16.5` 的活动发布分支继续，先读其 `GATEWAY_RESILIENCE_V0_2_16_5_ACCEPTANCE.md`。根目录旧源码不能发布；Actions 恢复和落后的集成分支待后续处理。本次使用本地门禁直发，不声称 CI 通过。
+
+### `.4` 发布交接（历史，已被 `.5` 包含；不是当前回滚目标）
+
+- **已完成**：在 v0.2.16 和 Nano Banana 热修复基础上，取消所有新批量任务的额外折扣；管理员创建、更新、复制分组均将批量折扣归一为 1，冻结比例至少为 1。v2 usage 记录倍率前基础费用，实扣仍使用提交快照中的既有分组、用户和账号倍率。
+- **数据库验收**：三站均存在 1 条 `9000_custom_batch_image_no_discount.sql` 迁移记录。主站/L1/COS 的 36/12/12 个分组折扣全部为 1、冻结比例全部至少为 1；主站 17 个旧任务的价格快照及已结算 actual 金额未变，L1/COS 无旧任务。
+- **测试 / 发布依据**：本地最终镜像的三图 `$0.03`、并发、参考图、ZIP 与单张下载验收全部通过；代码、`custom-0.2.16.4` 标签和同一镜像 digest 已推送。三站生产验收在 15:52–15:54（Asia/Shanghai）完成；详细发布文档已提交并推送为 `dde88cd3dd05907d0c13a37258863e15b5c2d1d6`，活动工作树 clean。
+- **备份 / 回滚**：`/opt/sub2api-backups/v0.2.16-custom.4-20261014T074350Z` 的 dump 目录、tar 与 SHA 校验已验证。回滚使用 `.3` digest `sha256:a96e2a5a52e0d7a83a9829371715359b2afcc0a02168fe8bded77b55dcfdeec3`，只回退应用、不恢复数据库；保留迁移后分组折扣 1 和旧任务快照，不撤销本次数据规范化。
+- **后续维护，不影响本次部署完成**：GitHub Actions 仍 disabled，本次通过本地门禁直接发布，不能写成 CI 已通过。集成分支尚未纳入最新发布；后续另行恢复 Actions，并在检查其他功能会话提交后推进集成基线，本次未修改这些远程设置。
+- **新会话起点**：先读最新发布工作树共享文档，核对提交与未提交改动；从包含 `custom-0.2.16.4` 的基线继续。保留新旧计价快照、历史不补扣、超额返回不加收，以及目录兼容和白名单边界的回归测试。根工作区 v0.2.13 源码不作为发布起点。
 
 生产健康检查最近确认通过的入口：
 
@@ -508,39 +192,9 @@
 - `https://api.moshu.cloud/health`
 - `https://cos.moshu.cloud/health`
 
-2026-10-12 两个下游入口切换到 Moshu 子域名并开启 Cloudflare 代理；旧 `tokenpulse.top` 入口保留。OVH OpenResty 继续使用 HTTPS、10 小时读写超时和关闭响应缓冲。域名运维记录见功能日志。
+旧下游入口 `api.tokenpulse.top`、`cos.tokenpulse.top` 暂保留作为对照。2026-10-12 域名迁移时，新下游域名在 OVH OpenResty 上使用已签发的 SAN 证书，Cloudflare DNS 状态为 `Proxied`；该次域名操作没有变更应用镜像或数据服务，后续应用发布以本页最新快照为准。
 
-本次三站统一使用上述 `.18.3` digest；备份及兼容应用回退 `.18.2` 的说明见 [发布记录](CUSTOM_RELEASE_0_2_18_CUSTOM3_20261026.md)。本次无新增迁移，旧迁移全行不变；回退不恢复旧数据库覆盖上线后业务数据。下方较早版本日志保留当时事实，不代表当前生产版本。
-
-### 批量无额外折扣（2026-10-14，deployed）
-
-- **新任务**：所有 provider 额外批量倍率固定 1，冻结倍率至少 1；普通收费倍率不移除，v2 使用日志区分基础和实际金额。分组 UI 不再显示批量折扣控件。
-- **历史保护**：迁移只更新分组两项批量策略和未来记录默认值，不回写任务/使用记录/余额。生产主站 17 个旧任务价格快照和已结算金额与备份一致，L1/COS 原本无批量任务。
-- **生产结果**：15:52–15:54（Asia/Shanghai）主站/L1/COS 顺序部署；36/12/12 个分组的折扣均为 1、冻结倍率均至少 1，新迁移每站执行一次；三站 healthy、重启 0，版本/commit/digest/Compose 一致，健康及工作台入口 200，关键启动错误 0。
-- **后续边界**：一批使用记录按成功请求子任务汇总；上游超额返回图片的展示数量问题未扩展重构，不自动追加收费。已在途的旧任务仍沿用其创建时价格，不追溯补扣。
-
-### Nano Banana 热修复（2026-10-14，deployed）
-
-- **根因**：第三方 Gemini 上游在 `/v1beta/models` 返回 OpenAI `data[].id` 信封，原工作台只读取 `models[].name`；模型真实存在，不是账号停用或白名单拒绝。
-- **边界**：`gemini_models_endpoints.go` 将成功的兼容目录转为 Gemini 格式后再经过原有分组白名单；前端兼容两种信封，原生空列表保持空，不能从备用字段重新填充被权限过滤的模型。
-- **不变**：生成路径、调度、计费、尺寸、参考图和下载；不额外查询停用/限流账号，不注入静态假模型，无数据库迁移。
-- **验证**：受影响 service/handler 单测、Go vet 通过；前端 API/视图 25 项、typecheck、定向 lint、Docker 生产构建通过。隔离容器用兼容格式与非法条目验证允许/拒绝模型目录通过。发布镜像拉回本地与验收镜像 digest 完全一致。
-- **生产验收**：13:28–13:30（Asia/Shanghai）顺序完成主站/L1/COS；三站 healthy、重启 0、版本/commit/digest 一致，内外 `/health` 和公网工作台入口 200，启动后无 panic/fatal/迁移失败/数据库或 Redis 错误。主站真实 Nano Banana 分组密钥对本机与公网 `/v1beta/models` 均返回 `models/gemini-nano-banana-2.1`；未提交生产付费生图。
-- **发布方式**：代码分支和 `custom-0.2.16.3` 已推送。GitHub 工作流 dispatch 仍返回 `Actions has been disabled`，按上一轮方式在本地门禁通过后直接发布已验收镜像到 GHCR；不把此次记录称作 CI 通过。
-- **后续**：下次升级从 `.3` 或包含它的更新提交开始；保留两种模型目录信封、异常条目和白名单回归。下一步可修复 GitHub Actions 运行限制；不影响本次生产完成。
-
-### `.1` 官方升级验收摘要（2026-10-14，历史证据）
-
-- **Feature ID**：官方升级及 `image-studio`；状态：`deployed`，本地验收见 [`UPGRADE_V0_2_16_ACCEPTANCE.md`](UPGRADE_V0_2_16_ACCEPTANCE.md)，问题处理见 [`CUSTOM_UPGRADE_ISSUES.md`](CUSTOM_UPGRADE_ISSUES.md)。
-- **移植来源**：`codex/image-studio-session-20261004` / `01124885d` 中 14 个功能提交；不整分支合并旧 v0.2.13，不移植旧 VERSION，不重复移植已发布的用户隔离画廊。
-- **生图行为**：Nano Banana/Gemini 原生模型发现与 IMAGE 路由；Seedream 5 部署别名、模型特定尺寸/参考图/格式约束；原生 Gemini 保留 1K/2K/4K 档位且不接受自定义像素；返回图片按真实 MIME 下载。仍隐藏实际像素文字、不本地放大、不改变输出优先计费。
-- **异步安全**：仅 BananaRouter 明确能力账号走异步协议；提交意图和 task ID 保存到现有 item JSONB，重启恢复轮询，取消后保留已成功图片并正常结算。未知提交结果超过 24 小时需要人工核账，不盲目重提或退款；部署前应等待旧版未持久化 task ID 的在途任务完成。
-- **数据与兼容**：本次没有定制数据库迁移；追加官方 242-245 迁移，历史迁移文件名/校验值不改。浏览器 IndexedDB v2 用户隔离保持。
-- **已有验证**：前端全量 401 文件/2998 项通过，最终窄修复另有 25 项回归、平台 5 项、lint、typecheck/生产构建通过；真实 PostgreSQL 批量任务/缓存/分组与异步 CAS 集成测试通过；Ent 临时目录完整生成比对无差异，Wire 生成通过。后端唯一失败的协议测试夹具修复后连续 50 次及相关回归通过。
-- **Docker 验收**：`sub2api-operator-test-v0216` / `http://127.0.0.1:18086`；权限、重启持久化、mock 生图/三张 fan-out/参考图/MIME/单张与 ZIP 下载、合成结算通过。四个官方新迁移完成（318 → 322），同数据库旧镜像回滚启动/登录/模型发现通过。候选已恢复。
-- **生产验收**：主站、L1、COS 容器均 healthy，重启次数为 0；`https://ai.moshu.cloud/health`、`https://api.moshu.cloud/health`、`https://cos.moshu.cloud/health` 均返回 200。三站运行版本、commit 和 digest 一致，应用日志未见 panic/fatal/迁移失败/数据库或 Redis 错误。Redis 认证连通，未重建数据服务。
-- **清理**：保留当前 digest、主站旧 digest、L1/COS 旧 digest和 rollback 镜像；删除未使用的旧 Sub2API 镜像、CPA `v8.0.23`/`v8.0.8` 和可回收构建缓存。未删除卷、网络、当前 CPA、证书或数据库镜像。
-- **协作注意**：根目录 `D:/projects/sub2api-custom` 有其他会话的未提交公共文档/DNS记录；不要重置或覆盖。`custom/integration` 仍落后，升级必须先核对最新发布与功能会话提交，验收后再推进集成基线。
+生产发布必须继续使用通过验收的同一镜像 digest，不在不同服务器重新构建。
 
 ## 2. 当前定制功能边界
 
@@ -552,22 +206,20 @@
 | --- | --- | --- | --- |
 | `operator` | operator 角色、管理端固定权限、菜单/路由过滤、权限管理 | `backend/internal/authz`、`backend/internal/server/middleware`、`frontend/src/authz`、管理员视图 | 保留并受测试保护 |
 | `prompt-audit` | Prompt Audit、`capture_only`、事件列表/详情/筛选/导出/清理 | `backend/internal/securityaudit`、`frontend/src/features/prompt-audit` | 保留并受测试保护 |
-| `image-studio` | 生图工作台、批量任务、应用层拆分、单张/ZIP 下载；GPT-image/`chatgpt-image-latest` 单生图、批量共享及逐条参考图均最多16；其他模型按各自能力，批量Nano/Gemini14、Seedream10、Flash3 | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、`frontend/src/utils/imageGenerationPolicy.ts`、用户生图视图 | `0.2.18-custom.4` 已部署；共享图仅传一次，具体绑定错误；保留总量、尺寸、质量与计费，无新增迁移 |
+| `image-studio` | 生图工作台、批量任务、应用层拆分、参考图、单张/ZIP 下载 | `backend/internal/service/batch_image_*`、`frontend/src/features/image-studio`、用户生图视图 | 保留并受测试保护 |
 | `branding` | 对客品牌和公共文案统一为 Moshu，隐藏不应出现在对客界面的上游项目名称 | `frontend/src/i18n`、公共页面和品牌处理逻辑 | 保留；每次升级需做文案扫描 |
 | `usage-extras` | 管理员使用记录增强，例如缓存命中率、分页和 API Key 管理辅助能力 | 管理员使用记录 handler/view 及对应测试 | 保留；管理员侧可见，用户侧按权限隐藏 |
-| `gateway-resilience` | 保留分组配置适配与原生安全重试/认证/限流保护；自定义规则不全局停账号；仅给导致成功切组的最后一条已有上游错误加目标组标签，使用记录不变 | `group_failure_*`、网关窄适配、`ops_route_switch_label.go`、前端 `features/gateway-resilience` | `0.2.18-custom.3` 保留；错误标签已随 `.14` 起发布，复用既有错误 JSON、无新增迁移 |
-| `key-routing` | 最多5个分组按优先级排列，支持组可调度性/模型选路；`account_v2` 按Key/账号/分组/模型/端点避让，先尝试同组其他账号，再安全切后续组；TTFT/SLA/失败/状态码等规则、Key模型限制、授权目录并集、管理员共享完整Key编辑；按实际使用组原生计费 | 纯 `internal/keyrouting`、薄 service/handler、独立扩展仓储/Redis、前端 `features/key-routing` | `0.2.18-custom.3` 保留 `.13` 账号级路由及旧 `group_v1` 兼容，迁移 `9000–9004`；`.16` 增加Responses明确引用拒绝后清理被拒指针、保留当前输入的恢复；内容/已知用量/副作用后不重放，不承诺缺失历史可恢复或图片/WS/后台任务任意跨组重放 |
 
 历史代理商/分站运行时功能已从当前定制层移除，不应在后续官方升级时被旧分支或旧 PR 自动带回。历史代理商阶段只在
 [`CUSTOM_FEATURE_LOG.md`](CUSTOM_FEATURE_LOG.md) 中留作变更记录。
 
-## 3. 如何降低后续合并成本
+## 3. 为什么以后合并会明显容易
 
-> **流程生效前提（2026-10-14）**：第 3–5 节描述已实现的升级机制；Actions 恢复且 `custom/integration` 确认包含最新已验收功能之前，不得直接依赖定时升级或从旧集成基线开始。
+> **流程生效前提（2026-10-14）**：下面描述的是已实现的升级机制，不代表自动任务当前正在成功运行。Actions 恢复且 `custom/integration` 确认包含最新已验收功能之前，不得直接依赖定时升级或从旧集成基线开始；第 4、5 节同样受此条件约束。
 
-已建立下面这些减少人工遗漏和分散冲突的机制；本轮又收窄了定制接入边界。但下一次真实升级的冲突数量和耗时尚未测量，不能预先承诺“大幅降低”或零冲突：
+是的，和过去直接在生产分支上叠加定制代码相比，下一次官方主线更新的合并难度会大幅降低，原因是：
 
-1. 官方代码、长期集成基线和临时升级分支已经分离。升级前先确认 `custom/integration` 包含最近验收代码；如落后，明确选择最新已提交定制基线并记录遗漏提交，不能从过期分支开始或整合历史旧分支。
+1. 官方代码、长期集成基线和临时升级分支已经分离。升级前先确认 `custom/integration` 包含最近已验收定制；若落后，明确选择最新已提交基线并记录待回补内容，不能从过期分支开始或整合历史旧分支。
 2. `.github/workflows/upstream-sync.yml` 会定期或手动选择稳定 `vX.Y.Z` 标签，自动创建 `upgrade/upstream-vX.Y.Z` 分支和草稿 PR。
 3. 上游 merge 会先单独提交，再处理定制补丁；每个边界可用 `range-diff` 检查，冲突不会被悄悄吞掉。
 4. `scripts/check-custom-isolation.py` 会检查生成代码、迁移是否 append-only、feature manifest 是否同步，以及受保护路径是否仍存在。
@@ -575,7 +227,7 @@
 6. `custom/manifest.yml` 和 `.github/custom-features.json` 为定制功能提供稳定 ID，不再依赖显示名称、路由名称或数据库表名作为升级识别依据。
 7. 自动同步流程没有部署权限。没有通过本地 Docker 验收、镜像质量门禁和人工发布确认，就不会改变任何生产环境。
 
-机械合并和基础回归的脚本已经实现；远端实际调度、最新集成基线和草稿 PR 链路仍需在获准后验证，不能据此称自动化已经恢复。以下情况仍需要人工判断：
+这意味着“机械合并和基础回归”已经自动化，但不是零风险。以下情况仍需要人工判断：
 
 - 官方改动了同一权限、菜单、Prompt Audit 或生图宿主边界；
 - 官方新增或重排数据库迁移；
@@ -684,7 +336,7 @@ pwsh -NoProfile -File scripts/sync-upstream.ps1 `
 
 ### 版本更新会话的职责
 
-版本更新会话只消费已登记且可验证的定制边界：先验证 `custom/integration` 与最新已验收提交一致，再通过自动升级 PR 合并官方版本，并按日志中的测试和发布证据复核功能。基线落后时必须记录真实起点与选择性回补提交。不能把聊天内容当作已完成代码，也不能把已移除代理商功能重新套回当前版本。
+版本更新会话只消费已登记且可验证的定制边界：以 `custom/integration` 为基线，通过自动升级 PR 合并官方版本，并按日志中的测试和发布证据复核功能。它不能把其他会话聊天内容当作已完成代码，也不能把旧历史分支或已移除代理商功能重新套回当前版本。
 
 如果某个定制会话尚未完成，版本更新会话必须将其标为阻塞或待复核，不得静默覆盖；如果官方升级和定制会话同时修改同一文件，应先暂停其中一个会话并记录冲突归属。
 
