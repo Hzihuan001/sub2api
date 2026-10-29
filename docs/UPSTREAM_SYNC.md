@@ -1,6 +1,15 @@
 # Upstream upgrade PRs
 
 
+### 2026-10-29 — v0.2.19 route compatibility hotfix
+
+- 官方 `v0.2.19` 将角色权限路由 `/admin/roles` 纳入主线，导致旧定制 manifest 与官方路由重复，前端在挂载前失败。
+- `8020d226a` 在 `mergeCustomRoutes` 中只对同路径、同名称的 host route 做幂等复用；不同名称的路径冲突仍阻断启动并暴露错误。
+- 已验证 31 项角色路由/菜单集成测试、前端类型检查、183 个生产动态资源、三站健康接口。
+- 发布镜像：`ghcr.io/hzihuan001/sub2api:0.2.19-custom.2@sha256:5dfe6d4208edb477ea1f6e5980e0f4dd08c317b22c4fa89ad344ffc6112fecdd`。
+- 已重新部署主站、L1、COS；回滚前 compose 备份：`/opt/sub2api-backups/v0.2.19-custom.2-route-fix-20261029T0145Z`。
+
+
 ### 2026-10-29 — upstream v0.2.19
 
 - **上游**：`v0.2.19` → `dece26153621959ccd7635814f4b2d08304e681a`。

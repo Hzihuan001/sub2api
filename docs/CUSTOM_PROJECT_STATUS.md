@@ -1,6 +1,15 @@
 # 定制项目状态与官方升级说明
 
 
+### 2026-10-29 — 0.2.19-custom.2 — 修复官方角色路由冲突并重新发布
+
+- **问题**：官方 `v0.2.19` 已包含 `/admin/roles`，定制角色功能仍重复注册同一路由；前端启动阶段完整性校验抛出 `Duplicate custom route path: /admin/roles`，导致页面只返回 HTML 空壳而不挂载 Vue。
+- **修复**：`frontend/src/custom/hostAdapters.ts` 在合并路由时识别“同路径、同名称”的官方路由并复用官方定义；不同名称的真实冲突仍继续报错，避免静默覆盖。保留定制菜单、权限和页面组件。
+- **提交/版本**：修复提交 `8020d226a`，版本 `0.2.19-custom.2`；镜像 `ghcr.io/hzihuan001/sub2api:0.2.19-custom.2`，摘要 `sha256:5dfe6d4208edb477ea1f6e5980e0f4dd08c317b22c4fa89ad344ffc6112fecdd`。
+- **验证**：前端类型检查通过；角色路由/菜单集成测试 31/31 通过；三站动态前端资源 183/183 返回 200；三站 `/health` 200，容器 healthy、restart 0，启动错误扫描无匹配。
+- **生产**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 已统一切换到该镜像，仅重建应用容器，未改数据库、Redis、卷或业务配置。部署前 compose 备份位于服务器 `/opt/sub2api-backups/v0.2.19-custom.2-route-fix-20261029T0145Z`。
+
+
 ### 2026-10-29 — 0.2.19-custom.1 — 官方 v0.2.19 合并并三站生产发布
 
 - **官方基线**：`v0.2.19`，提交 `dece26153621959ccd7635814f4b2d08304e681a`；基于远端 `custom/integration` `86ae08dbb450eb1090c2a076c3d8da7865ac7cf7`。
