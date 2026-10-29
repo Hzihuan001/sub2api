@@ -11,6 +11,11 @@ import {
 } from './registry'
 import type { CustomSettingsTab } from './registry'
 
+function hostRoutePath(path: string, parent: string): string {
+  const resolved = path.startsWith('/') ? path : `${parent}/${path}`
+  return resolved.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/'
+}
+
 /** Minimal view model consumed by host navigation surfaces. */
 export interface HostCustomNavItem {
   path: string
@@ -37,7 +42,33 @@ export function mergeCustomRoutes(
 ): readonly RouteRecordRaw[] {
   const customRoutes = getCustomRoutes(registry)
   if (customRoutes.length === 0) return baseRoutes
-  assertCustomRouteResources(customRoutes, baseRoutes)
+
+  // Official releases may absorb one of our formerly custom routes.  Keep the
+  // feature manifest stable across upgrades, but let the host-owned route win
+  // when both declarations have the same normalized path and route name.  A
+  // path collision with a different name is still rejected below so a real
+  // integration mistake cannot silently change routing behavior.
+  const hostPaths = new Set<string>()
+  const hostNames = new Set<string | symbol>()
+  const collectHostResources = (routes: readonly RouteRecordRaw[], parent = ''): void => {
+    for (const route of routes) {
+      const path = hostRoutePath(route.path, parent)
+      const claimsPath = route.path === '' && parent ? false : true
+      if (claimsPath) hostPaths.add(path)
+      if (route.name !== undefined) hostNames.add(route.name)
+      if (route.children) collectHostResources(route.children, path)
+    }
+  }
+  collectHostResources(baseRoutes)
+
+  const effectiveCustomRoutes = customRoutes.filter((route) => {
+    const path = hostRoutePath(route.path, '')
+    if (!hostPaths.has(path)) return true
+    if (route.name !== undefined && hostNames.has(route.name)) return false
+    return true
+  })
+  if (effectiveCustomRoutes.length === 0) return baseRoutes
+  assertCustomRouteResources(effectiveCustomRoutes, baseRoutes)
 
   const catchAllIndex = baseRoutes.findIndex(
     (route) => route.name === 'NotFound' || route.path === '/:pathMatch(.*)*'
@@ -45,7 +76,7 @@ export function mergeCustomRoutes(
   const insertionIndex = catchAllIndex >= 0 ? catchAllIndex : baseRoutes.length
   return [
     ...baseRoutes.slice(0, insertionIndex),
-    ...customRoutes,
+    ...effectiveCustomRoutes,
     ...baseRoutes.slice(insertionIndex)
   ]
 }
