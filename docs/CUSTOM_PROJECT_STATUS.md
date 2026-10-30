@@ -27,6 +27,7 @@
 - **持久化保护**：结果保存失败时保留租约，不提前 finalize；租约过期后允许完整任务重试。修复提交 `3c90e3310`，未推送。
 - **真实集成**：通过临时 Go + Docker CLI 容器挂载 Docker Desktop socket，真实 Testcontainers PostgreSQL/Redis 集成测试通过，`TestScheduledTestPlanClaimDueLeaseAndFinalize` 用时约 189 秒；测试容器已清理。
 - **Runner 行为**：新增单元测试覆盖 Pelican 失败结果落库和 `next_run_at` 推进；Docker 定向 Go 测试通过。
+- **旧镜像兼容**：旧镜像 `0.2.19-custom.2` 在独立数据库追加 9005/9006 后重启，health 200 且无 panic/启动错误；临时容器/卷已清理。
 
 
 ### 2026-10-30 — 阶段 A 执行：ownership 登记与孤儿路径门禁（未发布）

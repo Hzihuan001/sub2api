@@ -32,6 +32,10 @@
 - **测试**：新增 `TestScheduledTestRunnerPersistsPelicanFailureAndAdvancesSchedule`，验证分组测试失败仍保存结果并推进调度。
 - **验证/提交**：Docker 定向 Go 测试通过，提交 `00cd40be8`，未推送。
 
+### 2026-10-30 — 未发布 — P0 旧镜像读取兼容验收
+
+- **结果**：旧镜像 `0.2.19-custom.2` 在追加 9005/9006 结构后重启成功，health 200、无启动错误；临时数据库和容器已清理。
+
 ### 2026-10-30 — 未发布 — 阶段 A 完成 ownership 登记与孤儿路径门禁
 
 - **改动**：登记 `pelican-showcase`、9005 迁移和批量生图实际后端/前端路径；补充 `.github` 功能元数据、后端 FeatureID 和升级保护路径。
