@@ -30,6 +30,21 @@
         </div>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">测试类型</label>
+            <select v-model="newPlan.test_kind" class="input w-full">
+              <option value="connection">连接测试</option>
+              <option value="pelican">鹈鹕测智（同题作品）</option>
+            </select>
+            <p v-if="newPlan.test_kind === 'pelican'" class="mt-1 text-xs text-gray-400 dark:text-gray-500">使用固定鹈鹕动画题，结果会展示在用户端鹈鹕测智页面。</p>
+          </div>
+          <div v-if="newPlan.test_kind === 'pelican'">
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">目标分组</label>
+            <select v-model="newPlan.group_id" class="input w-full">
+              <option :value="null">请选择分组</option>
+              <option v-for="group in groupOptions" :key="group.id" :value="group.id">{{ group.name }}</option>
+            </select>
+          </div>
+          <div>
             <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.model') }}
             </label>
@@ -90,6 +105,10 @@
               placeholder="100"
             />
           </div>
+          <div v-if="newPlan.test_kind === 'pelican'" class="sm:col-span-2">
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">测试提示词</label>
+            <textarea v-model="newPlan.test_prompt" class="input min-h-20 w-full resize-y" placeholder="留空使用默认鹈鹕骑自行车 HTML 题目" />
+          </div>
           <div class="flex items-end">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <Toggle v-model="newPlan.enabled" />
@@ -117,7 +136,7 @@
           </button>
           <button
             @click="handleCreate"
-            :disabled="!newPlan.model_id || !newPlan.cron_expression || creating"
+            :disabled="!newPlan.model_id || !newPlan.cron_expression || (newPlan.test_kind === 'pelican' && !newPlan.group_id) || creating"
             class="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Icon v-if="creating" name="refresh" size="sm" class="animate-spin" :stroke-width="2" />
@@ -165,6 +184,8 @@
                   {{ plan.cron_expression }}
                 </div>
               </div>
+              <span v-if="plan.test_kind === 'pelican'" class="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">鹈鹕测智</span>
+              <span v-if="plan.test_kind === 'pelican' && plan.group_id" class="inline-flex max-w-40 shrink-0 truncate rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-dark-700 dark:text-dark-300">{{ groupName(plan.group_id) }}</span>
 
               <!-- Enabled Toggle -->
               <div class="flex items-center gap-1.5" @click.stop>
@@ -240,6 +261,20 @@
             </div>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
+                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">测试类型</label>
+                <select v-model="editForm.test_kind" class="input w-full">
+                  <option value="connection">连接测试</option>
+                  <option value="pelican">鹈鹕测智（同题作品）</option>
+                </select>
+              </div>
+              <div v-if="editForm.test_kind === 'pelican'">
+                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">目标分组</label>
+                <select v-model="editForm.group_id" class="input w-full">
+                  <option :value="null">请选择分组</option>
+                  <option v-for="group in groupOptions" :key="group.id" :value="group.id">{{ group.name }}</option>
+                </select>
+              </div>
+              <div>
                 <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.model') }}
                 </label>
@@ -300,6 +335,10 @@
                   placeholder="100"
                 />
               </div>
+              <div v-if="editForm.test_kind === 'pelican'" class="sm:col-span-2">
+                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">测试提示词</label>
+                <textarea v-model="editForm.test_prompt" class="input min-h-20 w-full resize-y" placeholder="留空使用默认鹈鹕骑自行车 HTML 题目" />
+              </div>
               <div class="flex items-end">
                 <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <Toggle v-model="editForm.enabled" />
@@ -327,7 +366,7 @@
               </button>
               <button
                 @click="handleEdit"
-                :disabled="!editForm.model_id || !editForm.cron_expression || updating"
+                :disabled="!editForm.model_id || !editForm.cron_expression || (editForm.test_kind === 'pelican' && !editForm.group_id) || updating"
                 class="flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Icon v-if="updating" name="refresh" size="sm" class="animate-spin" :stroke-width="2" />
@@ -475,7 +514,7 @@ import { Icon } from '@/components/icons'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/format'
-import type { ScheduledTestPlan, ScheduledTestResult } from '@/types'
+import type { AdminGroup, ScheduledTestPlan, ScheduledTestResult } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -484,6 +523,7 @@ const props = defineProps<{
   show: boolean
   accountId: number | null
   modelOptions: SelectOption[]
+  groupOptions: AdminGroup[]
 }>()
 
 const emit = defineEmits<{
@@ -512,6 +552,9 @@ const editingPlanId = ref<number | null>(null)
 const updating = ref(false)
 const editForm = reactive({
   model_id: '' as string,
+  test_kind: 'connection' as string,
+  group_id: null as number | null,
+  test_prompt: '' as string,
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
@@ -520,6 +563,9 @@ const editForm = reactive({
 
 const newPlan = reactive({
   model_id: '' as string,
+  test_kind: 'connection' as string,
+  group_id: null as number | null,
+  test_prompt: '' as string,
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
@@ -528,6 +574,9 @@ const newPlan = reactive({
 
 const resetNewPlan = () => {
   newPlan.model_id = ''
+  newPlan.test_kind = 'connection'
+  newPlan.group_id = null
+  newPlan.test_prompt = ''
   newPlan.cron_expression = ''
   newPlan.max_results = '100'
   newPlan.enabled = true
@@ -570,7 +619,10 @@ const handleCreate = async () => {
     const maxResults = Number(newPlan.max_results) || 100
     await adminAPI.scheduledTests.create({
       account_id: props.accountId,
+      group_id: newPlan.test_kind === 'pelican' ? newPlan.group_id : null,
       model_id: newPlan.model_id,
+      test_kind: newPlan.test_kind,
+      test_prompt: newPlan.test_prompt,
       cron_expression: newPlan.cron_expression,
       enabled: newPlan.enabled,
       max_results: maxResults,
@@ -603,6 +655,9 @@ const handleToggleEnabled = async (plan: ScheduledTestPlan, enabled: boolean) =>
 const startEdit = (plan: ScheduledTestPlan) => {
   editingPlanId.value = plan.id
   editForm.model_id = plan.model_id
+  editForm.test_kind = plan.test_kind || 'connection'
+  editForm.group_id = plan.group_id ?? null
+  editForm.test_prompt = plan.test_prompt || ''
   editForm.cron_expression = plan.cron_expression
   editForm.max_results = String(plan.max_results)
   editForm.enabled = plan.enabled
@@ -618,7 +673,10 @@ const handleEdit = async () => {
   updating.value = true
   try {
     const updated = await adminAPI.scheduledTests.update(editingPlanId.value, {
+      group_id: editForm.test_kind === 'pelican' ? editForm.group_id : null,
       model_id: editForm.model_id,
+      test_kind: editForm.test_kind,
+      test_prompt: editForm.test_prompt,
       cron_expression: editForm.cron_expression,
       max_results: Number(editForm.max_results) || 100,
       enabled: editForm.enabled,
@@ -636,6 +694,8 @@ const handleEdit = async () => {
     updating.value = false
   }
 }
+
+const groupName = (groupID: number) => props.groupOptions.find(group => group.id === groupID)?.name || `分组 ${groupID}`
 
 const confirmDeletePlan = (plan: ScheduledTestPlan) => {
   deletingPlan.value = plan

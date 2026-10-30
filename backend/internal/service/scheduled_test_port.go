@@ -9,7 +9,10 @@ import (
 type ScheduledTestPlan struct {
 	ID             int64      `json:"id"`
 	AccountID      int64      `json:"account_id"`
+	GroupID        *int64     `json:"group_id,omitempty"`
 	ModelID        string     `json:"model_id"`
+	TestKind       string     `json:"test_kind"`
+	TestPrompt     string     `json:"test_prompt,omitempty"`
 	CronExpression string     `json:"cron_expression"`
 	Enabled        bool       `json:"enabled"`
 	MaxResults     int        `json:"max_results"`
@@ -19,6 +22,12 @@ type ScheduledTestPlan struct {
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
+
+const (
+	ScheduledTestKindConnection = "connection"
+	ScheduledTestKindPelican   = "pelican"
+	DefaultPelicanTestPrompt   = "Create a self-contained HTML file with a 2D SVG animation of a pelican riding a bicycle."
+)
 
 // ScheduledTestResult represents a single test execution result.
 type ScheduledTestResult struct {

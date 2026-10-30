@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -19,17 +20,20 @@ func NewScheduledTestPlanRepository(db *sql.DB) service.ScheduledTestPlanReposit
 }
 
 func (r *scheduledTestPlanRepository) Create(ctx context.Context, plan *service.ScheduledTestPlan) (*service.ScheduledTestPlan, error) {
+	if err := r.validateScheduledTestPlan(ctx, plan); err != nil {
+		return nil, err
+	}
 	row := r.db.QueryRowContext(ctx, `
-		INSERT INTO scheduled_test_plans (account_id, model_id, cron_expression, enabled, max_results, auto_recover, next_run_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-		RETURNING id, account_id, model_id, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
-	`, plan.AccountID, plan.ModelID, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
+		INSERT INTO scheduled_test_plans (account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, next_run_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+		RETURNING id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
+	`, plan.AccountID, plan.GroupID, plan.ModelID, normalizeScheduledTestKind(plan.TestKind), plan.TestPrompt, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
 	return scanPlan(row)
 }
 
 func (r *scheduledTestPlanRepository) GetByID(ctx context.Context, id int64) (*service.ScheduledTestPlan, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, account_id, model_id, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
+		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_test_plans WHERE id = $1
 	`, id)
 	return scanPlan(row)
@@ -37,7 +41,7 @@ func (r *scheduledTestPlanRepository) GetByID(ctx context.Context, id int64) (*s
 
 func (r *scheduledTestPlanRepository) ListByAccountID(ctx context.Context, accountID int64) ([]*service.ScheduledTestPlan, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, account_id, model_id, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
+		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_test_plans WHERE account_id = $1
 		ORDER BY created_at DESC
 	`, accountID)
@@ -50,7 +54,7 @@ func (r *scheduledTestPlanRepository) ListByAccountID(ctx context.Context, accou
 
 func (r *scheduledTestPlanRepository) ListDue(ctx context.Context, now time.Time) ([]*service.ScheduledTestPlan, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, account_id, model_id, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
+		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_test_plans
 		WHERE enabled = true AND next_run_at <= $1
 		ORDER BY next_run_at ASC
@@ -63,12 +67,15 @@ func (r *scheduledTestPlanRepository) ListDue(ctx context.Context, now time.Time
 }
 
 func (r *scheduledTestPlanRepository) Update(ctx context.Context, plan *service.ScheduledTestPlan) (*service.ScheduledTestPlan, error) {
+	if err := r.validateScheduledTestPlan(ctx, plan); err != nil {
+		return nil, err
+	}
 	row := r.db.QueryRowContext(ctx, `
 		UPDATE scheduled_test_plans
-		SET model_id = $2, cron_expression = $3, enabled = $4, max_results = $5, auto_recover = $6, next_run_at = $7, updated_at = NOW()
+		SET group_id = $2, model_id = $3, test_kind = $4, test_prompt = $5, cron_expression = $6, enabled = $7, max_results = $8, auto_recover = $9, next_run_at = $10, updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, account_id, model_id, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
-	`, plan.ID, plan.ModelID, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
+		RETURNING id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
+	`, plan.ID, plan.GroupID, plan.ModelID, normalizeScheduledTestKind(plan.TestKind), plan.TestPrompt, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
 	return scanPlan(row)
 }
 
@@ -162,12 +169,43 @@ type scannable interface {
 func scanPlan(row scannable) (*service.ScheduledTestPlan, error) {
 	p := &service.ScheduledTestPlan{}
 	if err := row.Scan(
-		&p.ID, &p.AccountID, &p.ModelID, &p.CronExpression, &p.Enabled, &p.MaxResults, &p.AutoRecover,
+		&p.ID, &p.AccountID, &p.GroupID, &p.ModelID, &p.TestKind, &p.TestPrompt, &p.CronExpression, &p.Enabled, &p.MaxResults, &p.AutoRecover,
 		&p.LastRunAt, &p.NextRunAt, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+func normalizeScheduledTestKind(kind string) string {
+	if kind == service.ScheduledTestKindPelican {
+		return service.ScheduledTestKindPelican
+	}
+	return service.ScheduledTestKindConnection
+}
+
+func (r *scheduledTestPlanRepository) validateScheduledTestPlan(ctx context.Context, plan *service.ScheduledTestPlan) error {
+	if plan == nil {
+		return fmt.Errorf("scheduled test plan is nil")
+	}
+	plan.TestKind = normalizeScheduledTestKind(plan.TestKind)
+	if plan.TestKind == service.ScheduledTestKindPelican && plan.GroupID == nil {
+		return fmt.Errorf("group_id is required for Pelican tests")
+	}
+	if plan.GroupID != nil {
+		var belongs bool
+		if err := r.db.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM account_groups
+				WHERE account_id = $1 AND group_id = $2
+			)`, plan.AccountID, *plan.GroupID).Scan(&belongs); err != nil {
+			return err
+		}
+		if !belongs {
+			return fmt.Errorf("group_id %d is not assigned to account %d", *plan.GroupID, plan.AccountID)
+		}
+	}
+	return nil
 }
 
 func scanPlans(rows *sql.Rows) ([]*service.ScheduledTestPlan, error) {

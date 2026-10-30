@@ -675,6 +675,15 @@ func ProvideScheduledTestService(
 	return NewScheduledTestService(planRepo, resultRepo)
 }
 
+// ProvidePelicanShowcaseService builds the isolated, read-only showcase view.
+func ProvidePelicanShowcaseService(
+	groupRepo GroupRepository,
+	accountRepo AccountRepository,
+	planService *ScheduledTestService,
+) *PelicanShowcaseService {
+	return NewPelicanShowcaseService(groupRepo, accountRepo, planService)
+}
+
 // ProvideScheduledTestRunnerService creates and starts ScheduledTestRunnerService.
 func ProvideScheduledTestRunnerService(
 	planRepo ScheduledTestPlanRepository,
@@ -991,6 +1000,7 @@ var ProviderSet = wire.NewSet(
 	ProvideSystemOperationLockService,
 	ProvideIdempotencyCleanupService,
 	ProvideScheduledTestService,
+	ProvidePelicanShowcaseService,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
 	NewChannelService,

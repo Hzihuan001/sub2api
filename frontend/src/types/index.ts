@@ -2544,7 +2544,10 @@ export interface TotpLogin2FARequest {
 export interface ScheduledTestPlan {
   id: number
   account_id: number
+  group_id?: number | null
   model_id: string
+  test_kind: 'connection' | 'pelican' | string
+  test_prompt?: string
   cron_expression: string
   enabled: boolean
   max_results: number
@@ -2569,7 +2572,10 @@ export interface ScheduledTestResult {
 
 export interface CreateScheduledTestPlanRequest {
   account_id: number
+  group_id?: number | null
   model_id: string
+  test_kind?: 'connection' | 'pelican' | string
+  test_prompt?: string
   cron_expression: string
   enabled?: boolean
   max_results?: number
@@ -2577,7 +2583,10 @@ export interface CreateScheduledTestPlanRequest {
 }
 
 export interface UpdateScheduledTestPlanRequest {
+  group_id?: number | null
   model_id?: string
+  test_kind?: 'connection' | 'pelican' | string
+  test_prompt?: string
   cron_expression?: string
   enabled?: boolean
   max_results?: number
