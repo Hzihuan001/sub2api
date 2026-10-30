@@ -8,6 +8,12 @@
 - **验证**：合同检查、Python 合同 19/19、Pelican API 1/1、Docker backend-builder Go 编译、Pelican/调度相关 Go 单测通过；临时 PostgreSQL 已重复执行 9005/9006 并核对新增列/唯一索引。双 worker、真实 runner/结果幂等、旧镜像和隔离 Compose 尚未完成。
 - **发布状态**：仅本地候选，未推送、未构建生产镜像、未部署；生产仍为 `0.2.19-custom.2`。候选提交为 `9e3fdb748`，测试边界修复为 `6c34b98de`。
 
+### 2026-10-30 — 未发布 — P0 鹈鹕展示批量读取候选
+
+- **改动**：增加 `PelicanShowcaseReader`，按分组一次读取计划和结果，SQL 窗口函数限制每组结果；无批量适配器时保留旧的受控回退路径。
+- **验证**：Docker backend-builder、定向 Go 单测、前端类型检查和合同门禁通过；完整 Compose/真实页面验收待执行。
+- **提交/发布**：`f760c1b7b`，未推送、未部署。
+
 ### 2026-10-30 — 未发布 — 阶段 A 完成 ownership 登记与孤儿路径门禁
 
 - **改动**：登记 `pelican-showcase`、9005 迁移和批量生图实际后端/前端路径；补充 `.github` 功能元数据、后端 FeatureID 和升级保护路径。

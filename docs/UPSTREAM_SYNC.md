@@ -8,6 +8,11 @@
 - 当前已通过静态合同、前端回归、Docker backend-builder Go 编译、Pelican/调度相关 Go 单测和临时 PostgreSQL 9005/9006 重复迁移检查；双 worker 竞争、真实 runner/结果幂等、旧镜像读取和隔离 Compose 尚未通过，因此不得加入 `patch_branches`、升级 PR、生产镜像或生产环境。
 - 生产基线仍为 `0.2.19-custom.2`。
 
+### 2026-10-30 — P0 鹈鹕展示批量读取（未发布）
+
+- `PelicanShowcaseReader` 已接入，按分组批量读取并在 SQL 中限制每组结果，降低公开页 N+1 查询风险；旧适配器保留回退。
+- 候选提交 `f760c1b7b`；Docker 编译/定向单测通过，完整 Compose 与页面请求验收尚未完成，仍不得推送生产。
+
 ### 2026-10-30 — 阶段 A：ownership 登记与孤儿路径门禁（未发布）
 
 - `pelican-showcase`、9005 迁移、批量生图后端/前端路径已加入功能清单和升级保护路径；后端新增稳定 FeatureID。
