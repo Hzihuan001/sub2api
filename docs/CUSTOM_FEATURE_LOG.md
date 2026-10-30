@@ -1,5 +1,12 @@
 # 定制功能日志
 
+### 2026-10-31 — 0.2.19-custom.5 — 渠道测智三站发布
+
+- **需求/改动**：将用户端、管理员端和定时测试面板的可见名称统一为“渠道测智”；新增 `pelican_showcase_description` 设置，管理员可在系统设置中修改用户页面顶部说明，清空后恢复原默认文案。内部 Pelican 类型保持兼容。
+- **提交/镜像**：提交 `5b647e25d`；`ghcr.io/hzihuan001/sub2api@sha256:8377cdfdd22f47c6b4fb6bd3ba6a8db0217dc3b74af109729532c10fde30cbc5`，标签 `0.2.19-custom.5`。
+- **部署/验收**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 已按顺序更新；三端 healthy、restart 0，公网 `/health` 返回 `{"status":"ok"}`。
+- **备份/回滚**：Compose 备份 `/opt/sub2api-deploy-backups/20261030183023/`；回滚上一应用 digest `sha256:a70951a263a195e4184d8fa0f354f47ebc75de660f0ce2cf345c69b1a643f3f6`，不回滚数据库和业务卷。
+
 ### 2026-10-30 — 未发布 — 渠道测智改名与说明可配置
 
 - 将用户端、管理员端和定时测试面板的显示名称改为“渠道测智”，内部 Pelican 标识和默认测试题保持兼容。

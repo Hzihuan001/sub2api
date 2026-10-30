@@ -1,5 +1,13 @@
 # 定制项目状态与官方升级说明
 
+### 2026-10-31 — 0.2.19-custom.5 — 渠道测智三站发布
+
+- **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:8377cdfdd22f47c6b4fb6bd3ba6a8db0217dc3b74af109729532c10fde30cbc5`，构建版本 `0.2.19-custom.5`，运行提交 `5b647e25d`。
+- **部署**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 按主站→L1→COS 顺序更新，三端应用容器均使用同一 digest、healthy、restart 0。
+- **公网验收**：三站 `/health` 均返回 `{"status":"ok"}`。
+- **本次功能**：用户可见名称统一为“渠道测智”；系统设置可编辑页面顶部说明，空值恢复默认说明；内部 Pelican 标识保持兼容。
+- **备份/回滚**：Compose 备份位于服务器 `/opt/sub2api-deploy-backups/20261030183023/`；回滚只替换应用镜像为上一 digest `sha256:a70951a263a195e4184d8fa0f354f47ebc75de660f0ce2cf345c69b1a643f3f6`，不恢复数据库、Redis 或业务卷。
+
 ### 2026-10-30 — 未发布 — 渠道测智命名与顶部说明配置
 
 - **改动**：用户端、管理员端和账号测试面板的可见名称统一改为“渠道测智”；内部 Pelican 类型和默认自行车测试提示词保持不变。
