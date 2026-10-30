@@ -114,6 +114,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Model Plaza',
   }),
+  pelicanShowcase: defineFlag({
+    key: 'pelican_showcase_enabled',
+    mode: 'opt-out',
+    label: 'Pelican Showcase',
+  }),
   pluginManagement: defineFlag({
     key: 'plugin_management_enabled',
     mode: 'opt-in',

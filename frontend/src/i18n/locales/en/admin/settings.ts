@@ -70,6 +70,12 @@ export default {
           priceDescription: 'Pricing notes (Markdown)',
           priceDescriptionHint: 'Rendered at the top of the plaza page. Use it for billing rules, exchange rates, promotions, etc.',
         },
+        pelicanShowcase: {
+          title: 'Pelican Showcase',
+          description: 'Control whether users can see the group-scoped Pelican test results page. Enabled by default.',
+          enabled: 'Show Pelican Showcase',
+          enabledHint: 'When off, the user sidebar entry is hidden and direct page access is blocked; existing plans and results are kept.',
+        },
         pluginManagement: {
           title: 'Plugin Management',
           description: 'Controls whether the plugin management entry appears in the admin sidebar. This switch does not control plugin runtime state.',

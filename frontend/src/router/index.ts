@@ -858,6 +858,30 @@ router.beforeEach(async (to, _from, next) => {
   const requiresAdmin = to.meta.requiresAdmin === true
   const requiredPermission = to.meta.requiredPermission
 
+  // Pelican showcase is a user-facing feature switch. Keep direct URL access
+  // aligned with the sidebar: disabling it hides the entry and redirects any
+  // already-authenticated visitor, while a settings-load failure is left to
+  // the backend guard rather than blocking the app on a transient read error.
+  if (to.path === '/pelican-showcase') {
+    if (!appStore.publicSettingsLoaded) {
+      try {
+        await appStore.fetchPublicSettings()
+      } catch (error) {
+        console.warn('Failed to load public settings in Pelican route guard', error)
+      }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.pelican_showcase_enabled === false) {
+      next(
+        authStore.isManagement
+          ? '/admin/dashboard'
+          : authStore.isAuthenticated
+            ? '/dashboard'
+            : '/home'
+      )
+      return
+    }
+  }
+
   if (to.path === '/setup') {
     try {
       const status = await getSetupStatus()

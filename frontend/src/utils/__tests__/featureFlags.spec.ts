@@ -40,6 +40,19 @@ describe('FeatureFlags.subscription', () => {
   })
 })
 
+describe('FeatureFlags.pelicanShowcase', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('keeps the existing page visible by default and hides it only when disabled', () => {
+    expect(FeatureFlags.pelicanShowcase.key).toBe('pelican_showcase_enabled')
+    expect(FeatureFlags.pelicanShowcase.mode).toBe('opt-out')
+    expect(isFeatureFlagEnabled(FeatureFlags.pelicanShowcase)).toBe(true)
+    expect(resolveFeatureFlag({ pelican_showcase_enabled: false } as PublicSettings, FeatureFlags.pelicanShowcase)).toBe(false)
+  })
+})
+
 describe('resolveFeatureFlag', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
