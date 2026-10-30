@@ -829,5 +829,25 @@ export default {
       }
     },
 
+    channelShowcase: {
+      title: '测智管理',
+      description: '查看各账号已配置的渠道测智计划；具体计划仍在账号管理中编辑。',
+      accounts: '账号总数',
+      plans: '渠道测智计划',
+      enabledPlans: '已启用计划',
+      account: '账号',
+      group: '测试分组',
+      model: '模型',
+      schedule: '执行计划',
+      status: '状态',
+      actions: '操作',
+      enabled: '已启用',
+      disabled: '已停用',
+      empty: '暂无渠道测智计划，请先在账号管理中打开账号操作菜单并配置定时测试。',
+      goAccounts: '前往账号管理',
+      editInAccounts: '去账号管理配置',
+      loadFailed: '加载渠道测智计划失败'
+    },
+
     // Accounts Management
 }

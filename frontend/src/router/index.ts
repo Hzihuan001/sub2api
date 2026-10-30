@@ -523,6 +523,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/channels/showcase',
+    name: 'AdminChannelShowcase',
+    component: () => import('@/views/admin/ChannelShowcaseView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiredPermission: 'channels',
+      title: 'Channel Showcase Management',
+      titleKey: 'admin.channelShowcase.title',
+      descriptionKey: 'admin.channelShowcase.description'
+    }
+  },
+  {
     path: '/monitor',
     name: 'ChannelStatus',
     component: () => import('@/views/user/ChannelStatusView.vue'),

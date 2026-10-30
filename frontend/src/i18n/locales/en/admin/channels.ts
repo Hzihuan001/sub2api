@@ -831,5 +831,25 @@ export default {
       }
     },
 
+    channelShowcase: {
+      title: 'Showcase Management',
+      description: 'Review configured channel showcase plans; edit each plan from account management.',
+      accounts: 'Accounts',
+      plans: 'Showcase Plans',
+      enabledPlans: 'Enabled Plans',
+      account: 'Account',
+      group: 'Test Group',
+      model: 'Model',
+      schedule: 'Schedule',
+      status: 'Status',
+      actions: 'Actions',
+      enabled: 'Enabled',
+      disabled: 'Disabled',
+      empty: 'No showcase plans configured. Open an account action menu in account management to add one.',
+      goAccounts: 'Go to Account Management',
+      editInAccounts: 'Configure in Accounts',
+      loadFailed: 'Failed to load showcase plans'
+    },
+
     // Accounts
 }
