@@ -1,5 +1,14 @@
 # 定制项目状态与官方升级说明
 
+### 2026-10-30 — 0.2.19-custom.4 — 鹈鹕测智开关三站发布
+
+- **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:a70951a263a195e4184d8fa0f354f47ebc75de660f0ce2cf345c69b1a643f3f6`，构建版本 `0.2.19-custom.4`，运行提交 `ee748e5e9`。
+- **部署**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 已按顺序更新，三端容器均使用同一 digest、healthy、restart 0。
+- **公网验收**：三站 `/health` 均返回 HTTP 200。
+- **变更**：仅重建应用容器；数据库、Redis、业务卷、反代和站点配置保留。
+- **回滚**：应用回退到上一 digest `sha256:5dfe6d4208edb477ea1f6e5980e0f4dd08c317b22c4fa89ad344ffc6112fecdd`，不恢复旧数据库。
+
+
 ### 2026-10-30 — 鹈鹕测智可见性开关（本地，未发布）
 
 - **功能**：系统设置新增“显示鹈鹕测智”开关，默认开启以保持现有行为；关闭后用户侧边栏隐藏，前端直接访问重定向，后端 `/api/v1/pelican-showcase` 返回 404。
