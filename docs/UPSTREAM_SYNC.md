@@ -133,6 +133,6 @@ review the custom feature boundaries before merging the draft PR.
 ## 2026-10-30 — 当前定制模块化状态
 
 - 生产仍为 `0.2.19-custom.2`；本地鹈鹕测智分组归属改造尚未发布。
-- 下一阶段解耦计划见 [`CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md`](CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md)。
+- 四轮审核定稿方案见 [`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md)；基础现状见 [`CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md`](CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md)。
 - `patch_branches` 暂不新增；先完成 feature contract、adapter 和独立验收，再把新的分支纳入自动升级补丁栈。
 

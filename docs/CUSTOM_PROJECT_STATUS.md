@@ -1,6 +1,13 @@
 # 定制项目状态与官方升级说明
 
 
+### 2026-10-30 — 深度解耦方案四轮审核定稿
+
+- 已完成四轮审核：架构边界、主线合并、数据/运行稳定性、实施/交付门禁。
+- 定稿方案见 [`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md)，包括 P0/P1/P2 顺序、Contract/Core/Adapter/Surface/Verification 分层、停止条件和量化验收标准。
+- 本轮仍是规划和文档工作，没有迁移业务代码、推送镜像或部署生产；现有未提交鹈鹕候选继续按上一条状态记录处理。
+
+
 ### 2026-10-30 — 鹈鹕测智分组归属与下一阶段解耦计划（仅本地，未发布）
 
 - **当前生产**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 仍运行 `0.2.19-custom.2`；本轮没有推送、构建镜像或修改生产环境。
