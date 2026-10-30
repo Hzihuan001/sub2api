@@ -1,6 +1,13 @@
 # Upstream upgrade PRs
 
 
+### 2026-10-30 — P0 鹈鹕执行与调度租约候选（未发布）
+
+- 新增 `PelicanTestExecutor` 分组绑定适配器，普通连接测试保持官方路径。
+- 新增 9006 追加迁移：计划租约、活动 run、失败状态、结果 run_id/唯一索引；仓库使用 `FOR UPDATE SKIP LOCKED` 和 lease/run CAS，失败记录和退避不会形成每分钟请求风暴。
+- 当前只通过静态合同和前端回归；Go 工具链、Docker 引擎、真实 PostgreSQL 竞争测试、旧镜像读取和迁移重复测试尚未通过，因此不得加入 `patch_branches`、升级 PR、镜像或生产。
+- 生产基线仍为 `0.2.19-custom.2`。
+
 ### 2026-10-30 — 阶段 A：ownership 登记与孤儿路径门禁（未发布）
 
 - `pelican-showcase`、9005 迁移、批量生图后端/前端路径已加入功能清单和升级保护路径；后端新增稳定 FeatureID。

@@ -226,7 +226,7 @@ frontend/src/custom/features/<feature>/
 ## 8. 下一步
 
 1. **阶段 A 已完成**：已补齐 `pelican-showcase`、`9005` 迁移和 image-studio 实际 service/queue/计费路径的 ownership/contract 登记，并实现 orphan-custom-sources 门禁；direct-access 仍作为部署扩展单独核对。
-2. 为 `pelican-showcase` 建立 `GroupScopedTestAdapter`、`PelicanResultReader` 的最小 contract；修正失败计划退避、claim/lease 和批量读取，再进行行为基线。
+2. **P0 已开始**：已建立分组执行适配器、失败结果退避、claim/lease、幂等 run_id 和 CAS 完成候选；下一步补齐 `PelicanResultReader` 批量读取并进行后端行为基线。
 3. 在隔离 fake 下验证普通连接测试和鹈鹕测试互不影响，并验证删除/禁用分组、旧镜像读取和重复迁移。
 4. 再开始 `key-routing` contract，不改现有运行逻辑；把官方核心文件收窄为稳定 host hook。
 5. 将 Compose、SSE、迁移、旧镜像和 evidence manifest 纳入升级 PR 门禁；任何 unknown/skipped 自动阻止发布。

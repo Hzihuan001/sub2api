@@ -1,6 +1,15 @@
 # 定制项目状态与官方升级说明
 
 
+### 2026-10-30 — P0 鹈鹕执行边界与调度安全改造（本地候选，未发布）
+
+- **已实现候选**：新增 `PelicanTestExecutor` 和分组绑定校验适配器；Pelican 计划执行不再直接调用普通账号测试入口。普通连接测试保持原路径。
+- **调度安全**：新增 `9006_custom_scheduled_test_leases.sql`，为计划增加租约、活动 run、失败计数和最后错误，为结果增加 `run_id` 及部分唯一索引；持久化仓库增加 `FOR UPDATE SKIP LOCKED` 领取和 lease/run CAS 完成。失败结果会落库，并按有限指数退避推进 `next_run_at`，避免失败计划每分钟重复请求。
+- **已检查**：合同清单 8 modules/15 groups、Python 合同 19/19、Pelican API 测试 1/1、`git diff --check` 通过。
+- **尚未通过**：没有 Go 工具链和 Docker 引擎，后端编译、SQL 集成测试、迁移重复执行、双 worker 租约竞争、旧镜像读取和隔离 Compose 尚未验证；因此本候选仍不能推送、构建镜像或部署。
+- **当前生产**：三站继续运行 `0.2.19-custom.2`。本地候选改造与迁移仍需完成后端验证，再决定是否进入发布分支。
+
+
 ### 2026-10-30 — 阶段 A 执行：ownership 登记与孤儿路径门禁（未发布）
 
 - **已完成**：将 `pelican-showcase` 加入 `.github/custom-features.json`、`custom/manifest.yml`、`custom/contracts.json` 和后端稳定 FeatureID；登记 `9005_custom_pelican_scheduled_test_kind.sql`、Pelican API/页面/宿主接线，以及批量生图实际 service、queue、worker、provider、settlement、repository 和前端入口。
