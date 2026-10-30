@@ -23,6 +23,7 @@
 - 真实 Testcontainers PostgreSQL/Redis lease 集成已通过（约 189 秒），覆盖双 worker claim、错误 token CAS 和重复 finalize；测试资源已清理。
 - Runner 失败结果行为测试已加入并通过 Docker 定向 Go 测试，验证失败不静默丢弃且会推进下一次调度。
 - 旧镜像 `0.2.19-custom.2` 读取追加 9005/9006 后重启兼容验收通过，health 200 且无 panic；临时资源已清理。
+- 真实 lease 集成已补充结果 `run_id` 重复写入检查并通过，确认不会产生重复结果记录。
 
 ### 2026-10-30 — 阶段 A：ownership 登记与孤儿路径门禁（未发布）
 
