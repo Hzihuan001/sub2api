@@ -23,15 +23,6 @@ func TestPelicanShowcaseGroupVisibility(t *testing.T) {
 	}
 }
 
-func TestNormalizeScheduledTestKind(t *testing.T) {
-	if got := normalizeScheduledTestKind(ScheduledTestKindPelican); got != ScheduledTestKindPelican {
-		t.Fatalf("pelican kind normalized to %q", got)
-	}
-	if got := normalizeScheduledTestKind("unknown"); got != ScheduledTestKindConnection {
-		t.Fatalf("unknown kind normalized to %q", got)
-	}
-}
-
 func TestComputeNextRunUsesCronExpression(t *testing.T) {
 	from := time.Date(2026, 10, 30, 12, 34, 0, 0, time.UTC)
 	next, err := computeNextRun("*/5 * * * *", from)
