@@ -175,8 +175,14 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		result.RunID = plan.ActiveRunID
 	}
 
-	if err := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result); err != nil {
-		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
+	saveErr := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result)
+	if saveErr != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, saveErr)
+		// A leased run must not be finalized after its result failed to persist.
+		// Let the lease expire so another worker can retry the complete operation.
+		if plan.LeaseToken != "" && plan.ActiveRunID != "" {
+			return
+		}
 	}
 
 	// Auto-recover account if test succeeded and auto_recover is enabled.
