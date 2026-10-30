@@ -19,6 +19,7 @@
 - **结果**：完整候选镜像构建成功；三站隔离 Compose healthy，三个 health 地址均 200，Compose config 通过；三套数据库包含 9005/9006 预期字段，启动日志无 panic。
 - **清理**：本轮容器/卷已删除；旧会话孤儿容器占用共享网络，网络保留以避免影响其他环境；临时应用镜像已删除。
 - **发布状态**：本地验收通过，但双 worker 竞争、真实 runner 结果幂等仍未完成，未推送、未部署。
+- **补充测试**：新增 scheduled lease integration contract，覆盖双 worker claim、错误 token、重复 finalize；当前仅完成编译验证，真实 Testcontainers 执行保留为发布门禁。
 
 ### 2026-10-30 — 未发布 — 阶段 A 完成 ownership 登记与孤儿路径门禁
 

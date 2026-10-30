@@ -23,6 +23,7 @@
 - **数据库**：三套 PostgreSQL 均发现 9005/9006 预期字段（计划 5 个、结果 run_id 1 个）。启动日志未发现 panic/启动错误，调度 runner 正常启动。
 - **清理**：本轮三站容器和卷已删除；由于旧会话孤儿容器仍占用共享 Compose 网络，网络未强制删除，避免影响其他验收环境。临时应用镜像已删除。
 - **结论**：本地容器验收通过；双 worker 竞争和真实 runner 计费/结果幂等仍需专门集成测试，未授权推送或生产部署。
+- **新增证据**：已添加 `TestScheduledTestPlanClaimDueLeaseAndFinalize` 集成测试，覆盖双 worker 领取、过期租约保护、错误 token CAS 和重复完成；Docker 编译环境已验证该测试可编译，但 Testcontainers 真实执行需在能访问 Docker socket 的宿主测试环境运行。
 
 
 ### 2026-10-30 — 阶段 A 执行：ownership 登记与孤儿路径门禁（未发布）

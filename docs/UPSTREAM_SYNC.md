@@ -18,6 +18,7 @@
 - 本地完整镜像构建成功；隔离主站/L1/COS 均 healthy，三个 health 端口 200，Compose config 通过；三套 PostgreSQL 均完成 9005/9006 字段检查。
 - 临时三站容器/卷和应用镜像已清理；旧会话孤儿容器占用共享网络，网络未强制删除。
 - 双 worker 竞争、真实 runner/结果幂等仍未完成，候选继续禁止加入 `patch_branches`、升级 PR 或生产。
+- 已新增并编译验证 scheduled lease integration contract；真实 Testcontainers 执行需宿主 Docker socket，完成前仍不得发布。
 
 ### 2026-10-30 — 阶段 A：ownership 登记与孤儿路径门禁（未发布）
 
