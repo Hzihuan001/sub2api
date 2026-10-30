@@ -2,7 +2,6 @@ import { apiClient } from './client'
 
 export interface PelicanShowcaseResult {
   id: number
-  account_name: string
   model_id: string
   thinking_effort?: string
   status: string

@@ -105,7 +105,6 @@
                   <span class="truncate font-medium text-gray-800 dark:text-dark-100">{{ result.model_id || '未知模型' }}</span>
                   <button v-if="result.status === 'success' && result.response_text" class="shrink-0 text-xs text-sky-600 hover:underline dark:text-sky-300" @click="downloadResult(result)">下载</button>
                 </div>
-                <p class="truncate text-xs text-gray-500 dark:text-dark-400">{{ result.account_name || '未知账号' }}</p>
                 <div class="flex items-center justify-between text-xs text-gray-400 dark:text-dark-500">
                   <span>{{ formatTime(result.finished_at) }}</span>
                   <span>{{ formatLatency(result.latency_ms) }}</span>
@@ -150,7 +149,6 @@ const previewGroups: PelicanShowcaseGroup[] = [
     failure_count: 0,
     latest: {
       id: 1,
-      account_name: 'preview-account-a',
       model_id: 'gpt-6-astra',
       thinking_effort: 'medium',
       status: 'success',
@@ -170,7 +168,6 @@ const previewGroups: PelicanShowcaseGroup[] = [
     failure_count: 1,
     latest: {
       id: 2,
-      account_name: 'preview-account-b',
       model_id: 'kimi-k2',
       thinking_effort: 'default',
       status: 'success',
@@ -181,7 +178,6 @@ const previewGroups: PelicanShowcaseGroup[] = [
     },
     latest_failure: {
       id: 3,
-      account_name: 'preview-account-b',
       model_id: 'kimi-k2',
       thinking_effort: 'default',
       status: 'failed',

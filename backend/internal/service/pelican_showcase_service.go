@@ -11,16 +11,18 @@ import (
 // group comparison page. It deliberately reuses scheduled account tests so
 // the showcase does not introduce another request or billing path.
 type PelicanShowcaseResult struct {
-	ID           int64     `json:"id"`
-	AccountName  string    `json:"account_name"`
-	ModelID      string    `json:"model_id"`
-	ThinkingEffort string   `json:"thinking_effort,omitempty"`
-	Status       string    `json:"status"`
-	ResponseText string    `json:"response_text,omitempty"`
-	ErrorMessage string    `json:"error_message,omitempty"`
-	LatencyMs    int64     `json:"latency_ms"`
-	StartedAt    time.Time `json:"started_at"`
-	FinishedAt   time.Time `json:"finished_at"`
+	ID int64 `json:"id"`
+	// AccountName is retained internally for sorting/diagnostics, but must not
+	// be exposed by the user-facing showcase. The page is a group comparison.
+	AccountName    string    `json:"-"`
+	ModelID        string    `json:"model_id"`
+	ThinkingEffort string    `json:"thinking_effort,omitempty"`
+	Status         string    `json:"status"`
+	ResponseText   string    `json:"response_text,omitempty"`
+	ErrorMessage   string    `json:"error_message,omitempty"`
+	LatencyMs      int64     `json:"latency_ms"`
+	StartedAt      time.Time `json:"started_at"`
+	FinishedAt     time.Time `json:"finished_at"`
 }
 
 // PelicanShowcaseGroup is one visible group and its latest comparison data.
@@ -112,7 +114,7 @@ func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int
 						// setting; keep the field explicit for the showcase and future
 						// Pelican plans that may persist a selected effort.
 						ThinkingEffort: "default",
-						Status: result.Status, ResponseText: result.ResponseText,
+						Status:         result.Status, ResponseText: result.ResponseText,
 						ErrorMessage: result.ErrorMessage, LatencyMs: result.LatencyMs,
 						StartedAt: result.StartedAt, FinishedAt: result.FinishedAt,
 					}
