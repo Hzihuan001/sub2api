@@ -8,6 +8,7 @@
 - **代码/测试**：修改 `openai_account_runtime_block_fastpath.go`、相关单测和 `deploy/tests/gateway-failover-smoke.ps1`；`git diff --check` 通过，Docker 完整镜像构建通过。
 - **发布状态**：仅本地未提交候选，未推送、未构建 GHCR、未部署生产；三站生产仍为 `0.2.19-custom.2`。
 - **下一步**：补跑完整后端定向测试并提交本地修复；待用户明确批准后再进入推送/生产发布流程。
+- **回归边界**：受影响的 OpenAI service 定向测试通过；完整 `internal/handler/admin` 与 `internal/repository` 回归仍有既有测试夹具/Redis 临时端口失败（模型能力元数据断言、Redis connection refused），未发现本次调度门槛修改导致的失败；因此不把全包回归标为通过。
 
 
 
