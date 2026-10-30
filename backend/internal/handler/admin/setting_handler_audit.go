@@ -600,6 +600,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.PelicanShowcaseEnabled != after.PelicanShowcaseEnabled {
 		changed = append(changed, "pelican_showcase_enabled")
 	}
+	if before.PelicanShowcaseDescription != after.PelicanShowcaseDescription {
+		changed = append(changed, "pelican_showcase_description")
+	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
 	}

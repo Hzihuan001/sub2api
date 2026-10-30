@@ -354,10 +354,11 @@ type UpdateSettingsRequest struct {
 	SubscriptionEnabled *bool `json:"subscription_enabled"`
 
 	// Model Plaza feature switches + description
-	ModelPlazaEnabled      *bool   `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth  *bool   `json:"model_plaza_require_auth"`
-	ModelPlazaDescription  *string `json:"model_plaza_description"`
-	PelicanShowcaseEnabled *bool   `json:"pelican_showcase_enabled"`
+	ModelPlazaEnabled          *bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth      *bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription      *string `json:"model_plaza_description"`
+	PelicanShowcaseEnabled     *bool   `json:"pelican_showcase_enabled"`
+	PelicanShowcaseDescription *string `json:"pelican_showcase_description"`
 
 	// Plugin management menu visibility switch; plugin runtime is unaffected.
 	PluginManagementEnabled *bool `json:"plugin_management_enabled"`
@@ -2007,6 +2008,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.PelicanShowcaseEnabled
 		}(),
+		PelicanShowcaseDescription: func() string {
+			if req.PelicanShowcaseDescription != nil {
+				return *req.PelicanShowcaseDescription
+			}
+			return previousSettings.PelicanShowcaseDescription
+		}(),
 		PluginManagementEnabled: func() bool {
 			if req.PluginManagementEnabled != nil {
 				return *req.PluginManagementEnabled
@@ -2449,11 +2456,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 		SubscriptionEnabled:      updatedSettings.SubscriptionEnabled,
 
-		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,
-		ModelPlazaDescription:   updatedSettings.ModelPlazaDescription,
-		PelicanShowcaseEnabled:  updatedSettings.PelicanShowcaseEnabled,
-		PluginManagementEnabled: updatedSettings.PluginManagementEnabled,
+		ModelPlazaEnabled:          updatedSettings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:      updatedSettings.ModelPlazaRequireAuth,
+		ModelPlazaDescription:      updatedSettings.ModelPlazaDescription,
+		PelicanShowcaseEnabled:     updatedSettings.PelicanShowcaseEnabled,
+		PelicanShowcaseDescription: updatedSettings.PelicanShowcaseDescription,
+		PluginManagementEnabled:    updatedSettings.PluginManagementEnabled,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 

@@ -71,10 +71,12 @@ export default {
           priceDescriptionHint: '展示在模型广场页面顶部，可用于说明计费规则、汇率、优惠活动等。',
         },
         pelicanShowcase: {
-          title: '鹈鹕测智',
-          description: '控制用户端是否显示按分组展示模型测试结果的鹈鹕测智页面。默认开启。',
-          enabled: '显示鹈鹕测智',
+          title: '渠道测智',
+          description: '控制用户端是否显示按分组展示模型测试结果的渠道测智页面。默认开启。',
+          enabled: '显示渠道测智',
           enabledHint: '关闭后用户端侧边栏入口隐藏，直接访问页面也会被拦截；已有测试计划和历史结果保留。',
+          pageDescription: '页面顶部说明',
+          pageDescriptionHint: '留空时使用默认说明；修改后会显示在用户端渠道测智页面顶部。',
         },
         pluginManagement: {
           title: '插件管理',

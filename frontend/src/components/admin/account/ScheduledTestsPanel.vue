@@ -33,9 +33,9 @@
             <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">测试类型</label>
             <select v-model="newPlan.test_kind" class="input w-full">
               <option value="connection">连接测试</option>
-              <option value="pelican">鹈鹕测智（同题作品）</option>
+              <option value="pelican">渠道测智（同题作品）</option>
             </select>
-            <p v-if="newPlan.test_kind === 'pelican'" class="mt-1 text-xs text-gray-400 dark:text-gray-500">使用固定鹈鹕动画题，结果会展示在用户端鹈鹕测智页面。</p>
+            <p v-if="newPlan.test_kind === 'pelican'" class="mt-1 text-xs text-gray-400 dark:text-gray-500">使用固定渠道测智动画题，结果会展示在用户端渠道测智页面。</p>
           </div>
           <div v-if="newPlan.test_kind === 'pelican'">
             <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">目标分组</label>
@@ -107,7 +107,7 @@
           </div>
           <div v-if="newPlan.test_kind === 'pelican'" class="sm:col-span-2">
             <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">测试提示词</label>
-            <textarea v-model="newPlan.test_prompt" class="input min-h-20 w-full resize-y" placeholder="留空使用默认鹈鹕骑自行车 HTML 题目" />
+            <textarea v-model="newPlan.test_prompt" class="input min-h-20 w-full resize-y" placeholder="留空使用默认渠道测智 HTML 题目" />
           </div>
           <div class="flex items-end">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -184,7 +184,7 @@
                   {{ plan.cron_expression }}
                 </div>
               </div>
-              <span v-if="plan.test_kind === 'pelican'" class="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">鹈鹕测智</span>
+              <span v-if="plan.test_kind === 'pelican'" class="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">渠道测智</span>
               <span v-if="plan.test_kind === 'pelican' && plan.group_id" class="inline-flex max-w-40 shrink-0 truncate rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-dark-700 dark:text-dark-300">{{ groupName(plan.group_id) }}</span>
 
               <!-- Enabled Toggle -->
@@ -264,7 +264,7 @@
                 <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">测试类型</label>
                 <select v-model="editForm.test_kind" class="input w-full">
                   <option value="connection">连接测试</option>
-                  <option value="pelican">鹈鹕测智（同题作品）</option>
+                  <option value="pelican">渠道测智（同题作品）</option>
                 </select>
               </div>
               <div v-if="editForm.test_kind === 'pelican'">
@@ -337,7 +337,7 @@
               </div>
               <div v-if="editForm.test_kind === 'pelican'" class="sm:col-span-2">
                 <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">测试提示词</label>
-                <textarea v-model="editForm.test_prompt" class="input min-h-20 w-full resize-y" placeholder="留空使用默认鹈鹕骑自行车 HTML 题目" />
+                <textarea v-model="editForm.test_prompt" class="input min-h-20 w-full resize-y" placeholder="留空使用默认渠道测智 HTML 题目" />
               </div>
               <div class="flex items-end">
                 <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">

@@ -7296,6 +7296,19 @@
               </div>
               <Toggle v-model="form.pelican_showcase_enabled" />
             </div>
+            <div v-if="form.pelican_showcase_enabled">
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.features.pelicanShowcase.pageDescription') }}
+              </label>
+              <p class="mb-2 mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.features.pelicanShowcase.pageDescriptionHint') }}
+              </p>
+              <textarea
+                v-model="form.pelican_showcase_description"
+                rows="4"
+                class="input text-sm"
+              ></textarea>
+            </div>
           </div>
         </div>
 
@@ -10072,6 +10085,7 @@ const form = reactive<SettingsForm>({
   model_plaza_require_auth: false,
   model_plaza_description: '',
   pelican_showcase_enabled: true,
+  pelican_showcase_description: '作品由系统定时使用各分组账号生成。相同题目下，可以通过画面完整度、指令遵循和响应稳定性直观看出差异；页面不会改变正常请求、计费或账号调度。',
   // Plugin management menu visibility; plugin runtime is unaffected.
   plugin_management_enabled: false,
   // Affiliate (邀请返利) feature switch
@@ -11816,6 +11830,7 @@ async function saveSettings() {
       model_plaza_require_auth: form.model_plaza_require_auth,
       model_plaza_description: form.model_plaza_description,
       pelican_showcase_enabled: form.pelican_showcase_enabled,
+      pelican_showcase_description: form.pelican_showcase_description,
       plugin_management_enabled: form.plugin_management_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,

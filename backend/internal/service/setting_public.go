@@ -239,6 +239,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyPelicanShowcaseEnabled,
+		SettingKeyPelicanShowcaseDescription,
 		SettingKeyPluginManagementEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
@@ -369,11 +370,17 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		SubscriptionEnabled: !isFalseSettingValue(settings[SettingKeySubscriptionEnabled]),
 
-		ModelPlazaEnabled:       settings[SettingKeyModelPlazaEnabled] == "true",
-		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
+		ModelPlazaEnabled:     settings[SettingKeyModelPlazaEnabled] == "true",
+		ModelPlazaRequireAuth: settings[SettingKeyModelPlazaRequireAuth] == "true",
 		// Opt-out switch: an older database without this key keeps the page
 		// visible until an administrator explicitly writes false.
-		PelicanShowcaseEnabled:  !isFalseSettingValue(settings[SettingKeyPelicanShowcaseEnabled]),
+		PelicanShowcaseEnabled: !isFalseSettingValue(settings[SettingKeyPelicanShowcaseEnabled]),
+		PelicanShowcaseDescription: func() string {
+			if strings.TrimSpace(settings[SettingKeyPelicanShowcaseDescription]) == "" {
+				return DefaultPelicanShowcaseDescription
+			}
+			return settings[SettingKeyPelicanShowcaseDescription]
+		}(),
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
@@ -527,6 +534,23 @@ func (s *SettingService) IsPelicanShowcaseEnabled(ctx context.Context) bool {
 	return !ok || raw == "" || raw == "true"
 }
 
+// GetPelicanShowcaseRuntime reads the channel showcase switch and its
+// user-facing description in one settings lookup.
+func (s *SettingService) GetPelicanShowcaseRuntime(ctx context.Context) (enabled bool, description string) {
+	if s == nil || s.settingRepo == nil {
+		return true, DefaultPelicanShowcaseDescription
+	}
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyPelicanShowcaseEnabled, SettingKeyPelicanShowcaseDescription})
+	if err != nil {
+		return true, DefaultPelicanShowcaseDescription
+	}
+	description = strings.TrimSpace(vals[SettingKeyPelicanShowcaseDescription])
+	if description == "" {
+		description = DefaultPelicanShowcaseDescription
+	}
+	return !isFalseSettingValue(vals[SettingKeyPelicanShowcaseEnabled]), description
+}
+
 // ModelPlazaRuntime is the lightweight view of the model-plaza feature consumed
 // by the public plaza handler.
 type ModelPlazaRuntime struct {
@@ -652,17 +676,18 @@ type PublicSettingsInjectionPayload struct {
 	// monitors; fail-closed (absent/false = hidden). Admin UI always shows it.
 	// ChannelMonitorHideUserRanking hides the user ranking tab and /users payload
 	// from non-admin channel-monitor v2 viewers; default false (visible).
-	ChannelMonitorHideUserRanking bool `json:"channel_monitor_hide_user_ranking"`
-	ChannelMonitorShowQuota       bool `json:"channel_monitor_show_quota"`
-	AvailableChannelsEnabled      bool `json:"available_channels_enabled"`
-	SubscriptionEnabled           bool `json:"subscription_enabled"`
-	ModelPlazaEnabled             bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
-	PelicanShowcaseEnabled        bool `json:"pelican_showcase_enabled"`
-	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
-	AffiliateEnabled              bool `json:"affiliate_enabled"`
-	RiskControlEnabled            bool `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests    bool `json:"allow_user_view_error_requests"`
+	ChannelMonitorHideUserRanking bool   `json:"channel_monitor_hide_user_ranking"`
+	ChannelMonitorShowQuota       bool   `json:"channel_monitor_show_quota"`
+	AvailableChannelsEnabled      bool   `json:"available_channels_enabled"`
+	SubscriptionEnabled           bool   `json:"subscription_enabled"`
+	ModelPlazaEnabled             bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth         bool   `json:"model_plaza_require_auth"`
+	PelicanShowcaseEnabled        bool   `json:"pelican_showcase_enabled"`
+	PelicanShowcaseDescription    string `json:"pelican_showcase_description"`
+	PluginManagementEnabled       bool   `json:"plugin_management_enabled"`
+	AffiliateEnabled              bool   `json:"affiliate_enabled"`
+	RiskControlEnabled            bool   `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests    bool   `json:"allow_user_view_error_requests"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -750,6 +775,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		PelicanShowcaseEnabled:               settings.PelicanShowcaseEnabled,
+		PelicanShowcaseDescription:           settings.PelicanShowcaseDescription,
 		PluginManagementEnabled:              settings.PluginManagementEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,

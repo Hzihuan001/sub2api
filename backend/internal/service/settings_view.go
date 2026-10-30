@@ -220,11 +220,12 @@ type SystemSettings struct {
 	SubscriptionEnabled bool `json:"subscription_enabled"`
 
 	// Model Plaza feature (public group/model pricing showcase)
-	ModelPlazaEnabled       bool   `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth   bool   `json:"model_plaza_require_auth"`
-	ModelPlazaDescription   string `json:"model_plaza_description"`
-	PelicanShowcaseEnabled  bool   `json:"pelican_showcase_enabled"`
-	PluginManagementEnabled bool   `json:"plugin_management_enabled"`
+	ModelPlazaEnabled          bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth      bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription      string `json:"model_plaza_description"`
+	PelicanShowcaseEnabled     bool   `json:"pelican_showcase_enabled"`
+	PelicanShowcaseDescription string `json:"pelican_showcase_description"`
+	PluginManagementEnabled    bool   `json:"plugin_management_enabled"`
 
 	// Claude Code version check
 	MinClaudeCodeVersion string
@@ -409,10 +410,11 @@ type PublicSettings struct {
 	SubscriptionEnabled bool `json:"subscription_enabled"`
 
 	// Model Plaza feature (public group/model pricing showcase)
-	ModelPlazaEnabled       bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth   bool `json:"model_plaza_require_auth"`
-	PelicanShowcaseEnabled  bool `json:"pelican_showcase_enabled"`
-	PluginManagementEnabled bool `json:"plugin_management_enabled"`
+	ModelPlazaEnabled          bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth      bool   `json:"model_plaza_require_auth"`
+	PelicanShowcaseEnabled     bool   `json:"pelican_showcase_enabled"`
+	PelicanShowcaseDescription string `json:"pelican_showcase_description"`
+	PluginManagementEnabled    bool   `json:"plugin_management_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`

@@ -114,10 +114,11 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 		SubscriptionEnabled:      settings.SubscriptionEnabled,
 
-		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
-		PelicanShowcaseEnabled:  settings.PelicanShowcaseEnabled,
-		PluginManagementEnabled: settings.PluginManagementEnabled,
+		ModelPlazaEnabled:          settings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:      settings.ModelPlazaRequireAuth,
+		PelicanShowcaseEnabled:     settings.PelicanShowcaseEnabled,
+		PelicanShowcaseDescription: settings.PelicanShowcaseDescription,
+		PluginManagementEnabled:    settings.PluginManagementEnabled,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 

@@ -440,6 +440,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyModelPlazaRequireAuth] = strconv.FormatBool(settings.ModelPlazaRequireAuth)
 	updates[SettingKeyModelPlazaDescription] = settings.ModelPlazaDescription
 	updates[SettingKeyPelicanShowcaseEnabled] = strconv.FormatBool(settings.PelicanShowcaseEnabled)
+	updates[SettingKeyPelicanShowcaseDescription] = settings.PelicanShowcaseDescription
 	updates[SettingKeyPluginManagementEnabled] = strconv.FormatBool(settings.PluginManagementEnabled)
 
 	// Affiliate (邀请返利) feature switch

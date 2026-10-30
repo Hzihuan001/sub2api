@@ -71,10 +71,12 @@ export default {
           priceDescriptionHint: 'Rendered at the top of the plaza page. Use it for billing rules, exchange rates, promotions, etc.',
         },
         pelicanShowcase: {
-          title: 'Pelican Showcase',
-          description: 'Control whether users can see the group-scoped Pelican test results page. Enabled by default.',
-          enabled: 'Show Pelican Showcase',
+          title: 'Channel Showcase',
+          description: 'Control whether users can see the group-scoped Channel test results page. Enabled by default.',
+          enabled: 'Show Channel Showcase',
           enabledHint: 'When off, the user sidebar entry is hidden and direct page access is blocked; existing plans and results are kept.',
+          pageDescription: 'Page description',
+          pageDescriptionHint: 'Leave empty to use the default description; the text appears at the top of the user-facing Channel Showcase page.',
         },
         pluginManagement: {
           title: 'Plugin Management',

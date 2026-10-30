@@ -211,8 +211,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyModelPlazaDescription: "",
 		// Pelican showcase existed before this switch; keep it enabled for
 		// existing installations until an administrator explicitly disables it.
-		SettingKeyPelicanShowcaseEnabled:  "true",
-		SettingKeyPluginManagementEnabled: "false",
+		SettingKeyPelicanShowcaseEnabled:     "true",
+		SettingKeyPelicanShowcaseDescription: DefaultPelicanShowcaseDescription,
+		SettingKeyPluginManagementEnabled:    "false",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
@@ -838,6 +839,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.ModelPlazaRequireAuth = settings[SettingKeyModelPlazaRequireAuth] == "true"
 	result.ModelPlazaDescription = settings[SettingKeyModelPlazaDescription]
 	result.PelicanShowcaseEnabled = !isFalseSettingValue(settings[SettingKeyPelicanShowcaseEnabled])
+	result.PelicanShowcaseDescription = settings[SettingKeyPelicanShowcaseDescription]
+	if strings.TrimSpace(result.PelicanShowcaseDescription) == "" {
+		result.PelicanShowcaseDescription = DefaultPelicanShowcaseDescription
+	}
 	result.PluginManagementEnabled = settings[SettingKeyPluginManagementEnabled] == "true"
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)

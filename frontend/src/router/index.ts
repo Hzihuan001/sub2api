@@ -202,7 +202,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: '鹈鹕测智'
+      title: '渠道测智'
     }
   },
 

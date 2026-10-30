@@ -30,9 +30,10 @@ type ScheduledTestPlan struct {
 }
 
 const (
-	ScheduledTestKindConnection = "connection"
-	ScheduledTestKindPelican   = "pelican"
-	DefaultPelicanTestPrompt   = "Create a self-contained HTML file with a 2D SVG animation of a pelican riding a bicycle."
+	ScheduledTestKindConnection       = "connection"
+	ScheduledTestKindPelican          = "pelican"
+	DefaultPelicanTestPrompt          = "Create a self-contained HTML file with a 2D SVG animation of a pelican riding a bicycle."
+	DefaultPelicanShowcaseDescription = "作品由系统定时使用各分组账号生成。相同题目下，可以通过画面完整度、指令遵循和响应稳定性直观看出差异；页面不会改变正常请求、计费或账号调度。"
 )
 
 // ScheduledTestResult represents a single test execution result.

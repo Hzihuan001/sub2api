@@ -28,6 +28,7 @@ export interface PelicanShowcaseGroup {
 
 export interface PelicanShowcaseResponse {
   groups: PelicanShowcaseGroup[]
+  description?: string
 }
 
 export async function getPelicanShowcase(options?: { signal?: AbortSignal }) {

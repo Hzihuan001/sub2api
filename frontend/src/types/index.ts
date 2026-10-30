@@ -288,6 +288,8 @@ export interface PublicSettings {
   model_plaza_require_auth: boolean
   /** User-facing Pelican showcase page switch. */
   pelican_showcase_enabled?: boolean
+  /** User-facing Channel Showcase page description. */
+  pelican_showcase_description?: string
   plugin_management_enabled: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean

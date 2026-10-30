@@ -23,7 +23,12 @@ func NewPelicanShowcaseHandler(
 }
 
 func (h *PelicanShowcaseHandler) Get(c *gin.Context) {
-	if h.settingService == nil || !h.settingService.IsPelicanShowcaseEnabled(c.Request.Context()) {
+	if h.settingService == nil {
+		response.NotFound(c, "Pelican showcase is not enabled")
+		return
+	}
+	enabled, description := h.settingService.GetPelicanShowcaseRuntime(c.Request.Context())
+	if !enabled {
 		response.NotFound(c, "Pelican showcase is not enabled")
 		return
 	}
@@ -42,5 +47,5 @@ func (h *PelicanShowcaseHandler) Get(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"groups": groups})
+	response.Success(c, gin.H{"groups": groups, "description": description})
 }

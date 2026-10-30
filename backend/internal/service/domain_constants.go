@@ -573,6 +573,10 @@ const (
 	// user-facing Pelican showcase page and its authenticated API.
 	SettingKeyPelicanShowcaseEnabled = "pelican_showcase_enabled"
 
+	// SettingKeyPelicanShowcaseDescription stores the user-facing explanation
+	// rendered at the top of the channel showcase page.
+	SettingKeyPelicanShowcaseDescription = "pelican_showcase_description"
+
 	// SettingKeyModelPlazaRequireAuth controls whether the Model Plaza page requires a
 	// logged-in user. When false the page is public and anonymous visitors see only
 	// non-exclusive groups.

@@ -4,7 +4,7 @@
       <header class="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
-            鹈鹕测智
+            渠道测智
           </h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
             各分组使用同一道题完成测试，直接查看生成作品，判断模型是否出现降智。
@@ -19,7 +19,7 @@
       <div class="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
         <div class="flex items-start gap-3">
           <Icon name="infoCircle" size="sm" class="mt-0.5 shrink-0" />
-          <p>作品由系统定时使用各分组账号生成。相同题目下，可以通过画面完整度、指令遵循和响应稳定性直观看出差异；页面不会改变正常请求、计费或账号调度。</p>
+          <p>{{ showcaseDescription }}</p>
         </div>
       </div>
 
@@ -48,7 +48,7 @@
 
       <div v-else-if="groups.length === 0" class="rounded-2xl border border-dashed border-gray-300 px-5 py-16 text-center dark:border-dark-600">
         <p class="text-sm text-gray-500 dark:text-dark-400">暂时没有可展示的分组测试结果。</p>
-        <p class="mt-2 text-xs text-gray-400 dark:text-dark-500">管理员在账号的定时测试中选择“鹈鹕测智”后，最新作品会显示在这里。</p>
+        <p class="mt-2 text-xs text-gray-400 dark:text-dark-500">管理员在账号的定时测试中选择“渠道测智”后，最新作品会显示在这里。</p>
       </div>
 
       <div v-else class="space-y-8">
@@ -86,7 +86,7 @@
                   :srcdoc="sandboxDocument(result.response_text || '')"
                   sandbox="allow-scripts"
                   referrerpolicy="no-referrer"
-                  title="鹈鹕测智结果"
+                  title="渠道测智结果"
                 />
                 <pre
                   v-else-if="result.status === 'success'"
@@ -113,7 +113,7 @@
               </div>
             </article>
           </div>
-          <div v-else class="rounded-2xl border border-dashed border-gray-300 px-5 py-10 text-center text-sm text-gray-400 dark:border-dark-600 dark:text-dark-500">等待管理员为该分组账号启用“鹈鹕测智”</div>
+          <div v-else class="rounded-2xl border border-dashed border-gray-300 px-5 py-10 text-center text-sm text-gray-400 dark:border-dark-600 dark:text-dark-500">等待管理员为该分组账号启用“渠道测智”</div>
         </article>
       </div>
     </div>
@@ -128,6 +128,8 @@ import Icon from '@/components/icons/Icon.vue'
 import { getPelicanShowcase, type PelicanShowcaseGroup, type PelicanShowcaseResult } from '@/api/pelicanShowcase'
 
 const groups = ref<PelicanShowcaseGroup[]>([])
+const defaultShowcaseDescription = '作品由系统定时使用各分组账号生成。相同题目下，可以通过画面完整度、指令遵循和响应稳定性直观看出差异；页面不会改变正常请求、计费或账号调度。'
+const showcaseDescription = ref(defaultShowcaseDescription)
 const loading = ref(false)
 const error = ref(false)
 const route = useRoute()
@@ -199,7 +201,9 @@ async function load() {
   loading.value = true
   error.value = false
   try {
-    groups.value = (await getPelicanShowcase()).groups || []
+    const response = await getPelicanShowcase()
+    groups.value = response.groups || []
+    showcaseDescription.value = response.description?.trim() || defaultShowcaseDescription
   } catch {
     error.value = true
   } finally {
@@ -249,7 +253,7 @@ function downloadResult(result: PelicanShowcaseResult) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `pelican-${result.model_id || 'result'}-${result.id}.html`
+  anchor.download = `channel-test-${result.model_id || 'result'}-${result.id}.html`
   anchor.click()
   URL.revokeObjectURL(url)
 }

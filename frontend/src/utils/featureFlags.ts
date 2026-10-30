@@ -117,7 +117,7 @@ export const FeatureFlags = {
   pelicanShowcase: defineFlag({
     key: 'pelican_showcase_enabled',
     mode: 'opt-out',
-    label: 'Pelican Showcase',
+    label: 'Channel Showcase',
   }),
   pluginManagement: defineFlag({
     key: 'plugin_management_enabled',

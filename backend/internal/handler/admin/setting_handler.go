@@ -392,11 +392,12 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 		SubscriptionEnabled:      settings.SubscriptionEnabled,
 
-		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
-		PelicanShowcaseEnabled:  settings.PelicanShowcaseEnabled,
-		PluginManagementEnabled: settings.PluginManagementEnabled,
-		ModelPlazaDescription:   settings.ModelPlazaDescription,
+		ModelPlazaEnabled:          settings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:      settings.ModelPlazaRequireAuth,
+		PelicanShowcaseEnabled:     settings.PelicanShowcaseEnabled,
+		PelicanShowcaseDescription: settings.PelicanShowcaseDescription,
+		PluginManagementEnabled:    settings.PluginManagementEnabled,
+		ModelPlazaDescription:      settings.ModelPlazaDescription,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
