@@ -232,4 +232,4 @@ frontend/src/custom/features/<feature>/
 5. 将 Compose、SSE、迁移、旧镜像和 evidence manifest 纳入升级 PR 门禁；任何 unknown/skipped 自动阻止发布。
 6. 每完成一个 P0 feature 就更新共享状态和功能日志，再进入下一项；在所有 P0 门禁通过前不推送、不构建生产镜像、不部署。
 
-本方案七轮审核已完成，阶段 A 已开始执行并完成清单/门禁登记；当前没有推送镜像或修改生产环境。工作区原有未提交鹈鹕候选仍未发布，必须先完成 `GroupScopedTestAdapter`、失败退避、lease/CAS、幂等 run_id、批量读取和后端/Docker 验收，再进入后续阶段。
+本方案七轮审核已完成，阶段 A 已开始执行并完成清单/门禁登记；当前没有推送镜像或修改生产环境。鹈鹕候选已保存为本地提交 `1e2f67ed4`，仍未发布；必须先完成 `GroupScopedTestAdapter`、失败退避、lease/CAS、幂等 run_id、批量读取和后端/Docker 验收，再进入后续阶段。

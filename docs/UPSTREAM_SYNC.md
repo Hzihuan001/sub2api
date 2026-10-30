@@ -5,7 +5,7 @@
 
 - `pelican-showcase`、9005 迁移、批量生图后端/前端路径已加入功能清单和升级保护路径；后端新增稳定 FeatureID。
 - `scripts/custom_contracts.py` 新增 orphan-custom-sources 检查，合同检查通过（8 modules/15 groups）；Python 合同测试 19/19，Pelican 前端 API 测试 1/1，前端类型检查通过。
-- 审计发现 Pelican 运行路径仍需 `GroupScopedTestAdapter`、失败退避、lease/CAS 和幂等 run_id；这些未完成前不得进入 `patch_branches`、升级 PR、镜像或生产。
+- 审计发现 Pelican 运行路径仍需 `GroupScopedTestAdapter`、失败退避、lease/CAS 和幂等 run_id；这些未完成前不得进入 `patch_branches`、升级 PR、镜像或生产。候选源已保存为本地提交 `1e2f67ed4`，仍未推送。
 - 当前生产基线仍为 `0.2.19-custom.2`，本轮只做阶段 A 清单/门禁，未推送或部署。
 
 
