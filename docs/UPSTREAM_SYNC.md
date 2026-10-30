@@ -13,6 +13,12 @@
 - `PelicanShowcaseReader` 已接入，按分组批量读取并在 SQL 中限制每组结果，降低公开页 N+1 查询风险；旧适配器保留回退。
 - 候选提交 `f760c1b7b`；Docker 编译/定向单测通过，完整 Compose 与页面请求验收尚未完成，仍不得推送生产。
 
+### 2026-10-30 — P0 隔离三站 Docker 验收（未发布）
+
+- 本地完整镜像构建成功；隔离主站/L1/COS 均 healthy，三个 health 端口 200，Compose config 通过；三套 PostgreSQL 均完成 9005/9006 字段检查。
+- 临时三站容器/卷和应用镜像已清理；旧会话孤儿容器占用共享网络，网络未强制删除。
+- 双 worker 竞争、真实 runner/结果幂等仍未完成，候选继续禁止加入 `patch_branches`、升级 PR 或生产。
+
 ### 2026-10-30 — 阶段 A：ownership 登记与孤儿路径门禁（未发布）
 
 - `pelican-showcase`、9005 迁移、批量生图后端/前端路径已加入功能清单和升级保护路径；后端新增稳定 FeatureID。
