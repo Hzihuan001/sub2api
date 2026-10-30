@@ -333,12 +333,20 @@ type scannable interface {
 
 func scanPlan(row scannable) (*service.ScheduledTestPlan, error) {
 	p := &service.ScheduledTestPlan{}
+	// Lease metadata is intentionally nullable for plans that have never been
+	// claimed (and for plans finalized by a worker). Scan nullable text through
+	// sql.NullString so the admin list/detail endpoints remain compatible with
+	// rows created before the lease columns were introduced.
+	var leaseToken, activeRunID, lastError sql.NullString
 	if err := row.Scan(
 		&p.ID, &p.AccountID, &p.GroupID, &p.ModelID, &p.TestKind, &p.TestPrompt, &p.CronExpression, &p.Enabled, &p.MaxResults, &p.AutoRecover,
-		&p.LastRunAt, &p.NextRunAt, &p.LeaseToken, &p.LeaseExpiresAt, &p.ActiveRunID, &p.FailureStreak, &p.LastError, &p.CreatedAt, &p.UpdatedAt,
+		&p.LastRunAt, &p.NextRunAt, &leaseToken, &p.LeaseExpiresAt, &activeRunID, &p.FailureStreak, &lastError, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
+	p.LeaseToken = leaseToken.String
+	p.ActiveRunID = activeRunID.String
+	p.LastError = lastError.String
 	return p, nil
 }
 
