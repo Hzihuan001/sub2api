@@ -1,5 +1,13 @@
 # 定制项目状态与官方升级说明
 
+### 2026-10-31 — 0.2.19-custom.6 — 渠道测智修复与三站发布
+
+- **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:23ef5cabe31db07f555bc9211850a93e6425712b1897c60fa9256ed0c1fba821`，构建版本 `0.2.19-custom.6`，运行提交 `46e75135b`。
+- **修复**：定时测试兼容 NULL 租约字段；渠道管理新增“测智管理”；用户端渠道测智只返回并显示分组、模型和结果，不暴露账号名称。
+- **部署**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 按顺序更新，三端容器 healthy、restart 0；根页面和 `/health` 均正常返回 200。
+- **清理**：服务器仅保留当前镜像和上一版回滚镜像 `sha256:8377cdfdd22f47c6b4fb6bd3ba6a8db0217dc3b74af109729532c10fde30cbc5`；删除更早旧镜像并清理无用构建缓存，不触碰数据库、Redis 和业务卷。
+- **备份/回滚**：Compose 备份位于 `/opt/sub2api-deploy-backups/20261030190735/`；回滚只替换应用镜像，不恢复旧数据库。
+
 ### 2026-10-31 — 0.2.19-custom.5 — 渠道测智三站发布
 
 - **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:8377cdfdd22f47c6b4fb6bd3ba6a8db0217dc3b74af109729532c10fde30cbc5`，构建版本 `0.2.19-custom.5`，运行提交 `5b647e25d`。
