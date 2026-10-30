@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 )
 
@@ -17,6 +19,7 @@ type ScheduledTestRunnerService struct {
 	planRepo       ScheduledTestPlanRepository
 	scheduledSvc   *ScheduledTestService
 	accountTestSvc *AccountTestService
+	pelicanExecutor PelicanTestExecutor
 	rateLimitSvc   *RateLimitService
 	cfg            *config.Config
 
@@ -33,10 +36,15 @@ func NewScheduledTestRunnerService(
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
+	var pelicanExecutor PelicanTestExecutor
+	if accountTestSvc != nil {
+		pelicanExecutor = NewPelicanTestAdapter(accountTestSvc.accountRepo, accountTestSvc)
+	}
 	return &ScheduledTestRunnerService{
 		planRepo:       planRepo,
 		scheduledSvc:   scheduledSvc,
 		accountTestSvc: accountTestSvc,
+		pelicanExecutor: pelicanExecutor,
 		rateLimitSvc:   rateLimitSvc,
 		cfg:            cfg,
 	}
@@ -92,7 +100,17 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 	defer cancel()
 
 	now := time.Now()
-	plans, err := s.planRepo.ListDue(ctx, now)
+	leaseToken := uuid.NewString()
+	leaseUntil := now.Add(10 * time.Minute)
+	var plans []*ScheduledTestPlan
+	var err error
+	if claimer, ok := s.planRepo.(ScheduledTestPlanClaimer); ok {
+		plans, err = claimer.ClaimDue(ctx, now, leaseUntil, scheduledTestDefaultMaxWorkers*2, leaseToken)
+	} else {
+		// Compatibility path for in-memory fakes and older callers. The durable
+		// repository always implements ClaimDue after migration 9006.
+		plans, err = s.planRepo.ListDue(ctx, now)
+	}
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] ListDue error: %v", err)
 		return
@@ -120,6 +138,7 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 }
 
 func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *ScheduledTestPlan) {
+	startedAt := time.Now()
 	var result *ScheduledTestResult
 	var err error
 	if plan.TestKind == ScheduledTestKindPelican {
@@ -127,13 +146,33 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		if prompt == "" {
 			prompt = DefaultPelicanTestPrompt
 		}
-		result, err = s.accountTestSvc.RunTestBackgroundWithPrompt(ctx, plan.AccountID, plan.ModelID, prompt)
+		if plan.GroupID == nil || s.pelicanExecutor == nil {
+			err = fmt.Errorf("Pelican test requires a group-scoped executor")
+		} else {
+			result, err = s.pelicanExecutor.Run(ctx, plan.AccountID, *plan.GroupID, plan.ModelID, prompt)
+		}
 	} else {
 		result, err = s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
 	}
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d RunTestBackground error: %v", plan.ID, err)
-		return
+		finishedAt := time.Now()
+		result = &ScheduledTestResult{
+			Status: "failed", ErrorMessage: err.Error(),
+			StartedAt: startedAt, FinishedAt: finishedAt,
+			LatencyMs: finishedAt.Sub(startedAt).Milliseconds(),
+		}
+	}
+	if result == nil {
+		finishedAt := time.Now()
+		result = &ScheduledTestResult{
+			Status: "failed", ErrorMessage: "scheduled test returned no result",
+			StartedAt: startedAt, FinishedAt: finishedAt,
+			LatencyMs: finishedAt.Sub(startedAt).Milliseconds(),
+		}
+	}
+	if plan.ActiveRunID != "" {
+		result.RunID = plan.ActiveRunID
 	}
 
 	if err := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result); err != nil {
@@ -145,15 +184,42 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
 	}
 
-	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
+	now := time.Now()
+	nextRun, err := computeNextRun(plan.CronExpression, now)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d computeNextRun error: %v", plan.ID, err)
-		return
+		nextRun = now.Add(5 * time.Minute)
+	}
+	failureStreak := 0
+	lastError := ""
+	if result.Status != "success" {
+		failureStreak = plan.FailureStreak + 1
+		lastError = result.ErrorMessage
+		backoff := scheduledTestFailureBackoff(failureStreak)
+		if retryAt := now.Add(backoff); nextRun.Before(retryAt) {
+			nextRun = retryAt
+		}
 	}
 
-	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
+	if claimer, ok := s.planRepo.(ScheduledTestPlanClaimer); ok && plan.LeaseToken != "" && plan.ActiveRunID != "" {
+		if err := claimer.FinalizeRun(ctx, plan.ID, plan.LeaseToken, plan.ActiveRunID, now, nextRun, failureStreak, lastError); err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d FinalizeRun error: %v", plan.ID, err)
+		}
+		return
+	}
+	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, now, nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func scheduledTestFailureBackoff(streak int) time.Duration {
+	if streak < 1 {
+		return time.Minute
+	}
+	if streak > 4 {
+		streak = 4
+	}
+	return time.Minute * time.Duration(1<<(streak-1))
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.

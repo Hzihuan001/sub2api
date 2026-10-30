@@ -142,16 +142,19 @@ features:
       - backend/internal/handler/pelican_showcase_handler.go
       - backend/internal/server/routes/pelican_showcase.go
       - backend/internal/service/pelican_showcase_service.go
+      - backend/internal/service/pelican_test_adapter.go
       - backend/internal/service/pelican_showcase_service_test.go
       - backend/internal/service/scheduled_test_*.go
       - backend/internal/repository/scheduled_test_repo.go
       - backend/internal/handler/admin/scheduled_test_handler.go
       - backend/migrations/9005_custom_pelican_scheduled_test_kind.sql
+      - backend/migrations/9006_custom_scheduled_test_leases.sql
       - frontend/src/api/pelicanShowcase.ts
       - frontend/src/api/__tests__/pelicanShowcase.spec.ts
       - frontend/src/views/PelicanShowcaseView.vue
     migrations:
       - backend/migrations/9005_custom_pelican_scheduled_test_kind.sql
+      - backend/migrations/9006_custom_scheduled_test_leases.sql
     host_hooks:
       - backend/internal/handler/handler.go
       - backend/internal/handler/wire.go

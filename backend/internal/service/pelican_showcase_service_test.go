@@ -43,3 +43,15 @@ func TestComputeNextRunUsesCronExpression(t *testing.T) {
 		t.Fatalf("next run = %s, want %s", next, want)
 	}
 }
+
+func TestScheduledTestFailureBackoffIsBounded(t *testing.T) {
+	if got := scheduledTestFailureBackoff(1); got != time.Minute {
+		t.Fatalf("first failure backoff = %s", got)
+	}
+	if got := scheduledTestFailureBackoff(3); got != 4*time.Minute {
+		t.Fatalf("third failure backoff = %s", got)
+	}
+	if got := scheduledTestFailureBackoff(99); got != 8*time.Minute {
+		t.Fatalf("bounded failure backoff = %s", got)
+	}
+}

@@ -42,7 +42,10 @@
         "frontend/src/router/index.ts",
         "frontend/src/components/layout/AppSidebar.vue"
       ],
-      "migrations": ["backend/migrations/9005_custom_pelican_scheduled_test_kind.sql"],
+      "migrations": [
+        "backend/migrations/9005_custom_pelican_scheduled_test_kind.sql",
+        "backend/migrations/9006_custom_scheduled_test_leases.sql"
+      ],
       "tests": ["backend-pelican", "frontend-pelican"]
     }
   ]
