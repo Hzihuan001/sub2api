@@ -24,6 +24,7 @@
 - **清理**：本轮三站容器和卷已删除；由于旧会话孤儿容器仍占用共享 Compose 网络，网络未强制删除，避免影响其他验收环境。临时应用镜像已删除。
 - **结论**：本地容器验收通过；双 worker 竞争和真实 runner 计费/结果幂等仍需专门集成测试，未授权推送或生产部署。
 - **新增证据**：已添加 `TestScheduledTestPlanClaimDueLeaseAndFinalize` 集成测试，覆盖双 worker 领取、过期租约保护、错误 token CAS 和重复完成；Docker 编译环境已验证该测试可编译，但 Testcontainers 真实执行需在能访问 Docker socket 的宿主测试环境运行。
+- **持久化保护**：结果保存失败时保留租约，不提前 finalize；租约过期后允许完整任务重试。修复提交 `3c90e3310`，未推送。
 
 
 ### 2026-10-30 — 阶段 A 执行：ownership 登记与孤儿路径门禁（未发布）

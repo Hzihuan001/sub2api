@@ -21,6 +21,11 @@
 - **发布状态**：本地验收通过，但双 worker 竞争、真实 runner 结果幂等仍未完成，未推送、未部署。
 - **补充测试**：新增 scheduled lease integration contract，覆盖双 worker claim、错误 token、重复 finalize；当前仅完成编译验证，真实 Testcontainers 执行保留为发布门禁。
 
+### 2026-10-30 — 未发布 — P0 调度结果持久化失败保护
+
+- **修复**：租约运行的结果保存失败时不再清除 lease；让租约自然过期后由其他 worker 重试完整执行，避免“请求已执行但结果未保存”后静默推进调度。
+- **提交**：`3c90e3310`；未推送、未部署。
+
 ### 2026-10-30 — 未发布 — 阶段 A 完成 ownership 登记与孤儿路径门禁
 
 - **改动**：登记 `pelican-showcase`、9005 迁移和批量生图实际后端/前端路径；补充 `.github` 功能元数据、后端 FeatureID 和升级保护路径。

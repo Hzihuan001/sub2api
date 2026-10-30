@@ -19,6 +19,7 @@
 - 临时三站容器/卷和应用镜像已清理；旧会话孤儿容器占用共享网络，网络未强制删除。
 - 双 worker 竞争、真实 runner/结果幂等仍未完成，候选继续禁止加入 `patch_branches`、升级 PR 或生产。
 - 已新增并编译验证 scheduled lease integration contract；真实 Testcontainers 执行需宿主 Docker socket，完成前仍不得发布。
+- 结果保存失败保护已补入：租约运行不会在结果未持久化时提前 finalize，提交 `3c90e3310`。
 
 ### 2026-10-30 — 阶段 A：ownership 登记与孤儿路径门禁（未发布）
 
