@@ -1,6 +1,15 @@
 # Upstream upgrade PRs
 
 
+### 2026-10-30 — 七轮模块化审核定稿（第 5–7 轮追加）
+
+- **边界门禁**：新增 orphan-custom-sources 与 manifest/contracts/feature 清单一致性检查；`pelican-showcase`、`9005` 迁移和 image-studio 实际队列/计费路径登记前不得进入升级分支。
+- **运行门禁**：鹈鹕执行必须显式传递 group；调度失败退避、lease/CAS、幂等 `run_id`、批量展示读取和旧镜像读取/重复迁移测试全部列为 P0 证据。
+- **发布门禁**：升级 PR 必须运行 Compose 配置、隔离 health、HTTP/SSE、迁移、回滚和敏感信息检查，并生成不可变 evidence manifest；任何 skipped/unknown 或 P0 证据缺失只生成 blocked draft，不得 push/deploy。
+- **当前状态**：本轮仅更新文档，未修改生产。当前生产基线仍是 `0.2.19-custom.2`；未提交鹈鹕候选不能当作发布基线。
+- **权威方案**：[`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md)。
+
+
 ### 2026-10-29 — v0.2.19 route compatibility hotfix
 
 - 官方 `v0.2.19` 将角色权限路由 `/admin/roles` 纳入主线，导致旧定制 manifest 与官方路由重复，前端在挂载前失败。

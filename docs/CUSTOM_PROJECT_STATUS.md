@@ -1,6 +1,14 @@
 # 定制项目状态与官方升级说明
 
 
+### 2026-10-30 — 深度解耦方案追加三轮审核（第 5–7 轮）
+
+- **第 5 轮：边界登记**：发现未提交的 `pelican-showcase` 与 `9005` 迁移尚未进入 manifest/contracts，image-studio 的后端队列/计费接线登记不完整，operator 与 direct-access owner 混用，key-routing ownership 覆盖过多官方核心文件。新增 orphan-custom-sources 和三份清单一致性作为阶段 A 门禁；候选登记完成前不提交、不构建镜像。
+- **第 6 轮：运行与数据**：要求鹈鹕执行使用显式 `GroupScopedTestAdapter`，失败计划推进 `next_run_at` 并退避，调度领取使用 lease/CAS 和幂等 `run_id`，公开展示改为批量读取/分页或受控缓存；`9005` 必须做旧镜像读取、重复迁移和删除分组语义验收。
+- **第 7 轮：交付门禁**：要求升级 PR 执行 Compose 配置、隔离 health、HTTP/SSE、迁移重复、旧镜像、调度幂等和敏感信息检查；诊断缺失即失败，生成不可变 evidence manifest。任一步骤 skipped/unknown、P0 证据缺失或 digest 不一致，只生成 blocked draft，不得推送/部署。
+- **方案文件**：[`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md) 已更新为七轮审核定稿；本轮只改方案和文档，没有迁移业务代码、推送镜像或修改生产。
+
+
 ### 2026-10-30 — 深度解耦方案四轮审核定稿
 
 - 已完成四轮审核：架构边界、主线合并、数据/运行稳定性、实施/交付门禁。

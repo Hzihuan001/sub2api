@@ -1,4 +1,4 @@
-# 定制功能深度模块化执行方案（四轮审核定稿）
+# 定制功能深度模块化执行方案（七轮审核定稿）
 
 ## 0. 目标和边界
 
@@ -17,6 +17,9 @@
 - `custom/manifest.yml`、`custom/contracts.json`、升级脚本、隔离检查和 Docker 验收已经存在。
 - `key-routing`、`gateway-resilience`、`image-studio`、`prompt-audit` 已有独立目录或独立 service/repository。
 - 上游同步工作流会创建升级分支和草稿 PR，但 `patch_branches` 仍为空，不能直接重放历史功能分支。
+
+本方案的登记清单必须保持三份同步：`custom/manifest.yml`、`custom/contracts.json` 和
+`.github/custom-features.json`（若该文件存在）。新增或修改的定制路径不能只靠其中一份清单通过。
 
 仍然容易和主线冲突的地方：
 
@@ -103,6 +106,8 @@ frontend/src/custom/features/<feature>/
 - 每个 feature 的入口、出口、官方接入文件、数据库表、迁移、设置键、测试命令和回滚方式。
 - `custom/manifest.yml` 增加 owned paths、host hooks、migrations、tests、rollback keys。
 - `custom/contracts.json` 增加显式依赖和禁止反向依赖。
+- 增加 orphan-custom-sources 检查：扫描新增/修改的 `pelican`、`batch`、`routes`、`migrations`、定制前端视图及 feature 目录，必须在 manifest、contracts 或登记过的 host hook 中出现；否则门禁失败。
+- 当前候选中的 `pelican-showcase`、`9005_custom_pelican_scheduled_test_kind.sql` 以及相关测试在登记完成前只能保持未发布状态，不得进入升级分支或镜像构建。
 - 对当前未提交候选建立行为基线；未通过的候选不进入 patch stack。
 
 **通过条件**：每个 feature 都能明确回答“谁调用、调用谁、保存什么、如何测试、怎样回滚”。
@@ -115,7 +120,7 @@ frontend/src/custom/features/<feature>/
 2. `key-routing`
 3. `gateway-resilience`
 
-每个 feature 都必须先有 contract、fake adapter 和测试，再替换运行接线。旧路径保留兼容 wrapper，待新旧行为对比通过后再删除旧分支。
+每个 feature 都必须先有 contract、fake adapter 和测试，再替换运行接线。旧路径保留兼容 wrapper，待新旧行为对比通过后再删除旧分支。鹈鹕测试必须使用显式的 `GroupScopedTestAdapter` 传递目标分组，不能只在展示层按组过滤；调度失败时必须推进下一次运行时间或采用指数退避，禁止失败计划每分钟重复发起请求。
 
 **通过条件**：service 测试不需要启动官方 handler、真实数据库或完整网关容器；adapter 测试覆盖官方边界错误。
 
@@ -139,12 +144,12 @@ frontend/src/custom/features/<feature>/
 ### 阶段执行的兼容性不变量
 
 - 外部 API、错误码、计费顺序、用户余额、已结算消耗和现有权限矩阵不因目录迁移改变。
-- 纯结构重构不得新增迁移；确需新增字段时必须可空或有安全默认值，旧版本能够启动并读取历史数据。
+- 纯结构重构不得新增迁移；确需新增字段时必须可空或有安全默认值，旧版本能够启动并读取历史数据。当前 `9005_custom_pelican_scheduled_test_kind.sql` 属于业务字段迁移，必须单独登记、做重复执行和旧镜像读取验证，不能把它包装成纯结构重构。
 - 迁移只追加，不修改已执行 SQL，不回写历史业务记录，不用旧备份覆盖新业务数据进行回滚。
 - 日志、指标和审计事件继续保留原 request ID、user ID、group ID、account ID 和 billing snapshot。
 - adapter 失败必须返回明确错误码或降级结果，不能通过 `nil`、默认价格或默认分组静默绕过。
 
-## 5. 四轮审核与优化记录
+## 5. 七轮审核与优化记录
 
 ### 第 1 轮：架构边界审核
 
@@ -170,6 +175,24 @@ frontend/src/custom/features/<feature>/
 
 **优化**：按 P0 → P1 → P2 分批，每个 feature 先 contract/fake，再接线，再删旧分支；任意阶段出现行为差异、迁移异常、宿主接线缺失或 Docker 关键日志错误，立即停止，不进入推送和部署。
 
+### 第 5 轮：边界登记和主线冲突审核
+
+**发现**：当前未提交鹈鹕候选已经新增 handler、service、route、前端页面和 `9005` 迁移，但 manifest/contracts 没有登记 `pelican-showcase`；`image-studio` 的批量 service、队列和计费接线也没有完整列出；`operator` 与 direct-access 共用 owner；key-routing 的 entries 还覆盖了大量官方核心文件。现有合同脚本只验证“已登记条目”，无法发现漏登记的新增路径。
+
+**优化**：阶段 A 增加 orphan-custom-sources 扫描和三份清单一致性检查；将 `pelican-showcase` 作为独立 feature 登记其 owned paths、host hooks、迁移和测试；把 direct-access 作为独立 deployment extension；把 key-routing 的核心所有权收窄到 resolver/adapter/hook，官方 handler、repository 和 middleware 仅在明确登记的 host hook 中出现。登记完成前，鹈鹕候选不得提交、推送或构建镜像。
+
+### 第 6 轮：运行时、数据和调度审核
+
+**发现**：鹈鹕计划保存了 `group_id`，但执行器仍可能只按账号调用普通测试服务，导致“展示按组、实际未按组执行”；失败计划如果不推进 `next_run_at`，会在每分钟重复请求；`group_id ON DELETE CASCADE` 的历史行为需要明确；公开展示逐组逐账号逐计划读取存在 N+1 风险。调度器如果没有 claim/lease/CAS，多实例或慢任务还可能重复执行同一计划并重复计费。
+
+**优化**：新增 `GroupScopedTestAdapter`，让目标分组进入真实测试和结果快照；成功与失败都更新调度状态，失败采用有限重试和指数退避并记录最后错误；调度领取使用 lease/CAS 或等价分布式锁，并为每次执行生成幂等 `run_id`；对 `9005` 做旧镜像读取、重复迁移和删除分组语义验收；展示接口使用批量结果读取、分页或受控缓存，避免公开页拖慢数据库。内部重试必须继承请求 deadline，不能以固定长超时替代上游截止时间。
+
+### 第 7 轮：测试、发布和证据链审核
+
+**发现**：现有升级工作流的写权限范围过大，Docker/Compose、迁移重复、旧镜像回退和 SSE 验收没有成为可执行门禁；诊断文件缺失可能被忽略；发布前后缺少统一的不可变证据清单；当前鹈鹕候选尚无分组归属、旧列兼容和调度退避的自动化证据。
+
+**优化**：将工作流默认权限收紧为 read，只有需要推送或创建 PR 的 job 显式授予 write，并使用环境保护；升级 PR 必须执行 `docker compose config`、隔离启动、health、HTTP/SSE、迁移重复、旧镜像读取和调度幂等检查；诊断报告缺失即失败；每次升级生成 evidence manifest，至少包含 upstream tag/SHA、custom base/merge SHA、manifest 检查、生成代码结果、迁移差异、测试清单、镜像 digest、三站健康结果和回滚目标。任一步骤为 skipped/unknown、容器非 healthy、SSE smoke 失败、digest 不一致、敏感信息扫描失败或 P0 证据缺失，只生成 blocked draft，不允许 push/deploy。
+
 ## 6. 统一验收门禁
 
 每个 feature 必须通过：
@@ -177,8 +200,8 @@ frontend/src/custom/features/<feature>/
 1. contract、fake adapter、边界错误和权限测试。
 2. 受影响 Go 包、前端 typecheck、定向测试、生产构建。
 3. `scripts/custom_contracts.py`、`scripts/check-custom-isolation.py`、manifest ownership 和 `git diff --check`。
-4. 迁移重复执行、历史数据读取、旧镜像启动和回滚兼容。
-5. 隔离 Docker Compose：PostgreSQL、Redis、应用 health、关键 HTTP/SSE、启动错误和重启持久化。
+4. orphan-custom-sources 与三份清单一致性检查；迁移重复执行、历史数据读取、旧镜像启动和回滚兼容。
+5. 隔离 Docker Compose：`docker compose config`、PostgreSQL、Redis、应用 health、关键 HTTP/SSE、启动错误、重启持久化、失败计划退避和旧镜像读取。
 6. 一次官方 tag 合并演练，并保存冲突报告、range-diff 和测试清单。
 
 ### 可量化的完成标准
@@ -190,7 +213,7 @@ frontend/src/custom/features/<feature>/
 - 纯结构重构的迁移数量为零；有迁移的功能必须通过重复执行、旧镜像启动和回滚读取测试。
 - Docker 验收必须证明普通连接测试、鹈鹕测试、Key 路由、计费和权限的旧行为没有互相污染。
 
-发布前还必须记录：源码提交、标签、镜像 digest、三站备份标识、部署顺序、健康结果和回滚目标。
+发布前还必须记录：源码提交、标签、镜像 digest、三站备份标识、部署顺序、健康结果、回滚目标和不可变 evidence manifest。发布后固定按主站 → L1 → COS 检查公网 `/health`、首页、API/SSE 及定制入口；任一站失败立即停止后续站点并按代理站 → 主站顺序回滚。
 
 ## 7. 明确不做的事情
 
@@ -202,10 +225,11 @@ frontend/src/custom/features/<feature>/
 
 ## 8. 下一步
 
-1. 先审核并冻结 `custom/manifest.yml` 的 feature ownership。
-2. 为 `pelican-showcase` 建立 `PelicanTestAdapter` 和 `PelicanResultReader` 的最小 contract。
-3. 在隔离 fake 下验证普通连接测试和鹈鹕测试互不影响。
-4. 再开始 `key-routing` contract，不改现有运行逻辑。
-5. 每完成一个 P0 feature 就更新共享状态和功能日志，再进入下一项。
+1. 先补齐 `pelican-showcase`、`9005` 迁移、image-studio 实际 service/queue/计费路径和 direct-access extension 的 ownership/contract 登记，并实现 orphan-custom-sources 门禁。
+2. 为 `pelican-showcase` 建立 `GroupScopedTestAdapter`、`PelicanResultReader` 的最小 contract；修正失败计划退避、claim/lease 和批量读取，再进行行为基线。
+3. 在隔离 fake 下验证普通连接测试和鹈鹕测试互不影响，并验证删除/禁用分组、旧镜像读取和重复迁移。
+4. 再开始 `key-routing` contract，不改现有运行逻辑；把官方核心文件收窄为稳定 host hook。
+5. 将 Compose、SSE、迁移、旧镜像和 evidence manifest 纳入升级 PR 门禁；任何 unknown/skipped 自动阻止发布。
+6. 每完成一个 P0 feature 就更新共享状态和功能日志，再进入下一项；在所有 P0 门禁通过前不推送、不构建生产镜像、不部署。
 
-本方案四轮审核已完成，当前只形成执行基线；没有因为写方案而推送、部署或修改生产环境。
+本方案七轮审核已完成，当前只形成执行基线；本轮没有迁移业务代码、推送镜像或修改生产环境。工作区原有未提交鹈鹕候选仍未发布，必须先按第 5～7 轮门禁处理。
