@@ -107,6 +107,36 @@ func (r *scheduledTestPlanRepository) ListLatestPelicanByGroups(ctx context.Cont
 	return records, rows.Err()
 }
 
+// ListConfiguredPelicanGroups returns only groups with an enabled, scoped
+// Pelican plan. The showcase uses this to avoid rendering every visible group
+// as an empty "waiting" card.
+func (r *scheduledTestPlanRepository) ListConfiguredPelicanGroups(ctx context.Context, groupIDs []int64) ([]int64, error) {
+	if len(groupIDs) == 0 {
+		return []int64{}, nil
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT DISTINCT group_id
+		FROM scheduled_test_plans
+		WHERE test_kind = $1
+		  AND enabled = TRUE
+		  AND group_id = ANY($2)
+		ORDER BY group_id
+	`, service.ScheduledTestKindPelican, pq.Array(groupIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	configured := make([]int64, 0, len(groupIDs))
+	for rows.Next() {
+		var groupID int64
+		if err := rows.Scan(&groupID); err != nil {
+			return nil, err
+		}
+		configured = append(configured, groupID)
+	}
+	return configured, rows.Err()
+}
+
 func (r *scheduledTestPlanRepository) ListDue(ctx context.Context, now time.Time) ([]*service.ScheduledTestPlan, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at

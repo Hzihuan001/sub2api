@@ -91,7 +91,7 @@ func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int
 				return nil, err
 			}
 			for _, plan := range plans {
-				if plan.TestKind != ScheduledTestKindPelican {
+				if plan.TestKind != ScheduledTestKindPelican || !plan.Enabled {
 					continue
 				}
 				if plan.GroupID == nil || *plan.GroupID != g.ID {
@@ -119,6 +119,13 @@ func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int
 					row.Results = append(row.Results, candidate)
 				}
 			}
+		}
+		// A group is shown only when an enabled, group-scoped Pelican plan
+		// exists. This keeps unrelated visible groups out of the showcase while
+		// still allowing a newly configured group with no result to show its
+		// waiting state.
+		if len(seenPlans) == 0 {
+			continue
 		}
 		sort.SliceStable(row.Results, func(i, j int) bool {
 			return row.Results[i].FinishedAt.After(row.Results[j].FinishedAt)
@@ -176,9 +183,29 @@ func (s *PelicanShowcaseService) listLatestBulk(ctx context.Context, groups []Gr
 	for _, record := range records {
 		byGroup[record.GroupID] = append(byGroup[record.GroupID], record)
 	}
+	configured := make(map[int64]struct{}, len(groupIDs))
+	hasConfiguredReader := false
+	configuredIDs, configuredErr := s.planService.ListConfiguredPelicanGroups(ctx, groupIDs)
+	if configuredErr == nil {
+		hasConfiguredReader = true
+		for _, groupID := range configuredIDs {
+			configured[groupID] = struct{}{}
+		}
+	} else if !errors.Is(configuredErr, ErrPelicanShowcaseReaderUnavailable) {
+		return nil, configuredErr
+	}
 
 	out := make([]PelicanShowcaseGroup, 0, len(visible))
 	for _, group := range visible {
+		if hasConfiguredReader {
+			if _, ok := configured[group.ID]; !ok {
+				continue
+			}
+		} else if len(byGroup[group.ID]) == 0 {
+			// Compatibility repositories can expose results but not plan
+			// metadata; do not render groups that have no visible result.
+			continue
+		}
 		row := PelicanShowcaseGroup{ID: group.ID, Name: group.Name, Platform: group.Platform, Results: make([]*PelicanShowcaseResult, 0, 12), Status: "unknown"}
 		for _, record := range byGroup[group.ID] {
 			result := record.Result

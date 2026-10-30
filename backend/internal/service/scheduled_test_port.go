@@ -67,6 +67,13 @@ type PelicanShowcaseReader interface {
 	ListLatestPelicanByGroups(ctx context.Context, groupIDs []int64, limitPerGroup int) ([]PelicanShowcaseRecord, error)
 }
 
+// PelicanShowcasePlanReader reports groups that currently have an enabled
+// group-scoped Pelican plan. It is optional so older repositories and test
+// doubles can keep using the bounded result reader above.
+type PelicanShowcasePlanReader interface {
+	ListConfiguredPelicanGroups(ctx context.Context, groupIDs []int64) ([]int64, error)
+}
+
 // PelicanTestExecutor is the stable boundary for group-scoped showcase tests.
 // Ordinary scheduled connection tests continue to use AccountTestService
 // directly; only Pelican plans cross this adapter.

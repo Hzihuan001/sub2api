@@ -90,6 +90,16 @@ func (s *ScheduledTestService) ListLatestPelicanByGroups(ctx context.Context, gr
 	return reader.ListLatestPelicanByGroups(ctx, groupIDs, limitPerGroup)
 }
 
+// ListConfiguredPelicanGroups returns groups with an enabled Pelican plan when
+// the durable repository supports the optional showcase plan reader.
+func (s *ScheduledTestService) ListConfiguredPelicanGroups(ctx context.Context, groupIDs []int64) ([]int64, error) {
+	reader, ok := s.planRepo.(PelicanShowcasePlanReader)
+	if !ok {
+		return nil, ErrPelicanShowcaseReaderUnavailable
+	}
+	return reader.ListConfiguredPelicanGroups(ctx, groupIDs)
+}
+
 // SaveResult inserts a result and prunes old entries beyond maxResults.
 func (s *ScheduledTestService) SaveResult(ctx context.Context, planID int64, maxResults int, result *ScheduledTestResult) error {
 	result.PlanID = planID
