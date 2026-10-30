@@ -20,6 +20,7 @@
 - **清理**：本轮容器/卷已删除；旧会话孤儿容器占用共享网络，网络保留以避免影响其他环境；临时应用镜像已删除。
 - **发布状态**：本地验收通过，但双 worker 竞争、真实 runner 结果幂等仍未完成，未推送、未部署。
 - **补充测试**：新增 scheduled lease integration contract，覆盖双 worker claim、错误 token、重复 finalize；当前仅完成编译验证，真实 Testcontainers 执行保留为发布门禁。
+- **真实验收**：已在 Docker Desktop socket 上真实运行该 Testcontainers 集成测试并通过；临时 PostgreSQL/Redis 测试容器已自动清理。
 
 ### 2026-10-30 — 未发布 — P0 调度结果持久化失败保护
 
