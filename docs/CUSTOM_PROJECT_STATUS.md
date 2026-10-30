@@ -5,9 +5,10 @@
 
 - **已实现候选**：新增 `PelicanTestExecutor` 和分组绑定校验适配器；Pelican 计划执行不再直接调用普通账号测试入口。普通连接测试保持原路径。
 - **调度安全**：新增 `9006_custom_scheduled_test_leases.sql`，为计划增加租约、活动 run、失败计数和最后错误，为结果增加 `run_id` 及部分唯一索引；持久化仓库增加 `FOR UPDATE SKIP LOCKED` 领取和 lease/run CAS 完成。失败结果会落库，并按有限指数退避推进 `next_run_at`，避免失败计划每分钟重复请求。
-- **已检查**：合同清单 8 modules/15 groups、Python 合同 19/19、Pelican API 测试 1/1、`git diff --check` 通过。
-- **尚未通过**：没有 Go 工具链和 Docker 引擎，后端编译、SQL 集成测试、迁移重复执行、双 worker 租约竞争、旧镜像读取和隔离 Compose 尚未验证；因此本候选仍不能推送、构建镜像或部署。
-- **当前生产**：三站继续运行 `0.2.19-custom.2`。本地候选改造与迁移仍需完成后端验证，再决定是否进入发布分支。
+- **已检查**：合同清单 8 modules/15 groups、Python 合同 19/19、Pelican API 测试 1/1、Docker backend-builder Go 编译通过、Pelican/调度相关 Go 单测通过、临时 PostgreSQL 上 9005/9006 重复迁移与字段/唯一索引检查通过、`git diff --check` 通过。
+- **尚未通过**：双 worker 租约竞争、真实 runner/结果幂等集成、旧镜像读取和隔离 Compose 尚未验证；因此本候选仍不能推送、构建生产镜像或部署。
+- **候选提交**：P0 代码 `9e3fdb748`，测试边界修复 `6c34b98de`；仍未推送。
+- **当前生产**：三站继续运行 `0.2.19-custom.2`。本地候选改造与迁移仍需完成双 worker、真实 runner 和 Compose 验证，再决定是否进入发布分支。
 
 
 ### 2026-10-30 — 阶段 A 执行：ownership 登记与孤儿路径门禁（未发布）
