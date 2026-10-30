@@ -164,6 +164,7 @@ features:
       - frontend/src/components/layout/AppSidebar.vue
     tests:
       - backend-pelican
+      - backend-pelican-integration
       - frontend-pelican
 
 policies:

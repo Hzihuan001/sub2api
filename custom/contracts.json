@@ -214,6 +214,7 @@
       "dependencies": [],
       "tests": [
         "backend-pelican",
+        "backend-pelican-integration",
         "frontend-pelican"
       ]
     }
@@ -400,6 +401,19 @@
         "Pelican|ScheduledTest",
         "-count=1",
         "-timeout=120s"
+      ]
+    },
+    "backend-pelican-integration": {
+      "cwd": "backend",
+      "argv": [
+        "go",
+        "test",
+        "-tags=integration",
+        "./internal/repository",
+        "-run",
+        "TestScheduledTestPlanClaimDueLeaseAndFinalize",
+        "-count=1",
+        "-timeout=180s"
       ]
     },
     "frontend-pelican": {
