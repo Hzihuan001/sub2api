@@ -29,6 +29,12 @@ protected_paths:
   - backend/internal/securityaudit
   - frontend/src/authz
   - frontend/src/features/image-studio
+  - backend/internal/handler/pelican_showcase_handler.go
+  - backend/internal/server/routes/pelican_showcase.go
+  - backend/internal/service/pelican_showcase_service.go
+  - backend/migrations/9005_custom_pelican_scheduled_test_kind.sql
+  - frontend/src/api/pelicanShowcase.ts
+  - frontend/src/views/PelicanShowcaseView.vue
 
 checks:
   backend_test: go test ./...

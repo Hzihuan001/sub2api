@@ -108,7 +108,34 @@
       "entries": [
         "frontend/src/features/image-studio",
         "frontend/src/utils/imageGenerationPolicy.ts",
-        "backend/internal/handler/batch_image_handler.go"
+        "backend/internal/handler/batch_image_handler.go",
+        "backend/internal/service/batch_image.go",
+        "backend/internal/service/batch_image_billing_hold.go",
+        "backend/internal/service/batch_image_billing_recovery.go",
+        "backend/internal/service/batch_image_cleanup.go",
+        "backend/internal/service/batch_image_download.go",
+        "backend/internal/service/batch_image_processor.go",
+        "backend/internal/service/batch_image_provider.go",
+        "backend/internal/service/batch_image_provider_app_managed.go",
+        "backend/internal/service/batch_image_provider_banana_async.go",
+        "backend/internal/service/batch_image_provider_gemini.go",
+        "backend/internal/service/batch_image_provider_managed_fanout.go",
+        "backend/internal/service/batch_image_provider_vertex.go",
+        "backend/internal/service/batch_image_public.go",
+        "backend/internal/service/batch_image_queue.go",
+        "backend/internal/service/batch_image_settlement.go",
+        "backend/internal/service/batch_image_size.go",
+        "backend/internal/service/batch_image_worker.go",
+        "backend/internal/service/batch_image_worker_runtime.go",
+        "backend/internal/repository/batch_image_download_limiter.go",
+        "backend/internal/repository/batch_image_queue.go",
+        "backend/internal/repository/batch_image_repo.go",
+        "backend/migrations/9000_custom_batch_image_no_discount.sql",
+        "frontend/src/api/batchImage.ts",
+        "frontend/src/composables/useBatchImageAccess.ts",
+        "frontend/src/i18n/locales/en/batchImage.ts",
+        "frontend/src/i18n/locales/zh/batchImage.ts",
+        "frontend/src/views/user/BatchImageGuideView.vue"
       ],
       "dependencies": [],
       "tests": [
@@ -164,6 +191,28 @@
       "tests": [
         "backend-resilience",
         "frontend-resilience"
+      ]
+    },
+    {
+      "id": "pelican-showcase",
+      "owner": "custom/pelican-showcase",
+      "entries": [
+        "backend/internal/handler/pelican_showcase_handler.go",
+        "backend/internal/server/routes/pelican_showcase.go",
+        "backend/internal/service/pelican_showcase_service.go",
+        "backend/internal/service/scheduled_test_port.go",
+        "backend/internal/service/scheduled_test_runner_service.go",
+        "backend/internal/service/scheduled_test_service.go",
+        "backend/internal/repository/scheduled_test_repo.go",
+        "backend/internal/handler/admin/scheduled_test_handler.go",
+        "backend/migrations/9005_custom_pelican_scheduled_test_kind.sql",
+        "frontend/src/api/pelicanShowcase.ts",
+        "frontend/src/views/PelicanShowcaseView.vue"
+      ],
+      "dependencies": [],
+      "tests": [
+        "backend-pelican",
+        "frontend-pelican"
       ]
     }
   ],
@@ -334,6 +383,33 @@
     }
   ],
   "tests": {
+    "backend-pelican": {
+      "cwd": "backend",
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/service",
+        "./internal/repository",
+        "./internal/handler",
+        "./internal/handler/admin",
+        "./internal/server/routes",
+        "-run",
+        "Pelican|ScheduledTest",
+        "-count=1",
+        "-timeout=120s"
+      ]
+    },
+    "frontend-pelican": {
+      "cwd": "frontend",
+      "argv": [
+        "pnpm",
+        "exec",
+        "vitest",
+        "run",
+        "src/api/__tests__/pelicanShowcase.spec.ts"
+      ]
+    },
     "backend-direct-access": {
       "cwd": "backend",
       "argv": ["go", "test", "./cmd/direct-access"]

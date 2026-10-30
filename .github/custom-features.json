@@ -28,6 +28,22 @@
     {
       "id": "usage-extras",
       "settingsNamespace": "custom.usage-extras"
+    },
+    {
+      "id": "pelican-showcase",
+      "settingsNamespace": "custom.pelican-showcase",
+      "owner": "custom/pelican-showcase",
+      "status": "candidate-unpublished",
+      "hostHooks": [
+        "backend/internal/handler/handler.go",
+        "backend/internal/handler/wire.go",
+        "backend/internal/server/router.go",
+        "backend/cmd/server/wire_gen.go",
+        "frontend/src/router/index.ts",
+        "frontend/src/components/layout/AppSidebar.vue"
+      ],
+      "migrations": ["backend/migrations/9005_custom_pelican_scheduled_test_kind.sql"],
+      "tests": ["backend-pelican", "frontend-pelican"]
     }
   ]
 }

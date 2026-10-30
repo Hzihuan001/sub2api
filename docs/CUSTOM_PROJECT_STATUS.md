@@ -1,6 +1,15 @@
 # 定制项目状态与官方升级说明
 
 
+### 2026-10-30 — 阶段 A 执行：ownership 登记与孤儿路径门禁（未发布）
+
+- **已完成**：将 `pelican-showcase` 加入 `.github/custom-features.json`、`custom/manifest.yml`、`custom/contracts.json` 和后端稳定 FeatureID；登记 `9005_custom_pelican_scheduled_test_kind.sql`、Pelican API/页面/宿主接线，以及批量生图实际 service、queue、worker、provider、settlement、repository 和前端入口。
+- **新增门禁**：`scripts/custom_contracts.py` 增加 orphan-custom-sources 扫描，识别 Pelican、保留范围迁移、Key/韧性/审计/生图定制路径；新增 19 项 Python 合同测试，验证漏登记路径会失败。当前合同检查通过：8 modules、15 executable groups；Python 合同测试 19/19；Pelican 前端 API 测试 1/1；前端类型检查通过。
+- **执行调整**：扫描范围排除了测试文件和生成的静态资源，避免把测试/构建产物误当作生产所有权；真实业务文件仍必须登记。
+- **阻断项**：只读审计确认 Pelican 计划仍未把 `group_id` 传入真实测试执行；失败计划可能不推进 `next_run_at`；`ListDue` 没有 lease/CAS/幂等 `run_id`；展示存在 N+1 查询；当前没有 Go 工具链且 Docker 引擎未启动，因此这些 P0 修复和后端/Docker 验收尚未执行。
+- **生产**：三站仍为 `0.2.19-custom.2`，本轮没有推送、构建镜像或部署。当前工作树的候选代码仍不可作为发布基线。
+
+
 ### 2026-10-30 — 深度解耦方案追加三轮审核（第 5–7 轮）
 
 - **第 5 轮：边界登记**：发现未提交的 `pelican-showcase` 与 `9005` 迁移尚未进入 manifest/contracts，image-studio 的后端队列/计费接线登记不完整，operator 与 direct-access owner 混用，key-routing ownership 覆盖过多官方核心文件。新增 orphan-custom-sources 和三份清单一致性作为阶段 A 门禁；候选登记完成前不提交、不构建镜像。

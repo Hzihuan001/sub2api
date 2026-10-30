@@ -106,6 +106,15 @@ features:
   - id: image-studio
     owner: custom/image-studio
     description: Image studio, batch fan-out, references and downloads.
+    owned_paths:
+      - backend/internal/handler/batch_image_handler.go
+      - backend/internal/service/batch_image_*.go
+      - backend/internal/repository/batch_image_*.go
+      - backend/migrations/9000_custom_batch_image_no_discount.sql
+      - frontend/src/api/batchImage.ts
+      - frontend/src/composables/useBatchImageAccess.ts
+      - frontend/src/features/image-studio
+      - frontend/src/views/user/BatchImageGuideView.vue
     tests:
       - backend/internal/service/batch_image_...
       - frontend/src/features/image-studio
@@ -126,6 +135,33 @@ features:
       - frontend/src/components/keys/ApiKeyEditorDialog.vue
       - frontend/src/features/key-editor
       - frontend/src/views/admin
+  - id: pelican-showcase
+    owner: custom/pelican-showcase
+    description: Group-scoped scheduled test plans and read-only group comparison showcase; currently an unpublished candidate.
+    owned_paths:
+      - backend/internal/handler/pelican_showcase_handler.go
+      - backend/internal/server/routes/pelican_showcase.go
+      - backend/internal/service/pelican_showcase_service.go
+      - backend/internal/service/pelican_showcase_service_test.go
+      - backend/internal/service/scheduled_test_*.go
+      - backend/internal/repository/scheduled_test_repo.go
+      - backend/internal/handler/admin/scheduled_test_handler.go
+      - backend/migrations/9005_custom_pelican_scheduled_test_kind.sql
+      - frontend/src/api/pelicanShowcase.ts
+      - frontend/src/api/__tests__/pelicanShowcase.spec.ts
+      - frontend/src/views/PelicanShowcaseView.vue
+    migrations:
+      - backend/migrations/9005_custom_pelican_scheduled_test_kind.sql
+    host_hooks:
+      - backend/internal/handler/handler.go
+      - backend/internal/handler/wire.go
+      - backend/internal/server/router.go
+      - backend/cmd/server/wire_gen.go
+      - frontend/src/router/index.ts
+      - frontend/src/components/layout/AppSidebar.vue
+    tests:
+      - backend-pelican
+      - frontend-pelican
 
 policies:
   generated_sources:

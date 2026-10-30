@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from custom_contracts import ContractError, check, imports, go_host_call_count
+from custom_contracts import ContractError, check, check_orphan_custom_sources, imports, go_host_call_count
 
 
 class ContractTests(unittest.TestCase):
@@ -144,6 +144,13 @@ func runMainServer() {
         self.contract["modules"][0]["entries"] = ["../../outside"]
         with self.assertRaisesRegex(ContractError, "escapes repository"):
             self.validate()
+
+    def test_orphan_custom_source_requires_ownership_entry(self):
+        self.write("backend/internal/service/pelican_showcase_service.go", "package service\n")
+        with self.assertRaisesRegex(ContractError, "orphan custom sources"):
+            check_orphan_custom_sources(self.root, self.contract)
+        self.contract["modules"][0]["entries"].append("backend/internal/service/pelican_showcase_service.go")
+        check_orphan_custom_sources(self.root, self.contract)
 
 
 if __name__ == "__main__":

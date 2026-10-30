@@ -86,6 +86,79 @@ def load_contracts(root: Path) -> dict:
     return data
 
 
+def contract_entry_matches(rel: str, entry: str) -> bool:
+    """Return whether an owned file or directory entry covers a path."""
+    normalized = entry.rstrip("/")
+    return rel == normalized or rel.startswith(normalized + "/")
+
+
+def registered_contract_paths(data: dict) -> set[str]:
+    registered: set[str] = set()
+    for module in data.get("modules", []):
+        registered.update(module.get("entries", []))
+    for boundary in data.get("host_entries", []):
+        registered.update(boundary.get("files", []))
+    for extension in data.get("deployment_extensions", []):
+        for key in ("source", "deployment"):
+            value = extension.get(key)
+            if value:
+                registered.add(value)
+        registered.update(extension.get("tests", []))
+    return registered
+
+
+def is_custom_candidate(rel: str) -> bool:
+    lower = rel.lower()
+    if "pelican" in lower:
+        return True
+    if re.fullmatch(r"backend/migrations/9[0-9]{3}_custom_[a-z0-9][a-z0-9_-]*\.sql", rel):
+        return True
+    if lower.startswith((
+        "backend/internal/keyrouting/",
+        "backend/internal/authz/",
+        "backend/internal/securityaudit/",
+        "backend/cmd/direct-access/",
+        "deploy/direct-access/",
+        "frontend/src/features/key-routing/",
+        "frontend/src/features/gateway-resilience/",
+        "frontend/src/features/image-studio/",
+        "frontend/src/features/prompt-audit/",
+    )):
+        return True
+    if lower.startswith("backend/internal/") and "batch_image" in lower:
+        return True
+    if lower.startswith("frontend/src/") and "batchimage" in lower:
+        return True
+    return False
+
+
+def check_orphan_custom_sources(root: Path, data: dict) -> None:
+    """Reject recognizable custom sources that are absent from ownership lists.
+
+    This intentionally targets stable custom naming conventions rather than
+    treating every modified host file as feature-owned. Host files remain
+    governed by host_entries and required_host_calls.
+    """
+    registered = registered_contract_paths(data)
+    orphaned: list[str] = []
+    candidates: list[Path] = list(production_sources(root))
+    for folder in ("backend/cmd/direct-access", "deploy/direct-access"):
+        base = root / folder
+        if base.exists():
+            candidates.extend(path for path in base.rglob("*") if path.is_file() and path.suffix not in {".go", ".ts", ".vue"})
+    migrations = root / "backend/migrations"
+    if migrations.exists():
+        candidates.extend(path for path in migrations.glob("*.sql") if path.is_file())
+    for path in candidates:
+        rel = path.relative_to(root).as_posix()
+        if not is_custom_candidate(rel):
+            continue
+        if not any(contract_entry_matches(rel, entry) for entry in registered):
+            orphaned.append(rel)
+    if orphaned:
+        raise ContractError("orphan custom sources not registered: " + ", ".join(sorted(orphaned)))
+
+
 def check(root: Path) -> dict:
     data = load_contracts(root)
     feature_ids = {item["id"] for item in json.loads((root / ".github/custom-features.json").read_text())["features"]}
@@ -116,6 +189,7 @@ def check(root: Path) -> dict:
     rules = data.get("dependency_rules", [])
     if not rules or not data.get("host_entries"):
         raise ContractError("dependency rules and host entries cannot be empty")
+    check_orphan_custom_sources(root, data)
     exceptions = {(e["file"], e["import"]): e for e in data.get("exceptions", [])}
     used_exceptions = set()
     sources = list(production_sources(root))

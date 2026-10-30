@@ -19,6 +19,7 @@ const (
 	FeatureImageStudio       FeatureID = "image-studio"
 	FeatureBranding          FeatureID = "branding"
 	FeatureUsageExtras       FeatureID = "usage-extras"
+	FeaturePelicanShowcase   FeatureID = "pelican-showcase"
 )
 
 // FeatureManifest describes the stable identity and settings namespace of a
@@ -42,6 +43,7 @@ func BuiltInFeatureManifests() []FeatureManifest {
 		{ID: FeatureImageStudio, SettingsNamespace: SettingNamespace(FeatureImageStudio)},
 		{ID: FeatureBranding, SettingsNamespace: SettingNamespace(FeatureBranding)},
 		{ID: FeatureUsageExtras, SettingsNamespace: SettingNamespace(FeatureUsageExtras)},
+		{ID: FeaturePelicanShowcase, SettingsNamespace: SettingNamespace(FeaturePelicanShowcase)},
 	}
 	sort.Slice(manifests, func(i, j int) bool { return manifests[i].ID < manifests[j].ID })
 	return manifests

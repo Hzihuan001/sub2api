@@ -225,11 +225,11 @@ frontend/src/custom/features/<feature>/
 
 ## 8. 下一步
 
-1. 先补齐 `pelican-showcase`、`9005` 迁移、image-studio 实际 service/queue/计费路径和 direct-access extension 的 ownership/contract 登记，并实现 orphan-custom-sources 门禁。
+1. **阶段 A 已完成**：已补齐 `pelican-showcase`、`9005` 迁移和 image-studio 实际 service/queue/计费路径的 ownership/contract 登记，并实现 orphan-custom-sources 门禁；direct-access 仍作为部署扩展单独核对。
 2. 为 `pelican-showcase` 建立 `GroupScopedTestAdapter`、`PelicanResultReader` 的最小 contract；修正失败计划退避、claim/lease 和批量读取，再进行行为基线。
 3. 在隔离 fake 下验证普通连接测试和鹈鹕测试互不影响，并验证删除/禁用分组、旧镜像读取和重复迁移。
 4. 再开始 `key-routing` contract，不改现有运行逻辑；把官方核心文件收窄为稳定 host hook。
 5. 将 Compose、SSE、迁移、旧镜像和 evidence manifest 纳入升级 PR 门禁；任何 unknown/skipped 自动阻止发布。
 6. 每完成一个 P0 feature 就更新共享状态和功能日志，再进入下一项；在所有 P0 门禁通过前不推送、不构建生产镜像、不部署。
 
-本方案七轮审核已完成，当前只形成执行基线；本轮没有迁移业务代码、推送镜像或修改生产环境。工作区原有未提交鹈鹕候选仍未发布，必须先按第 5～7 轮门禁处理。
+本方案七轮审核已完成，阶段 A 已开始执行并完成清单/门禁登记；当前没有推送镜像或修改生产环境。工作区原有未提交鹈鹕候选仍未发布，必须先完成 `GroupScopedTestAdapter`、失败退避、lease/CAS、幂等 run_id、批量读取和后端/Docker 验收，再进入后续阶段。
