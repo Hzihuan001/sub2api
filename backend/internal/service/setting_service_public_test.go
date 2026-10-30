@@ -75,6 +75,9 @@ func TestSettingService_IsPelicanShowcaseEnabledDefaultsOnAndHonorsExplicitDisab
 		t.Run(name, func(t *testing.T) {
 			svc := NewSettingService(&settingPublicRepoStub{values: values}, &config.Config{})
 			require.True(t, svc.IsPelicanShowcaseEnabled(context.Background()))
+			public, err := svc.GetPublicSettings(context.Background())
+			require.NoError(t, err)
+			require.True(t, public.PelicanShowcaseEnabled)
 		})
 	}
 

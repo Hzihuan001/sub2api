@@ -371,7 +371,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		ModelPlazaEnabled:       settings[SettingKeyModelPlazaEnabled] == "true",
 		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
-		PelicanShowcaseEnabled:  settings[SettingKeyPelicanShowcaseEnabled] == "true",
+		// Opt-out switch: an older database without this key keeps the page
+		// visible until an administrator explicitly writes false.
+		PelicanShowcaseEnabled:  !isFalseSettingValue(settings[SettingKeyPelicanShowcaseEnabled]),
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",

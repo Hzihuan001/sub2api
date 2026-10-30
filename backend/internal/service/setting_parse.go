@@ -837,7 +837,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"
 	result.ModelPlazaRequireAuth = settings[SettingKeyModelPlazaRequireAuth] == "true"
 	result.ModelPlazaDescription = settings[SettingKeyModelPlazaDescription]
-	result.PelicanShowcaseEnabled = settings[SettingKeyPelicanShowcaseEnabled] == "true"
+	result.PelicanShowcaseEnabled = !isFalseSettingValue(settings[SettingKeyPelicanShowcaseEnabled])
 	result.PluginManagementEnabled = settings[SettingKeyPluginManagementEnabled] == "true"
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
