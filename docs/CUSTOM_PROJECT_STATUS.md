@@ -26,6 +26,7 @@
 - **新增证据**：已添加 `TestScheduledTestPlanClaimDueLeaseAndFinalize` 集成测试，覆盖双 worker 领取、过期租约保护、错误 token CAS 和重复完成；Docker 编译环境已验证该测试可编译，但 Testcontainers 真实执行需在能访问 Docker socket 的宿主测试环境运行。
 - **持久化保护**：结果保存失败时保留租约，不提前 finalize；租约过期后允许完整任务重试。修复提交 `3c90e3310`，未推送。
 - **真实集成**：通过临时 Go + Docker CLI 容器挂载 Docker Desktop socket，真实 Testcontainers PostgreSQL/Redis 集成测试通过，`TestScheduledTestPlanClaimDueLeaseAndFinalize` 用时约 189 秒；测试容器已清理。
+- **Runner 行为**：新增单元测试覆盖 Pelican 失败结果落库和 `next_run_at` 推进；Docker 定向 Go 测试通过。
 
 
 ### 2026-10-30 — 阶段 A 执行：ownership 登记与孤儿路径门禁（未发布）

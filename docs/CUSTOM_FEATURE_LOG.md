@@ -27,6 +27,11 @@
 - **修复**：租约运行的结果保存失败时不再清除 lease；让租约自然过期后由其他 worker 重试完整执行，避免“请求已执行但结果未保存”后静默推进调度。
 - **提交**：`3c90e3310`；未推送、未部署。
 
+### 2026-10-30 — 未发布 — P0 Runner 失败结果行为测试
+
+- **测试**：新增 `TestScheduledTestRunnerPersistsPelicanFailureAndAdvancesSchedule`，验证分组测试失败仍保存结果并推进调度。
+- **验证/提交**：Docker 定向 Go 测试通过，提交 `00cd40be8`，未推送。
+
 ### 2026-10-30 — 未发布 — 阶段 A 完成 ownership 登记与孤儿路径门禁
 
 - **改动**：登记 `pelican-showcase`、9005 迁移和批量生图实际后端/前端路径；补充 `.github` 功能元数据、后端 FeatureID 和升级保护路径。

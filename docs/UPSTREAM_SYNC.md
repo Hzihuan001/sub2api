@@ -21,6 +21,7 @@
 - 已新增并编译验证 scheduled lease integration contract；真实 Testcontainers 执行需宿主 Docker socket，完成前仍不得发布。
 - 结果保存失败保护已补入：租约运行不会在结果未持久化时提前 finalize，提交 `3c90e3310`。
 - 真实 Testcontainers PostgreSQL/Redis lease 集成已通过（约 189 秒），覆盖双 worker claim、错误 token CAS 和重复 finalize；测试资源已清理。
+- Runner 失败结果行为测试已加入并通过 Docker 定向 Go 测试，验证失败不静默丢弃且会推进下一次调度。
 
 ### 2026-10-30 — 阶段 A：ownership 登记与孤儿路径门禁（未发布）
 
