@@ -50,4 +50,17 @@ func TestScheduledTestPlanClaimDueLeaseAndFinalize(t *testing.T) {
 	require.NoError(t, repo.FinalizeRun(ctx, planID, first[0].LeaseToken, first[0].ActiveRunID, now, now.Add(5*time.Minute), 1, "failed"))
 	err = repo.FinalizeRun(ctx, planID, first[0].LeaseToken, first[0].ActiveRunID, now, now.Add(5*time.Minute), 1, "failed")
 	require.Error(t, err, "a finalized run must not be finalized twice")
+
+	resultRepo := &scheduledTestResultRepository{db: integrationDB}
+	firstResult, err := resultRepo.Create(ctx, &service.ScheduledTestResult{
+		PlanID: planID, RunID: first[0].ActiveRunID, Status: "failed",
+		ErrorMessage: "upstream overload", StartedAt: now, FinishedAt: now,
+	})
+	require.NoError(t, err)
+	secondResult, err := resultRepo.Create(ctx, &service.ScheduledTestResult{
+		PlanID: planID, RunID: first[0].ActiveRunID, Status: "failed",
+		ErrorMessage: "duplicate", StartedAt: now, FinishedAt: now,
+	})
+	require.NoError(t, err)
+	require.Equal(t, firstResult.ID, secondResult.ID, "same run_id must be idempotent")
 }
