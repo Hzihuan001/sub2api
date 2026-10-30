@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 )
@@ -61,6 +62,11 @@ func NewPelicanShowcaseService(
 func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int64]struct{}, restrictPublic bool) ([]PelicanShowcaseGroup, error) {
 	groups, err := s.groupRepo.ListActive(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if bulk, err := s.listLatestBulk(ctx, groups, allowed, restrictPublic); err == nil {
+		return bulk, nil
+	} else if !errors.Is(err, ErrPelicanShowcaseReaderUnavailable) {
 		return nil, err
 	}
 	out := make([]PelicanShowcaseGroup, 0, len(groups))
@@ -150,6 +156,74 @@ func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+func (s *PelicanShowcaseService) listLatestBulk(ctx context.Context, groups []Group, allowed map[int64]struct{}, restrictPublic bool) ([]PelicanShowcaseGroup, error) {
+	visible := make([]Group, 0, len(groups))
+	groupIDs := make([]int64, 0, len(groups))
+	for _, group := range groups {
+		if !showcaseGroupVisible(&group, allowed, restrictPublic) {
+			continue
+		}
+		visible = append(visible, group)
+		groupIDs = append(groupIDs, group.ID)
+	}
+	records, err := s.planService.ListLatestPelicanByGroups(ctx, groupIDs, 12)
+	if err != nil {
+		return nil, err
+	}
+	byGroup := make(map[int64][]PelicanShowcaseRecord, len(groupIDs))
+	for _, record := range records {
+		byGroup[record.GroupID] = append(byGroup[record.GroupID], record)
+	}
+
+	out := make([]PelicanShowcaseGroup, 0, len(visible))
+	for _, group := range visible {
+		row := PelicanShowcaseGroup{ID: group.ID, Name: group.Name, Platform: group.Platform, Results: make([]*PelicanShowcaseResult, 0, 12), Status: "unknown"}
+		for _, record := range byGroup[group.ID] {
+			result := record.Result
+			row.Results = append(row.Results, &PelicanShowcaseResult{
+				ID: result.ID, AccountName: record.AccountName, ModelID: record.ModelID,
+				ThinkingEffort: "default", Status: result.Status,
+				ResponseText: result.ResponseText, ErrorMessage: result.ErrorMessage,
+				LatencyMs: result.LatencyMs, StartedAt: result.StartedAt, FinishedAt: result.FinishedAt,
+			})
+		}
+		finalizePelicanShowcaseGroup(&row)
+		out = append(out, row)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func finalizePelicanShowcaseGroup(row *PelicanShowcaseGroup) {
+	for _, result := range row.Results {
+		if row.LastTestAt == nil || result.FinishedAt.After(*row.LastTestAt) {
+			finishedAt := result.FinishedAt
+			row.LastTestAt = &finishedAt
+		}
+		if result.Status == "success" {
+			row.SuccessCount++
+			if row.Latest == nil {
+				row.Latest = result
+			}
+		} else {
+			row.FailureCount++
+			if row.LatestFailure == nil {
+				row.LatestFailure = result
+			}
+		}
+	}
+	if len(row.Results) == 0 {
+		return
+	}
+	if time.Since(row.Results[0].FinishedAt) > 24*time.Hour {
+		row.Status = "stale"
+	} else if row.Results[0].Status == "success" {
+		row.Status = "healthy"
+	} else {
+		row.Status = "degraded"
+	}
 }
 
 func showcaseGroupVisible(group *Group, allowed map[int64]struct{}, restrictPublic bool) bool {

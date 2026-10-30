@@ -8,6 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // --- Plan Repository ---
@@ -51,6 +52,59 @@ func (r *scheduledTestPlanRepository) ListByAccountID(ctx context.Context, accou
 	}
 	defer func() { _ = rows.Close() }()
 	return scanPlans(rows)
+}
+
+// ListLatestPelicanByGroups returns a bounded flat read model for the public
+// showcase. The window function keeps the per-group limit in SQL and avoids
+// N+1 account/plan/result queries on the public page.
+func (r *scheduledTestPlanRepository) ListLatestPelicanByGroups(ctx context.Context, groupIDs []int64, limitPerGroup int) ([]service.PelicanShowcaseRecord, error) {
+	if len(groupIDs) == 0 {
+		return []service.PelicanShowcaseRecord{}, nil
+	}
+	if limitPerGroup <= 0 {
+		limitPerGroup = 12
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		WITH ranked AS (
+			SELECT p.group_id, p.account_id, a.name AS account_name, p.id AS plan_id,
+			       p.model_id, r.id AS result_id, r.status, r.response_text,
+			       r.error_message, r.latency_ms, r.started_at, r.finished_at,
+			       r.created_at,
+			       ROW_NUMBER() OVER (PARTITION BY p.group_id ORDER BY r.finished_at DESC, r.id DESC) AS rn
+			FROM scheduled_test_plans p
+			JOIN scheduled_test_results r ON r.plan_id = p.id
+			JOIN accounts a ON a.id = p.account_id
+			WHERE p.test_kind = $1
+			  AND p.group_id = ANY($2)
+		)
+		SELECT group_id, account_id, account_name, plan_id, model_id,
+		       result_id, status, response_text, error_message, latency_ms,
+		       started_at, finished_at, created_at
+		FROM ranked
+		WHERE rn <= $3
+		ORDER BY group_id, finished_at DESC, result_id DESC
+	`, service.ScheduledTestKindPelican, pq.Array(groupIDs), limitPerGroup)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var records []service.PelicanShowcaseRecord
+	for rows.Next() {
+		var record service.PelicanShowcaseRecord
+		if err := rows.Scan(
+			&record.GroupID, &record.AccountID, &record.AccountName, &record.PlanID,
+			&record.ModelID, &record.Result.ID, &record.Result.Status,
+			&record.Result.ResponseText, &record.Result.ErrorMessage,
+			&record.Result.LatencyMs, &record.Result.StartedAt,
+			&record.Result.FinishedAt, &record.Result.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		record.Result.PlanID = record.PlanID
+		records = append(records, record)
+	}
+	return records, rows.Err()
 }
 
 func (r *scheduledTestPlanRepository) ListDue(ctx context.Context, now time.Time) ([]*service.ScheduledTestPlan, error) {

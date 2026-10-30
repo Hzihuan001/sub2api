@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -46,6 +47,24 @@ type ScheduledTestResult struct {
 	FinishedAt   time.Time `json:"finished_at"`
 	CreatedAt    time.Time `json:"created_at"`
 	RunID        string    `json:"run_id,omitempty"`
+}
+
+// PelicanShowcaseRecord is the flat read model used by the public group
+// showcase. It lets the repository fetch plans and results in one bounded SQL
+// query instead of walking group -> account -> plan -> result.
+type PelicanShowcaseRecord struct {
+	GroupID     int64
+	AccountID   int64
+	AccountName string
+	PlanID      int64
+	ModelID     string
+	Result      ScheduledTestResult
+}
+
+var ErrPelicanShowcaseReaderUnavailable = errors.New("pelican showcase bulk reader unavailable")
+
+type PelicanShowcaseReader interface {
+	ListLatestPelicanByGroups(ctx context.Context, groupIDs []int64, limitPerGroup int) ([]PelicanShowcaseRecord, error)
 }
 
 // PelicanTestExecutor is the stable boundary for group-scoped showcase tests.

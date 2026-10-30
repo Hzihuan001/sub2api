@@ -76,6 +76,20 @@ func (s *ScheduledTestService) ListResults(ctx context.Context, planID int64, li
 	return s.resultRepo.ListByPlanID(ctx, planID, limit)
 }
 
+// ListLatestPelicanByGroups uses the durable bulk reader when available. A
+// compatibility error lets the showcase retain its bounded legacy fallback in
+// tests or older adapters.
+func (s *ScheduledTestService) ListLatestPelicanByGroups(ctx context.Context, groupIDs []int64, limitPerGroup int) ([]PelicanShowcaseRecord, error) {
+	reader, ok := s.planRepo.(PelicanShowcaseReader)
+	if !ok {
+		return nil, ErrPelicanShowcaseReaderUnavailable
+	}
+	if limitPerGroup <= 0 {
+		limitPerGroup = 12
+	}
+	return reader.ListLatestPelicanByGroups(ctx, groupIDs, limitPerGroup)
+}
+
 // SaveResult inserts a result and prunes old entries beyond maxResults.
 func (s *ScheduledTestService) SaveResult(ctx context.Context, planID int64, maxResults int, result *ScheduledTestResult) error {
 	result.PlanID = planID
