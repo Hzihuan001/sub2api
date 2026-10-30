@@ -206,9 +206,12 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeySubscriptionEnabled: "true",
 
 		// Model plaza feature (default disabled; opt-in, public unless require_auth)
-		SettingKeyModelPlazaEnabled:       "false",
-		SettingKeyModelPlazaRequireAuth:   "false",
-		SettingKeyModelPlazaDescription:   "",
+		SettingKeyModelPlazaEnabled:     "false",
+		SettingKeyModelPlazaRequireAuth: "false",
+		SettingKeyModelPlazaDescription: "",
+		// Pelican showcase existed before this switch; keep it enabled for
+		// existing installations until an administrator explicitly disables it.
+		SettingKeyPelicanShowcaseEnabled:  "true",
 		SettingKeyPluginManagementEnabled: "false",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
@@ -834,6 +837,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"
 	result.ModelPlazaRequireAuth = settings[SettingKeyModelPlazaRequireAuth] == "true"
 	result.ModelPlazaDescription = settings[SettingKeyModelPlazaDescription]
+	result.PelicanShowcaseEnabled = settings[SettingKeyPelicanShowcaseEnabled] == "true"
 	result.PluginManagementEnabled = settings[SettingKeyPluginManagementEnabled] == "true"
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)

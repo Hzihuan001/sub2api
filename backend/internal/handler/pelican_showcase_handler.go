@@ -11,16 +11,22 @@ import (
 type PelicanShowcaseHandler struct {
 	showcaseService *service.PelicanShowcaseService
 	apiKeyService   *service.APIKeyService
+	settingService  *service.SettingService
 }
 
 func NewPelicanShowcaseHandler(
 	showcaseService *service.PelicanShowcaseService,
 	apiKeyService *service.APIKeyService,
+	settingService *service.SettingService,
 ) *PelicanShowcaseHandler {
-	return &PelicanShowcaseHandler{showcaseService: showcaseService, apiKeyService: apiKeyService}
+	return &PelicanShowcaseHandler{showcaseService: showcaseService, apiKeyService: apiKeyService, settingService: settingService}
 }
 
 func (h *PelicanShowcaseHandler) Get(c *gin.Context) {
+	if h.settingService == nil || !h.settingService.IsPelicanShowcaseEnabled(c.Request.Context()) {
+		response.NotFound(c, "Pelican showcase is not enabled")
+		return
+	}
 	subject, authed := middleware.GetAuthSubjectFromContext(c)
 	if !authed {
 		response.Unauthorized(c, "Authentication required")

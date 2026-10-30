@@ -597,6 +597,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.ModelPlazaDescription != after.ModelPlazaDescription {
 		changed = append(changed, "model_plaza_description")
 	}
+	if before.PelicanShowcaseEnabled != after.PelicanShowcaseEnabled {
+		changed = append(changed, "pelican_showcase_enabled")
+	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
 	}

@@ -67,6 +67,23 @@ func TestSettingService_GetPublicSettings_ExposesRegistrationEmailSuffixWhitelis
 	require.Equal(t, []string{"@example.com", "@foo.bar", "*.edu.cn"}, settings.RegistrationEmailSuffixWhitelist)
 }
 
+func TestSettingService_IsPelicanShowcaseEnabledDefaultsOnAndHonorsExplicitDisable(t *testing.T) {
+	for name, values := range map[string]map[string]string{
+		"missing": {},
+		"enabled": {SettingKeyPelicanShowcaseEnabled: "true"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc := NewSettingService(&settingPublicRepoStub{values: values}, &config.Config{})
+			require.True(t, svc.IsPelicanShowcaseEnabled(context.Background()))
+		})
+	}
+
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyPelicanShowcaseEnabled: "false",
+	}}, &config.Config{})
+	require.False(t, svc.IsPelicanShowcaseEnabled(context.Background()))
+}
+
 func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

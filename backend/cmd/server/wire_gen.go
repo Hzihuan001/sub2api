@@ -325,7 +325,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, func(), e
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
 	modelPlazaService := service.NewModelPlazaService(channelRepository, groupRepository, pricingService, billingService, modelPricingResolver)
 	modelPlazaHandler := handler.NewModelPlazaHandler(modelPlazaService, apiKeyService, settingService)
-	pelicanShowcaseHandler := handler.NewPelicanShowcaseHandler(pelicanShowcaseService, apiKeyService)
+	pelicanShowcaseHandler := handler.NewPelicanShowcaseHandler(pelicanShowcaseService, apiKeyService, settingService)
 	imageTaskStore := repository.NewImageTaskStore(redisClient)
 	imageTaskService := service.ProvideImageTaskService(imageTaskStore, imageStorageSettingService)
 	asyncImageHandler := handler.NewAsyncImageHandler(imageTaskService, openAIGatewayHandler)

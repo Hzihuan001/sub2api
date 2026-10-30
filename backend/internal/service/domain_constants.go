@@ -569,6 +569,10 @@ const (
 	// and the header entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyModelPlazaEnabled = "model_plaza_enabled"
 
+	// SettingKeyPelicanShowcaseEnabled is a DB-backed soft switch for the
+	// user-facing Pelican showcase page and its authenticated API.
+	SettingKeyPelicanShowcaseEnabled = "pelican_showcase_enabled"
+
 	// SettingKeyModelPlazaRequireAuth controls whether the Model Plaza page requires a
 	// logged-in user. When false the page is public and anonymous visitors see only
 	// non-exclusive groups.

@@ -238,6 +238,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeySubscriptionEnabled,
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
+		SettingKeyPelicanShowcaseEnabled,
 		SettingKeyPluginManagementEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
@@ -370,6 +371,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		ModelPlazaEnabled:       settings[SettingKeyModelPlazaEnabled] == "true",
 		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
+		PelicanShowcaseEnabled:  settings[SettingKeyPelicanShowcaseEnabled] == "true",
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
@@ -508,6 +510,21 @@ func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) Availa
 	}
 }
 
+// IsPelicanShowcaseEnabled reads the user-facing Pelican showcase switch.
+// This is an opt-out switch: installations created before the setting existed
+// keep the page visible until an administrator explicitly disables it.
+func (s *SettingService) IsPelicanShowcaseEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return true
+	}
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyPelicanShowcaseEnabled})
+	if err != nil {
+		return true
+	}
+	raw, ok := vals[SettingKeyPelicanShowcaseEnabled]
+	return !ok || raw == "" || raw == "true"
+}
+
 // ModelPlazaRuntime is the lightweight view of the model-plaza feature consumed
 // by the public plaza handler.
 type ModelPlazaRuntime struct {
@@ -639,6 +656,7 @@ type PublicSettingsInjectionPayload struct {
 	SubscriptionEnabled           bool `json:"subscription_enabled"`
 	ModelPlazaEnabled             bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
+	PelicanShowcaseEnabled        bool `json:"pelican_showcase_enabled"`
 	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
 	AffiliateEnabled              bool `json:"affiliate_enabled"`
 	RiskControlEnabled            bool `json:"risk_control_enabled"`
@@ -729,6 +747,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		SubscriptionEnabled:                  settings.SubscriptionEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
+		PelicanShowcaseEnabled:               settings.PelicanShowcaseEnabled,
 		PluginManagementEnabled:              settings.PluginManagementEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,

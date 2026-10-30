@@ -394,6 +394,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
+		PelicanShowcaseEnabled:  settings.PelicanShowcaseEnabled,
 		PluginManagementEnabled: settings.PluginManagementEnabled,
 		ModelPlazaDescription:   settings.ModelPlazaDescription,
 
