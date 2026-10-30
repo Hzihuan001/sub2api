@@ -177,3 +177,8 @@ review the custom feature boundaries before merging the draft PR.
 - 四轮审核定稿方案见 [`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md)；基础现状见 [`CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md`](CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md)。
 - `patch_branches` 暂不新增；先完成 feature contract、adapter 和独立验收，再把新的分支纳入自动升级补丁栈。
 
+
+### 2026-10-30 — 故障转移调度门槛复核（未发布）
+
+本地候选在无显式分组故障规则时不再把进程内 `openaiModelTransient` 当作跨请求账号暂停条件。验收脚本同时区分粘性会话（成功备用继续使用）和新会话（仍尝试主账号），避免把预期的会话连续性误判为账号停用。当前改动尚未推送或部署，生产仍为 `0.2.19-custom.2`。
+

@@ -214,15 +214,15 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if shouldDisable && !modelTempMatched {
 		s.BlockAccountScheduling(account, time.Time{}, "upstream_disable")
 	}
-	// Pool mode keeps one short retry for an ordinary transient failure, but must
-	// still contribute to the same model-scoped breaker across requests.
+	// Pool mode keeps one short retry for an ordinary transient failure. Keep a
+	// model-scoped observation for diagnostics and request-local retry decisions,
+	// but do not let it become a cross-request scheduler gate: that decision is
+	// reserved for an explicit group failure rule.
 	// OpenAI-compatible API-key providers (DeepSeek/Kimi/Zhipu/MiniMax/OpenCodeGo)
-	// use the same gateway and scheduler as OpenAI.  A transient 5xx/52x from
-	// one provider endpoint must therefore enter the existing account+model
-	// runtime breaker as well; otherwise a single bad upstream is selected again
-	// for every request until its upstream/CDN timeout expires.  Keep this scoped
-	// to API-key accounts and the existing transient-status predicate: no
-	// permanent account disable or credential penalty is introduced here.
+	// use the same gateway and retry classifier as OpenAI. A transient 5xx/52x
+	// from one provider endpoint is recorded in the existing account+model
+	// runtime state for diagnostics, while ordinary scheduling remains eligible
+	// until an explicit group rule or provider-specific durable limit applies.
 	if !shouldDisable && account.IsOpenAICompatible() && account.Type == AccountTypeAPIKey &&
 		shouldCooldownOpenAITransientUpstreamError(statusCode, responseBody) {
 		model := ""
@@ -636,9 +636,12 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 // isOpenAIAccountRequestRuntimeBlocked treats persisted cooldown fields on the
 // scheduling Account as source of truth. When TempUnschedulableUntil,
 // RateLimitResetAt, and OverloadUntil are all inactive, a stale local account
-// block is dropped with generation+deadline CAS. Model-scoped transient blocks
-// are left alone. This is fail-open if a DB write failed or the snapshot has
-// not caught up yet: empty cooldown fields drop the local account-level block.
+// block is dropped with generation+deadline CAS. Model-scoped transient
+// observations are deliberately not a scheduling gate: without an explicit
+// group failure rule, a transient upstream response must remain request-local
+// so the next request can try the account again. This is fail-open if a DB
+// write failed or the snapshot has not caught up yet: empty cooldown fields
+// drop the local account-level block.
 func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string) bool {
 	if s == nil {
 		return false
@@ -656,7 +659,12 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 		}
 		s.clearOpenAIAccountRuntimeBlockIfUnchanged(account.ID, snapshot)
 	}
-	return s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel)
+	// Do not consult the in-memory account+model transient breaker here. It is
+	// retained for diagnostics and request-local retry decisions, but using it
+	// as a scheduler filter would silently pause an account even when the
+	// active group has no matching failure rule. Explicit group rules are the
+	// only source of cross-request account suspension.
+	return false
 }
 
 func (s *OpenAIGatewayService) recordOpenAIOAuth429() {

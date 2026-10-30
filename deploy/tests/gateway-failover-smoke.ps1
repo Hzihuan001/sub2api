@@ -77,10 +77,29 @@ try {
     }
     if ($scenario -eq 'overload') {
       $account = Api GET "/api/v1/admin/accounts/$primaryId" $adminToken
-      if (-not $account.data.overload_until) { throw 'Third overload did not persist account cooldown' }
-      $next = Invoke-WebRequest "$base/v1/responses" -Method Post -ContentType 'application/json' -Body $payload -Headers @{ Authorization="Bearer $($k.data.key)" } -SkipHttpErrorCheck -TimeoutSec 20
+      # This fixture does not configure a group failure rule. System-wide
+      # overload protection is intentionally disabled for this distribution;
+      # overloads must fail over within the request without globally pausing
+      # the account.
+      if ($account.data.overload_until) { throw 'Unconfigured system overload protection paused the account' }
+      $beforePrimary = $pCount
+      $beforeBackup = $bCount
+      # The successful backup is sticky for the same session. A repeat request
+      # may therefore stay on backup; that is continuity, not a global pause.
+      $stickyNext = Invoke-WebRequest "$base/v1/responses" -Method Post -ContentType 'application/json' -Body $payload -Headers @{ Authorization="Bearer $($k.data.key)" } -SkipHttpErrorCheck -TimeoutSec 20
       $all = Invoke-RestMethod "$fixtureBase/stats" -TimeoutSec 5
-      if (@($all | Where-Object { $_.scenario -eq 'overload' -and $_.slot -eq 'primary' }).Count -ne $pCount -or $next.Content -notmatch 'backup-ok') { throw 'Next request selected cooled primary' }
+      $stickyBackup = @($all | Where-Object { $_.scenario -eq 'overload' -and $_.slot -eq 'backup' }).Count
+      if ($stickyNext.StatusCode -ne 200 -or $stickyNext.Content -notmatch 'backup-ok' -or $stickyBackup -lt ($beforeBackup + 1)) { throw 'Sticky follow-up did not remain usable on the successful backup' }
+
+      # A fresh session must still be allowed to try the primary when no group
+      # failure rule is configured. This catches hidden process-local/model
+      # cooldowns that are not visible in the account row or Redis.
+      $freshHeaders = @{ Authorization="Bearer $($k.data.key)"; 'X-Session-ID'="fresh-$suffix" }
+      $fresh = Invoke-WebRequest "$base/v1/responses" -Method Post -ContentType 'application/json' -Body $payload -Headers $freshHeaders -SkipHttpErrorCheck -TimeoutSec 20
+      $all = Invoke-RestMethod "$fixtureBase/stats" -TimeoutSec 5
+      $freshPrimary = @($all | Where-Object { $_.scenario -eq 'overload' -and $_.slot -eq 'primary' }).Count
+      $freshBackup = @($all | Where-Object { $_.scenario -eq 'overload' -and $_.slot -eq 'backup' }).Count
+      if ($fresh.StatusCode -ne 200 -or $fresh.Content -notmatch 'backup-ok' -or $freshPrimary -lt ($beforePrimary + 1) -or $freshBackup -lt ($stickyBackup + 1)) { throw 'Fresh session did not retry the primary and fail over within the request' }
     }
     $results.Add([pscustomobject]@{scenario=$scenario; status='passed'; primary_attempts=$pCount; backup_attempts=$bCount})
   }

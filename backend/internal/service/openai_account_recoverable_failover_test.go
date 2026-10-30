@@ -135,7 +135,7 @@ func TestOpenAIRecoverableFailover_RetryAfterAndQuotaResetUseLatest(t *testing.T
 	require.WithinDuration(t, now.Add(120*time.Second), *until, time.Second)
 }
 
-func TestOpenAIRecoverableFailover_Pool5xxKeepsFirstRetryThenCoolsOnlyModel(t *testing.T) {
+func TestOpenAIRecoverableFailover_Pool5xxKeepsFirstRetryAndRecordsModelOnly(t *testing.T) {
 	for _, statusCode := range []int{500, 502, 503, 504, 520, 521, 522, 523, 524} {
 		t.Run(http.StatusText(statusCode), func(t *testing.T) {
 			gateway, repo := newOpenAIRecoverableFailureGateway()
@@ -146,7 +146,8 @@ func TestOpenAIRecoverableFailover_Pool5xxKeepsFirstRetryThenCoolsOnlyModel(t *t
 			first := gateway.handleOpenAIAccountUpstreamError(context.Background(), account, statusCode, nil, body, "gpt-5.5")
 			require.Equal(t, isOpenAI52xUpstreamStatus(statusCode), first)
 			require.True(t, gateway.handleOpenAIAccountUpstreamError(context.Background(), account, statusCode, nil, body, "gpt-5.5"))
-			require.True(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
+			require.True(t, gateway.isOpenAIAccountModelRuntimeBlocked(account, "gpt-5.5"))
+			require.False(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"), "model telemetry must not pause scheduling without an explicit group rule")
 			require.False(t, gateway.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.6"))
 			require.False(t, gateway.isOpenAIAccountRuntimeBlocked(account))
 			require.Zero(t, repo.setErrorCalls)

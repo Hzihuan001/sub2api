@@ -1,5 +1,15 @@
 # 定制项目状态与官方升级说明
 
+### 2026-10-30 — P0 网关故障转移验收修正（本地，未发布）
+
+- **问题定位**：无分组故障规则时，数据库 `overload_until` 与 Redis 冷却均为空；同一 API Key 后续请求留在备用账号是粘性会话设计。另发现进程内 `openaiModelTransient` 会在新会话短暂过滤故障账号，这与“无规则不跨请求暂停”不一致。
+- **修复**：保留模型瞬态记录用于诊断和请求内重试，但从 `isOpenAIAccountRequestRuntimeBlocked` 调度门槛移除；只有持久化账号状态、供应商明确限额/凭证状态或显式分组规则才能跨请求暂停。
+- **验收**：本地候选镜像 `sub2api-custom-p0-app` 通过网关故障切换 smoke：overload 3 次请求内重试后切备用；同会话后续请求继续走健康备用；新 `X-Session-ID` 仍会尝试主账号并再次切备用；quota/model/server/timeout/auth/rate/stream/safety/parameter/partial 共 11 个场景全部通过。
+- **代码/测试**：修改 `openai_account_runtime_block_fastpath.go`、相关单测和 `deploy/tests/gateway-failover-smoke.ps1`；`git diff --check` 通过，Docker 完整镜像构建通过。
+- **发布状态**：仅本地未提交候选，未推送、未构建 GHCR、未部署生产；三站生产仍为 `0.2.19-custom.2`。
+- **下一步**：补跑完整后端定向测试并提交本地修复；待用户明确批准后再进入推送/生产发布流程。
+
+
 
 ### 2026-10-30 — P0 鹈鹕执行边界与调度安全改造（本地候选，未发布）
 
