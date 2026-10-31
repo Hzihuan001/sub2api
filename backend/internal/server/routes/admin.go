@@ -123,6 +123,8 @@ func RegisterAdminRoutes(
 
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
+		admin.GET("/pelican-showcase/order", h.PelicanShowcase.GetOrder)
+		admin.PUT("/pelican-showcase/order", h.PelicanShowcase.UpdateOrder)
 
 		// 渠道管理
 		registerChannelRoutes(admin, h)

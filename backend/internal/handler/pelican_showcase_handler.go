@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"net/http"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -47,5 +49,25 @@ func (h *PelicanShowcaseHandler) Get(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	groups = service.OrderPelicanShowcaseGroups(groups, h.settingService.GetPelicanShowcaseGroupOrder(c.Request.Context()))
 	response.Success(c, gin.H{"groups": groups, "description": description})
+}
+
+func (h *PelicanShowcaseHandler) GetOrder(c *gin.Context) {
+	response.Success(c, gin.H{"group_ids": h.settingService.GetPelicanShowcaseGroupOrder(c.Request.Context())})
+}
+
+func (h *PelicanShowcaseHandler) UpdateOrder(c *gin.Context) {
+	var req struct {
+		GroupIDs []int64 `json:"group_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.settingService.SetPelicanShowcaseGroupOrder(c.Request.Context(), req.GroupIDs); err != nil {
+		response.ErrorWithDetails(c, http.StatusInternalServerError, err.Error(), "PELICAN_SHOWCASE_ORDER_SAVE_FAILED", nil)
+		return
+	}
+	response.Success(c, gin.H{"group_ids": h.settingService.GetPelicanShowcaseGroupOrder(c.Request.Context())})
 }

@@ -869,7 +869,15 @@ export default {
       deleted: 'Showcase plan deleted',
       deleteTitle: 'Delete showcase plan',
       deleteMessage: 'Delete this channel showcase plan?',
-      deleteFailed: 'Failed to delete showcase plan'
+      deleteFailed: 'Failed to delete showcase plan',
+      orderTitle: 'Group display order',
+      orderHint: 'This order controls the user-facing showcase only. New groups are appended and normal group sorting is unchanged.',
+      saveOrder: 'Save order',
+      plansUnit: 'plans',
+      moveUp: 'Move up',
+      moveDown: 'Move down',
+      orderSaved: 'Group display order saved',
+      orderSaveFailed: 'Failed to save group display order'
     },
 
     // Accounts

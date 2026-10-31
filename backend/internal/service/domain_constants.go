@@ -576,6 +576,9 @@ const (
 	// SettingKeyPelicanShowcaseDescription stores the user-facing explanation
 	// rendered at the top of the channel showcase page.
 	SettingKeyPelicanShowcaseDescription = "pelican_showcase_description"
+	// SettingKeyPelicanShowcaseGroupOrder stores the independent user-facing
+	// showcase group ordering as a JSON array of group IDs.
+	SettingKeyPelicanShowcaseGroupOrder = "pelican_showcase_group_order"
 
 	// SettingKeyModelPlazaRequireAuth controls whether the Model Plaza page requires a
 	// logged-in user. When false the page is public and anonymous visitors see only

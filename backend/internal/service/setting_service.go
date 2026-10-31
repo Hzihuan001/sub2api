@@ -72,6 +72,54 @@ func (s *SettingService) GetGrokDefaultBaseURL(ctx context.Context) string {
 	return GrokBaseURLForMode(s.GetGrokDefaultBaseURLMode(ctx))
 }
 
+// GetPelicanShowcaseGroupOrder returns the explicitly configured showcase
+// order. Invalid, duplicate and non-positive IDs are ignored so a malformed
+// setting cannot hide the page or affect ordinary group ordering.
+func (s *SettingService) GetPelicanShowcaseGroupOrder(ctx context.Context) []int64 {
+	if s == nil || s.settingRepo == nil {
+		return nil
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyPelicanShowcaseGroupOrder)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var ids []int64
+	if json.Unmarshal([]byte(raw), &ids) != nil {
+		return nil
+	}
+	return normalizePelicanShowcaseGroupOrder(ids)
+}
+
+// SetPelicanShowcaseGroupOrder persists an independent display order for the
+// showcase. It deliberately does not modify Group.sort_order.
+func (s *SettingService) SetPelicanShowcaseGroupOrder(ctx context.Context, ids []int64) error {
+	if s == nil || s.settingRepo == nil {
+		return errors.New("showcase group order storage unavailable")
+	}
+	normalized := normalizePelicanShowcaseGroupOrder(ids)
+	b, err := json.Marshal(normalized)
+	if err != nil {
+		return err
+	}
+	return s.settingRepo.Set(ctx, SettingKeyPelicanShowcaseGroupOrder, string(b))
+}
+
+func normalizePelicanShowcaseGroupOrder(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
 func (s *SettingService) ResolveGrokBaseURL(ctx context.Context, account *Account) string {
 	def := xai.DefaultCLIBaseURL
 	if s != nil {

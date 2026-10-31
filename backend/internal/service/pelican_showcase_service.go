@@ -167,6 +167,27 @@ func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int
 	return out, nil
 }
 
+// OrderPelicanShowcaseGroups applies the independent showcase order and keeps
+// newly configured groups at the end. It never mutates ordinary group sorting.
+func OrderPelicanShowcaseGroups(groups []PelicanShowcaseGroup, order []int64) []PelicanShowcaseGroup {
+	position := make(map[int64]int, len(order))
+	for i, id := range order {
+		position[id] = i
+	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		pi, iok := position[groups[i].ID]
+		pj, jok := position[groups[j].ID]
+		if iok && jok {
+			return pi < pj
+		}
+		if iok != jok {
+			return iok
+		}
+		return groups[i].Name < groups[j].Name
+	})
+	return groups
+}
+
 func (s *PelicanShowcaseService) listLatestBulk(ctx context.Context, groups []Group, allowed map[int64]struct{}, restrictPublic bool) ([]PelicanShowcaseGroup, error) {
 	visible := make([]Group, 0, len(groups))
 	groupIDs := make([]int64, 0, len(groups))

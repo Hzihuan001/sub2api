@@ -867,7 +867,15 @@ export default {
       deleted: '测智计划已删除',
       deleteTitle: '删除测智计划',
       deleteMessage: '确定要删除这个渠道测智计划吗？',
-      deleteFailed: '删除测智计划失败'
+      deleteFailed: '删除测智计划失败',
+      orderTitle: '分组展示顺序',
+      orderHint: '调整后会同步影响用户端渠道测智页面；新分组自动排在末尾，不影响分组管理中的排序。',
+      saveOrder: '保存顺序',
+      plansUnit: '个计划',
+      moveUp: '上移',
+      moveDown: '下移',
+      orderSaved: '分组展示顺序已保存',
+      orderSaveFailed: '保存分组展示顺序失败'
     },
 
     // Accounts Management
