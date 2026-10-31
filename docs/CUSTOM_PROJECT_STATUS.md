@@ -1,5 +1,13 @@
 # 定制项目状态与官方升级说明
 
+### 2026-11-01 — 0.2.19-custom.9 — Kiro 渠道测智 HTML 解析修复
+
+- **问题**：Kiro 返回完整 HTML/SVG 后，在 `</html>` 外追加英文说明；旧提取器把尾部说明一并放入 iframe，导致卡片显示文字覆盖动画。
+- **修复**：用户端提取器在 `</html>` 或 `</svg>` 结束标签处截断，保留完整动态作品并移除尾部模型解释。
+- **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:7ae9abc81414962d131cab4e407fbb8d7a082ad702ad83cb3c4604c0dde145b9`，版本 `0.2.19-custom.9`，提交 `a98bbb9a9`。
+- **部署验收**：主站、L1、COS 已按顺序更新，三端 healthy、restart 0，页面和 `/health` 均返回 200。
+- **回滚/清理**：保留上一版 `sha256:7bdb76eb4524776a8f38ab61db60d47f7ba9e997965ad88127ec2b2d32e25c9b`；清理更早镜像和缓存；Compose 备份 `/opt/sub2api-deploy-backups/20261031191527/`。
+
 ### 2026-11-01 — 0.2.19-custom.8 — 渠道测智分组顺序三站发布
 
 - **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:7bdb76eb4524776a8f38ab61db60d47f7ba9e997965ad88127ec2b2d32e25c9b`，构建版本 `0.2.19-custom.8`，运行提交 `c2b58647b`。
