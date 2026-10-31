@@ -83,7 +83,7 @@
                 <iframe
                   v-if="result.status === 'success' && isMarkup(result.response_text)"
                   class="h-full w-full border-0"
-                  :srcdoc="sandboxDocument(result.response_text || '')"
+                  :srcdoc="sandboxDocument(extractMarkup(result.response_text || ''))"
                   sandbox="allow-scripts"
                   referrerpolicy="no-referrer"
                   title="渠道测智结果"
@@ -207,9 +207,16 @@ async function load() {
   }
 }
 
+function extractMarkup(value: string) {
+  const text = value.trim().replace(/^```(?:html|svg|xml)?\s*/i, '').replace(/\s*```$/i, '').trim()
+  const start = text.search(/<!doctype\s+html|<html\b|<svg\b/i)
+  if (start < 0) return text
+  return text.slice(start).trim()
+}
+
 function isMarkup(value?: string) {
-  const text = (value || '').trim().toLowerCase()
-  return text.startsWith('<') && (text.includes('<html') || text.includes('<svg') || text.includes('<!doctype'))
+  const text = extractMarkup(value || '').toLowerCase()
+  return /^(?:<!doctype\s+html|<html\b|<svg\b)/i.test(text)
 }
 
 function sandboxDocument(value: string) {
