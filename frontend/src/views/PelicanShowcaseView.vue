@@ -211,7 +211,12 @@ function extractMarkup(value: string) {
   const text = value.trim().replace(/^```(?:html|svg|xml)?\s*/i, '').replace(/\s*```$/i, '').trim()
   const start = text.search(/<!doctype\s+html|<html\b|<svg\b/i)
   if (start < 0) return text
-  return text.slice(start).trim()
+  const markup = text.slice(start).trim()
+  const htmlEnd = markup.search(/<\/html\s*>/i)
+  if (htmlEnd >= 0) return markup.slice(0, htmlEnd + markup.slice(htmlEnd).search(/>/) + 1).trim()
+  const svgEnd = markup.search(/<\/svg\s*>/i)
+  if (svgEnd >= 0) return markup.slice(0, svgEnd + markup.slice(svgEnd).search(/>/) + 1).trim()
+  return markup
 }
 
 function isMarkup(value?: string) {
