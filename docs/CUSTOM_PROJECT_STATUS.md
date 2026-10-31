@@ -1,5 +1,13 @@
 # 定制项目状态与官方升级说明
 
+### 2026-11-01 — 0.2.19-custom.8 — 渠道测智分组顺序三站发布
+
+- **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:7bdb76eb4524776a8f38ab61db60d47f7ba9e997965ad88127ec2b2d32e25c9b`，构建版本 `0.2.19-custom.8`，运行提交 `c2b58647b`。
+- **功能**：测智管理新增独立的分组展示顺序设置，可上移、下移并保存；用户端按保存顺序展示，新分组自动追加到末尾，不影响普通分组排序。
+- **接口**：新增管理员顺序读取/保存接口，顺序以独立设置持久化；无效、重复和已删除分组 ID 会被安全忽略。
+- **部署验收**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 按顺序更新；三端 healthy、restart 0，根页面、渠道测智页面、测智管理页面和 `/health` 均返回 200。
+- **清理/回滚**：清理 custom.6 旧镜像和无用缓存；保留当前镜像与上一版 `sha256:856e30df75551c3e903ec672fe492f8faab266c91b6eefa5771af757b90e5c3c`。Compose 备份位于 `/opt/sub2api-deploy-backups/20261031184758/`。
+
 ### 2026-10-31 — 0.2.19-custom.7 — WireGPT 风格渠道测智三站发布
 
 - **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:856e30df75551c3e903ec672fe492f8faab266c91b6eefa5771af757b90e5c3c`，构建版本 `0.2.19-custom.7`，运行提交 `5b49d2132`。
