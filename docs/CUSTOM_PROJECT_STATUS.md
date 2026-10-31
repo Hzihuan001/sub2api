@@ -1,5 +1,13 @@
 # 定制项目状态与官方升级说明
 
+### 2026-10-31 — 0.2.19-custom.7 — WireGPT 风格渠道测智三站发布
+
+- **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:856e30df75551c3e903ec672fe492f8faab266c91b6eefa5771af757b90e5c3c`，构建版本 `0.2.19-custom.7`，运行提交 `5b49d2132`。
+- **页面改造**：用户端按 WireGPT 结构展示顶部说明、分组筛选、分组横向作品栏和动态 HTML/SVG 卡片；用户只看到分组、模型、时间和结果，不显示账号；每组公共结果上限提高到 50 条。
+- **管理改造**：渠道管理 → 测智管理可直接选择上游账号/API Key、分组并打开完整定时测试配置，不再跳转账号管理。
+- **部署验收**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud` 按顺序更新；容器 healthy、restart 0，三站根页面、`/pelican-showcase`、`/admin/channels/showcase` 和 `/health` 均返回 200。
+- **清理/回滚**：清理更早旧镜像和构建缓存；当前服务器保留运行镜像与上一版回滚镜像 `sha256:23ef5cabe31db07f555bc9211850a93e6425712b1897c60fa9256ed0c1fba821`。Compose 备份位于 `/opt/sub2api-deploy-backups/20261031092218/`。
+
 ### 2026-10-31 — 0.2.19-custom.6 — 渠道测智修复与三站发布
 
 - **镜像**：`ghcr.io/hzihuan001/sub2api@sha256:23ef5cabe31db07f555bc9211850a93e6425712b1897c60fa9256ed0c1fba821`，构建版本 `0.2.19-custom.6`，运行提交 `46e75135b`。
