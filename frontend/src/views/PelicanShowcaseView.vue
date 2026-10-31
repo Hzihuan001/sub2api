@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-[1680px] space-y-6">
+    <div class="-mx-4 -mt-4 min-h-full space-y-6 bg-gradient-to-br from-cyan-50 via-white to-slate-50 px-4 py-6 dark:from-dark-950 dark:via-dark-950 dark:to-dark-900 sm:px-6 lg:px-8">
       <header class="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
@@ -63,7 +63,7 @@
               <div class="min-w-0">
                 <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white">{{ group.name }}</h2>
                 <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
-                  {{ group.platform || '—' }} · {{ group.success_count }} 次成功<span v-if="group.failure_count"> · {{ group.failure_count }} 次失败</span>
+                  {{ group.platform || '—' }} · {{ group.success_count + group.failure_count }} 张<span v-if="group.last_test_at"> · 最近更新 {{ formatTime(group.last_test_at) }}</span>
                 </p>
               </div>
             </div>
@@ -77,9 +77,9 @@
             <article
               v-for="result in groupResults(group)"
               :key="result.id"
-              class="w-[270px] shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-card dark:border-dark-700 dark:bg-dark-800 sm:w-[300px]"
+              class="w-[280px] shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-card dark:border-dark-700 dark:bg-dark-800 sm:w-[300px]"
             >
-              <div class="relative aspect-[4/3] bg-gray-50 dark:bg-dark-900/60">
+              <div class="relative aspect-square bg-gray-50 dark:bg-dark-900/60">
                 <iframe
                   v-if="result.status === 'success' && isMarkup(result.response_text)"
                   class="h-full w-full border-0"

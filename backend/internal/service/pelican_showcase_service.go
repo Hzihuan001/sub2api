@@ -103,7 +103,7 @@ func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int
 					continue
 				}
 				seenPlans[plan.ID] = struct{}{}
-				results, err := s.planService.ListResults(ctx, plan.ID, 8)
+				results, err := s.planService.ListResults(ctx, plan.ID, 50)
 				if err != nil {
 					return nil, err
 				}
@@ -132,8 +132,8 @@ func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int
 		sort.SliceStable(row.Results, func(i, j int) bool {
 			return row.Results[i].FinishedAt.After(row.Results[j].FinishedAt)
 		})
-		if len(row.Results) > 12 {
-			row.Results = row.Results[:12]
+		if len(row.Results) > 50 {
+			row.Results = row.Results[:50]
 		}
 		for _, result := range row.Results {
 			if row.LastTestAt == nil || result.FinishedAt.After(*row.LastTestAt) {
@@ -177,7 +177,7 @@ func (s *PelicanShowcaseService) listLatestBulk(ctx context.Context, groups []Gr
 		visible = append(visible, group)
 		groupIDs = append(groupIDs, group.ID)
 	}
-	records, err := s.planService.ListLatestPelicanByGroups(ctx, groupIDs, 12)
+	records, err := s.planService.ListLatestPelicanByGroups(ctx, groupIDs, 50)
 	if err != nil {
 		return nil, err
 	}

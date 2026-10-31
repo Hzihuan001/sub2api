@@ -62,7 +62,7 @@ func (r *scheduledTestPlanRepository) ListLatestPelicanByGroups(ctx context.Cont
 		return []service.PelicanShowcaseRecord{}, nil
 	}
 	if limitPerGroup <= 0 {
-		limitPerGroup = 12
+		limitPerGroup = 50
 	}
 	rows, err := r.db.QueryContext(ctx, `
 		WITH ranked AS (

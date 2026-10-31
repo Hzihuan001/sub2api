@@ -85,7 +85,7 @@ func (s *ScheduledTestService) ListLatestPelicanByGroups(ctx context.Context, gr
 		return nil, ErrPelicanShowcaseReaderUnavailable
 	}
 	if limitPerGroup <= 0 {
-		limitPerGroup = 12
+		limitPerGroup = 50
 	}
 	return reader.ListLatestPelicanByGroups(ctx, groupIDs, limitPerGroup)
 }
