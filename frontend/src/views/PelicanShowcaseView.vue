@@ -125,6 +125,7 @@ import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { getPelicanShowcase, type PelicanShowcaseGroup, type PelicanShowcaseResult } from '@/api/pelicanShowcase'
+import { extractMarkup, isMarkup, sandboxDocument } from '@/utils/pelicanMarkup'
 
 const groups = ref<PelicanShowcaseGroup[]>([])
 const defaultShowcaseDescription = '作品由系统定时使用各分组账号生成。相同题目下，可以通过画面完整度、指令遵循和响应稳定性直观看出差异；页面不会改变正常请求、计费或账号调度。'
@@ -205,28 +206,6 @@ async function load() {
   } finally {
     loading.value = false
   }
-}
-
-function extractMarkup(value: string) {
-  const text = value.trim().replace(/^```(?:html|svg|xml)?\s*/i, '').replace(/\s*```$/i, '').trim()
-  const start = text.search(/<!doctype\s+html|<html\b|<svg\b/i)
-  if (start < 0) return text
-  const markup = text.slice(start).trim()
-  const htmlEnd = markup.search(/<\/html\s*>/i)
-  if (htmlEnd >= 0) return markup.slice(0, htmlEnd + markup.slice(htmlEnd).search(/>/) + 1).trim()
-  const svgEnd = markup.search(/<\/svg\s*>/i)
-  if (svgEnd >= 0) return markup.slice(0, svgEnd + markup.slice(svgEnd).search(/>/) + 1).trim()
-  return markup
-}
-
-function isMarkup(value?: string) {
-  const text = extractMarkup(value || '').toLowerCase()
-  return /^(?:<!doctype\s+html|<html\b|<svg\b)/i.test(text)
-}
-
-function sandboxDocument(value: string) {
-  if (/<meta[^>]+content-security-policy/i.test(value)) return value
-  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';"></head><body>${value}</body></html>`
 }
 
 function groupResults(group: PelicanShowcaseGroup) {
