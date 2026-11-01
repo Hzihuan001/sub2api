@@ -39,7 +39,7 @@
 - **运行门禁**：鹈鹕执行必须显式传递 group；调度失败退避、lease/CAS、幂等 `run_id`、批量展示读取和旧镜像读取/重复迁移测试全部列为 P0 证据。
 - **发布门禁**：升级 PR 必须运行 Compose 配置、隔离 health、HTTP/SSE、迁移、回滚和敏感信息检查，并生成不可变 evidence manifest；任何 skipped/unknown 或 P0 证据缺失只生成 blocked draft，不得 push/deploy。
 - **当前状态**：本轮仅更新文档，未修改生产。当前生产基线仍是 `0.2.19-custom.2`；未提交鹈鹕候选不能当作发布基线。
-- **权威方案**：[`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md)。
+- **权威方案**：[`CUSTOM_GATEWAY_OPTIMIZATION_PLAN_20261101.md`](CUSTOM_GATEWAY_OPTIMIZATION_PLAN_20261101.md)；旧七轮方案见[归档索引](CUSTOM_PLAN_ARCHIVE_20261101.md)。
 
 
 ### 2026-10-29 — v0.2.19 route compatibility hotfix
@@ -174,7 +174,7 @@ review the custom feature boundaries before merging the draft PR.
 ## 2026-10-30 — 当前定制模块化状态
 
 - 生产仍为 `0.2.19-custom.2`；本地鹈鹕测智分组归属改造尚未发布。
-- 四轮审核定稿方案见 [`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md)；基础现状见 [`CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md`](CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md)。
+- 历史四轮/七轮审核方案见[归档索引](CUSTOM_PLAN_ARCHIVE_20261101.md)；当前基础现状、顺序和门禁见[持续优化方案书](CUSTOM_GATEWAY_OPTIMIZATION_PLAN_20261101.md)与[计划表](CUSTOM_GATEWAY_OPTIMIZATION_TRACKER_20261101.md)。
 - `patch_branches` 暂不新增；先完成 feature contract、adapter 和独立验收，再把新的分支纳入自动升级补丁栈。
 
 

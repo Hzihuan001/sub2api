@@ -131,13 +131,13 @@
 - **第 5 轮：边界登记**：发现未提交的 `pelican-showcase` 与 `9005` 迁移尚未进入 manifest/contracts，image-studio 的后端队列/计费接线登记不完整，operator 与 direct-access owner 混用，key-routing ownership 覆盖过多官方核心文件。新增 orphan-custom-sources 和三份清单一致性作为阶段 A 门禁；候选登记完成前不提交、不构建镜像。
 - **第 6 轮：运行与数据**：要求鹈鹕执行使用显式 `GroupScopedTestAdapter`，失败计划推进 `next_run_at` 并退避，调度领取使用 lease/CAS 和幂等 `run_id`，公开展示改为批量读取/分页或受控缓存；`9005` 必须做旧镜像读取、重复迁移和删除分组语义验收。
 - **第 7 轮：交付门禁**：要求升级 PR 执行 Compose 配置、隔离 health、HTTP/SSE、迁移重复、旧镜像、调度幂等和敏感信息检查；诊断缺失即失败，生成不可变 evidence manifest。任一步骤 skipped/unknown、P0 证据缺失或 digest 不一致，只生成 blocked draft，不得推送/部署。
-- **方案文件**：[`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md) 已更新为七轮审核定稿；本轮只改方案和文档，没有迁移业务代码、推送镜像或修改生产。
+- **方案文件**：历史七轮审核方案已归档；当前以[持续优化方案书](CUSTOM_GATEWAY_OPTIMIZATION_PLAN_20261101.md)和[计划表](CUSTOM_GATEWAY_OPTIMIZATION_TRACKER_20261101.md)为准。本轮只改方案和文档，没有迁移业务代码、推送镜像或修改生产。
 
 
 ### 2026-10-30 — 深度解耦方案四轮审核定稿
 
 - 已完成四轮审核：架构边界、主线合并、数据/运行稳定性、实施/交付门禁。
-- 定稿方案见 [`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md)，包括 P0/P1/P2 顺序、Contract/Core/Adapter/Surface/Verification 分层、停止条件和量化验收标准。
+- 历史定稿方案见[归档文件](archive/20261101/CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md)；当前 P0/P1/P2 顺序、停止条件和验收标准见[持续优化方案书](CUSTOM_GATEWAY_OPTIMIZATION_PLAN_20261101.md)。
 - 本轮仍是规划和文档工作，没有迁移业务代码、推送镜像或部署生产；现有未提交鹈鹕候选继续按上一条状态记录处理。
 
 
@@ -148,7 +148,7 @@
 - **本轮语义修正**：鹈鹕测试计划现在按“账号 + 分组”归属，展示接口只读取计划指定分组的结果；同一账号属于多个分组时，不再把同一结果复制到所有分组。普通连接测试仍保持账号级行为。
 - **本地检查**：前端 `vue-tsc --noEmit`、生产构建、i18n 4 项和 `git diff --check` 已通过；当前环境没有 Go 工具链，后端编译、迁移和 Docker 联合验收尚未完成。
 - **模块化结论**：展示页、API、handler、路由和鹈鹕聚合服务已经独立；计划字段和账号测试适配仍接入官方定时测试、账号测试服务和管理员面板，属于“低侵入模块化”，尚未达到完全解耦。
-- **下一阶段方案**：见 [`CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md`](CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md)。重点是建立 feature contract、测试适配器和稳定 hook，减少对官方执行器、账号测试服务、网关和页面主文件的直接修改；本阶段先做边界盘点和接口冻结，再逐项迁移。
+- **下一阶段方案**：历史草案见[归档文件](archive/20261101/CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md)；当前重点已重排为计划表 G0–G8，先修正权限、批量读取和结果安全，再推进缓存、可靠性与解耦。
 
 
 ### 2026-10-29 — 0.2.19-custom.2 — 修复官方角色路由冲突并重新发布
@@ -274,7 +274,7 @@
 - **验证**：真实 Vue mount + memory router 19 项、文档入口安全 7 项、路由回归 61 项共 87 项测试通过；定向 ESLint、`vue-tsc --noEmit`、`pnpm --dir frontend run build`（含 3 项 i18n 检查）、`git diff --check` 通过。12 个本地文档入口、14 张新图均 HTTP 200。真实浏览器验证桌面菜单跳转、390px 手机下拉切换及无横向溢出；未验证用户真实 API Key/模型调用。
 - **状态 / 下一步**：未提交、推送、建镜像或部署，无 API/数据库/迁移变化；三站生产记录仍为 `.7`，本轮未重新检查生产。后续发布必须仅将文档页面、路由、测试、图片的独立补丁移植到含 `.7` 的最新活动分支再验收，禁止从本旧源码直接发布。其他会话修改和 `%SystemDrive%/` 未跟踪目录原样保留。完整本轮记录见本目录 `CUSTOM_FEATURE_LOG.md` 的 2026-10-16 条目。
 
-> **2026-10-15 主备 Key 限定生产实测完成**：用户创建 Key 167，GPT-稳定→Kimi→DeepSeek；目录仅返回主组 11 模型。Kimi/DeepSeek 普通请求及 DeepSeek SSE 成功，实际组账务正确，共扣 $0.0007148；GPT 首测因主组上游依次 404/502/403 而失败，未扣费，需另查模型映射及上游可用性。共四次生成请求，无追加重试；Key 留给用户删除。常驻范围提示已本地删除，21 项前端测试及类型/定向 lint 通过；未推送部署，生产仍 `.7`。完整状态及证据只维护于活动工作树 `docs/CUSTOM_PROJECT_STATUS.md` 与 `CUSTOM_KEY_ROUTING_20261015.md`；不从本目录旧源码发布。
+> **2026-10-15 主备 Key 限定生产实测完成**：用户创建 Key 167，GPT-稳定→Kimi→DeepSeek；目录仅返回主组 11 模型。Kimi/DeepSeek 普通请求及 DeepSeek SSE 成功，实际组账务正确，共扣 $0.0007148；GPT 首测因主组上游依次 404/502/403 而失败，未扣费，需另查模型映射及上游可用性。共四次生成请求，无追加重试；Key 留给用户删除。常驻范围提示已本地删除，21 项前端测试及类型/定向 lint 通过；未推送部署，生产仍 `.7`。完整状态及证据只维护于当前项目状态与[归档路由记录](archive/20261101/CUSTOM_KEY_ROUTING_20261015.md)；不从本目录旧源码发布。
 
 > **2026-10-15 `.7` 已部署三站（当前指针）**：主备 Key 模块和分组显式默认值已上线。运行 `f36de3d4a00400c66994a02c13c5d23f6a7feac8` / `custom-0.2.16.7`，digest `sha256:ec8860583ac3603fadc108e90b2036abf352d395b5035ee8f4cb51d1de66ac42` 本地/OVH 回拉一致；发布和集成分支已推 `3ce7de3ebe68263a3f0e8bf6a83393486747306f`，文档随后单独提交同步，精确 ref 由 Git 核验。
 >
@@ -282,11 +282,11 @@
 >
 > 新增主备扩展表；回退 `.6` 时禁止编辑多组 Key 主组或解绑，保留扩展表，不还原旧库覆盖新业务。本次无生产回滚、生产角色登录、付费模型或长期监控。Actions 无新运行，SSE mixed、15 lint 基线、P4 双跑矩阵和真实升级 PR 链路限制继续披露。a/b 测试容器已停并保留卷/证据，角色项目回收、临时浏览器代理及空网络删除，其他项目未动。
 >
-> 唯一完整交接源：`C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom/docs/CUSTOM_PROJECT_STATUS.md`、`CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md` 和 `CUSTOM_KEY_ROUTING_20261015.md`。本目录仅共享指针，不从旧源码发布，不动其他会话文件。
+> 唯一完整交接源：当前项目状态、`CUSTOM_RELEASE_0_2_16_CUSTOM7_20261015.md` 和[归档路由记录](archive/20261101/CUSTOM_KEY_ROUTING_20261015.md)。本目录仅共享指针，不从旧源码发布，不动其他会话文件。
 
 以下指针均为历史阶段，“未提交/当前 `.6`/尚待 Docker”等不覆盖上方 `.7` 已部署状态；原始证据与决定保留。
 
-> **2026-10-15 API Key 主备分组本地开发**：活动工作树已实现独立 `key-routing` 模块：1 主＋最多 4 备，按模型/账号可调度性顺序选组，按实际组计费，共用 Key 额度；不新增 Key 级规则、不跨组重播已发送请求。标准无资源绑定文本 HTTP/SSE 为首期范围，图片/WS/目录仍走主组，Claude 客户端专用组明确排除多组组合。后端定向 441 顶层/776 含子测试、真实 PG、挂载 HTTP/SSE 计费链及前端构建等验证通过，补充边界定向复验。未提交/推送/部署，独立 Docker 应用与浏览器/回退验收仍是发布前下一步。完整证据见活动工作树 `docs/CUSTOM_KEY_ROUTING_20261015.md`，不要从本目录旧源码发布。下方默认值编辑器也仍未发布，生产继续 `.6`。
+> **2026-10-15 API Key 主备分组本地开发**：活动工作树已实现独立 `key-routing` 模块：1 主＋最多 4 备，按模型/账号可调度性顺序选组，按实际组计费，共用 Key 额度；不新增 Key 级规则、不跨组重播已发送请求。标准无资源绑定文本 HTTP/SSE 为首期范围，图片/WS/目录仍走主组，Claude 客户端专用组明确排除多组组合。后端定向 441 顶层/776 含子测试、真实 PG、挂载 HTTP/SSE 计费链及前端构建等验证通过，补充边界定向复验。未提交/推送/部署，独立 Docker 应用与浏览器/回退验收仍是发布前下一步。完整证据见[归档路由记录](archive/20261101/CUSTOM_KEY_ROUTING_20261015.md)，不要从本目录旧源码发布。下方默认值编辑器也仍未发布，生产继续 `.6`。
 
 > **2026-10-15 最新本地改动（尚未发布）**：分组切换规则已移除“沿用系统 / 自定义”选择，四类参数直接预填可编辑默认值；保留已有配置，空白补默认，保存才写入全四类规则，不自动修改其他分组。完整实现与验证见活动工作树 `docs/CUSTOM_PROJECT_STATUS.md` / `CUSTOM_FEATURE_LOG.md` 页首。没有推送或部署，三站生产仍为下方 `.6`。
 
@@ -324,7 +324,7 @@
 
 > **账务边界**：只对新任务取消批量折扣，不重算历史任务、不补扣历史费用、不对上游超额返回的图片加收。新任务的 usage 基础费用与实扣金额分开记录；成功请求项数继续作为计费数量。
 
-> **2026-10-14 共享交接**：下表记录最新生产进度，不代表本目录的源码已经更新。最新已发布代码在 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`；请继续读取该工作树的 `docs/CUSTOM_PROJECT_STATUS.md`、`docs/CUSTOM_FEATURE_LOG.md`、`docs/CUSTOM_UPGRADE_ISSUES.md` 和 `docs/UPGRADE_V0_2_16_ACCEPTANCE.md`。本目录旧分支上的公共文档页和 DNS 等未提交改动仍保留，不得重置或当作已发布代码。
+> **2026-10-14 共享交接**：下表记录最新生产进度，不代表本目录的源码已经更新。请以当前项目状态、定制功能日志、[归档升级问题记录](archive/20261101/CUSTOM_UPGRADE_ISSUES.md)和 `UPGRADE_V0_2_16_ACCEPTANCE.md` 为准。本目录旧分支上的公共文档页和 DNS 等未提交改动仍保留，不得重置或当作已发布代码。
 
 | 项目 | 当前值 |
 | --- | --- |

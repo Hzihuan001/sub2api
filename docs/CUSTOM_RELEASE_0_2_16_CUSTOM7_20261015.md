@@ -6,7 +6,7 @@
 
 - 本轮包含 API Key 主备分组选组和分组规则默认值编辑器；不合并新的官方版本，不升级依赖或锁文件。
 - 主备 Key 使用同一个 Key ID、总额度和使用计数，按最终选中分组及用户专属倍率计费；最多 1 主加 4 个有序备用组。每个新请求优先主组，只在发送上游前选组，已发送请求不跨组重播。临时并发占满继续沿用原排队，不新增 Key 级 TTFT、SLA、失败累计或冷却规则。
-- 首期限已授权、active、standard 按量分组的无资源绑定文本 HTTP/SSE。图片、批量图片、WebSocket、强制平台路径、资源和元数据接口仍走主组；模型目录不合并备用组。多组组合排除 `ClaudeCodeOnly`，已有 response/conversation、file、vector store、container 等绑定状态引用明确拒绝；单组原行为保留。详细入口与边界见 [实现与维护记录](CUSTOM_KEY_ROUTING_20261015.md)。
+- 首期限已授权、active、standard 按量分组的无资源绑定文本 HTTP/SSE。图片、批量图片、WebSocket、强制平台路径、资源和元数据接口仍走主组；模型目录不合并备用组。多组组合排除 `ClaudeCodeOnly`，已有 response/conversation、file、vector store、container 等绑定状态引用明确拒绝；单组原行为保留。详细入口与边界见[归档的实现与维护记录](archive/20261101/CUSTOM_KEY_ROUTING_20261015.md)。
 - 分组规则移除“沿用系统 / 自定义”选择，四类参数直接预填并可编辑。已有值保留，空白补默认，非法非空内容阻止保存；保存才显式提交四类规则，只打开页面不修改其他分组或后端调度。
 - 已按用户授权完成本地构建、候选验收、GHCR、按 digest 回拉核验及主站 → L1 → COS 顺序 app-only 部署。每站通过后再进入下一站；主站和 L1 等待在途槽位归零后才更新，没有强制中断请求。
 
@@ -40,7 +40,7 @@
 
 ## 已有本地验证
 
-以下为当前功能的源码测试证据，详细范围和限制见 [实现与维护记录](CUSTOM_KEY_ROUTING_20261015.md)。正式镜像检查另列于下方；源码测试不能自动外推为生产执行了相同测试。
+以下为当前功能的源码测试证据，详细范围和限制见[归档的实现与维护记录](archive/20261101/CUSTOM_KEY_ROUTING_20261015.md)。正式镜像检查另列于下方；源码测试不能自动外推为生产执行了相同测试。
 
 - 后端定向回归 7 个包、441 个顶层 / 776 个含子测试，0 失败、0 skip；原始输出为 `D:/projects/go-tmp/key-routing-final-20261015.jsonl`。随后新增的 Claude 专用组运行时和 CRUD 保护分别定向复验通过。
 - 真实 PostgreSQL/Redis Testcontainers 的 APIKeyRepoSuite 33 子例、既有利润控制列兼容和扩展触发器持久化失效通过；只使用合成数据库，临时容器由测试回收。
@@ -167,7 +167,7 @@ docker compose up -d --no-deps api
 - 原 SSE INFO/CBBC mixed 仍为已接受的未决风险，本轮不追加性能压测，不改判为通过。15 项全量 lint 基线欠账、P4 完整旧新账务双跑矩阵和真实自动升级 PR 链路仍未闭环。
 - Actions 上一轮实际 dispatch 为 HTTP 422 disabled；本轮按运行提交 `f36de3d4a` 和发布前收尾提交 `3ce7de3eb` 查询运行均返回 `[]`，没有对应 CI 运行。此次本地镜像发布和三站成功部署不作为远端 CI 成功证明。
 - 无上游查询能力的未知图片结果继续待核对并保留预留金额，不自动重发、扣款或退款，不新增管理员确认入口。
-- 本地测试事实与功能边界：[API Key 实现与维护记录](CUSTOM_KEY_ROUTING_20261015.md)、[项目状态](CUSTOM_PROJECT_STATUS.md)、[功能日志](CUSTOM_FEATURE_LOG.md)。
+- 本地测试事实与功能边界：[归档的 API Key 实现与维护记录](archive/20261101/CUSTOM_KEY_ROUTING_20261015.md)、[项目状态](CUSTOM_PROJECT_STATUS.md)、[功能日志](CUSTOM_FEATURE_LOG.md)。
 - 已有原始证据：`D:/projects/go-tmp/key-routing-final-20261015.jsonl`、`D:/projects/go-tmp/custom7-production-backup-20261015.log`。
 - 本地镜像构建日志：`D:/projects/go-tmp/custom7-release-build-20261015.log`，构建 exit 0。
 - 独立 Docker 账务与生命周期证据：`D:/projects/go-tmp/key-routing-docker-custom7-20261015b/evidence.json`，status passed；夹具 SHA-256 为 `f463c93ed29284882e42ff899c3b1d7676c5b1c818a4258461fceaa1bcad5c53`。

@@ -129,7 +129,7 @@
 
 - **审核范围**：第 5 轮边界/主线冲突、第 6 轮运行时/数据/调度、第 7 轮测试/发布/证据链。
 - **关键结论**：鹈鹕候选及 `9005` 迁移尚未登记，不能进入升级分支；真实执行必须携带目标分组；失败计划必须退避且使用 lease/CAS 与幂等 `run_id`；展示接口需要批量读取或受控缓存；Compose、旧镜像、迁移、SSE 和敏感信息检查必须成为发布门禁。
-- **文档**：详见 [`CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md`](CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md) 第 5–8 节。
+- **文档**：详见[归档的模块化方案](archive/20261101/CUSTOM_MODULARIZATION_REVIEWED_PLAN_20261030.md) 第 5–8 节；当前执行以[持续优化方案书](CUSTOM_GATEWAY_OPTIMIZATION_PLAN_20261101.md)为准。
 - **状态**：本轮只更新方案和共享文档，无代码发布、镜像构建或生产部署；当前三站仍为 `0.2.19-custom.2`。
 
 
@@ -145,7 +145,7 @@
 - **发布镜像**：无。
 - **部署站点**：未部署；三站继续运行 `0.2.19-custom.2`。
 - **回滚**：候选未进入生产，不涉及生产回滚；正式发布仍以 `0.2.19-custom.2` 为回退基线。
-- **备注**：深度解耦计划见 [`CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md`](CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md)。当前鹈鹕模块仍依赖官方定时测试、账号测试和管理员面板，后续需抽取 `PelicanTestAdapter`、feature contract 和独立测试计划端口。
+- **备注**：历史深度解耦计划见[归档文件](archive/20261101/CUSTOM_MODULARIZATION_NEXT_PHASE_20261030.md)。当前剩余工作按持续优化方案书 G7 执行，仍需逐步减少对官方定时测试、账号测试和管理员面板的直接依赖。
 
 
 ### 2026-10-29 — 0.2.19-custom.2 — 官方角色路由兼容修复
@@ -193,14 +193,14 @@
 <!-- moshu-image-studio-custom-0.2.18.4-shared-pointer:end -->
 
 
-> **共享文档已推送（2026-10-26）**：文档提交 `b2ec356187dc74214c38a1a47e47b011228df074` 已同步工作分支与远端 `custom/integration`；[最新日志](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_FEATURE_LOG.md)已收录 `.18.3` 当前功能及[此前安全清理记录](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_MAINTENANCE_20261026.md)。本次没有代码或生产变更，运行标签不动。
+> **共享文档已推送（2026-10-26）**：文档提交 `b2ec356187dc74214c38a1a47e47b011228df074` 已同步工作分支与远端 `custom/integration`；[最新日志](CUSTOM_FEATURE_LOG.md)已收录 `.18.3` 当前功能及[此前安全清理记录](archive/20261101/CUSTOM_MAINTENANCE_20261026.md)。本次没有代码或生产变更，运行标签不动。
 
 
 > **2026-10-26 批量参考图最新共享入口（已部署）**：三站已运行 `0.2.18-custom.3`，GPT-image单生图、批量整组统一参考图、批量逐条参考图均最多16张；其他模型仍按各自上限。运行源 `c2dbbe786e844ee1df77bfd710ebaf438f625126`，标签 `custom-0.2.18.3`，正式镜像 `sha256:cb1c937d398989ccff2256b0bf7a7a51c7b63405f8dd5a267a1cd50f47e7b7ac`。发布分支 `codex/image-batch-16refs-20261026` 与远端 `custom/integration` 已普通快进至文档收尾 `c8d14a1183f73cdefa28e698f45bbaf8f8c730b5`。
 >
 > 本轮记录位于 `D:/projects/sub2api-image-batch-16refs-20261026`：[项目状态](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_PROJECT_STATUS.md)、[功能日志](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_FEATURE_LOG.md)、[发布验收](D:/projects/sub2api-image-batch-16refs-20261026/docs/CUSTOM_RELEASE_0_2_18_CUSTOM3_20261026.md)。前端92项、后端unit及正式镜像16图mock验收通过；三站healthy/restart0、批量入口3/3与应用资源12/12匹配。无后端运行时/迁移/配置变化，应用回退目标`.18.2`。旧树仅追加此共享指针，原维护记录、其他会话未提交代码及文档完整保留；后续先核对最新远端，不从旧树整树覆盖发布。
 
-> **2026-10-26 运维收尾共享入口**：生图 `0.2.18-custom.2` 的当前摘要已补齐；本地52个停止容器已清理，运行容器和全部卷保留。服务器编译/包缓存减少约0.92GB，未重启生产，三站健康200。[完整记录](D:/projects/sub2api-image-studio-16refs-20261026/docs/CUSTOM_MAINTENANCE_20261026.md)维护于最新权威树，旧阶段历史保留。
+> **2026-10-26 运维收尾共享入口**：生图 `0.2.18-custom.2` 的当前摘要已补齐；本地52个停止容器已清理，运行容器和全部卷保留。服务器编译/包缓存减少约0.92GB，未重启生产，三站健康200。[完整记录](archive/20261101/CUSTOM_MAINTENANCE_20261026.md)维护于归档目录，旧阶段历史保留。
 
 
 > **2026-10-26 生图工作台最新共享入口（已部署）**：三站已运行 `0.2.18-custom.2`，GPT-image参考图上限16；Nano/Gemini14、Seedream10和未知模型4保持。运行源 `879a99a22e47a303604927104a6f67329dcd3b38`，标签 `custom-0.2.18.2`，正式镜像 `sha256:c90609bc4546ec309a980929ec8f28eef3cef236022dd698700920439ce78412`。发布分支 `codex/image-studio-16refs-20261026` 与远端 `custom/integration` 已普通快进至文档收尾 `10b452931592de432db312ffc0a94972c1b89666`。
@@ -273,7 +273,7 @@
 ### 2026-10-15 — 主备 Key 提示删除及生产实测指针
 
 - 活动工作树已移除常驻范围说明，实际限制和计费逻辑不变；21 项前端测试及类型/定向 lint 通过。未推送部署，生产 `.7` 不变。
-- 用户创建管理员 Key 167，GPT-稳定→Kimi→DeepSeek。四次生成请求中 Kimi、DeepSeek 普通及 SSE 通过，实际组/倍率/账务正确，总扣费 $0.0007148；GPT 因主组上游 404/502/403 失败且零扣费，未自动修改配置。目录只返回主组，备用模型可直接调用；Key 保留待用户删除。完整记录见 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom/docs/CUSTOM_PROJECT_STATUS.md` 与 `CUSTOM_KEY_ROUTING_20261015.md`，本目录仅共享指针。
+- 用户创建管理员 Key 167，GPT-稳定→Kimi→DeepSeek。四次生成请求中 Kimi、DeepSeek 普通及 SSE 通过，实际组/倍率/账务正确，总扣费 $0.0007148；GPT 因主组上游 404/502/403 失败且零扣费，未自动修改配置。目录只返回主组，备用模型可直接调用；Key 保留待用户删除。完整记录见 `CUSTOM_PROJECT_STATUS.md` 与[归档路由记录](archive/20261101/CUSTOM_KEY_ROUTING_20261015.md)，本目录仅共享指针。
 
 ### 2026-10-15 — `.7` 已部署三站（当前共享指针）
 
@@ -286,7 +286,7 @@
 ### 2026-10-15 — API Key 主备分组模块本地完成
 
 - 在活动工作树新增 `key-routing`，主组模型缺失或账号全暂停时顺序选备用，按实际组计费；没有 Key 级 SLA 规则或跨组重播。独立策略/适配/存储/前端组件及升级接线门禁，扩展表不替换原 `group_id`。
-- 后端定向回归、真实 PostgreSQL/Redis、挂载 HTTP/SSE 与实际组计费命令链及前端测试/构建通过；具体范围、后补边界测试与尚待 Docker 应用/浏览器/回退验收见活动工作树 `docs/CUSTOM_KEY_ROUTING_20261015.md`。
+- 后端定向回归、真实 PostgreSQL/Redis、挂载 HTTP/SSE 与实际组计费命令链及前端测试/构建通过；具体范围、后补边界测试与尚待 Docker 应用/浏览器/回退验收见[归档路由记录](archive/20261101/CUSTOM_KEY_ROUTING_20261015.md)。
 - 当前仍未提交、推送、部署，三站生产 `.6` 不变；此前分组默认值编辑器改动保留。唯一源码位于 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom`，本根目录仅更新共享指针。
 
 ### 2026-10-15 — 分组规则直接编辑默认值（本地未发布）
@@ -361,18 +361,18 @@
 ### 2026-10-15 — 模块化复核停止项（仅同步，本地未发布）
 
 - 活动分支 `codex/custom-modularization-v0.2.16` 已完成多项接口解耦与局部测试；P4/P6 账务验收发现普通兼容批量部分成功后取消漏结算，原基线和候选均复现。保留失败用例，未修改运行账务或生产费用。
-- 此前“P0–P6 全部完成”已撤回；WS 跨轮身份、全量门禁、恢复及性能仍需闭环，按方案停止收尾，待确认独立修复范围。详细证据在活动工作树 `C:/Users/a/.codex/worktrees/upgrade-v0-2-16-image-studio/sub2api-custom/docs/CUSTOM_MODULARIZATION_REVIEW_20261015.md`。
+- 此前“P0–P6 全部完成”已撤回；WS 跨轮身份、全量门禁、恢复及性能仍需闭环，按方案停止收尾，待确认独立修复范围。详细历史证据在[归档复核记录](archive/20261101/CUSTOM_MODULARIZATION_REVIEW_20261015.md)。
 - 没有推送、标签或部署，生产仍 `0.2.16-custom.5`；根目录其他会话改动保留。
 - 活动工作树新增本地提交 `31545ff8a`、`d596bae70`、`fa677d301`；包含刻意保留的账务失败回归用例，不是可发布候选。
 
 ### 2026-10-14 — 本地实施（未发布）— 定制模块化 P0/P1
 
 - 用户已批准执行，不再是下方历史记录的“待审批”。活动分支 `codex/custom-modularization-v0.2.16`；P0 提交 `b3dbe92d6`。P1 增加真实路由/菜单/设置权限接入及负向架构检查，已本地通过；后续阶段仍在执行。
-- 详细变更及测试以活动工作树 `docs/CUSTOM_MODULARIZATION_EXECUTION.md` 为准，根目录只同步入口。未推送、未部署、生产仍 `.5`；不覆盖其他会话源码。
+- 详细变更及测试以[归档执行记录](archive/20261101/CUSTOM_MODULARIZATION_EXECUTION.md)为准，根目录只同步入口。未推送、未部署、生产仍 `.5`；不覆盖其他会话源码。
 
 ### 2026-10-14 — 仅方案（planned）— 定制模块化执行方案
 
-- 用户要求将解耦建议写成执行方案。入口：[CUSTOM_MODULARIZATION_PLAN.md](CUSTOM_MODULARIZATION_PLAN.md)；正文在活动工作树同名文件维护，不复制两份正文。
+- 用户要求将解耦建议写成执行方案。历史入口已归档；当前入口为[持续优化方案书](CUSTOM_GATEWAY_OPTIMIZATION_PLAN_20261101.md)和[计划表](CUSTOM_GATEWAY_OPTIMIZATION_TRACKER_20261101.md)。
 - 方案包含 P0 基线、P1 门禁、P2 前端/品牌、P3 后端装配、P4 生图/审计、P5 故障策略和 P6 联合验收；每阶段有操作、验收与停止条件，保持 API/数据库/权限/计费行为。
 - 本轮只更新文档，阶段均待审批；没有修改运行代码、提交推送或部署，生产仍为 `.5`。其他会话未提交改动保留。推送与生产发布需后续明确授权。
 
