@@ -7,6 +7,7 @@
 - **提交/版本**：`41bcea058`，`0.2.19-custom.10`。
 - **验证/发布**：展示解析回归 3/3、前端类型/i18n/生产构建通过；三站已按主站 → L1 → COS 发布，容器 healthy、restart 0，根页面、渠道测智页面和 `/health` 均返回 200。
 - **镜像/回滚**：`ghcr.io/hzihuan001/sub2api@sha256:b205c43132b6f4043dae8b969e184829072147954ac7a4eff2fedc4a78bb0f77`；上一版回滚 digest `sha256:7ae9abc81414962d131cab4e407fbb8d7a082ad702ad83cb3c4604c0dde145b9`；备份 `/opt/sub2api-deploy-backups/20261102043212/`。
+- **验收边界**：通用旧 operator-container-test 在生成旧式管理员 API Key 步骤收到当前权限密钥策略的 403；这属于验收脚本与现有密钥规则不兼容，不影响本次测智解析修复。三站实际版本、资源、健康和页面检查均通过。
 
 ### 2026-11-01 — 历史候选 — 渠道测智完整 HTML/SVG 展示修复
 
