@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
@@ -16,9 +17,9 @@ func TestScheduledTestPlanClaimDueLeaseAndFinalize(t *testing.T) {
 	ctx := context.Background()
 	suffix := time.Now().UnixNano()
 	account := mustCreateAccount(t, integrationEntClient, &service.Account{
-		Name: fmt.Sprintf("scheduled-lease-%d", suffix),
+		Name:     fmt.Sprintf("scheduled-lease-%d", suffix),
 		Platform: service.PlatformOpenAI,
-		Type: service.AccountTypeAPIKey,
+		Type:     service.AccountTypeAPIKey,
 	})
 	t.Cleanup(func() {
 		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", account.ID)
@@ -63,4 +64,50 @@ func TestScheduledTestPlanClaimDueLeaseAndFinalize(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, firstResult.ID, secondResult.ID, "same run_id must be idempotent")
+}
+
+func TestScheduledTestPlanDisabledRunDoesNotReschedule(t *testing.T) {
+	ctx := context.Background()
+	suffix := time.Now().UnixNano()
+	account := mustCreateAccount(t, integrationEntClient, &service.Account{
+		Name:     fmt.Sprintf("scheduled-disable-%d", suffix),
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+	})
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", account.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM accounts WHERE id = $1", account.ID)
+	})
+
+	now := time.Now().UTC()
+	var planID int64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		INSERT INTO scheduled_test_plans (account_id, model_id, test_kind, cron_expression, enabled, max_results, next_run_at)
+		VALUES ($1, 'test-model', 'pelican', '*/5 * * * *', true, 5, $2)
+		RETURNING id
+	`, account.ID, now.Add(-time.Minute)).Scan(&planID))
+
+	repo := &scheduledTestPlanRepository{db: integrationDB}
+	claimed, err := repo.ClaimDue(ctx, now, now.Add(10*time.Minute), 10, "worker-disable")
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+
+	_, err = integrationDB.ExecContext(ctx, `
+		UPDATE scheduled_test_plans SET enabled = false, next_run_at = NULL WHERE id = $1
+	`, planID)
+	require.NoError(t, err)
+
+	err = repo.FinalizeRun(ctx, planID, claimed[0].LeaseToken, claimed[0].ActiveRunID, now, now.Add(5*time.Minute), 0, "")
+	require.Error(t, err, "a run disabled while in flight must not finalize or reschedule")
+
+	var enabled bool
+	var nextRunAt *time.Time
+	var leaseToken, activeRunID sql.NullString
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT enabled, next_run_at, lease_token, active_run_id FROM scheduled_test_plans WHERE id = $1
+	`, planID).Scan(&enabled, &nextRunAt, &leaseToken, &activeRunID))
+	require.False(t, enabled)
+	require.Nil(t, nextRunAt)
+	require.False(t, leaseToken.Valid)
+	require.False(t, activeRunID.Valid)
 }

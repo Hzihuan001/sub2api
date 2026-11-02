@@ -16,12 +16,12 @@ const scheduledTestDefaultMaxWorkers = 10
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
-	planRepo       ScheduledTestPlanRepository
-	scheduledSvc   *ScheduledTestService
-	accountTestSvc *AccountTestService
+	planRepo        ScheduledTestPlanRepository
+	scheduledSvc    *ScheduledTestService
+	accountTestSvc  *AccountTestService
 	pelicanExecutor PelicanTestExecutor
-	rateLimitSvc   *RateLimitService
-	cfg            *config.Config
+	rateLimitSvc    *RateLimitService
+	cfg             *config.Config
 
 	cron      *cron.Cron
 	startOnce sync.Once
@@ -41,12 +41,12 @@ func NewScheduledTestRunnerService(
 		pelicanExecutor = NewPelicanTestAdapter(accountTestSvc.accountRepo, accountTestSvc)
 	}
 	return &ScheduledTestRunnerService{
-		planRepo:       planRepo,
-		scheduledSvc:   scheduledSvc,
-		accountTestSvc: accountTestSvc,
+		planRepo:        planRepo,
+		scheduledSvc:    scheduledSvc,
+		accountTestSvc:  accountTestSvc,
 		pelicanExecutor: pelicanExecutor,
-		rateLimitSvc:   rateLimitSvc,
-		cfg:            cfg,
+		rateLimitSvc:    rateLimitSvc,
+		cfg:             cfg,
 	}
 }
 
@@ -143,7 +143,7 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	var err error
 	if plan.TestKind == ScheduledTestKindPelican {
 		prompt := plan.TestPrompt
-		if prompt == "" {
+		if prompt == "" || prompt == LegacyDefaultPelicanTestPrompt {
 			prompt = DefaultPelicanTestPrompt
 		}
 		if plan.GroupID == nil || s.pelicanExecutor == nil {

@@ -197,7 +197,12 @@ func (r *scheduledTestPlanRepository) Update(ctx context.Context, plan *service.
 	}
 	row := r.db.QueryRowContext(ctx, `
 		UPDATE scheduled_test_plans
-		SET group_id = $2, model_id = $3, test_kind = $4, test_prompt = $5, cron_expression = $6, enabled = $7, max_results = $8, auto_recover = $9, next_run_at = $10, updated_at = NOW()
+		SET group_id = $2, model_id = $3, test_kind = $4, test_prompt = $5, cron_expression = $6, enabled = $7, max_results = $8, auto_recover = $9,
+		    next_run_at = CASE WHEN $7 THEN $10 ELSE NULL END,
+		    lease_token = CASE WHEN $7 THEN lease_token ELSE NULL END,
+		    lease_expires_at = CASE WHEN $7 THEN lease_expires_at ELSE NULL END,
+		    active_run_id = CASE WHEN $7 THEN active_run_id ELSE NULL END,
+		    updated_at = NOW()
 		WHERE id = $1
 		RETURNING id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
 	`, plan.ID, plan.GroupID, plan.ModelID, normalizeScheduledTestKind(plan.TestKind), plan.TestPrompt, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
@@ -229,7 +234,7 @@ func (r *scheduledTestPlanRepository) FinalizeRun(ctx context.Context, planID in
 		    failure_streak = $5,
 		    last_error = $6,
 		    updated_at = NOW()
-		WHERE id = $1 AND lease_token = $2 AND active_run_id = $7
+		WHERE id = $1 AND lease_token = $2 AND active_run_id = $7 AND enabled = TRUE
 	`, planID, leaseToken, lastRunAt, nextRunAt, failureStreak, lastError, runID)
 	if err != nil {
 		return err
