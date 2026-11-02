@@ -1,7 +1,7 @@
 # 模枢中转站持续优化计划表
 
 **版本**：2026-11-01（Asia/Shanghai）
-**当前生产基线**：`0.2.19-custom.9`，提交 `a98bbb9a9`，镜像 `sha256:7ae9abc81414962d131cab4e407fbb8d7a082ad702ad83cb3c4604c0dde145b9`
+**当前生产基线**：`0.2.19-custom.10`，提交 `aba0caa20`，镜像 `sha256:b205c43132b6f4043dae8b969e184829072147954ac7a4eff2fedc4a78bb0f77`
 **适用站点**：主站 `ai.moshu.cloud`、L1 `api.moshu.cloud`、COS `cos.moshu.cloud`
 
 本表是当前唯一的待办入口。每项完成后必须同步更新本表、[项目状态](CUSTOM_PROJECT_STATUS.md) 和 [定制功能日志](CUSTOM_FEATURE_LOG.md)；未完成项不得写成已上线。
