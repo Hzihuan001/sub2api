@@ -2,7 +2,11 @@
 
 日期：2026-11-03（Asia/Shanghai）
 
-状态：本地候选，用户配置网络期间暂停生产部署。没有发布 `.13` 镜像或 tag，没有继续修改服务器及 DNS/CDN。
+状态：用户已完成网络配置并恢复发布；镜像、源码标签、本地与发布产物容器验收完成。主站仍有在途请求，首次排空超时后未修改生产，正在确定本次维护方式。DNS/CDN/反代未改动。
+
+- 运行源码：`c46975de0a3fe6649e0fbe421521bad948a1839c`；标签 `custom-0.2.19.13`，分支 `codex/v0.2.19-merge-20261029`，均已推送。
+- 镜像：`ghcr.io/hzihuan001/sub2api:0.2.19-custom.13`；不可变发布引用 `ghcr.io/hzihuan001/sub2api@sha256:433a235815bbc61ae215578238323cb92500984e9a22df899244ba3a15f9ca15`，Linux/amd64，已在本地和 OVH 拉取，版本和完整提交匹配。
+- 正式入口：主站 `ai.moshu.cloud`、L1 `api.tokenpulse.top`、COS `cos.tokenpulse.top`。旧 `*.moshu.cloud` 分站入口不再作为本轮发布门禁，也不擅自修改其解析。
 
 ## 根因与最小修复
 
@@ -20,6 +24,18 @@
 - 浏览器报告：`.tmp/pelican-browser-csp-final-report.json`；本机脚本 `.tmp/pelican-browser-csp-final.cjs`。这些是本地临时验收文件，不是生产依赖，也不连接用户浏览器。
 - SMIL 未标为通过：当前 runner 的原生 HTML 对照也未更新其几何属性，无法据此判断产品是否有问题。
 - `pnpm run build` 前端生产构建通过（含 i18n 4/4、TypeScript 构建）；只有既有 Browserslist/chunk 体积提示。本轮不因小范围前端修复重跑未修改后端全套。上轮完整前端已有 52 项既有失败（Grok 50、nativeControls 2），没有宣称全量测试全绿。
+- 根 Dockerfile 本地镜像、GHCR 精确 digest 拉回后的隔离 PostgreSQL/Redis 容器验收均通过；验证 operator 权限、受限管理密钥允许与拒绝、重启持久化、撤销后 401。两个临时验收项目均已自动清理，仅删除各自新建的资源，未清理其他会话容器。
+- GitHub Actions 仍不可用，本次使用已授权的本地构建、GHCR 发布及精确产物验收，不声称 CI 成功。
+
+## 本次备份与发布门禁
+
+有效新备份：`/opt/sub2api-deploy-backups/custom13-20261103T104359Z/`。三站 PostgreSQL custom-format dump 分别为 main 149,480,915、L1 18,711,098、COS 3,056,452 字节；`pg_restore -l`、站点挂载归档、Compose/环境配置、OpenResty 配置及 SHA-256 校验通过。备份目录和文件分别限制为 700/600，不在文档输出凭证。
+
+第一次归档活跃日志时 tar 检测文件变化并停止，未修改生产；该不完整目录 `custom13-20261103T104113Z` 不能当作恢复点。修正为复制静态文件快照后归档，数据库仍用一致性 pg_dump；没有声称演练了完整数据库恢复。当前镜像及每站旧 digest 均保留以便只回滚应用。
+
+发布脚本只更新应用镜像：核对旧镜像可在本地解析、完整备份、Compose 归属及排空期间无并发配置变更；更新后核对环境/挂载/端口/网络指纹、完整迁移记录和 PostgreSQL/Redis 实例身份均保持。检查失败恢复该站旧 Compose 和旧应用镜像，不恢复旧数据库覆盖新业务数据。
+
+首次主站自然排空等待约 240 秒，持续有普通请求槽位，后台图片、批量和定时测试队列均为空，门禁正常退出，未执行应用重建。源码 `backend/cmd/server/main.go` 的 HTTP Shutdown 仅等待 5 秒，不能将 SIGTERM 当作长请求无损排空；是否接受本次短暂维护中断待用户选择。
 
 ## 生产真实状态及暂停指令
 
