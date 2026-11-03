@@ -27,7 +27,9 @@
 - 前端目标 lint 与 TypeScript 检查通过；`pnpm run build` 生产构建通过。
 - 完整前端 Vitest：431 文件中 429 通过、2 失败；3,533 测试通过、52 失败。失败集中在未修改的 `EditAccountModal.grokUpstream.spec.ts`（50）和 `nativeControls.spec.ts`（2），不把整套全绿作为本次结果。
 - `pnpm run lint:check` 无错误，存在 2 条仓库既有未使用变量 warning。
-- 现有用户浏览器 UI 操作已按要求停止。另用独立临时目录的本地 headless Chrome 验证最终 utility 的隔离 iframe：JS RAF、CSS 动画以及用户 126/130/142 三份真实附件均有帧间变化、无浏览器异常；不连接用户浏览器会话。SVG SMIL 对照检查待补。
+- 现有用户浏览器 UI 操作已按要求停止。另用独立临时目录的本地 headless Chrome 验证最终 utility 的隔离 iframe：JS RAF、CSS 动画以及用户 126/130/142 三份真实附件均有帧间变化、无浏览器异常；不连接用户浏览器会话。SVG SMIL 在原生 HTML 基线中也不更新动画值，因此该 runner 无法确认 SMIL，不将其标为通过。报告位于本机 `C:/Users/a/AppData/Local/Temp/moshu-pelican-browser-01OMAg/report.json`。
+- 最终 Linux 镜像本地 Compose 联合验收通过（端口 18112，项目 `sub2api-operator-test-custom12-final-20261103`）：登录、角色/用户密钥权限边界、现行权限管理密钥的授权/拒绝/撤销、WebSocket、重启持久化和关键日志检查。临时验收环境已由脚本清理，仅清理其自身资源。
+- 首次容器验收因脚本仍期待已停用的旧版无限权管理 Key 新建成功而失败；已将脚本改为验证旧接口拒绝和现行最小权限管理 Key，未放宽产品权限，修正后验收通过。
 
 ## 生产备份
 

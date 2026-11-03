@@ -265,10 +265,29 @@ try {
   Assert-Status (Invoke-Api GET '/admin/groups' -Token $admin.Token) @(200) 'admin group access'
   Assert-Status (Invoke-Api GET '/admin/users' -Token 'invalid-token') @(401) 'invalid JWT'
 
-  $keyResponse = Invoke-Api POST '/admin/settings/admin-api-key/regenerate' -Token $admin.Token
-  Assert-Status $keyResponse @(200) 'admin API key generation'
+  # Fresh installations must not create the deprecated unrestricted key. Use a
+  # narrowly scoped management key to verify the current API-key auth boundary.
+  Assert-Status (Invoke-Api POST '/admin/settings/admin-api-key/regenerate' -Token $admin.Token) @(403) 'legacy unrestricted admin key creation denial'
+  $keyResponse = Invoke-Api POST '/admin/settings/admin-api-keys' -Token $admin.Token -Body @{
+    name = 'operator-acceptance-model-reader'
+    enabled = $true
+    expires_at = [DateTime]::UtcNow.AddMinutes(15).ToString('yyyy-MM-ddTHH:mm:ssZ')
+    allowed_ips = @()
+    policy = @{
+      rules = @()
+      global_permissions = @('models.defaults.read')
+    }
+  }
+  Assert-Status $keyResponse @(200) 'scoped management API key creation'
   $adminApiKey = [string]$keyResponse.Json.data.key
-  Assert-Status (Invoke-Api GET '/admin/settings' -AdminApiKey $adminApiKey) @(200) 'admin API key maps to admin'
+  $adminApiKeyId = [string]$keyResponse.Json.data.item.id
+  if (-not $adminApiKey -or -not $adminApiKeyId) {
+    throw 'Scoped management API key creation returned no key or ID.'
+  }
+  $modelDefaultsPath = '/admin/accounts/antigravity/default-model-mapping'
+  Assert-Status (Invoke-Api GET $modelDefaultsPath -AdminApiKey $adminApiKey) @(200) 'management API key explicitly allowed model defaults read'
+  Assert-Status (Invoke-Api GET '/admin/settings' -AdminApiKey $adminApiKey) @(403) 'management API key cannot read unrestricted settings'
+  Assert-Status (Invoke-Api GET '/admin/settings/admin-api-keys' -AdminApiKey $adminApiKey) @(403) 'management API key cannot manage keys'
 
   Test-OperatorWebSocket $operator.Token
 
@@ -276,6 +295,9 @@ try {
   Wait-Health
   $persistedOperator = Login 'operator@operator-test.local' 'Operator-Test-Password-2026!'
   Assert-Status (Invoke-Api GET '/admin/ops/capabilities' -Token $persistedOperator.Token) @(200) 'operator persists after restart'
+  Assert-Status (Invoke-Api GET $modelDefaultsPath -AdminApiKey $adminApiKey) @(200) 'scoped management API key persists after restart'
+  Assert-Status (Invoke-Api DELETE "/admin/settings/admin-api-keys/$adminApiKeyId" -Token $admin.Token) @(200) 'scoped management API key revocation'
+  Assert-Status (Invoke-Api GET $modelDefaultsPath -AdminApiKey $adminApiKey) @(401) 'revoked management API key authentication denial'
 
   $logs = (& docker compose --project-name $Project --file $composeFile logs --no-color sub2api 2>&1 | Out-String)
   if ($logs -match '(?im)panic:|database.*connection.*(failed|refused)|redis.*connection.*(failed|refused)|migration.*(failed|error)') {
