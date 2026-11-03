@@ -8,34 +8,73 @@ import (
 	"time"
 )
 
-func TestRunPelicanTestWithTransientRetryRetriesEmptyTransportResetOnce(t *testing.T) {
+func TestRunPelicanTestWithTransientRetryRetriesEmptyTransportResetUntilSuccess(t *testing.T) {
 	started := time.Now()
 	calls := 0
 	result, err := runPelicanTestWithTransientRetry(context.Background(), func(context.Context) (*ScheduledTestResult, error) {
 		calls++
-		if calls == 1 {
+		if calls < 3 {
 			return &ScheduledTestResult{
 				Status: "failed", ErrorMessage: "Stream read error: read tcp: connection reset by peer",
-				StartedAt: started, FinishedAt: started.Add(time.Second), LatencyMs: 1000,
+				StartedAt: started.Add(time.Duration(calls-1) * 2 * time.Second), FinishedAt: started.Add(time.Duration(calls) * 2 * time.Second), LatencyMs: 1000,
 			}, nil
 		}
 		return &ScheduledTestResult{
 			Status: "success", ResponseText: "<svg></svg>",
-			StartedAt: started.Add(2 * time.Second), FinishedAt: started.Add(3 * time.Second), LatencyMs: 1000,
+			StartedAt: started.Add(4 * time.Second), FinishedAt: started.Add(5 * time.Second), LatencyMs: 1000,
 		}, nil
 	})
 
 	if err != nil {
 		t.Fatalf("retry returned error: %v", err)
 	}
-	if calls != 2 {
-		t.Fatalf("attempts = %d, want 2", calls)
+	if calls != 3 {
+		t.Fatalf("attempts = %d, want 3", calls)
 	}
 	if result == nil || result.Status != "success" || result.ResponseText != "<svg></svg>" {
 		t.Fatalf("retry result = %#v, want successful SVG result", result)
 	}
-	if result.LatencyMs != 3000 {
-		t.Fatalf("combined latency = %dms, want 3000ms", result.LatencyMs)
+	if result.LatencyMs != 5000 {
+		t.Fatalf("combined latency = %dms, want 5000ms", result.LatencyMs)
+	}
+}
+
+func TestRunPelicanTestWithTransientRetryStopsAfterThreeAttempts(t *testing.T) {
+	calls := 0
+	result, err := runPelicanTestWithTransientRetry(context.Background(), func(context.Context) (*ScheduledTestResult, error) {
+		calls++
+		return &ScheduledTestResult{Status: "failed", ErrorMessage: "Stream read error: connection reset by peer"}, nil
+	})
+	if err != nil || calls != 3 || result == nil || result.Status != "failed" {
+		t.Fatalf("persistent reset result: calls=%d result=%#v err=%v, want final failure after 3 attempts", calls, result, err)
+	}
+}
+
+func TestRunPelicanTestWithTransientRetryRetriesIncompleteResponsesStream(t *testing.T) {
+	calls := 0
+	result, err := runPelicanTestWithTransientRetry(context.Background(), func(context.Context) (*ScheduledTestResult, error) {
+		calls++
+		if calls == 1 {
+			return &ScheduledTestResult{Status: "failed", ErrorMessage: "Stream ended before response.completed"}, nil
+		}
+		return &ScheduledTestResult{Status: "success", ResponseText: "complete response"}, nil
+	})
+	if err != nil || calls != 2 || result == nil || result.Status != "success" {
+		t.Fatalf("incomplete Responses stream retry: calls=%d result=%#v err=%v", calls, result, err)
+	}
+}
+
+func TestRunPelicanTestWithTransientRetryDoesNotRetryAfterContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := 0
+	result, err := runPelicanTestWithTransientRetry(ctx, func(context.Context) (*ScheduledTestResult, error) {
+		calls++
+		cancel()
+		return &ScheduledTestResult{Status: "failed", ErrorMessage: "Stream read error: connection reset by peer"}, nil
+	})
+	if err != nil || calls != 1 || result == nil || result.Status != "failed" {
+		t.Fatalf("cancelled retry result: calls=%d result=%#v err=%v", calls, result, err)
 	}
 }
 
@@ -90,6 +129,7 @@ func TestIsRetryablePelicanTransportFailure(t *testing.T) {
 	}{
 		{name: "reset", result: &ScheduledTestResult{Status: "failed", ErrorMessage: "Stream read error: connection reset by peer"}, want: true},
 		{name: "unexpected eof", result: &ScheduledTestResult{Status: "failed", ErrorMessage: "Failed to read response: unexpected EOF"}, want: true},
+		{name: "Responses stream ended early", result: &ScheduledTestResult{Status: "failed", ErrorMessage: "Stream ended before response.completed"}, want: true},
 		{name: "timeout", err: errors.New("Failed to read response: i/o timeout"), want: true},
 		{name: "partial response", result: &ScheduledTestResult{Status: "failed", ResponseText: "some content", ErrorMessage: "connection reset"}, want: false},
 		{name: "http failure", result: &ScheduledTestResult{Status: "failed", ErrorMessage: "HTTP 502: upstream unavailable connection reset"}, want: false},

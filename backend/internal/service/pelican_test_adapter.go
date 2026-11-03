@@ -42,37 +42,39 @@ func (a *groupScopedPelicanTestAdapter) Run(ctx context.Context, accountID, grou
 
 // runPelicanTestWithTransientRetry retries only a failed test with no response
 // content when a response read failed transiently. The upstream may have
-// completed and billed the first attempt even though no body reached us, so
-// this intentionally permits at most one duplicate upstream charge.
+// completed and billed an attempt even though no body reached us, so this uses
+// a small fixed attempt budget and never retries after response content exists.
 func runPelicanTestWithTransientRetry(
 	ctx context.Context,
 	run func(context.Context) (*ScheduledTestResult, error),
 ) (*ScheduledTestResult, error) {
-	first, firstErr := run(ctx)
-	if ctx.Err() != nil || !isRetryablePelicanTransportFailure(first, firstErr) {
-		return first, firstErr
-	}
-	timer := time.NewTimer(250 * time.Millisecond)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return first, firstErr
-	case <-timer.C:
-	}
+	const maxAttempts = 3
+	retryDelays := [...]time.Duration{250 * time.Millisecond, 750 * time.Millisecond}
+	var earliestStartedAt time.Time
 
-	second, secondErr := run(ctx)
-	if second == nil {
-		return second, secondErr
-	}
-	if first != nil {
-		if !first.StartedAt.IsZero() && (second.StartedAt.IsZero() || first.StartedAt.Before(second.StartedAt)) {
-			second.StartedAt = first.StartedAt
+	for attempt := 1; ; attempt++ {
+		result, runErr := run(ctx)
+		if result != nil && !result.StartedAt.IsZero() && (earliestStartedAt.IsZero() || result.StartedAt.Before(earliestStartedAt)) {
+			earliestStartedAt = result.StartedAt
 		}
-		if !second.FinishedAt.IsZero() && !second.StartedAt.IsZero() {
-			second.LatencyMs = second.FinishedAt.Sub(second.StartedAt).Milliseconds()
+		if ctx.Err() != nil || attempt >= maxAttempts || !isRetryablePelicanTransportFailure(result, runErr) {
+			if result != nil && !earliestStartedAt.IsZero() {
+				result.StartedAt = earliestStartedAt
+				if !result.FinishedAt.IsZero() {
+					result.LatencyMs = result.FinishedAt.Sub(result.StartedAt).Milliseconds()
+				}
+			}
+			return result, runErr
+		}
+
+		timer := time.NewTimer(retryDelays[attempt-1])
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return result, runErr
+		case <-timer.C:
 		}
 	}
-	return second, secondErr
 }
 
 func isRetryablePelicanTransportFailure(result *ScheduledTestResult, err error) bool {
@@ -92,6 +94,9 @@ func isRetryablePelicanTransportFailure(result *ScheduledTestResult, err error) 
 			return false
 		}
 	}
+	if strings.Contains(message, "stream ended before response.completed") {
+		return true
+	}
 	// Only response-read failures are retried. A generic request/transport
 	// error does not reveal whether the request was already accepted upstream.
 	if !strings.Contains(message, "stream read error:") && !strings.Contains(message, "failed to read response:") {
@@ -105,6 +110,7 @@ func isRetryablePelicanTransportFailure(result *ScheduledTestResult, err error) 
 		"broken pipe",
 		"tls handshake timeout",
 		"i/o timeout",
+		"stream ended before response.completed",
 	} {
 		if strings.Contains(message, marker) {
 			return true

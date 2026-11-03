@@ -111,3 +111,44 @@ func TestScheduledTestPlanDisabledRunDoesNotReschedule(t *testing.T) {
 	require.False(t, leaseToken.Valid)
 	require.False(t, activeRunID.Valid)
 }
+
+func TestScheduledTestPlanUpdateEnableAndDisableTimestamp(t *testing.T) {
+	ctx := context.Background()
+	suffix := time.Now().UnixNano()
+	account := mustCreateAccount(t, integrationEntClient, &service.Account{
+		Name:     fmt.Sprintf("scheduled-toggle-%d", suffix),
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+	})
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", account.ID)
+		_, _ = integrationDB.ExecContext(ctx, "DELETE FROM accounts WHERE id = $1", account.ID)
+	})
+
+	var planID int64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		INSERT INTO scheduled_test_plans (account_id, model_id, test_kind, cron_expression, enabled, max_results, next_run_at)
+		VALUES ($1, 'test-model', 'connection', '*/5 * * * *', false, 5, NULL)
+		RETURNING id
+	`, account.ID).Scan(&planID))
+
+	repo := &scheduledTestPlanRepository{db: integrationDB}
+	plan, err := repo.GetByID(ctx, planID)
+	require.NoError(t, err)
+	require.Nil(t, plan.NextRunAt)
+
+	nextRunAt := time.Now().UTC().Add(5 * time.Minute).Truncate(time.Microsecond)
+	plan.Enabled = true
+	plan.NextRunAt = &nextRunAt
+	enabled, err := repo.Update(ctx, plan)
+	require.NoError(t, err, "enabling a plan must bind next_run_at as timestamptz")
+	require.True(t, enabled.Enabled)
+	require.NotNil(t, enabled.NextRunAt)
+	require.WithinDuration(t, nextRunAt, *enabled.NextRunAt, time.Microsecond)
+
+	enabled.Enabled = false
+	disabled, err := repo.Update(ctx, enabled)
+	require.NoError(t, err, "disabling a plan must write a typed NULL timestamp")
+	require.False(t, disabled.Enabled)
+	require.Nil(t, disabled.NextRunAt)
+}

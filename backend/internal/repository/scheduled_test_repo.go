@@ -198,7 +198,7 @@ func (r *scheduledTestPlanRepository) Update(ctx context.Context, plan *service.
 	row := r.db.QueryRowContext(ctx, `
 		UPDATE scheduled_test_plans
 		SET group_id = $2, model_id = $3, test_kind = $4, test_prompt = $5, cron_expression = $6, enabled = $7, max_results = $8, auto_recover = $9,
-		    next_run_at = CASE WHEN $7 THEN $10 ELSE NULL END,
+		    next_run_at = CASE WHEN $7 THEN $10::timestamptz ELSE NULL::timestamptz END,
 		    lease_token = CASE WHEN $7 THEN lease_token ELSE NULL END,
 		    lease_expires_at = CASE WHEN $7 THEN lease_expires_at ELSE NULL END,
 		    active_run_id = CASE WHEN $7 THEN active_run_id ELSE NULL END,
