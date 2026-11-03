@@ -1,5 +1,9 @@
 # Sub2API custom release runbook
 
+## Current release: custom-0.2.19.12 (2026-11-03; acceptance in progress)
+
+Source branch: `codex/v0.2.19-merge-20261029`; baseline `55a62dd3c3725f3c9f4abd45f4a45607d92217a5`; official base remains v0.2.19. Production currently runs `.11` / `sha256:f967d1f5519ff0b4f89ea595ef9618a8122810a4fde34fb73764a3fc0bc0f9f1` on main, L1 and COS. This release changes only isolated showcase preview behavior and bounded retry for empty transient stream-read failures; no DB migration or site configuration change. Record final commit, image digest, backup and per-site checks in `docs/CUSTOM_RELEASE_0_2_19_CUSTOM12_20261103.md` after completion. Preserve the previous application digest for rollback and retain all databases, Redis data and volumes.
+
 ## Current release: custom-0.2.18.4 (2026-10-27; published and deployed)
 
 - Runtime source/tag: `1524aa0985f432df19c9144c726224d2852308d6` / `custom-0.2.18.4`; authoritative branch/workspace: `codex/image-batch-16refs-20261026` / `D:/projects/sub2api-image-batch-16refs-20261026`. Official base remains `v0.2.18`. Later documentation commits do not move the runtime tag.

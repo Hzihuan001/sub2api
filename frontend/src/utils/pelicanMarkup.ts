@@ -1,4 +1,32 @@
 const SANDBOX_CSP = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';\">"
+const PREVIEW_STYLE = '<style id="moshu-showcase-preview-style">html,body{box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:100%!important;min-height:100%!important;margin:0!important;overflow-x:hidden!important}body{padding:0!important}main{max-width:100%!important}svg{max-width:100%!important}</style>'
+
+// The showcase is specifically for viewing animated output. Some source pages
+// pause themselves when the host OS requests reduced motion; the sandboxed
+// preview opts into motion while leaving downloaded source files untouched.
+const ANIMATION_BOOTSTRAP = '<script id="moshu-showcase-animation-bootstrap">(()=>{const nativeMatchMedia=window.matchMedia?.bind(window);if(!nativeMatchMedia)return;window.matchMedia=query=>{const result=nativeMatchMedia(query);if(!/prefers-reduced-motion/i.test(query))return result;return new Proxy(result,{get(target,key){if(key==="matches")return false;const value=Reflect.get(target,key,target);return typeof value==="function"?value.bind(target):value}})}})();</script>'
+
+function prepareSourceDocument(document: Document) {
+  for (const meta of Array.from(document.querySelectorAll('meta[http-equiv]'))) {
+    if ((meta.getAttribute('http-equiv') || '').toLowerCase() === 'content-security-policy') {
+      meta.remove()
+    }
+  }
+  for (const style of Array.from(document.querySelectorAll('style'))) {
+    style.textContent = (style.textContent || '').replace(
+      /prefers-reduced-motion\s*:\s*reduce/gi,
+      'prefers-reduced-motion: force-motion'
+    )
+    if (/prefers-reduced-motion\s*:\s*reduce/i.test(style.media)) {
+      style.media = style.media.replace(/prefers-reduced-motion\s*:\s*reduce/gi, 'prefers-reduced-motion: force-motion')
+    }
+  }
+}
+
+function injectPreviewPolicy(head: Element) {
+  head.insertAdjacentHTML('afterbegin', `${SANDBOX_CSP}${ANIMATION_BOOTSTRAP}`)
+  head.insertAdjacentHTML('beforeend', PREVIEW_STYLE)
+}
 
 function isNarrativeElement(element: Element) {
   if (!/^(?:p|pre|code|blockquote|figcaption|div|span)$/i.test(element.tagName)) return false
@@ -59,21 +87,21 @@ export function isMarkup(value?: string) {
  */
 export function sandboxDocument(value: string) {
   const markup = value.trim()
-  if (/<meta[^>]+content-security-policy/i.test(markup)) return markup
 
   const fullDocument = /^(?:<!doctype\s+html[^>]*>\s*)?<html\b/i.test(markup)
   if (fullDocument) {
     if (typeof DOMParser !== 'undefined') {
       const parsed = new DOMParser().parseFromString(markup, 'text/html')
+      prepareSourceDocument(parsed)
       removeSvgAdjacentNarrative(parsed)
       const head = parsed.head || parsed.documentElement.insertBefore(parsed.createElement('head'), parsed.body)
-      head.insertAdjacentHTML('afterbegin', SANDBOX_CSP)
+      injectPreviewPolicy(head)
       return `<!doctype html>${parsed.documentElement.outerHTML}`
     }
     const headOpen = /<head\b[^>]*>/i.exec(markup)
     if (headOpen?.index != null) {
       const insertAt = headOpen.index + headOpen[0].length
-      return `${markup.slice(0, insertAt)}${SANDBOX_CSP}${markup.slice(insertAt)}`
+      return `${markup.slice(0, insertAt)}${SANDBOX_CSP}${ANIMATION_BOOTSTRAP}${markup.slice(insertAt).replace(/<\/head\s*>/i, `${PREVIEW_STYLE}</head>` )}`
     }
   }
 
@@ -82,11 +110,12 @@ export function sandboxDocument(value: string) {
   // the animation. This does not alter the source used by Download.
   if (typeof DOMParser !== 'undefined') {
     const parsed = new DOMParser().parseFromString(markup, 'text/html')
+    prepareSourceDocument(parsed)
     if (parsed.querySelector('svg')) {
       removeSvgAdjacentNarrative(parsed)
-      return `<!doctype html><html><head>${SANDBOX_CSP}</head><body>${parsed.body.innerHTML}</body></html>`
+      return `<!doctype html><html><head>${SANDBOX_CSP}${ANIMATION_BOOTSTRAP}</head><body>${parsed.body.innerHTML}${PREVIEW_STYLE}</body></html>`
     }
   }
 
-  return `<!doctype html><html><head>${SANDBOX_CSP}</head><body>${markup}</body></html>`
+  return `<!doctype html><html><head>${SANDBOX_CSP}${PREVIEW_STYLE}${ANIMATION_BOOTSTRAP}</head><body>${markup}</body></html>`
 }
