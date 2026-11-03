@@ -1,8 +1,12 @@
 # Sub2API custom release runbook
 
-## Current release: custom-0.2.19.12 (2026-11-03; acceptance in progress)
+## Production hold: custom.13 local candidate (2026-11-03)
 
-Source branch: `codex/v0.2.19-merge-20261029`; baseline `55a62dd3c3725f3c9f4abd45f4a45607d92217a5`; official base remains v0.2.19. Production currently runs `.11` / `sha256:f967d1f5519ff0b4f89ea595ef9618a8122810a4fde34fb73764a3fc0bc0f9f1` on main, L1 and COS. This release changes only isolated showcase preview behavior and bounded retry for empty transient stream-read failures; no DB migration or site configuration change. Record final commit, image digest, backup and per-site checks in `docs/CUSTOM_RELEASE_0_2_19_CUSTOM12_20261103.md` after completion. Preserve the previous application digest for rollback and retain all databases, Redis data and volumes.
+The user is configuring the network and explicitly requested no further production deployment. Stop production mutations until that instruction is lifted. Current last verified runtime is main `.12` (`sha256:6cb01b9bdf763526c0c3dfe2e86cc3e2a67cd949f785933abe90a14627f2179a`), L1/COS `.11` (`sha256:f967d1f5519ff0b4f89ea595ef9618a8122810a4fde34fb73764a3fc0bc0f9f1`), all healthy/restart0. L1 was automatically rolled back after the public `api.moshu.cloud` CDN TLS check failed; the OVH origin and existing `api.tokenpulse.top` are healthy. No DNS/CDN/reverse-proxy changes were made. The final preview fix must also propagate the current host CSP nonce to sandboxed scripts: `.12` alone does not resolve the inherited parent CSP. Before any later deployment, refresh actual network/versions/backups; do not blindly resume temporary scripts from this attempt.
+
+## Partial release: custom-0.2.19.12 (2026-11-03)
+
+Source branch: `codex/v0.2.19-merge-20261029`; runtime commit `73348ea7793b7b58780e36a825eb5a3e6d480ff0`, tag `custom-0.2.19.12`, digest `sha256:6cb01b9bdf763526c0c3dfe2e86cc3e2a67cd949f785933abe90a14627f2179a`; official base remains v0.2.19. The verified artifact reached main only. L1 rolled back to `.11` after its public CDN TLS check failed; COS remained `.11`. This release changed isolated showcase preview behavior and bounded empty transient read-failure retry; no DB migration or site configuration change. The inherited parent CSP issue was subsequently reproduced and is handled by the local `.13` candidate. Evidence and limitations are in `docs/CUSTOM_RELEASE_0_2_19_CUSTOM12_20261103.md` and `docs/CUSTOM_RELEASE_0_2_19_CUSTOM13_20261103.md`. Preserve previous application digests and all databases, Redis data and volumes.
 
 ## Current release: custom-0.2.18.4 (2026-10-27; published and deployed)
 

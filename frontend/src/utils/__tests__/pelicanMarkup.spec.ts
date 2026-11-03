@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
 import { extractMarkup, isMarkup, sandboxDocument } from '../pelicanMarkup'
 
@@ -76,6 +76,56 @@ describe('pelican showcase markup', () => {
     animationFrames.shift()?.(100)
     expect(rendered.window.document.querySelector('#animated')?.getAttribute('cx')).toBe('105')
     rendered.window.close()
+  })
+
+  it.each([
+    '<!doctype html><html><head><script nonce="provider-nonce">window.seed = 1;</script></head><body><svg></svg><script nonce="untrusted-nonce">window.started = true;</script></body></html>',
+    '<script nonce="provider-nonce">window.seed = 1;</script><svg></svg><script nonce="untrusted-nonce">window.started = true;</script>',
+    '<svg><script nonce="provider-nonce">window.seed = 1;</script></svg><script nonce="untrusted-nonce">window.started = true;</script>'
+  ])('authorizes every preview script with the host nonce while retaining the sandbox CSP', markup => {
+    const hostScript = document.createElement('script')
+    const hostNonce = 'current-host-nonce-"<&'
+    hostScript.nonce = hostNonce
+    document.head.appendChild(hostScript)
+    try {
+      const preview = sandboxDocument(markup)
+      const parsed = new DOMParser().parseFromString(preview, 'text/html')
+      const scripts = Array.from(parsed.querySelectorAll('script'))
+
+      expect(scripts).toHaveLength(3)
+      expect(scripts.every(script => script.getAttribute('nonce') === hostNonce)).toBe(true)
+      expect(parsed.querySelector('#moshu-showcase-animation-bootstrap')?.getAttribute('nonce')).toBe(hostNonce)
+      expect(preview).not.toContain('nonce="provider-nonce"')
+      expect(preview).not.toContain('nonce="untrusted-nonce"')
+      expect(preview).toContain('nonce="current-host-nonce-&quot;')
+      const policy = parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content')
+      expect(policy).toContain("default-src 'none'")
+      expect(policy).toContain("connect-src 'none'")
+      expect(policy).not.toContain("'unsafe-eval'")
+      expect(markup).toContain('nonce="provider-nonce"')
+    } finally {
+      hostScript.remove()
+    }
+  })
+
+  it('retains nonce authorization through the browser document fallback', () => {
+    const BrowserDOMParser = DOMParser
+    const hostScript = document.createElement('script')
+    hostScript.nonce = 'fallback-host-nonce'
+    document.head.appendChild(hostScript)
+    vi.stubGlobal('DOMParser', undefined)
+    try {
+      const preview = sandboxDocument('<svg></svg><script nonce="provider-nonce">window.started = true;</script>')
+      const parsed = new BrowserDOMParser().parseFromString(preview, 'text/html')
+
+      expect(parsed.querySelector('svg')).not.toBeNull()
+      expect(Array.from(parsed.querySelectorAll('script'))).toHaveLength(2)
+      expect(Array.from(parsed.querySelectorAll('script')).every(script => script.getAttribute('nonce') === hostScript.nonce)).toBe(true)
+      expect(preview).toContain("connect-src 'none'")
+    } finally {
+      vi.unstubAllGlobals()
+      hostScript.remove()
+    }
   })
 
   it('replaces source CSP and preview-only reduced-motion rules while starting the SVG animation', () => {

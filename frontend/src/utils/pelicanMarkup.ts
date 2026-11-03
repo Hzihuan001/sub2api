@@ -28,6 +28,30 @@ function injectPreviewPolicy(head: Element) {
   head.insertAdjacentHTML('beforeend', PREVIEW_STYLE)
 }
 
+function inheritHostScriptNonce(preview: Document) {
+  if (typeof document === 'undefined') return
+  // srcdoc inherits the parent HTTP CSP. Its meta policy cannot relax the
+  // parent's script-src, so every preview script needs the current host nonce.
+  // Read the property: browsers deliberately hide nonce getAttribute values.
+  const nonce = Array.from(document.scripts).find(script => script.nonce)?.nonce
+  if (!nonce) return
+  for (const script of Array.from(preview.querySelectorAll('script'))) {
+    script.setAttribute('nonce', nonce)
+  }
+}
+
+function parsePreviewDocument(markup: string) {
+  if (typeof DOMParser !== 'undefined') {
+    return new DOMParser().parseFromString(markup, 'text/html')
+  }
+  if (typeof document !== 'undefined' && document.implementation?.createHTMLDocument) {
+    const parsed = document.implementation.createHTMLDocument('')
+    parsed.documentElement.innerHTML = markup
+    return parsed
+  }
+  return null
+}
+
 function isNarrativeElement(element: Element) {
   if (!/^(?:p|pre|code|blockquote|figcaption|div|span)$/i.test(element.tagName)) return false
   return /```|save\s+this\s+as|open\s+it\s+in\s+a\s+browser|short\s+script\s+drives/i.test(element.textContent || '')
@@ -87,34 +111,22 @@ export function sandboxDocument(value: string) {
   const markup = value.trim()
 
   const fullDocument = /^(?:<!doctype\s+html[^>]*>\s*)?<html\b/i.test(markup)
+  const parsed = parsePreviewDocument(markup)
+  if (parsed && (fullDocument || parsed.querySelector('svg'))) {
+    prepareSourceDocument(parsed)
+    removeSvgAdjacentNarrative(parsed)
+    injectPreviewPolicy(parsed.head)
+    inheritHostScriptNonce(parsed)
+    // DOMParser may move leading style/script elements into head. Serialize
+    // the whole document to preserve all animation dependencies.
+    return `<!doctype html>${parsed.documentElement.outerHTML}`
+  }
+
   if (fullDocument) {
-    if (typeof DOMParser !== 'undefined') {
-      const parsed = new DOMParser().parseFromString(markup, 'text/html')
-      prepareSourceDocument(parsed)
-      removeSvgAdjacentNarrative(parsed)
-      const head = parsed.head || parsed.documentElement.insertBefore(parsed.createElement('head'), parsed.body)
-      injectPreviewPolicy(head)
-      return `<!doctype html>${parsed.documentElement.outerHTML}`
-    }
     const headOpen = /<head\b[^>]*>/i.exec(markup)
     if (headOpen?.index != null) {
       const insertAt = headOpen.index + headOpen[0].length
       return `${markup.slice(0, insertAt)}${SANDBOX_CSP}${ANIMATION_BOOTSTRAP}${markup.slice(insertAt).replace(/<\/head\s*>/i, `${PREVIEW_STYLE}</head>` )}`
-    }
-  }
-
-  // A fragment is parsed here only for the visible preview. Remove direct
-  // narrative text around the SVG while retaining scripts/styles that drive
-  // the animation. This does not alter the source used by Download.
-  if (typeof DOMParser !== 'undefined') {
-    const parsed = new DOMParser().parseFromString(markup, 'text/html')
-    prepareSourceDocument(parsed)
-    if (parsed.querySelector('svg')) {
-      removeSvgAdjacentNarrative(parsed)
-      // DOMParser moves leading style/script elements into head. Serialize the
-      // whole parsed document so those animation dependencies survive too.
-      injectPreviewPolicy(parsed.head)
-      return `<!doctype html>${parsed.documentElement.outerHTML}`
     }
   }
 
