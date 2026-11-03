@@ -14,6 +14,7 @@
 ## 改动
 
 - 只在 sandboxed `srcdoc` 预览中覆盖 JS 减动态偏好，并将内联 `<style>` 及其 `media` 属性中 `prefers-reduced-motion: reduce` 改为不匹配的查询；下载文件保持原文。
+- 修复 SVG 片段在 `</svg>` 处截断而丢失后置动画脚本的问题；保留 SVG 前置样式/脚本及 DOMParser 自动移入 `head` 的资源，避免片段预览只剩静态图。
 - CSP 通过 DOM 解析移除源文档实际存在的 CSP meta，再追加受限预览策略；不再用全文正则误删脚本里类似标签的字符串。预览 iframe 继续使用 `sandbox="allow-scripts"`，CSP 仍禁止网络请求，未授予同源权限或 `unsafe-eval`。
 - 渠道测智仅对无响应正文且错误明确为响应读流 reset、unexpected EOF、连接超时等情况重试一次。HTTP 明确状态、部分正文、取消和确定性错误不重试。
 - 风险：读流断开发生在请求发出之后，上游可能已生成并计费；重试成功可能增加一次上游费用。该重试最多一次，不能替代定位服务器至上游的根链路。
@@ -21,12 +22,12 @@
 
 ## 验证
 
-- `frontend/src/utils/__tests__/pelicanMarkup.spec.ts`：4/4 通过，覆盖 HTML/SVG 提取、真实内联 JS RAF 帧属性变化、系统 reduced-motion 覆盖、CSS reduced-motion 覆盖、CSP 安全以及脚本字面量保留。
+- `frontend/src/utils/__tests__/pelicanMarkup.spec.ts`：6/6 通过，覆盖 HTML/SVG 提取、完整文档及片段实际内联 JS RAF 帧属性变化、前后置动画资源保留、系统 reduced-motion 覆盖、CSS reduced-motion 覆盖、CSP 安全以及脚本字面量保留。
 - Docker Go 1.27.3：`go test ./internal/service -run "Pelican|ScheduledTest" -count=1` 通过。
 - 前端目标 lint 与 TypeScript 检查通过；`pnpm run build` 生产构建通过。
 - 完整前端 Vitest：431 文件中 429 通过、2 失败；3,533 测试通过、52 失败。失败集中在未修改的 `EditAccountModal.grokUpstream.spec.ts`（50）和 `nativeControls.spec.ts`（2），不把整套全绿作为本次结果。
 - `pnpm run lint:check` 无错误，存在 2 条仓库既有未使用变量 warning。
-- 实际浏览器 UI 验收工具因无法可靠识别 Windows 当前浏览器 URL 而停止；JS RAF 已在 JSDOM 中执行验证，但 CSS 动画和 SVG SMIL 尚未完成真实浏览器逐帧验收，不能宣称所有动画类型已通过。
+- 现有用户浏览器 UI 操作已按要求停止。另用独立临时目录的本地 headless Chrome 验证最终 utility 的隔离 iframe：JS RAF、CSS 动画以及用户 126/130/142 三份真实附件均有帧间变化、无浏览器异常；不连接用户浏览器会话。SVG SMIL 对照检查待补。
 
 ## 生产备份
 

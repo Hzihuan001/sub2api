@@ -29,6 +29,55 @@ describe('pelican showcase markup', () => {
     expect(document).not.toContain('Save this as')
   })
 
+  it('retains and executes animation scripts after a standalone SVG', () => {
+    const response = '```html\n<svg><circle id="animated" cx="0"></circle></svg><script>requestAnimationFrame(timestamp => document.querySelector("#animated").setAttribute("cx", String(timestamp)))</script>\n```'
+    const markup = extractMarkup(response)
+    const animationFrames: FrameRequestCallback[] = []
+    const rendered = new JSDOM(sandboxDocument(markup), {
+      runScripts: 'dangerously',
+      beforeParse(window) {
+        window.requestAnimationFrame = callback => {
+          animationFrames.push(callback)
+          return animationFrames.length
+        }
+      }
+    })
+
+    expect(markup).toContain('<script>requestAnimationFrame')
+    expect(isMarkup(markup)).toBe(true)
+    expect(animationFrames).toHaveLength(1)
+    animationFrames.shift()?.(2468)
+    expect(rendered.window.document.querySelector('#animated')?.getAttribute('cx')).toBe('2468')
+    expect(response).toContain('```html')
+    rendered.window.close()
+  })
+
+  it('preserves fragment styles and scripts parsed into head alongside the SVG', () => {
+    const response = 'Here is the artwork:\n```html\n<script>window.previewOffset = 5;</script><style>#animated { fill: red; }</style><svg><circle id="animated" cx="0"></circle></svg><script>requestAnimationFrame(timestamp => document.querySelector("#animated").setAttribute("cx", String(timestamp + window.previewOffset)))</script>\n``` Save this as pelican.html'
+    const markup = extractMarkup(response)
+    const preview = sandboxDocument(markup)
+    const animationFrames: FrameRequestCallback[] = []
+    const rendered = new JSDOM(preview, {
+      runScripts: 'dangerously',
+      beforeParse(window) {
+        window.requestAnimationFrame = callback => {
+          animationFrames.push(callback)
+          return animationFrames.length
+        }
+      }
+    })
+
+    expect(isMarkup(markup)).toBe(true)
+    expect(rendered.window.document.head.querySelector('style')?.textContent).toBe('#animated { fill: red; }')
+    expect(rendered.window.document.head.querySelector('script:not([id])')?.textContent).toBe('window.previewOffset = 5;')
+    expect(preview).toContain("default-src 'none'")
+    expect(preview).not.toContain('Save this as')
+    expect(animationFrames).toHaveLength(1)
+    animationFrames.shift()?.(100)
+    expect(rendered.window.document.querySelector('#animated')?.getAttribute('cx')).toBe('105')
+    rendered.window.close()
+  })
+
   it('replaces source CSP and preview-only reduced-motion rules while starting the SVG animation', () => {
     const markup = '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'none\'"><style>@media screen and (prefers-reduced-motion: reduce) { #animated { animation: none; } }</style><style media="(prefers-reduced-motion: reduce)">#animated { animation: none; }</style></head><body><svg><circle id="animated" cx="0" cy="0" r="1"></circle></svg><script>const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)"); let playing = !reducedMotion.matches; function frame(timestamp) { if (playing) document.querySelector("#animated").setAttribute("cx", String(timestamp)); requestAnimationFrame(frame) } requestAnimationFrame(frame); const example = \'<meta http-equiv="Content-Security-Policy">\';</script></body></html>'
     const preview = sandboxDocument(markup)

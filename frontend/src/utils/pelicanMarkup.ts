@@ -59,7 +59,9 @@ export function extractMarkup(value: string) {
   let text = value.replace(/^\uFEFF/, '').trim()
   text = text.replace(/^```(?:html|svg|xml)?(?:\r?\n|\s)*/i, '').trim()
   text = text.replace(/(?:\r?\n|\s)*```\s*$/i, '').trim()
-  const start = text.search(/<!doctype\s+html|<html\b|<svg\b/i)
+  // A fragment may put its animation styles before the SVG and its animation
+  // script after it. Keep those siblings rather than extracting the SVG alone.
+  const start = text.search(/<!doctype\s+html|<html\b|<style\b|<script\b|<svg\b/i)
   if (start < 0) return text
   const markup = text.slice(start).trim()
   const htmlEnd = markup.search(/<\/html\s*>/i)
@@ -67,17 +69,13 @@ export function extractMarkup(value: string) {
     const closeEnd = markup.slice(htmlEnd).search(/>/)
     return markup.slice(0, htmlEnd + closeEnd + 1).trim()
   }
-  const svgEnd = markup.search(/<\/svg\s*>/i)
-  if (svgEnd >= 0) {
-    const closeEnd = markup.slice(svgEnd).search(/>/)
-    return markup.slice(0, svgEnd + closeEnd + 1).trim()
-  }
   return markup
 }
 
 export function isMarkup(value?: string) {
   const text = extractMarkup(value || '').toLowerCase()
-  return /^(?:<!doctype\s+html|<html\b|<svg\b)/i.test(text)
+  return /^(?:<!doctype\s+html|<html\b|<svg\b)/i.test(text) ||
+    (/^<(?:style|script)\b/i.test(text) && /<svg\b/i.test(text))
 }
 
 /**
@@ -113,7 +111,10 @@ export function sandboxDocument(value: string) {
     prepareSourceDocument(parsed)
     if (parsed.querySelector('svg')) {
       removeSvgAdjacentNarrative(parsed)
-      return `<!doctype html><html><head>${SANDBOX_CSP}${ANIMATION_BOOTSTRAP}</head><body>${parsed.body.innerHTML}${PREVIEW_STYLE}</body></html>`
+      // DOMParser moves leading style/script elements into head. Serialize the
+      // whole parsed document so those animation dependencies survive too.
+      injectPreviewPolicy(parsed.head)
+      return `<!doctype html>${parsed.documentElement.outerHTML}`
     }
   }
 

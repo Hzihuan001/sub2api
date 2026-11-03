@@ -2,9 +2,9 @@
 
 ### 2026-11-03 — 0.2.19-custom.12 — 渠道测智动画与瞬时连接错误修复（发布验收中）
 
-- **动画预览**：预览 iframe 会忽略系统减少动态效果偏好，并禁用作品中的 `prefers-reduced-motion: reduce` CSS 分支；只影响隔离预览，不改变下载原文。源页面 CSP 通过 DOM 解析移除，防止错误策略关闭脚本，同时保留预览的无外网 CSP 和 iframe sandbox。
+- **动画预览**：修复 SVG 片段提取截断后置脚本、遗漏前置动画资源的问题。预览 iframe 忽略作品中的减少动态效果分支；只影响隔离预览，不改变下载原文。源页面 CSP 通过 DOM 解析移除，同时保留预览的无外网 CSP 和 iframe sandbox。
 - **连接重置**：主站近 24 小时日志观察到 40 条上游读流连接重置。测智对无正文的读流 reset/EOF/timeout 最多重试一次；不重试 HTTP 错误、已有部分输出、取消和其他确定性失败。请求已发出后上游可能仍计费，重试可能产生一次额外上游费用。
-- **验证**：前端回归 4/4，目标 Go service 测试通过，前端生产构建通过。完整前端 Vitest 为 3,533 通过、52 失败；失败集中在既有 `EditAccountModal.grokUpstream.spec.ts`（50）和 `nativeControls.spec.ts`（2），本次未触及其实现，发布只依据本次目标测试和构建通过。
+- **验证**：前端回归 6/6、目标 Go service 测试通过；独立 headless Chrome 的 JS/CSS 动画与三份真实附件帧间变化验证通过。完整前端 Vitest 为 3,533 通过、52 失败；失败集中在既有 `EditAccountModal.grokUpstream.spec.ts`（50）和 `nativeControls.spec.ts`（2），本次未触及其实现，不宣称全量全绿。
 - **备份门禁**：已校验有效三站备份 `/opt/sub2api-deploy-backups/20261103085654/`。主站实际库 `sub2api` 有 117 张业务表、约 1.4 GB，custom-format dump 149,935,069 字节；L1/COS dump 为 18,684,243/3,054,242 字节；三份 `pg_restore -l`、五份 tar 列表和 SHA-256 校验通过。生产发布与三站验收待完成。
 
 ### 2026-11-03 — 0.2.19-custom.11 — Kiro 测智质量与停用计划修复（三站已发布）

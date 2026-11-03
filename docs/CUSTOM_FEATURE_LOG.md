@@ -2,9 +2,9 @@
 
 ### 2026-11-03 — 0.2.19-custom.12 — 渠道测智预览动画和瞬时读流重试（发布验收中）
 
-- **动画预览**：覆盖 JavaScript `matchMedia` 与 CSS `prefers-reduced-motion`，避免浏览器系统偏好让本应动态的 SVG 停止；CSP 只移除作品源文件中真实的 CSP meta，不误删脚本文本；安全隔离与下载原文行为保持。
+- **动画预览**：修复 SVG 片段丢失后置脚本及前置样式/脚本的问题；覆盖 JavaScript `matchMedia` 与 CSS `prefers-reduced-motion`；CSP 只移除作品真实 meta，不误删脚本文本；安全隔离与下载原文行为保持。
 - **失败卡片**：主站近 24 小时日志有 40 条上游连接重置。对没有任何正文的响应读流 reset、EOF、timeout 最多重试一次；HTTP 状态错误、部分输出、用户取消和其他错误不重试。由于断开可能发生在上游已接收请求后，重试可能让上游重复计费。
-- **验证**：前端测智预览回归 4/4、相关 ESLint/TypeScript 检查、生产构建及 Docker Go 定向测试通过。全量前端 Vitest 为 3,533 通过、52 失败，失败位于未修改的 Grok 编辑弹窗和原生控件约束测试；三站部署结果待补。
+- **验证**：前端测智预览回归 6/6、相关 ESLint/TypeScript 检查及 Docker Go 定向测试通过；独立 headless Chrome 的 JS/CSS 动画与三份真实附件验证通过。全量前端 Vitest 为 3,533 通过、52 失败，失败位于未修改的 Grok 编辑弹窗和原生控件约束测试；三站部署结果待补。
 - **备份**：`/opt/sub2api-deploy-backups/20261103085654/`；实际 `sub2api` 数据库及 L1/COS dump、站点数据、Compose、环境文件和 OpenResty 反代配置归档均完成校验。
 
 ### 2026-11-03 — 0.2.19-custom.11 — Kiro 测智提示词与停用计划修复（三站已发布）
