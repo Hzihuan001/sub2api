@@ -1,12 +1,24 @@
 # 定制功能日志
 
-### 2026-11-03 — 0.2.19-custom.13 — 渠道测智预览继承父 CSP 的修复（发布产物已验收，等待自然空闲窗口）
+### 2026-11-04 — 0.2.19-custom.14 — 定时测试启用与渠道测智断流修复
+
+- 修复定时测试计划启用时报 `next_run_at` 是 `timestamptz`、表达式却为 `text`：写入计划时间时显式 `::timestamptz`，停用时显式 `NULL::timestamptz`。
+- 渠道测智的空流瞬时断连最多总尝试三次，带有限退避；支持 Responses 流在 `response.completed` 前结束的错误。部分内容已返回、HTTP 错误、取消及其他非瞬时失败不自动重试，以免重复输出/计费。
+- 回归：真实 PostgreSQL 18 仓储集成测试及后端定向测试通过；隔离容器与拉回的 GHCR 不可变镜像验收通过。完整 service 测试包仍有一项既有、未改动路径的账号调度用例失败（`TestOpenAIAccountScheduler_SkipsAccountBlockedForRequestedModel`），不代表全量测试全绿。
+- 生产：主站 `ai.moshu.cloud`、L1 `api.tokenpulse.top`、COS `cos.tokenpulse.top` 均部署 `0.2.19-custom.14`，同一镜像 `ghcr.io/hzihuan001/sub2api@sha256:2f76a571730141b6aec90638d814372d16552be3032303b1e401c8603719a922`。按自然空闲顺序执行，应用容器健康、重启数为 0，页面、静态资源、CSP、健康检查通过。
+- 部署备份：`/opt/sub2api-deploy-backups/custom14-20261103T200305Z/`。只替换应用容器；数据库、Redis、业务卷、迁移记录和反代配置保持不变。
+- 回滚目标：主站/L1 为 `sha256:433a235815bbc61ae215578238323cb92500984e9a22df899244ba3a15f9ca15`；COS 为 `sha256:f967d1f5519ff0b4f89ea595ef9618a8122810a4fde34fb73764a3fc0bc0f9f1`。只回滚应用镜像，不用旧库覆盖新数据。
+- 页面验收说明：已发起在 Codex 面板打开主站渠道测智页，且完成公网 HTML/静态资源/CSP HTTP 核验；本轮 Computer Use 无法确定 Edge 当前 URL，未作视觉截图验收声明。
+
+详细发布和测试记录：`docs/CUSTOM_RELEASE_0_2_19_CUSTOM14_20261104.md`。
+
+### 2026-11-03 — 0.2.19-custom.13 — 渠道测智预览继承父 CSP 的修复（已由 .14 接续发布）
 
 - 生产 `srcdoc` 继承宿主 CSP，导致全部内联作品脚本仍被拦截；`.12` 的本地测试未模拟父 CSP，不能作为生产动画已恢复的证据。
 - 独立真实 Chrome 加父 CSP 后复现，给预览脚本设置当前宿主安全 nonce 的对照恢复三份真实作品动画且 CSP 违规归零。开始实现最小修复，保持全站 CSP、iframe sandbox 与下载内容不变。
 - 最终源码已完成：10/10 单测、ESLint、类型检查、前端生产构建以及含父 CSP 的独立 Chrome 6 场景验收通过；不通过手工修改测试输出补 nonce。完整限制见 `.13` 发布记录。
 - 用户已完成网络配置并恢复发布，正式入口为 `ai.moshu.cloud`、`api.tokenpulse.top`、`cos.tokenpulse.top`。源码 `c46975de0a3fe6649e0fbe421521bad948a1839c` 和标签 `custom-0.2.19.13` 已推送，镜像 digest `sha256:433a235815bbc61ae215578238323cb92500984e9a22df899244ba3a15f9ca15` 已发布；本地及精确发布镜像容器验收通过。
-- 新备份 `/opt/sub2api-deploy-backups/custom13-20261103T104359Z/` 校验通过。主站此前排空未成功，未执行重建，当前 main `.12`、L1/COS `.11` healthy/restart 0。用户已选择继续自然排空，不主动中断；正在等待主站空闲窗口，通过后才依次更新 L1、COS。尚未部署 `.13`，不改 DNS/CDN/反代。
+- 新备份 `/opt/sub2api-deploy-backups/custom13-20261103T104359Z/` 校验通过。发布前曾等待自然排空；该等待状态随后由 `.14` 部署收口。`.13` 成为主站和 L1 的 `.14` 回滚基线，COS 原 `.11` 是 `.14` 回滚基线。当前生产状态以本文件顶部 `.14` 条目为准；整个过程未改 DNS/CDN/反代。
 
 ### 2026-11-03 — 0.2.19-custom.12 — 渠道测智预览动画和瞬时读流重试（部分发布，后续由 .13 接续）
 

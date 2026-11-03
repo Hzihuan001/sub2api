@@ -1,12 +1,24 @@
 # 定制项目状态与官方升级说明
 
-### 2026-11-03 — 0.2.19-custom.13 — 渠道测智继承 CSP 修复（发布产物已验收，等待自然空闲窗口）
+### 2026-11-04 — 0.2.19-custom.14 — 定时测试启用与测智断流重试修复（三站已发布）
+
+- **定时计划**：修复 PostgreSQL 在条件表达式中将文本参数写入 `timestamptz` 的错误。启用时显式转换时间戳，停用时显式写入 `NULL::timestamptz`。
+- **渠道测智**：最多三次总尝试，仅对尚未收到有效内容的瞬时空流断开重试；覆盖普通流以及 Responses 流未收到 `response.completed` 的情况。收到部分内容、明确 HTTP 错误、取消或非瞬时错误均不重发。上游可能已处理丢失响应的请求，重试仍可能产生额外费用。
+- **验证**：真实 PostgreSQL 18 集成回归、相关后端定向测试、容器镜像与发布 digest 验收通过。`go test ./internal/service -count=1` 有 1 个与本次改动无关的既有账号调度测试失败：`TestOpenAIAccountScheduler_SkipsAccountBlockedForRequestedModel`；单独重跑仍复现，未将其描述为全量通过。
+- **发布**：提交 `333faad73fc7f7ea9f258c0deccc943e4ea33d2c`，标签 `custom-0.2.19.14`；主站、L1、COS 按自然空闲顺序部署同一不可变镜像 `ghcr.io/hzihuan001/sub2api@sha256:2f76a571730141b6aec90638d814372d16552be3032303b1e401c8603719a922`。每站部署前等请求和测试租约自然归零，部署后容器 healthy、restart 0；页面、静态资源、CSP 和健康检查通过。
+- **备份与回滚**：生产备份 `/opt/sub2api-deploy-backups/custom14-20261103T200305Z/` 校验通过；主站/L1 应用回滚 digest 为 `.13` 的 `sha256:433a235815bbc61ae215578238323cb92500984e9a22df899244ba3a15f9ca15`，COS 回滚 digest 为 `.11` 的 `sha256:f967d1f5519ff0b4f89ea595ef9618a8122810a4fde34fb73764a3fc0bc0f9f1`。只回滚应用镜像，不覆盖数据库。
+- **数据安全**：只改应用镜像，PostgreSQL、Redis、业务卷、网络和反代配置均保持原样，迁移记录没有变化。
+- **页面检查边界**：已再次请求在 Codex 浏览器面板打开主站 `/pelican-showcase`；公开页面、入口资源和 CSP 已通过 HTTP 核验。本轮 Windows Computer Use 无法可靠确认当前浏览器 URL，因此没有声称完成肉眼截图验收。
+
+详细记录见 `docs/CUSTOM_RELEASE_0_2_19_CUSTOM14_20261104.md`。本条是当前生产状态；下方 `.13` 中“等待自然空闲/尚未部署”的描述仅为当时记录，已由 `.14` 发布收口。
+
+### 2026-11-03 — 0.2.19-custom.13 — 渠道测智继承 CSP 修复（已被 .14 接续发布）
 
 - **直接根因**：生产页面的 `script-src` nonce CSP 被 `srcdoc` iframe 继承，子文档 meta 无法放宽它；`.12` 虽修复片段提取与减动态偏好，仍不能解决生产脚本被拦截。独立 Chrome 在父 CSP 下复现三份作品静止，安全传递当前宿主 nonce 后三份均恢复动画且 CSP 违规归零。
 - **范围**：仅修复隔离预览脚本的当前页 nonce 传递，不关闭全站 CSP，不改下载原文；继续保留 `.12` 已验证的片段资源保留和有限测智读流重试。
 - **本地验证**：前端 10/10 单测、ESLint、类型检查及生产构建通过；独立 Chrome 使用生产同等父 CSP 的 6 场景（含三份真实附件）动画均有帧间变化，CSP 违规和脚本异常 0。SMIL 保留 runner 限制，未声称全部动画类型已验证。详细结果见 `docs/CUSTOM_RELEASE_0_2_19_CUSTOM13_20261103.md`。
 - **发布产物**：源码 `c46975de0a3fe6649e0fbe421521bad948a1839c`、标签 `custom-0.2.19.13` 已推送，GHCR digest `sha256:433a235815bbc61ae215578238323cb92500984e9a22df899244ba3a15f9ca15` 已发布。本地及精确发布产物的容器权限/重启验收通过。
-- **生产进度**：用户已完成网络配置；正式入口为主站 `ai.moshu.cloud`、L1 `api.tokenpulse.top`、COS `cos.tokenpulse.top`，三站公网及源站健康检查正常。已验证新备份 `/opt/sub2api-deploy-backups/custom13-20261103T104359Z/`。主站此前自然排空未成功，未修改应用；当前 main `.12`、L1/COS `.11`，均 healthy。用户已选择继续自然排空，不允许主动中断；正在等待主站空闲窗口，通过后才依次更新 L1、COS。不修改 DNS/CDN/反代，尚未部署 `.13`。
+- **生产进度**：当时的等待状态已收口：`.13` 成为主站/L1 的 `.14` 回滚基线；COS 在 `.14` 前仍为 `.11`。三站当前发布状态以本文件顶部 `.14` 条目为准。正式入口为主站 `ai.moshu.cloud`、L1 `api.tokenpulse.top`、COS `cos.tokenpulse.top`；本次未改 DNS/CDN/反代。
 
 ### 2026-11-03 — 0.2.19-custom.12 — 渠道测智动画与瞬时连接错误修复（部分发布，后续由 .13 接续）
 
