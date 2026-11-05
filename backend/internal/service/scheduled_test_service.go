@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -29,6 +30,9 @@ func NewScheduledTestService(
 
 // CreatePlan validates the cron expression, computes next_run_at, and persists the plan.
 func (s *ScheduledTestService) CreatePlan(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error) {
+	if err := normalizeScheduledTestThinkingEffort(plan); err != nil {
+		return nil, err
+	}
 	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("invalid cron expression: %w", err)
@@ -54,6 +58,9 @@ func (s *ScheduledTestService) ListPlansByAccount(ctx context.Context, accountID
 
 // UpdatePlan validates cron and updates the plan.
 func (s *ScheduledTestService) UpdatePlan(ctx context.Context, plan *ScheduledTestPlan) (*ScheduledTestPlan, error) {
+	if err := normalizeScheduledTestThinkingEffort(plan); err != nil {
+		return nil, err
+	}
 	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("invalid cron expression: %w", err)
@@ -61,6 +68,23 @@ func (s *ScheduledTestService) UpdatePlan(ctx context.Context, plan *ScheduledTe
 	plan.NextRunAt = &nextRun
 
 	return s.planRepo.Update(ctx, plan)
+}
+
+func normalizeScheduledTestThinkingEffort(plan *ScheduledTestPlan) error {
+	if plan == nil {
+		return fmt.Errorf("scheduled test plan is nil")
+	}
+	effort := strings.ToLower(strings.TrimSpace(plan.ThinkingEffort))
+	if effort == "" {
+		effort = "default"
+	}
+	switch effort {
+	case "default", "low", "medium", "high", "xhigh":
+		plan.ThinkingEffort = effort
+		return nil
+	default:
+		return fmt.Errorf("thinking_effort must be default, low, medium, high, or xhigh")
+	}
 }
 
 // DeletePlan removes a plan and its results (via CASCADE).
@@ -98,6 +122,19 @@ func (s *ScheduledTestService) ListConfiguredPelicanGroups(ctx context.Context, 
 		return nil, ErrPelicanShowcaseReaderUnavailable
 	}
 	return reader.ListConfiguredPelicanGroups(ctx, groupIDs)
+}
+
+// ListPelicanShowcaseStats returns aggregate group health when the repository
+// supports it. Older repositories can keep serving the legacy showcase path.
+func (s *ScheduledTestService) ListPelicanShowcaseStats(ctx context.Context, groupIDs []int64, windowPerGroup int) ([]PelicanShowcaseGroupStats, error) {
+	reader, ok := s.planRepo.(PelicanShowcaseStatsReader)
+	if !ok {
+		return nil, ErrPelicanShowcaseReaderUnavailable
+	}
+	if windowPerGroup <= 0 {
+		windowPerGroup = 50
+	}
+	return reader.ListPelicanShowcaseStats(ctx, groupIDs, windowPerGroup)
 }
 
 // SaveResult inserts a result and prunes old entries beyond maxResults.

@@ -30,6 +30,13 @@ const knownNativeControlFiles = new Set([
   'UserPlatformQuotaModal.vue',
   'useStepUp.ts',
   'AccountsView.vue',
+  // Existing upstream screens retained during the shared-control migration.
+  'AdminAccessKeysSettings.vue',
+  'KeyRouteFailureRulesEditor.vue',
+  'ChannelShowcaseView.vue',
+  // Scheduled tests still expose native selects for the browser-compatible
+  // test-kind/model controls and are covered by component tests.
+  'ScheduledTestsPanel.vue',
 ])
 
 function stripComments(source: string): string {

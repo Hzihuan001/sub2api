@@ -44,7 +44,8 @@
       ],
       "migrations": [
         "backend/migrations/9005_custom_pelican_scheduled_test_kind.sql",
-        "backend/migrations/9006_custom_scheduled_test_leases.sql"
+        "backend/migrations/9006_custom_scheduled_test_leases.sql",
+        "backend/migrations/9007_custom_scheduled_test_thinking_effort.sql"
       ],
       "tests": ["backend-pelican", "backend-pelican-integration", "frontend-pelican"]
     }

@@ -55,6 +55,19 @@
               :searchable="modelOptions.length > 5"
             />
           </div>
+          <div v-if="newPlan.test_kind === 'pelican'">
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t('admin.scheduledTests.thinkingEffort') }}
+            </label>
+            <select v-model="newPlan.thinking_effort" class="input w-full">
+              <option value="default">{{ t('admin.scheduledTests.thinkingEffortDefault') }}</option>
+              <option value="low">{{ t('admin.scheduledTests.thinkingEffortLow') }}</option>
+              <option value="medium">{{ t('admin.scheduledTests.thinkingEffortMedium') }}</option>
+              <option value="high">{{ t('admin.scheduledTests.thinkingEffortHigh') }}</option>
+              <option value="xhigh">{{ t('admin.scheduledTests.thinkingEffortXHigh') }}</option>
+            </select>
+            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.scheduledTests.thinkingEffortHelp') }}</p>
+          </div>
           <div>
             <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.cronExpression') }}
@@ -284,6 +297,19 @@
                   :placeholder="t('admin.scheduledTests.model')"
                   :searchable="modelOptions.length > 5"
                 />
+              </div>
+              <div v-if="editForm.test_kind === 'pelican'">
+                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('admin.scheduledTests.thinkingEffort') }}
+                </label>
+                <select v-model="editForm.thinking_effort" class="input w-full">
+                  <option value="default">{{ t('admin.scheduledTests.thinkingEffortDefault') }}</option>
+                  <option value="low">{{ t('admin.scheduledTests.thinkingEffortLow') }}</option>
+                  <option value="medium">{{ t('admin.scheduledTests.thinkingEffortMedium') }}</option>
+                  <option value="high">{{ t('admin.scheduledTests.thinkingEffortHigh') }}</option>
+                  <option value="xhigh">{{ t('admin.scheduledTests.thinkingEffortXHigh') }}</option>
+                </select>
+                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.scheduledTests.thinkingEffortHelp') }}</p>
               </div>
               <div>
                 <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
@@ -550,11 +576,13 @@ const showDeleteConfirm = ref(false)
 const deletingPlan = ref<ScheduledTestPlan | null>(null)
 const editingPlanId = ref<number | null>(null)
 const updating = ref(false)
+type ThinkingEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh'
 const editForm = reactive({
   model_id: '' as string,
   test_kind: 'connection' as string,
   group_id: null as number | null,
   test_prompt: '' as string,
+  thinking_effort: 'default' as ThinkingEffort,
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
@@ -566,6 +594,7 @@ const newPlan = reactive({
   test_kind: 'connection' as string,
   group_id: null as number | null,
   test_prompt: '' as string,
+  thinking_effort: 'default' as ThinkingEffort,
   cron_expression: '' as string,
   max_results: '100' as string,
   enabled: true,
@@ -577,6 +606,7 @@ const resetNewPlan = () => {
   newPlan.test_kind = 'connection'
   newPlan.group_id = null
   newPlan.test_prompt = ''
+  newPlan.thinking_effort = 'default'
   newPlan.cron_expression = ''
   newPlan.max_results = '100'
   newPlan.enabled = true
@@ -623,6 +653,7 @@ const handleCreate = async () => {
       model_id: newPlan.model_id,
       test_kind: newPlan.test_kind,
       test_prompt: newPlan.test_prompt,
+      thinking_effort: newPlan.test_kind === 'pelican' ? newPlan.thinking_effort : undefined,
       cron_expression: newPlan.cron_expression,
       enabled: newPlan.enabled,
       max_results: maxResults,
@@ -658,6 +689,7 @@ const startEdit = (plan: ScheduledTestPlan) => {
   editForm.test_kind = plan.test_kind || 'connection'
   editForm.group_id = plan.group_id ?? null
   editForm.test_prompt = plan.test_prompt || ''
+  editForm.thinking_effort = plan.thinking_effort || 'default'
   editForm.cron_expression = plan.cron_expression
   editForm.max_results = String(plan.max_results)
   editForm.enabled = plan.enabled
@@ -677,6 +709,7 @@ const handleEdit = async () => {
       model_id: editForm.model_id,
       test_kind: editForm.test_kind,
       test_prompt: editForm.test_prompt,
+      thinking_effort: editForm.test_kind === 'pelican' ? editForm.thinking_effort : undefined,
       cron_expression: editForm.cron_expression,
       max_results: Number(editForm.max_results) || 100,
       enabled: editForm.enabled,

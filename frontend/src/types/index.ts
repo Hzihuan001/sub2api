@@ -2552,6 +2552,7 @@ export interface ScheduledTestPlan {
   model_id: string
   test_kind: 'connection' | 'pelican' | string
   test_prompt?: string
+  thinking_effort?: 'default' | 'low' | 'medium' | 'high' | 'xhigh'
   cron_expression: string
   enabled: boolean
   max_results: number
@@ -2580,6 +2581,7 @@ export interface CreateScheduledTestPlanRequest {
   model_id: string
   test_kind?: 'connection' | 'pelican' | string
   test_prompt?: string
+  thinking_effort?: 'default' | 'low' | 'medium' | 'high' | 'xhigh'
   cron_expression: string
   enabled?: boolean
   max_results?: number
@@ -2591,6 +2593,7 @@ export interface UpdateScheduledTestPlanRequest {
   model_id?: string
   test_kind?: 'connection' | 'pelican' | string
   test_prompt?: string
+  thinking_effort?: 'default' | 'low' | 'medium' | 'high' | 'xhigh'
   cron_expression?: string
   enabled?: boolean
   max_results?: number

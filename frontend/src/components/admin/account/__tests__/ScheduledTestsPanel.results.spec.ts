@@ -23,7 +23,7 @@ vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError }) }))
 
 async function openPanel() {
   const wrapper = shallowMount(ScheduledTestsPanel, {
-    props: { show: false, accountId: 1, modelOptions: [] },
+    props: { show: false, accountId: 1, modelOptions: [], groupOptions: [] },
     global: { stubs: { BaseDialog: { template: '<div><slot /></div>' } } },
   })
   await wrapper.setProps({ show: true })
@@ -82,5 +82,29 @@ describe('scheduled test result selection', () => {
     old.resolve([result(11)])
     await flushPromises()
     expect(wrapper.html()).toBe(current)
+  })
+
+  it('offers xhigh for channel showcase test plans, but not connection tests', async () => {
+    const wrapper = await openPanel()
+    await wrapper.find('button.btn-primary').trigger('click')
+    await flushPromises()
+
+    const selects = wrapper.findAll('select')
+    const testKind = selects.find(select =>
+      Array.from((select.element as HTMLSelectElement).options).some(option => option.value === 'pelican')
+    )
+    expect(testKind).toBeDefined()
+    expect(wrapper.findAll('select').some(select =>
+      Array.from((select.element as HTMLSelectElement).options).some(option => option.value === 'xhigh')
+    )).toBe(false)
+
+    await testKind!.setValue('pelican')
+    const effort = wrapper.findAll('select').find(select =>
+      Array.from((select.element as HTMLSelectElement).options).some(option => option.value === 'xhigh')
+    )
+    expect(effort).toBeDefined()
+    expect(Array.from((effort!.element as HTMLSelectElement).options).map(option => option.value)).toContain('xhigh')
+    await effort!.setValue('xhigh')
+    expect((effort!.element as HTMLSelectElement).value).toBe('xhigh')
   })
 })

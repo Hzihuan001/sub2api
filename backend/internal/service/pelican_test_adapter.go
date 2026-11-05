@@ -19,7 +19,7 @@ func NewPelicanTestAdapter(accountRepo AccountRepository, accountTestSvc *Accoun
 	return &groupScopedPelicanTestAdapter{accountRepo: accountRepo, accountTestSvc: accountTestSvc}
 }
 
-func (a *groupScopedPelicanTestAdapter) Run(ctx context.Context, accountID, groupID int64, modelID, prompt string) (*ScheduledTestResult, error) {
+func (a *groupScopedPelicanTestAdapter) Run(ctx context.Context, accountID, groupID int64, modelID, prompt, thinkingEffort string) (*ScheduledTestResult, error) {
 	if a == nil || a.accountRepo == nil || a.accountTestSvc == nil {
 		return nil, fmt.Errorf("Pelican test adapter is unavailable")
 	}
@@ -33,7 +33,7 @@ func (a *groupScopedPelicanTestAdapter) Run(ctx context.Context, accountID, grou
 	for _, account := range accounts {
 		if account.ID == accountID {
 			return runPelicanTestWithTransientRetry(ctx, func(attemptCtx context.Context) (*ScheduledTestResult, error) {
-				return a.accountTestSvc.RunTestBackgroundWithPrompt(attemptCtx, accountID, modelID, prompt)
+				return a.accountTestSvc.RunTestBackgroundWithPrompt(attemptCtx, accountID, modelID, prompt, AccountTestOptions{ThinkingEffort: thinkingEffort})
 			})
 		}
 	}

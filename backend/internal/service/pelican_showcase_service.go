@@ -19,7 +19,7 @@ type PelicanShowcaseResult struct {
 	ThinkingEffort string    `json:"thinking_effort,omitempty"`
 	Status         string    `json:"status"`
 	ResponseText   string    `json:"response_text,omitempty"`
-	ErrorMessage   string    `json:"error_message,omitempty"`
+	ErrorMessage   string    `json:"-"`
 	LatencyMs      int64     `json:"latency_ms"`
 	StartedAt      time.Time `json:"started_at"`
 	FinishedAt     time.Time `json:"finished_at"`
@@ -34,7 +34,7 @@ type PelicanShowcaseGroup struct {
 	Platform      string                   `json:"platform"`
 	Results       []*PelicanShowcaseResult `json:"results"`
 	Latest        *PelicanShowcaseResult   `json:"latest,omitempty"`
-	LatestFailure *PelicanShowcaseResult   `json:"latest_failure,omitempty"`
+	LatestFailure *PelicanShowcaseResult   `json:"-"`
 	Status        string                   `json:"status"`
 	LastTestAt    *time.Time               `json:"last_test_at,omitempty"`
 	SuccessCount  int                      `json:"success_count"`
@@ -103,17 +103,18 @@ func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int
 					continue
 				}
 				seenPlans[plan.ID] = struct{}{}
-				results, err := s.planService.ListResults(ctx, plan.ID, 50)
+				resultLimit := plan.MaxResults
+				if resultLimit <= 0 {
+					resultLimit = 50
+				}
+				results, err := s.planService.ListResults(ctx, plan.ID, resultLimit)
 				if err != nil {
 					return nil, err
 				}
 				for _, result := range results {
 					candidate := &PelicanShowcaseResult{
 						ID: result.ID, AccountName: account.Name, ModelID: plan.ModelID,
-						// Existing scheduled tests use the provider's default reasoning
-						// setting; keep the field explicit for the showcase and future
-						// Pelican plans that may persist a selected effort.
-						ThinkingEffort: "default",
+						ThinkingEffort: plan.ThinkingEffort,
 						Status:         result.Status, ResponseText: result.ResponseText,
 						ErrorMessage: result.ErrorMessage, LatencyMs: result.LatencyMs,
 						StartedAt: result.StartedAt, FinishedAt: result.FinishedAt,
@@ -132,35 +133,7 @@ func (s *PelicanShowcaseService) ListLatest(ctx context.Context, allowed map[int
 		sort.SliceStable(row.Results, func(i, j int) bool {
 			return row.Results[i].FinishedAt.After(row.Results[j].FinishedAt)
 		})
-		if len(row.Results) > 50 {
-			row.Results = row.Results[:50]
-		}
-		for _, result := range row.Results {
-			if row.LastTestAt == nil || result.FinishedAt.After(*row.LastTestAt) {
-				finishedAt := result.FinishedAt
-				row.LastTestAt = &finishedAt
-			}
-			if result.Status == "success" {
-				row.SuccessCount++
-				if row.Latest == nil {
-					row.Latest = result
-				}
-			} else {
-				row.FailureCount++
-				if row.LatestFailure == nil {
-					row.LatestFailure = result
-				}
-			}
-		}
-		if len(row.Results) > 0 {
-			if time.Since(row.Results[0].FinishedAt) > 24*time.Hour {
-				row.Status = "stale"
-			} else if row.Results[0].Status == "success" {
-				row.Status = "healthy"
-			} else {
-				row.Status = "degraded"
-			}
-		}
+		finalizePelicanShowcaseGroup(&row)
 		out = append(out, row)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -217,6 +190,15 @@ func (s *PelicanShowcaseService) listLatestBulk(ctx context.Context, groups []Gr
 	} else if !errors.Is(configuredErr, ErrPelicanShowcaseReaderUnavailable) {
 		return nil, configuredErr
 	}
+	statsByGroup := make(map[int64]PelicanShowcaseGroupStats, len(groupIDs))
+	stats, statsErr := s.planService.ListPelicanShowcaseStats(ctx, groupIDs, 50)
+	if statsErr == nil {
+		for _, stat := range stats {
+			statsByGroup[stat.GroupID] = stat
+		}
+	} else if !errors.Is(statsErr, ErrPelicanShowcaseReaderUnavailable) {
+		return nil, statsErr
+	}
 
 	out := make([]PelicanShowcaseGroup, 0, len(visible))
 	for _, group := range visible {
@@ -234,29 +216,85 @@ func (s *PelicanShowcaseService) listLatestBulk(ctx context.Context, groups []Gr
 			result := record.Result
 			row.Results = append(row.Results, &PelicanShowcaseResult{
 				ID: result.ID, AccountName: record.AccountName, ModelID: record.ModelID,
-				ThinkingEffort: "default", Status: result.Status,
+				ThinkingEffort: record.ThinkingEffort, Status: result.Status,
 				ResponseText: result.ResponseText, ErrorMessage: result.ErrorMessage,
 				LatencyMs: result.LatencyMs, StartedAt: result.StartedAt, FinishedAt: result.FinishedAt,
 			})
 		}
 		finalizePelicanShowcaseGroup(&row)
+		if stat, ok := statsByGroup[group.ID]; ok {
+			row.Status = publicPelicanHealthStatus(stat.LatestStatus, stat.LastTestAt)
+			row.LastTestAt = stat.LastTestAt
+			row.SuccessCount = stat.SuccessCount
+			row.FailureCount = stat.FailureCount
+		}
 		out = append(out, row)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
+func publicPelicanHealthStatus(latestStatus string, lastTestAt *time.Time) string {
+	if lastTestAt == nil {
+		return "unknown"
+	}
+	if time.Since(*lastTestAt) > 24*time.Hour {
+		return "stale"
+	}
+	if latestStatus == "success" {
+		return "healthy"
+	}
+	return "degraded"
+}
+
 func finalizePelicanShowcaseGroup(row *PelicanShowcaseGroup) {
-	for _, result := range row.Results {
+	allResults := row.Results
+	if len(allResults) == 0 {
+		row.Results = []*PelicanShowcaseResult{}
+		return
+	}
+	// Keep artwork and health windows independent: a burst of failures must
+	// not evict the last successful cards, while health still reflects the
+	// most recent 50 attempts.
+	row.SuccessCount = 0
+	row.FailureCount = 0
+	row.Latest = nil
+	row.LatestFailure = nil
+	row.LastTestAt = nil
+	resultCapacity := len(allResults)
+	if resultCapacity > 50 {
+		resultCapacity = 50
+	}
+	row.Results = make([]*PelicanShowcaseResult, 0, resultCapacity)
+	for _, result := range allResults {
+		if row.Latest == nil && result.Status == "success" {
+			row.Latest = result
+		}
+	}
+	if row.Latest != nil {
+		for _, result := range allResults {
+			if result.Status == "success" {
+				row.Results = append(row.Results, result)
+				if len(row.Results) == 50 {
+					break
+				}
+			}
+		}
+	} else {
+		row.Results = []*PelicanShowcaseResult{}
+	}
+
+	window := allResults
+	if len(window) > 50 {
+		window = window[:50]
+	}
+	for _, result := range window {
 		if row.LastTestAt == nil || result.FinishedAt.After(*row.LastTestAt) {
 			finishedAt := result.FinishedAt
 			row.LastTestAt = &finishedAt
 		}
 		if result.Status == "success" {
 			row.SuccessCount++
-			if row.Latest == nil {
-				row.Latest = result
-			}
 		} else {
 			row.FailureCount++
 			if row.LatestFailure == nil {
@@ -264,12 +302,9 @@ func finalizePelicanShowcaseGroup(row *PelicanShowcaseGroup) {
 			}
 		}
 	}
-	if len(row.Results) == 0 {
-		return
-	}
-	if time.Since(row.Results[0].FinishedAt) > 24*time.Hour {
+	if time.Since(allResults[0].FinishedAt) > 24*time.Hour {
 		row.Status = "stale"
-	} else if row.Results[0].Status == "success" {
+	} else if allResults[0].Status == "success" {
 		row.Status = "healthy"
 	} else {
 		row.Status = "degraded"

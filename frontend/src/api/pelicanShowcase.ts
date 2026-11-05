@@ -6,7 +6,6 @@ export interface PelicanShowcaseResult {
   thinking_effort?: string
   status: string
   response_text?: string
-  error_message?: string
   latency_ms: number
   started_at: string
   finished_at: string
@@ -18,7 +17,6 @@ export interface PelicanShowcaseGroup {
   platform: string
   results: PelicanShowcaseResult[]
   latest?: PelicanShowcaseResult
-  latest_failure?: PelicanShowcaseResult
   status: 'healthy' | 'degraded' | 'unknown' | string
   last_test_at?: string
   success_count: number

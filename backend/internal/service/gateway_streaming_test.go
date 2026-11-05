@@ -293,6 +293,43 @@ func TestHandleStreamingResponse_StreamReadErrorBeforeOutput_TriggersFailover(t 
 	require.NotContains(t, rec.Body.String(), "stream_read_error")
 }
 
+// A local SSE heartbeat keeps an otherwise idle downstream connection alive,
+// but is not model output. If the upstream resets before sending an event, the
+// handler must still be able to retry another account on the same client stream.
+func TestHandleStreamingResponse_StreamReadErrorAfterKeepalive_TriggersFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+	svc.cfg.Gateway.StreamKeepaliveInterval = 1
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+	go func() {
+		// Let the gateway emit its local keepalive, then simulate an upstream
+		// TCP reset before any semantic event arrives.
+		time.Sleep(1100 * time.Millisecond)
+		_ = pw.CloseWithError(io.ErrUnexpectedEOF)
+	}()
+
+	result, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+	_ = pr.Close()
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+	require.True(t, failoverErr.SafeToFailoverAfterWrite, "已发送的本地心跳不是模型输出，应允许安全切换")
+	require.Contains(t, rec.Body.String(), "event: ping")
+	require.NotContains(t, rec.Body.String(), "stream_read_error")
+}
+
 // 上游已经发送过事件（c.Writer 已写过字节）后再发生读错误：
 // SSE 协议无 resume，网关只能透传 stream_read_error 错误事件给客户端，不能 failover。
 func TestHandleStreamingResponse_StreamReadErrorAfterOutput_PassesThrough(t *testing.T) {

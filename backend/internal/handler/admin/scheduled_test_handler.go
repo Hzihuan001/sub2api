@@ -25,6 +25,7 @@ type createScheduledTestPlanRequest struct {
 	ModelID        string `json:"model_id"`
 	TestKind       string `json:"test_kind"`
 	TestPrompt     string `json:"test_prompt"`
+	ThinkingEffort string `json:"thinking_effort"`
 	CronExpression string `json:"cron_expression" binding:"required"`
 	Enabled        *bool  `json:"enabled"`
 	MaxResults     int    `json:"max_results"`
@@ -36,6 +37,7 @@ type updateScheduledTestPlanRequest struct {
 	ModelID        string `json:"model_id"`
 	TestKind       string `json:"test_kind"`
 	TestPrompt     string `json:"test_prompt"`
+	ThinkingEffort string `json:"thinking_effort"`
 	CronExpression string `json:"cron_expression"`
 	Enabled        *bool  `json:"enabled"`
 	MaxResults     int    `json:"max_results"`
@@ -72,6 +74,7 @@ func (h *ScheduledTestHandler) Create(c *gin.Context) {
 		ModelID:        req.ModelID,
 		TestKind:       req.TestKind,
 		TestPrompt:     req.TestPrompt,
+		ThinkingEffort: req.ThinkingEffort,
 		CronExpression: req.CronExpression,
 		Enabled:        true,
 		MaxResults:     req.MaxResults,
@@ -119,6 +122,9 @@ func (h *ScheduledTestHandler) Update(c *gin.Context) {
 	}
 	if req.TestKind != "" {
 		existing.TestKind = req.TestKind
+	}
+	if req.ThinkingEffort != "" {
+		existing.ThinkingEffort = req.ThinkingEffort
 	}
 	if req.TestPrompt != "" || existing.TestKind == service.ScheduledTestKindPelican {
 		existing.TestPrompt = req.TestPrompt

@@ -89,21 +89,17 @@
                   title="渠道测智结果"
                 />
                 <pre
-                  v-else-if="result.status === 'success'"
+                  v-else
                   class="h-full overflow-auto whitespace-pre-wrap p-4 text-xs leading-5 text-gray-700 dark:text-dark-200"
                 >{{ result.response_text || '上游返回了空内容' }}</pre>
-                <div v-else class="flex h-full flex-col items-center justify-center gap-2 px-5 text-center text-xs text-red-600 dark:text-red-300">
-                  <span class="rounded-full bg-red-100 px-2.5 py-1 dark:bg-red-500/15">测试失败</span>
-                  <span>{{ result.error_message || '上游未返回有效结果' }}</span>
-                </div>
                 <span class="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[11px] text-white">
-                  {{ result.status === 'success' ? '已完成' : '失败' }}
+                  已完成
                 </span>
               </div>
               <div class="space-y-1 border-t border-gray-100 px-4 py-3 dark:border-dark-700">
                 <div class="flex items-center justify-between gap-2">
                   <span class="truncate font-medium text-gray-800 dark:text-dark-100">{{ result.model_id || '未知模型' }}</span>
-                  <button v-if="result.status === 'success' && result.response_text" class="shrink-0 text-xs text-sky-600 hover:underline dark:text-sky-300" @click="downloadResult(result)">下载</button>
+                  <button v-if="result.response_text" class="shrink-0 text-xs text-sky-600 hover:underline dark:text-sky-300" @click="downloadResult(result)">下载</button>
                 </div>
                 <div class="flex items-center justify-between text-xs text-gray-400 dark:text-dark-500">
                   <span>{{ formatTime(result.finished_at) }}</span>
@@ -112,7 +108,7 @@
               </div>
             </article>
           </div>
-          <div v-else class="rounded-2xl border border-dashed border-gray-300 px-5 py-10 text-center text-sm text-gray-400 dark:border-dark-600 dark:text-dark-500">等待管理员为该分组账号启用“渠道测智”</div>
+          <div v-else class="rounded-2xl border border-dashed border-gray-300 px-5 py-10 text-center text-sm text-gray-400 dark:border-dark-600 dark:text-dark-500">该分组暂时没有可展示的成功作品</div>
         </article>
       </div>
     </div>
@@ -177,16 +173,6 @@ const previewGroups: PelicanShowcaseGroup[] = [
       started_at: '2026-10-29T10:00:00Z',
       finished_at: '2026-10-29T10:00:02Z',
     },
-    latest_failure: {
-      id: 3,
-      model_id: 'kimi-k2',
-      thinking_effort: 'default',
-      status: 'failed',
-      error_message: '最近一次测试超时（占位）',
-      latency_ms: 10000,
-      started_at: '2026-10-29T09:50:00Z',
-      finished_at: '2026-10-29T09:50:10Z',
-    },
   },
 ]
 
@@ -209,8 +195,10 @@ async function load() {
 }
 
 function groupResults(group: PelicanShowcaseGroup) {
-  if (group.results?.length) return group.results
-  return [group.latest, group.latest_failure].filter(Boolean) as PelicanShowcaseResult[]
+  const results = group.results?.length ? group.results : [group.latest].filter(Boolean) as PelicanShowcaseResult[]
+  const successfulResults = results.filter(result => result.status.toLowerCase() === 'success')
+  if (successfulResults.length > 0) return successfulResults
+  return group.latest?.status.toLowerCase() === 'success' ? [group.latest] : []
 }
 
 function formatLatency(value?: number) {

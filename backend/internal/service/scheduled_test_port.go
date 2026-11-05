@@ -14,6 +14,7 @@ type ScheduledTestPlan struct {
 	ModelID        string     `json:"model_id"`
 	TestKind       string     `json:"test_kind"`
 	TestPrompt     string     `json:"test_prompt,omitempty"`
+	ThinkingEffort string     `json:"thinking_effort"`
 	CronExpression string     `json:"cron_expression"`
 	Enabled        bool       `json:"enabled"`
 	MaxResults     int        `json:"max_results"`
@@ -59,12 +60,23 @@ type ScheduledTestResult struct {
 // showcase. It lets the repository fetch plans and results in one bounded SQL
 // query instead of walking group -> account -> plan -> result.
 type PelicanShowcaseRecord struct {
-	GroupID     int64
-	AccountID   int64
-	AccountName string
-	PlanID      int64
-	ModelID     string
-	Result      ScheduledTestResult
+	GroupID        int64
+	AccountID      int64
+	AccountName    string
+	PlanID         int64
+	ModelID        string
+	ThinkingEffort string
+	Result         ScheduledTestResult
+}
+
+// PelicanShowcaseGroupStats contains only aggregate status and counts for one
+// configured group. It deliberately carries no account identity or error text.
+type PelicanShowcaseGroupStats struct {
+	GroupID      int64
+	LatestStatus string
+	LastTestAt   *time.Time
+	SuccessCount int
+	FailureCount int
 }
 
 var ErrPelicanShowcaseReaderUnavailable = errors.New("pelican showcase bulk reader unavailable")
@@ -80,11 +92,17 @@ type PelicanShowcasePlanReader interface {
 	ListConfiguredPelicanGroups(ctx context.Context, groupIDs []int64) ([]int64, error)
 }
 
+// PelicanShowcaseStatsReader provides group-level health independently from
+// the success-only public artwork list.
+type PelicanShowcaseStatsReader interface {
+	ListPelicanShowcaseStats(ctx context.Context, groupIDs []int64, windowPerGroup int) ([]PelicanShowcaseGroupStats, error)
+}
+
 // PelicanTestExecutor is the stable boundary for group-scoped showcase tests.
 // Ordinary scheduled connection tests continue to use AccountTestService
 // directly; only Pelican plans cross this adapter.
 type PelicanTestExecutor interface {
-	Run(ctx context.Context, accountID, groupID int64, modelID, prompt string) (*ScheduledTestResult, error)
+	Run(ctx context.Context, accountID, groupID int64, modelID, prompt, thinkingEffort string) (*ScheduledTestResult, error)
 }
 
 // ScheduledTestPlanClaimer is implemented by the durable repository. Keeping

@@ -51,7 +51,7 @@ func (r *scheduledRunnerResultRepoStub) PruneOldResults(context.Context, int64, 
 
 type scheduledRunnerPelicanExecutorStub struct{}
 
-func (scheduledRunnerPelicanExecutorStub) Run(_ context.Context, _, _ int64, _, _ string) (*ScheduledTestResult, error) {
+func (scheduledRunnerPelicanExecutorStub) Run(_ context.Context, _, _ int64, _, _, _ string) (*ScheduledTestResult, error) {
 	now := time.Now()
 	return &ScheduledTestResult{
 		Status: "failed", ErrorMessage: "upstream overload", StartedAt: now,

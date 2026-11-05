@@ -149,7 +149,7 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		if plan.GroupID == nil || s.pelicanExecutor == nil {
 			err = fmt.Errorf("Pelican test requires a group-scoped executor")
 		} else {
-			result, err = s.pelicanExecutor.Run(ctx, plan.AccountID, *plan.GroupID, plan.ModelID, prompt)
+			result, err = s.pelicanExecutor.Run(ctx, plan.AccountID, *plan.GroupID, plan.ModelID, prompt, plan.ThinkingEffort)
 		}
 	} else {
 		result, err = s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)

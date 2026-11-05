@@ -1,6 +1,8 @@
 package service
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -44,5 +46,84 @@ func TestScheduledTestFailureBackoffIsBounded(t *testing.T) {
 	}
 	if got := scheduledTestFailureBackoff(99); got != 8*time.Minute {
 		t.Fatalf("bounded failure backoff = %s", got)
+	}
+}
+
+func TestFinalizePelicanShowcaseKeepsOnlySuccessfulCards(t *testing.T) {
+	now := time.Now()
+	row := PelicanShowcaseGroup{
+		ID:      17,
+		Name:    "public group",
+		Results: []*PelicanShowcaseResult{
+			{
+				ID: 2, AccountName: "private-account", ModelID: "gpt-6.1-sol",
+				Status: "failed", ErrorMessage: "private upstream error",
+				FinishedAt: now, StartedAt: now.Add(-time.Second),
+			},
+			{
+				ID: 1, AccountName: "private-account", ModelID: "gpt-6.1-sol",
+				Status: "success", ResponseText: "completed work",
+				FinishedAt: now.Add(-time.Minute), StartedAt: now.Add(-time.Minute - time.Second),
+			},
+		},
+	}
+
+	finalizePelicanShowcaseGroup(&row)
+	if len(row.Results) != 1 || row.Results[0].Status != "success" {
+		t.Fatalf("public result cards = %#v, want only the successful card", row.Results)
+	}
+	if row.Latest == nil || row.Latest.ID != 1 {
+		t.Fatalf("latest success = %#v, want result 1", row.Latest)
+	}
+	if row.FailureCount != 1 || row.Status != "degraded" {
+		t.Fatalf("group status/count = %q/%d, want degraded/1", row.Status, row.FailureCount)
+	}
+
+	body, err := json.Marshal(row)
+	if err != nil {
+		t.Fatalf("marshal showcase response: %v", err)
+	}
+	jsonText := string(body)
+	for _, privateValue := range []string{"private-account", "private upstream error", "latest_failure", "error_message"} {
+		if strings.Contains(jsonText, privateValue) {
+			t.Errorf("public showcase JSON leaked %q: %s", privateValue, jsonText)
+		}
+	}
+	if !strings.Contains(jsonText, `"response_text":"completed work"`) {
+		t.Errorf("public showcase JSON omitted successful work: %s", jsonText)
+	}
+}
+
+func TestFinalizePelicanShowcaseKeepsOlderSuccessOutsideHealthWindow(t *testing.T) {
+	now := time.Now()
+	results := make([]*PelicanShowcaseResult, 0, 51)
+	for i := 0; i < 50; i++ {
+		finishedAt := now.Add(-time.Duration(i) * time.Minute)
+		results = append(results, &PelicanShowcaseResult{
+			ID:         int64(100 + i),
+			ModelID:    "gpt-6.1-sol",
+			Status:     "failed",
+			FinishedAt: finishedAt,
+			StartedAt:  finishedAt.Add(-time.Second),
+		})
+	}
+	olderSuccess := now.Add(-51 * time.Minute)
+	results = append(results, &PelicanShowcaseResult{
+		ID:         1,
+		ModelID:    "gpt-6.1-sol",
+		Status:     "success",
+		ResponseText: "older successful work",
+		FinishedAt:  olderSuccess,
+		StartedAt:   olderSuccess.Add(-time.Second),
+	})
+
+	row := PelicanShowcaseGroup{Results: results}
+	finalizePelicanShowcaseGroup(&row)
+
+	if len(row.Results) != 1 || row.Results[0].ID != 1 {
+		t.Fatalf("older successful card was dropped: %#v", row.Results)
+	}
+	if row.SuccessCount != 0 || row.FailureCount != 50 || row.Status != "degraded" {
+		t.Fatalf("health window = %d successes/%d failures/%q, want 0/50/degraded", row.SuccessCount, row.FailureCount, row.Status)
 	}
 }

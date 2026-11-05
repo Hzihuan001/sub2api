@@ -69,8 +69,23 @@ type TestEvent struct {
 // AccountTestOptions carries optional media for admin connectivity tests.
 // ImageDataURL / AudioDataURL are full data URLs (data:<mime>;base64,...).
 type AccountTestOptions struct {
-	ImageDataURL string
-	AudioDataURL string
+	ImageDataURL   string
+	AudioDataURL   string
+	ThinkingEffort string
+}
+
+const accountTestOptionsContextKey = "account_test_options"
+
+func accountTestOptionsFromContext(c *gin.Context) AccountTestOptions {
+	if c == nil {
+		return AccountTestOptions{}
+	}
+	value, ok := c.Get(accountTestOptionsContextKey)
+	if !ok {
+		return AccountTestOptions{}
+	}
+	options, _ := value.(AccountTestOptions)
+	return options
 }
 
 func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
@@ -78,6 +93,15 @@ func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
 		return AccountTestOptions{}
 	}
 	return opts[0]
+}
+
+func normalizeReasoningEffort(effort string) string {
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "low", "medium", "high", "xhigh":
+		return strings.ToLower(strings.TrimSpace(effort))
+	default:
+		return "default"
+	}
 }
 
 // maxAccountTestMediaBytes caps inbound data-URL payloads for admin tests (~8 MiB).
@@ -366,6 +390,10 @@ func createTestPayload(modelID string) (map[string]any, error) {
 }
 
 func createTestPayloadWithPrompt(modelID, prompt string) (map[string]any, error) {
+	return createTestPayloadWithPromptAndEffort(modelID, prompt, "default")
+}
+
+func createTestPayloadWithPromptAndEffort(modelID, prompt, thinkingEffort string) (map[string]any, error) {
 	sessionID, err := generateSessionString()
 	if err != nil {
 		return nil, err
@@ -383,7 +411,7 @@ func createTestPayloadWithPrompt(modelID, prompt string) (map[string]any, error)
 		maxTokens = 4096
 	}
 
-	return map[string]any{
+	payload := map[string]any{
 		"model": modelID,
 		"messages": []map[string]any{
 			{
@@ -414,7 +442,11 @@ func createTestPayloadWithPrompt(modelID, prompt string) (map[string]any, error)
 		"max_tokens":  maxTokens,
 		"temperature": 1,
 		"stream":      true,
-	}, nil
+	}
+	if effort := normalizeReasoningEffort(thinkingEffort); effort != "default" {
+		payload["output_config"] = map[string]any{"effort": effort}
+	}
+	return payload, nil
 }
 
 // TestAccountConnection tests an account's connection by sending a test request
@@ -433,6 +465,8 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
 	bindAccountTestPlatform(c, account)
+	testOpts.ThinkingEffort = supportedScheduledThinkingEffort(account, modelID, testOpts.ThinkingEffort)
+	c.Set(accountTestOptionsContextKey, testOpts)
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
 	// interactions, but intentionally do not send their placeholder credentials
@@ -493,6 +527,77 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID, prompt)
+}
+
+// supportedScheduledThinkingEffort only opts into native reasoning controls
+// for known model families on their native platform. Compatible providers,
+// adaptive routing, aliases we do not recognize, and other platforms keep the
+// upstream default to avoid turning a showcase test into an unsupported-param
+// error.
+func supportedScheduledThinkingEffort(account *Account, modelID, requested string) string {
+	effort := normalizeReasoningEffort(requested)
+	if effort == "default" || account == nil {
+		return "default"
+	}
+	model := strings.TrimSpace(modelID)
+	if model == "" {
+		if account.Platform == PlatformOpenAI {
+			model = openai.DefaultTestModel
+		} else if account.Platform == PlatformAnthropic {
+			model = claude.DefaultTestModel
+		}
+	}
+	model = account.GetMappedModel(model)
+	switch account.Platform {
+	case PlatformAnthropic:
+		if !isOfficialAnthropicTestAccount(account) {
+			return "default"
+		}
+		for _, supported := range claude.EffortLevelsForModel(model) {
+			if supported == effort {
+				return effort
+			}
+		}
+	case PlatformOpenAI:
+		if !isOfficialOpenAITestAccount(account) {
+			return "default"
+		}
+		model = strings.ToLower(model)
+		if slash := strings.LastIndexByte(model, '/'); slash >= 0 {
+			model = model[slash+1:]
+		}
+		if effort == "xhigh" {
+			if openai.IsGPT61SolModelSpelling(model) || openai.IsGPT61TerraModelSpelling(model) {
+				return effort
+			}
+			return "default"
+		}
+		if strings.HasPrefix(model, "gpt-5") || strings.HasPrefix(model, "gpt-6") || strings.HasPrefix(model, "o1") || strings.HasPrefix(model, "o3") || strings.HasPrefix(model, "o4") {
+			return effort
+		}
+	}
+	return "default"
+}
+
+func isOfficialAnthropicTestAccount(account *Account) bool {
+	if account == nil || account.Platform != PlatformAnthropic {
+		return false
+	}
+	if account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken {
+		return true
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(account.GetBaseURL()), "/")
+	return strings.EqualFold(baseURL, "https://api.anthropic.com")
+}
+
+func isOfficialOpenAITestAccount(account *Account) bool {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
+	if account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken {
+		return true
+	}
+	return isOfficialOpenAIModelsBaseURL(account.GetOpenAIBaseURL())
 }
 
 // testModelRoutedAccountConnection probes the native endpoint for the selected
@@ -632,7 +737,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	if len(prompt) > 0 {
 		testPrompt = prompt[0]
 	}
-	payload, err := createTestPayloadWithPrompt(testModelID, testPrompt)
+	payload, err := createTestPayloadWithPromptAndEffort(testModelID, testPrompt, accountTestOptionsFromContext(c).ThinkingEffort)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -1117,7 +1222,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if isOAuth {
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
-	payload := createOpenAITestPayloadWithPrompt(upstreamTestModelID, isOAuth, prompt)
+	payload := createOpenAITestPayloadWithPromptAndEffort(upstreamTestModelID, isOAuth, prompt, accountTestOptionsFromContext(c).ThinkingEffort)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -2358,7 +2463,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload := createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	payload := createOpenAIChatCompletionsTestPayloadWithEffort(testModelID, prompt, accountTestOptionsFromContext(c).ThinkingEffort)
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -3012,6 +3117,10 @@ func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 }
 
 func createOpenAITestPayloadWithPrompt(modelID string, isOAuth bool, prompt string) map[string]any {
+	return createOpenAITestPayloadWithPromptAndEffort(modelID, isOAuth, prompt, "default")
+}
+
+func createOpenAITestPayloadWithPromptAndEffort(modelID string, isOAuth bool, prompt, thinkingEffort string) map[string]any {
 	testPrompt := strings.TrimSpace(prompt)
 	if testPrompt == "" {
 		testPrompt = "hi"
@@ -3039,17 +3148,24 @@ func createOpenAITestPayloadWithPrompt(modelID string, isOAuth bool, prompt stri
 
 	// All accounts require instructions for Responses API
 	payload["instructions"] = openai.DefaultInstructions
+	if effort := normalizeReasoningEffort(thinkingEffort); effort != "default" {
+		payload["reasoning"] = map[string]any{"effort": effort}
+	}
 
 	return payload
 }
 
 func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[string]any {
+	return createOpenAIChatCompletionsTestPayloadWithEffort(modelID, prompt, "default")
+}
+
+func createOpenAIChatCompletionsTestPayloadWithEffort(modelID string, prompt, thinkingEffort string) map[string]any {
 	testPrompt := strings.TrimSpace(prompt)
 	if testPrompt == "" {
 		testPrompt = "hi"
 	}
 
-	return map[string]any{
+	payload := map[string]any{
 		"model": modelID,
 		"messages": []map[string]any{
 			{
@@ -3059,6 +3175,10 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 		},
 		"stream": true,
 	}
+	if effort := normalizeReasoningEffort(thinkingEffort); effort != "default" {
+		payload["reasoning_effort"] = effort
+	}
+	return payload
 }
 
 // processClaudeStream processes the SSE stream from Claude API
@@ -3540,7 +3660,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 // RunTestBackgroundWithPrompt is the scheduled-test entry point for fixed
 // comparison prompts such as the Pelican showcase. Empty prompts preserve the
 // ordinary connection-test behavior.
-func (s *AccountTestService) RunTestBackgroundWithPrompt(ctx context.Context, accountID int64, modelID, prompt string) (*ScheduledTestResult, error) {
+func (s *AccountTestService) RunTestBackgroundWithPrompt(ctx context.Context, accountID int64, modelID, prompt string, opts ...AccountTestOptions) (*ScheduledTestResult, error) {
 	startedAt := time.Now()
 
 	w := httptest.NewRecorder()
@@ -3548,7 +3668,7 @@ func (s *AccountTestService) RunTestBackgroundWithPrompt(ctx context.Context, ac
 	ginCtx.Request = (&http.Request{}).WithContext(ctx)
 	ginCtx.Set(accountTestBackgroundKey, true)
 
-	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, prompt, AccountTestModeDefault)
+	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, prompt, AccountTestModeDefault, opts...)
 
 	finishedAt := time.Now()
 	body := w.Body.String()

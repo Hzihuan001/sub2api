@@ -26,16 +26,16 @@ func (r *scheduledTestPlanRepository) Create(ctx context.Context, plan *service.
 		return nil, err
 	}
 	row := r.db.QueryRowContext(ctx, `
-		INSERT INTO scheduled_test_plans (account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, next_run_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
-		RETURNING id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
-	`, plan.AccountID, plan.GroupID, plan.ModelID, normalizeScheduledTestKind(plan.TestKind), plan.TestPrompt, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
+		INSERT INTO scheduled_test_plans (account_id, group_id, model_id, test_kind, test_prompt, thinking_effort, cron_expression, enabled, max_results, auto_recover, next_run_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+		RETURNING id, account_id, group_id, model_id, test_kind, test_prompt, thinking_effort, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
+	`, plan.AccountID, plan.GroupID, plan.ModelID, normalizeScheduledTestKind(plan.TestKind), plan.TestPrompt, plan.ThinkingEffort, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
 	return scanPlan(row)
 }
 
 func (r *scheduledTestPlanRepository) GetByID(ctx context.Context, id int64) (*service.ScheduledTestPlan, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
+		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, thinking_effort, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
 		FROM scheduled_test_plans WHERE id = $1
 	`, id)
 	return scanPlan(row)
@@ -43,7 +43,7 @@ func (r *scheduledTestPlanRepository) GetByID(ctx context.Context, id int64) (*s
 
 func (r *scheduledTestPlanRepository) ListByAccountID(ctx context.Context, accountID int64) ([]*service.ScheduledTestPlan, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
+		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, thinking_effort, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
 		FROM scheduled_test_plans WHERE account_id = $1
 		ORDER BY created_at DESC
 	`, accountID)
@@ -67,7 +67,7 @@ func (r *scheduledTestPlanRepository) ListLatestPelicanByGroups(ctx context.Cont
 	rows, err := r.db.QueryContext(ctx, `
 		WITH ranked AS (
 			SELECT p.group_id, p.account_id, a.name AS account_name, p.id AS plan_id,
-			       p.model_id, r.id AS result_id, r.status, r.response_text,
+			       p.model_id, p.thinking_effort, r.id AS result_id, r.status, r.response_text,
 			       r.error_message, r.latency_ms, r.started_at, r.finished_at,
 			       r.created_at,
 			       ROW_NUMBER() OVER (PARTITION BY p.group_id ORDER BY r.finished_at DESC, r.id DESC) AS rn
@@ -75,9 +75,11 @@ func (r *scheduledTestPlanRepository) ListLatestPelicanByGroups(ctx context.Cont
 			JOIN scheduled_test_results r ON r.plan_id = p.id
 			JOIN accounts a ON a.id = p.account_id
 			WHERE p.test_kind = $1
+			  AND p.enabled = TRUE
+			  AND r.status = 'success'
 			  AND p.group_id = ANY($2)
 		)
-		SELECT group_id, account_id, account_name, plan_id, model_id,
+		SELECT group_id, account_id, account_name, plan_id, model_id, thinking_effort,
 		       result_id, status, response_text, error_message, latency_ms,
 		       started_at, finished_at, created_at
 		FROM ranked
@@ -94,7 +96,7 @@ func (r *scheduledTestPlanRepository) ListLatestPelicanByGroups(ctx context.Cont
 		var record service.PelicanShowcaseRecord
 		if err := rows.Scan(
 			&record.GroupID, &record.AccountID, &record.AccountName, &record.PlanID,
-			&record.ModelID, &record.Result.ID, &record.Result.Status,
+			&record.ModelID, &record.ThinkingEffort, &record.Result.ID, &record.Result.Status,
 			&record.Result.ResponseText, &record.Result.ErrorMessage,
 			&record.Result.LatencyMs, &record.Result.StartedAt,
 			&record.Result.FinishedAt, &record.Result.CreatedAt,
@@ -105,6 +107,58 @@ func (r *scheduledTestPlanRepository) ListLatestPelicanByGroups(ctx context.Cont
 		records = append(records, record)
 	}
 	return records, rows.Err()
+}
+
+// ListPelicanShowcaseStats returns group health and the success/failure counts
+// for each group's latest bounded result window. It is separate from the
+// success-only artwork query so repeated failures never hide prior successful
+// works from the public showcase.
+func (r *scheduledTestPlanRepository) ListPelicanShowcaseStats(ctx context.Context, groupIDs []int64, windowPerGroup int) ([]service.PelicanShowcaseGroupStats, error) {
+	if len(groupIDs) == 0 {
+		return []service.PelicanShowcaseGroupStats{}, nil
+	}
+	if windowPerGroup <= 0 {
+		windowPerGroup = 50
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		WITH ranked AS (
+			SELECT p.group_id, r.id, r.status, r.finished_at,
+			       ROW_NUMBER() OVER (PARTITION BY p.group_id ORDER BY r.finished_at DESC, r.id DESC) AS rn
+			FROM scheduled_test_plans p
+			JOIN scheduled_test_results r ON r.plan_id = p.id
+			WHERE p.test_kind = $1
+			  AND p.enabled = TRUE
+			  AND p.group_id = ANY($2)
+		), recent AS (
+			SELECT * FROM ranked WHERE rn <= $3
+		), latest AS (
+			SELECT DISTINCT ON (group_id) group_id, status, finished_at
+			FROM recent
+			ORDER BY group_id, finished_at DESC, id DESC
+		)
+		SELECT recent.group_id,
+		       latest.status,
+		       latest.finished_at,
+		       COUNT(*) FILTER (WHERE recent.status = 'success')::int AS success_count,
+		       COUNT(*) FILTER (WHERE recent.status <> 'success')::int AS failure_count
+		FROM recent
+		JOIN latest USING (group_id)
+		GROUP BY recent.group_id, latest.status, latest.finished_at
+		ORDER BY recent.group_id
+	`, service.ScheduledTestKindPelican, pq.Array(groupIDs), windowPerGroup)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var stats []service.PelicanShowcaseGroupStats
+	for rows.Next() {
+		var stat service.PelicanShowcaseGroupStats
+		if err := rows.Scan(&stat.GroupID, &stat.LatestStatus, &stat.LastTestAt, &stat.SuccessCount, &stat.FailureCount); err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+	return stats, rows.Err()
 }
 
 // ListConfiguredPelicanGroups returns only groups with an enabled, scoped
@@ -139,7 +193,7 @@ func (r *scheduledTestPlanRepository) ListConfiguredPelicanGroups(ctx context.Co
 
 func (r *scheduledTestPlanRepository) ListDue(ctx context.Context, now time.Time) ([]*service.ScheduledTestPlan, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
+		SELECT id, account_id, group_id, model_id, test_kind, test_prompt, thinking_effort, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
 		FROM scheduled_test_plans
 		WHERE enabled = true AND next_run_at <= $1
 		ORDER BY next_run_at ASC
@@ -179,7 +233,7 @@ func (r *scheduledTestPlanRepository) ClaimDue(ctx context.Context, now, leaseUn
 		    updated_at = NOW()
 		FROM due
 		WHERE p.id = due.id
-		RETURNING p.id, p.account_id, p.group_id, p.model_id, p.test_kind, p.test_prompt,
+		RETURNING p.id, p.account_id, p.group_id, p.model_id, p.test_kind, p.test_prompt, p.thinking_effort,
 		          p.cron_expression, p.enabled, p.max_results, p.auto_recover,
 		          p.last_run_at, p.next_run_at, p.lease_token, p.lease_expires_at,
 		          p.active_run_id, p.failure_streak, p.last_error, p.created_at, p.updated_at
@@ -197,15 +251,15 @@ func (r *scheduledTestPlanRepository) Update(ctx context.Context, plan *service.
 	}
 	row := r.db.QueryRowContext(ctx, `
 		UPDATE scheduled_test_plans
-		SET group_id = $2, model_id = $3, test_kind = $4, test_prompt = $5, cron_expression = $6, enabled = $7, max_results = $8, auto_recover = $9,
-		    next_run_at = CASE WHEN $7 THEN $10::timestamptz ELSE NULL::timestamptz END,
-		    lease_token = CASE WHEN $7 THEN lease_token ELSE NULL END,
-		    lease_expires_at = CASE WHEN $7 THEN lease_expires_at ELSE NULL END,
-		    active_run_id = CASE WHEN $7 THEN active_run_id ELSE NULL END,
+		SET group_id = $2, model_id = $3, test_kind = $4, test_prompt = $5, thinking_effort = $6, cron_expression = $7, enabled = $8, max_results = $9, auto_recover = $10,
+		    next_run_at = CASE WHEN $8 THEN $11::timestamptz ELSE NULL::timestamptz END,
+		    lease_token = CASE WHEN $8 THEN lease_token ELSE NULL END,
+		    lease_expires_at = CASE WHEN $8 THEN lease_expires_at ELSE NULL END,
+		    active_run_id = CASE WHEN $8 THEN active_run_id ELSE NULL END,
 		    updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, account_id, group_id, model_id, test_kind, test_prompt, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
-	`, plan.ID, plan.GroupID, plan.ModelID, normalizeScheduledTestKind(plan.TestKind), plan.TestPrompt, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
+		RETURNING id, account_id, group_id, model_id, test_kind, test_prompt, thinking_effort, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, lease_token, lease_expires_at, active_run_id, failure_streak, last_error, created_at, updated_at
+	`, plan.ID, plan.GroupID, plan.ModelID, normalizeScheduledTestKind(plan.TestKind), plan.TestPrompt, plan.ThinkingEffort, plan.CronExpression, plan.Enabled, plan.MaxResults, plan.AutoRecover, plan.NextRunAt)
 	return scanPlan(row)
 }
 
@@ -344,7 +398,7 @@ func scanPlan(row scannable) (*service.ScheduledTestPlan, error) {
 	// rows created before the lease columns were introduced.
 	var leaseToken, activeRunID, lastError sql.NullString
 	if err := row.Scan(
-		&p.ID, &p.AccountID, &p.GroupID, &p.ModelID, &p.TestKind, &p.TestPrompt, &p.CronExpression, &p.Enabled, &p.MaxResults, &p.AutoRecover,
+		&p.ID, &p.AccountID, &p.GroupID, &p.ModelID, &p.TestKind, &p.TestPrompt, &p.ThinkingEffort, &p.CronExpression, &p.Enabled, &p.MaxResults, &p.AutoRecover,
 		&p.LastRunAt, &p.NextRunAt, &leaseToken, &p.LeaseExpiresAt, &activeRunID, &p.FailureStreak, &lastError, &p.CreatedAt, &p.UpdatedAt,
 	); err != nil {
 		return nil, err
