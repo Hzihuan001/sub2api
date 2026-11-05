@@ -6,6 +6,7 @@
 - 普通 SSE、Responses 兼容流和 OpenAI 兼容流的定向回归及隔离容器验收通过。该修复不改变上游 Cloudflare 524 的超时限制。
 - 主站 `ai.moshu.cloud`、L1 `api.tokenpulse.top`、COS `cos.tokenpulse.top` 已发布同一不可变镜像 `ghcr.io/hzihuan001/sub2api@sha256:c949104a7e9a0393d73c8b2c17b5ab0297926399dfae979724975932c06b7af1`；三站容器均为 healthy、重启数 0，公网 `/health`、`/`、`/pelican-showcase` 返回 200。
 - 源码提交 `898097ae9ea04a2c8ef3cf407331caf37054117c`。本次未将 GitHub Actions 全量工作流记为通过；工作流 Go 小版本锁定不匹配仍需后续整理。
+- 本次只发布网关流式切换修复，没有加入测智计划的思考强度配置；当前新增/编辑计划表单不提供该字段。
 - 部署前备份：`/opt/sub2api-deploy-backups/custom15-gateway-20261105T054114Z/`；旧镜像回滚 digest `sha256:2f76a571730141b6aec90638d814372d16552be3032303b1e401c8603719a922`。仅替换应用容器，数据库、Redis、卷、网络和反代配置未动。
 
 详细记录见 `docs/CUSTOM_RELEASE_0_2_19_CUSTOM15_20261105.md`。
