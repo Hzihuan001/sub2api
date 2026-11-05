@@ -2,7 +2,7 @@
 
 ### 2026-11-06 — 0.2.19-custom.15 候选 — 渠道测智推理强度与测智稳定性
 
-- **状态**：`in-progress`；源码准备推送，尚未创建发布标签、镜像或部署生产。
+- **状态**：`in-progress`；源码已推送到 `codex/v0.2.19-merge-20261029`，提交 `cc63ab2b6`；尚未创建发布标签、镜像或部署生产。
 - **范围**：渠道测智计划支持上游默认、低、中、高和 `xhigh` 推理强度；后端按最终模型能力安全映射请求参数；继续保留测智结果成功展示、空流重试和停用计划清理改造。
 - **数据库**：新增 `backend/migrations/9007_custom_scheduled_test_thinking_effort.sql`，为计划增加 `thinking_effort`，默认 `default`，向后兼容既有计划。
 - **验证**：应用 `go build ./...`、前端 `vue-tsc --noEmit`、前端生产构建、架构合同检查、`git diff --check` 和本次相关定向测试通过。完整测试仍被未修改的基线测试阻塞：旧 `AdminService` 构造调用、旧 Grok 审计测试 API、以及既有原生控件断言；这些失败未归因于本次改动。
