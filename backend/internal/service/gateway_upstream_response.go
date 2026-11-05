@@ -858,6 +858,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 	needModelReplace := originalModel != mappedModel
 	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
+	upstreamEventSent := false  // 区分本地 SSE 心跳与实际转发给客户端的上游事件
 	sawTerminalEvent := false
 	useNoopDeltaKeepalive := c != nil && c.Request != nil && shouldUseClaudeCodeNoopDeltaKeepalive(c.GetHeader("User-Agent"))
 	noopDeltaKeepaliveBlockIndex := -1
@@ -1065,14 +1066,14 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, ev.err
 				}
 				// 上游中途读错误（unexpected EOF / connection reset 等，常见于 HTTP/2 GOAWAY）：
-				// 若尚未向客户端写过任何字节，包成 UpstreamFailoverError 让 handler 层走 failover/重试。
-				// 已经开始写流时 SSE 协议无 resume，只能透传错误事件给客户端。
+				// 只发送过本地 SSE 心跳时仍可安全 failover；一旦转发过上游事件，SSE 无 resume，
+				// 不能重放请求或把两条响应流拼接。
 				// 注意:面向客户端的 disconnectMsg 必须用 sanitizeStreamError 剥离地址,
 				// 默认 *net.OpError 的 Error() 会泄露内部 IP/端口和上游地址。完整 ev.err
 				// 仅在下方 LegacyPrintf 内部日志中保留供运维诊断。
 				disconnectMsg := "upstream stream disconnected: " + sanitizeStreamError(ev.err)
-				if !c.Writer.Written() {
-					logger.LegacyPrintf("service.gateway", "Upstream stream read error before any client output (account=%d), failing over: %v", account.ID, ev.err)
+				if !upstreamEventSent {
+					logger.LegacyPrintf("service.gateway", "Upstream stream read error before any upstream event output (account=%d), failing over: %v", account.ID, ev.err)
 					body, _ := json.Marshal(map[string]any{
 						"type": "error",
 						"error": map[string]string{
@@ -1081,9 +1082,10 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 						},
 					})
 					return nil, &UpstreamFailoverError{
-						StatusCode:             http.StatusBadGateway,
-						ResponseBody:           body,
-						RetryableOnSameAccount: true,
+						StatusCode:               http.StatusBadGateway,
+						ResponseBody:             body,
+						RetryableOnSameAccount:   true,
+						SafeToFailoverAfterWrite: c.Writer.Written(),
 					}
 				}
 				sendErrorEvent("stream_read_error", disconnectMsg)
@@ -1108,6 +1110,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 				for _, block := range outputBlocks {
 					if !clientDisconnected {
+						upstreamEventSent = true
 						restored := reverseToolNamesIfPresent(c, []byte(block))
 						if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
 							clientDisconnected = true

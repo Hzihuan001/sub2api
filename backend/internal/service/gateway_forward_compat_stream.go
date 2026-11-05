@@ -225,6 +225,23 @@ func finishAnthropicCompatStreamFailure(c *gin.Context, writerSizeBeforeStream i
 		}
 		return nil, failure.err
 	}
+	// Responses compatibility streams commit HTTP 200 headers before reading the
+	// upstream body. A reset before any translated event is still safe to retry:
+	// the client has only received headers, not model output. Once an event was
+	// written, preserve the in-stream failure and never splice a second response.
+	if failure.errType == "stream_read_error" && c.Writer.Size() == writerSizeBeforeStream {
+		body, _ := json.Marshal(map[string]any{
+			"error": map[string]string{
+				"type":    "upstream_disconnected",
+				"message": failure.message,
+			},
+		})
+		return nil, &UpstreamFailoverError{
+			StatusCode:               http.StatusBadGateway,
+			ResponseBody:             body,
+			SafeToFailoverAfterWrite: true, // HTTP headers are committed, but no SSE event has been sent.
+		}
+	}
 	writeFailure()
 	if !result.Usage.hasObservedTokens() {
 		return nil, failure.err

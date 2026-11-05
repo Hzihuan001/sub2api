@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -298,6 +299,51 @@ func TestHandleResponsesStreamingResponse_RestoresNamespaceTool(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"name":"read_thread"`)
 	require.Contains(t, rec.Body.String(), `"namespace":"codex_app"`)
 	require.NotContains(t, rec.Body.String(), `"name":"codex_app__read_thread"`)
+}
+
+func TestHandleResponsesStreamingResponse_ReadResetBeforeOutputAllowsFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       &streamReadCloser{err: io.ErrUnexpectedEOF},
+	}
+
+	result, err := (&GatewayService{}).handleResponsesStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite, "HTTP 200 headers are committed, but no Responses event was sent")
+	require.Empty(t, rec.Body.String(), "must not send a terminal error before the handler gets a chance to retry")
+}
+
+func TestHandleResponsesStreamingResponse_ReadResetAfterOutputDoesNotAllowFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	payload := strings.Join([]string{
+		"event: message_start",
+		`data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4.5","usage":{"input_tokens":1}}}`,
+		"",
+		"",
+	}, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       &streamReadCloser{payload: []byte(payload), err: io.ErrUnexpectedEOF},
+	}
+
+	result, err := (&GatewayService{}).handleResponsesStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+	require.Error(t, err)
+	require.NotNil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr), "once a Responses event is sent, the request must not be replayed")
+	require.Contains(t, rec.Body.String(), "event: response.failed")
 }
 
 func TestExtractResponsesReasoningEffortFromBody(t *testing.T) {
