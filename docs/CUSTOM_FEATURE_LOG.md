@@ -1,12 +1,12 @@
 # 定制功能日志
 
-### 2026-11-06 — 0.2.19-custom.16 — 本站实际测试结果与定时测智
+### 2026-11-06 — 0.2.19-custom.16 — 本站实际测试结果与定时测智（已完成发布）
 
 - 测智计划可选上游默认、低、中、高和 `xhigh` 推理强度，按最终模型能力决定是否发送参数。
 - 默认测智提示词按要求固定为：`创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画，你不需要任何测试。`
 - 修复 Responses 流客户端断开后的上游 usage drain/状态报告；显式 OpenAI incomplete 和缺少 Claude `message_stop` 时展示具体失败，而不是误报成功或错误重试。
 - 迁移 `9007_custom_scheduled_test_thinking_effort.sql` 增加计划强度字段，默认 `default`。
-- 完整验证结果、未通过的无关测试类别、镜像和生产逐站结果见 `CUSTOM_RELEASE_0_2_19_CUSTOM16_20261106.md`。
+- 完整验证结果、未通过的无关测试类别、镜像和生产逐站结果见 [`CUSTOM_RELEASE_0_2_19_CUSTOM16_20261106.md`](CUSTOM_RELEASE_0_2_19_CUSTOM16_20261106.md)。
 
 ### 2026-11-05 — 未发布 — 渠道测智可选推理强度 xhigh
 
