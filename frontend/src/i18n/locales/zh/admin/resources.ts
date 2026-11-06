@@ -26,6 +26,7 @@ export default {
       noResults: '暂无测试结果',
       responseText: '响应',
       errorMessage: '错误',
+      errorUnavailable: '测试失败，但没有返回错误详情',
       success: '成功',
       failed: '失败',
       running: '运行中',

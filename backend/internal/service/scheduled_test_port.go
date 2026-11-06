@@ -34,11 +34,7 @@ const (
 	ScheduledTestKindConnection    = "connection"
 	ScheduledTestKindPelican       = "pelican"
 	LegacyDefaultPelicanTestPrompt = "Create a self-contained HTML file with a 2D SVG animation of a pelican riding a bicycle."
-	DefaultPelicanTestPrompt       = `Create a polished, self-contained HTML file with an inline SVG animation of a white pelican riding a red bicycle.
-
-Use a fixed 800x500 SVG viewBox and keep the entire pelican and bicycle fully inside the canvas at all times. The pelican must visibly have a complete head, beak, neck, body, both wings, tail, two legs, two feet, and all bicycle parts including frame, seat, handlebars, pedals, chain area, and two complete wheels. Do not crop, hide, overlap, or omit any body part. Keep the near and far legs, feet, cranks, and pedals visibly connected and animate both legs pedaling.
-
-Use a clean flat vector illustration with a blue sky, sun, clouds, green hills, and a gray road. Animate the wheels, pedals, legs, road dashes, hills, clouds, and a subtle body motion in a smooth 6-second loop. Use only inline HTML, SVG, CSS, and JavaScript. Do not use external resources, fonts, images, network requests, markdown fences, or explanatory prose. Return only the complete HTML document.`
+	DefaultPelicanTestPrompt       = `创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画，你不需要任何测试。`
 	DefaultPelicanShowcaseDescription = "作品由系统定时使用各分组账号生成。相同题目下，可以通过画面完整度、指令遵循和响应稳定性直观看出差异；页面不会改变正常请求、计费或账号调度。"
 )
 

@@ -3187,10 +3187,9 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 
 	for {
 		line, err := reader.ReadString('\n')
-		if err != nil {
+		if err != nil && len(line) == 0 {
 			if err == io.EOF {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
+				return s.sendErrorAndEnd(c, "Anthropic stream ended before message_stop")
 			}
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
 		}
@@ -3231,6 +3230,16 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 				}
 			}
 			return s.sendErrorAndEnd(c, errorMsg)
+		}
+
+		// ReadString can return a final unterminated line together with EOF.
+		// Process that line first (so a terminal event is honored), then require
+		// message_stop if the stream ended without a terminal event.
+		if err == io.EOF {
+			return s.sendErrorAndEnd(c, "Anthropic stream ended before message_stop")
+		}
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
 		}
 	}
 }
@@ -3359,6 +3368,19 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		case "response.completed", "response.done":
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 			return nil
+		case "response.incomplete":
+			// An explicit incomplete terminal event is a model result, not an
+			// interrupted transport. Preserve the reason so scheduled tests do
+			// not mistake output limits or content filtering for a retryable EOF.
+			errorMsg := "OpenAI response incomplete"
+			if responseData, ok := data["response"].(map[string]any); ok {
+				if details, ok := responseData["incomplete_details"].(map[string]any); ok {
+					if reason, ok := details["reason"].(string); ok && strings.TrimSpace(reason) != "" {
+						errorMsg += ": " + strings.TrimSpace(reason)
+					}
+				}
+			}
+			return s.sendErrorAndEnd(c, errorMsg)
 		case "response.failed":
 			errorMsg := "OpenAI response failed"
 			if responseData, ok := data["response"].(map[string]any); ok {

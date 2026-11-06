@@ -26,6 +26,7 @@ export default {
       noResults: 'No test results yet',
       responseText: 'Response',
       errorMessage: 'Error',
+      errorUnavailable: 'Test failed without an error detail',
       success: 'Success',
       failed: 'Failed',
       running: 'Running',

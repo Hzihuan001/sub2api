@@ -199,6 +199,9 @@
               </div>
               <span v-if="plan.test_kind === 'pelican'" class="inline-flex shrink-0 items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">渠道测智</span>
               <span v-if="plan.test_kind === 'pelican' && plan.group_id" class="inline-flex max-w-40 shrink-0 truncate rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-dark-700 dark:text-dark-300">{{ groupName(plan.group_id) }}</span>
+              <span v-if="plan.test_kind === 'pelican'" class="inline-flex shrink-0 items-center rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
+                {{ t('admin.scheduledTests.thinkingEffort') }}: {{ thinkingEffortLabel(plan.thinking_effort) }}
+              </span>
 
               <!-- Enabled Toggle -->
               <div class="flex items-center gap-1.5" @click.stop>
@@ -467,8 +470,10 @@
 
                 <!-- Response / Error (collapsible) -->
                 <div v-if="result.error_message" class="mt-2">
-                  <div
-                    class="cursor-pointer text-xs font-medium text-red-600 dark:text-red-400"
+                  <button
+                    type="button"
+                    class="text-xs font-medium text-red-600 dark:text-red-400"
+                    :aria-expanded="expandedResultIds.has(result.id)"
                     @click="toggleResultDetail(result.id)"
                   >
                     {{ t('admin.scheduledTests.errorMessage') }}
@@ -480,12 +485,16 @@
                         expandedResultIds.has(result.id) ? 'rotate-180' : ''
                       ]"
                     />
-                  </div>
+                  </button>
+                  <p class="mt-1 break-all text-xs text-red-600 dark:text-red-400">{{ resultErrorSummary(result.error_message) }}</p>
                   <pre
                     v-if="expandedResultIds.has(result.id)"
                     class="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-900/20 dark:text-red-300"
                   >{{ result.error_message }}</pre>
                 </div>
+                <p v-else-if="result.status === 'failed' && !result.response_text" class="mt-2 text-xs text-red-600 dark:text-red-400">
+                  {{ t('admin.scheduledTests.errorUnavailable') }}
+                </p>
                 <div v-else-if="result.response_text" class="mt-2">
                   <div
                     class="cursor-pointer text-xs font-medium text-gray-600 dark:text-gray-400"
@@ -577,6 +586,23 @@ const deletingPlan = ref<ScheduledTestPlan | null>(null)
 const editingPlanId = ref<number | null>(null)
 const updating = ref(false)
 type ThinkingEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh'
+const thinkingEffortLabels: Record<ThinkingEffort, string> = {
+  default: 'thinkingEffortDefault',
+  low: 'thinkingEffortLow',
+  medium: 'thinkingEffortMedium',
+  high: 'thinkingEffortHigh',
+  xhigh: 'thinkingEffortXHigh'
+}
+const thinkingEffortLabel = (effort?: ThinkingEffort) => {
+  const key = effort && thinkingEffortLabels[effort] ? effort : 'default'
+  return t('admin.scheduledTests.' + thinkingEffortLabels[key])
+}
+
+const resultErrorSummary = (message: string) => {
+  const firstLine = message.split(String.fromCharCode(10)).find(line => line.trim())?.trim() || ''
+  return firstLine.length > 180 ? firstLine.slice(0, 180) + '…' : firstLine
+}
+
 const editForm = reactive({
   model_id: '' as string,
   test_kind: 'connection' as string,

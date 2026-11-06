@@ -241,14 +241,15 @@ func TestAnthropicCompatStreaming_ReadErrorBeforeTerminalEventFails(t *testing.T
 	}, "\n") + "\n"
 	for name, handle := range compatStreamHandlers() {
 		for _, tc := range []struct {
-			name       string
-			stream     string
-			wantErr    bool
-			wantResult bool
+			name         string
+			stream       string
+			wantErr      bool
+			wantResult   bool
+			wantFailover bool
 		}{
 			{name: "after_text", stream: anthropicStreamTruncatedBeforeMessageDelta(), wantErr: true, wantResult: true},
 			{name: "after_message_start", stream: messageStartOnly, wantErr: true, wantResult: true},
-			{name: "before_any_event", stream: "", wantErr: true},
+			{name: "before_any_event", stream: "", wantFailover: true},
 			{name: "after_stop_reason", stream: anthropicStreamWithoutMessageStop(), wantResult: true},
 			{name: "after_message_stop_without_stop_reason", stream: strings.Replace(anthropicStreamWithMidStreamText(), `"delta":{"stop_reason":"end_turn"}`, `"delta":{}`, 1), wantResult: true},
 		} {
@@ -260,7 +261,14 @@ func TestAnthropicCompatStreaming_ReadErrorBeforeTerminalEventFails(t *testing.T
 
 				result, err := handle(&GatewayService{}, &http.Response{Header: http.Header{}, Body: body}, c)
 
-				if tc.wantErr {
+				if tc.wantFailover {
+					var failover *UpstreamFailoverError
+					require.ErrorAs(t, err, &failover)
+					require.Equal(t, http.StatusBadGateway, failover.StatusCode)
+					require.True(t, failover.SafeToFailoverAfterWrite)
+					require.Nil(t, result)
+					require.NotContains(t, rec.Body.String(), compatStreamFailureMarkers[name])
+				} else if tc.wantErr {
 					require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 					require.NotErrorIs(t, err, errAnthropicNativeStreamIdle)
 					require.NotContains(t, rec.Body.String(), compatStreamTerminalMarkers[name])
@@ -785,6 +793,7 @@ func TestHandleCCStreamingFromAnthropic_ClientDisconnectDrainsUpstreamUsage(t *t
 	)
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	t.Logf("writer=%+v result=%+v body=%q", writer, result, writer.Body.String())
 	require.True(t, writer.failed)
 	require.True(t, result.ClientDisconnect)
 	require.Zero(t, writer.writesAfterError)

@@ -698,20 +698,21 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	resultWithUsage := func() *ForwardResult {
 		return &ForwardResult{
-			RequestID:       requestID,
-			UpstreamHeaders: resp.Header,
-			Usage:           usage,
-			Model:           originalModel,
-			UpstreamModel:   mappedModel,
-			ReasoningEffort: reasoningEffort,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:        requestID,
+			UpstreamHeaders:  resp.Header,
+			Usage:            usage,
+			Model:            originalModel,
+			UpstreamModel:    mappedModel,
+			ReasoningEffort:  reasoningEffort,
+			Stream:           true,
+			Duration:         time.Since(startTime),
+			FirstTokenMs:     firstTokenMs,
+			ClientDisconnect: stream.clientDisconnected,
 		}
 	}
 
 	// processEvent handles a single parsed Anthropic SSE event.
-	processEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+	processEvent := func(event *apicompat.AnthropicStreamEvent) {
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -727,7 +728,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			mergeAnthropicUsage(&usage, event.Message.Usage)
 		}
 		if stream.clientDisconnected {
-			return true
+			return
 		}
 		syncAnthropicResponsesUsage(state, usage)
 		normalizeAnthropicEventUsageForResponses(event, usage)
@@ -759,14 +760,13 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 						zap.String("request_id", requestID),
 					)
 					stream.markClientDisconnected()
-					return true // client disconnected
+					return // Continue reading upstream to collect final usage.
 				}
 			}
 		}
 		if len(events) > 0 {
 			c.Writer.Flush()
 		}
-		return false
 	}
 
 	finalizeStream := func() (*ForwardResult, error) {
@@ -828,9 +828,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		if stream.upstreamErrType != "" {
 			break
 		}
-		if processEvent(&event) {
-			break
-		}
+		processEvent(&event)
 	}
 
 	if result, err := keyAccountKiroNativeResult(resp, resultWithUsage(), stream.readErr, originalModel, mappedModel, true, startTime); err != nil && hasKeyAccountKiroProtocol(resp) {
