@@ -3,6 +3,7 @@
 ### 2026-11-09 — upstream v0.2.20 — 本地合并候选（未发布）
 
 - **上游/基线**：官方 `v0.2.20` / `dab829a4e9b7d1cc307189aea8b0319eb29e29d0`；本地 `.17` 候选 `b0dde8b89d92a38ad6b42f0286e962e03b2c5db3`，分支 `upgrade/upstream-v0.2.20-20261109`。
+- **本地合并提交**：`fcebfd70ac91f0e2e1615dd170338f744388cc47`；仅本地，尚未推送。
 - **冲突与保留**：解决 27 个文件冲突，保留 custom providers、权限、Pelican 与 worker 接入；接入上游 MCP OAuth、请求体限制和超时、Gemini、管理员密钥与 OpenAI 图片尺寸路由。修复 Grok 诊断字段丢失、数据库托管 Grok 目录被旧表单值覆盖，以及 Responses 兼容流传输失败丢失部分 usage。
 - **迁移**：上游新增 `249_mcp_oauth.sql`。本次没有连接或迁移生产数据库。
 - **模块化**：运行时 `.s2plugin` 当前只支持 OpenAI OAuth outbound transport。Pelican 展示/API/UI/worker 适合先作为独立编译期 feature provider 重组，再建立单功能升级补丁；账号权限、测试调度、结果数据和计费仍由宿主负责。
