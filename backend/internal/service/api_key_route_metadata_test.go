@@ -17,7 +17,7 @@ func TestAPIKeyRouteMetadataAuthSnapshotRoundTripAndVersionFence(t *testing.T) {
 	}
 	snapshot := svc.snapshotFromAPIKey(context.Background(), key)
 	require.NotNil(t, snapshot)
-	require.Equal(t, 29, snapshot.Version)
+	require.Equal(t, 30, snapshot.Version)
 	require.Equal(t, KeyRouteScopeAccountV2, snapshot.KeyRouteScope)
 	require.EqualValues(t, 73, snapshot.KeyRouteRevision)
 	got, ok, err := svc.applyAuthCacheEntry(key.Key, &APIKeyAuthCacheEntry{Snapshot: snapshot})

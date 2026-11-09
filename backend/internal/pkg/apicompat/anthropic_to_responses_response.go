@@ -215,11 +215,9 @@ type AnthropicEventToResponsesState struct {
 	CurrentCallID string
 	CurrentName   string
 	// CurrentArgs accumulates input_json_delta fragments for the currently
-	// open function_call. Codex treats function_call_arguments.done and
-	// output_item.done as authoritative for tool execution, so the full
-	// arguments must be carried on both terminal events — the streamed
-	// deltas alone are not enough.
-	CurrentArgs strings.Builder
+	// open function_call. Codex treats terminal events as authoritative, so the
+	// complete arguments must be carried on both terminal events.
+	CurrentArgs string
 
 	// Content of the currently open item, folded into Outputs when it closes.
 	CurrentContent []ResponsesContentPart // message
@@ -229,6 +227,10 @@ type AnthropicEventToResponsesState struct {
 	CurrentThinking AnthropicContentBlock
 	// Some Claude models require thinking signatures to be preserved verbatim.
 	PreserveThinkingSignatures bool
+	textAccumBuffer            *strings.Builder
+	currentArgsBuffer          *strings.Builder
+	currentSummaryBuffer       *strings.Builder
+	currentSignatureBuffer     *strings.Builder
 
 	// PendingToolInput holds tool arguments that arrived complete on
 	// content_block_start instead of as input_json_delta. It is only consumed at
@@ -363,6 +365,8 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		state.CurrentItemType = "reasoning"
 		state.CurrentThinking = *evt.ContentBlock
 		state.CurrentSummary = evt.ContentBlock.Thinking
+		state.currentSummaryBuffer = nil
+		state.currentSignatureBuffer = nil
 		state.ContentIndex = 0
 
 		events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
@@ -411,6 +415,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 			Part:         &ResponsesContentPart{Type: "output_text", Text: ""},
 		}))
 		state.TextAccum = ""
+		state.textAccumBuffer = nil
 
 	case "tool_use":
 		// Close previous item if any
@@ -423,7 +428,8 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		}
 		state.CurrentCallID = toResponsesCallID(evt.ContentBlock.ID)
 		state.CurrentName = evt.ContentBlock.Name
-		state.CurrentArgs.Reset()
+		state.CurrentArgs = ""
+		state.currentArgsBuffer = nil
 		// The canonical Anthropic stream leaves input empty here and streams the
 		// arguments as input_json_delta, but Anthropic-compatible relays may put
 		// the complete arguments on this event and never send a delta. Keep them
@@ -456,7 +462,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.Text == "" {
 			return nil
 		}
-		state.TextAccum += evt.Delta.Text
+		state.TextAccum = appendStreamString(&state.textAccumBuffer, state.TextAccum, evt.Delta.Text)
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
 			OutputIndex:  state.OutputIndex,
 			ContentIndex: state.ContentIndex,
@@ -468,7 +474,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.Thinking == "" {
 			return nil
 		}
-		state.CurrentSummary += evt.Delta.Thinking
+		state.CurrentSummary = appendStreamString(&state.currentSummaryBuffer, state.CurrentSummary, evt.Delta.Thinking)
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
 			OutputIndex:  state.OutputIndex,
 			SummaryIndex: 0,
@@ -480,11 +486,10 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.PartialJSON == "" {
 			return nil
 		}
-		// Accumulate the fragment so terminal events can carry the full tool input.
-		_, _ = state.CurrentArgs.WriteString(evt.Delta.PartialJSON)
 		// A real delta supersedes whatever content_block_start carried; keeping
 		// both would splice two complete JSON documents together.
 		state.PendingToolInput = ""
+		state.CurrentArgs = appendStreamString(&state.currentArgsBuffer, state.CurrentArgs, evt.Delta.PartialJSON)
 		if state.CurrentItemType == "custom_tool_call" {
 			return nil
 		}
@@ -499,7 +504,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 	case "signature_delta":
 		// Keep signatures in the opaque bridge envelope, never in visible text.
 		if state.PreserveThinkingSignatures {
-			state.CurrentThinking.Signature += evt.Delta.Signature
+			state.CurrentThinking.Signature = appendStreamString(&state.currentSignatureBuffer, state.CurrentThinking.Signature, evt.Delta.Signature)
 		}
 		return nil
 	}
@@ -526,10 +531,11 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 		// No delta ever arrived, so the arguments the upstream put on
 		// content_block_start are all there is. Emit them as one delta here so
 		// the done event below still repeats exactly what the deltas streamed.
-		args := state.CurrentArgs.String()
+		args := state.CurrentArgs
 		if args == "" && state.PendingToolInput != "" {
 			args = state.PendingToolInput
-			_, _ = state.CurrentArgs.WriteString(args)
+			state.CurrentArgs = args
+			state.currentArgsBuffer = nil
 			events = append(events, makeResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 				OutputIndex: state.OutputIndex,
 				Delta:       state.PendingToolInput,
@@ -557,11 +563,12 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 		return events
 
 	case "custom_tool_call":
-		if state.CurrentArgs.Len() == 0 && state.PendingToolInput != "" {
-			_, _ = state.CurrentArgs.WriteString(state.PendingToolInput)
+		if state.CurrentArgs == "" && state.PendingToolInput != "" {
+			state.CurrentArgs = state.PendingToolInput
+			state.currentArgsBuffer = nil
 		}
 		state.PendingToolInput = ""
-		input := extractCustomToolCallInput(normalizeResponsesFunctionArgs(state.CurrentArgs.String()))
+		input := extractCustomToolCallInput(normalizeResponsesFunctionArgs(state.CurrentArgs))
 		events := []ResponsesStreamEvent{}
 		if input != "" {
 			events = append(events, makeResponsesEvent(state, "response.custom_tool_call_input.delta", &ResponsesStreamEvent{
@@ -586,6 +593,7 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 		// item itself stays open since more blocks may follow.
 		text := state.TextAccum
 		state.TextAccum = ""
+		state.textAccumBuffer = nil
 		contentIndex := state.ContentIndex
 		state.CurrentContent = append(state.CurrentContent, ResponsesContentPart{Type: "output_text", Text: text})
 		// 关掉一个 part 就推进 content_index：上面那句注释说的「item 保持打开，
@@ -683,7 +691,7 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	// unroutable (observed as "only chat, no tool calls").
 	callID := state.CurrentCallID
 	name := state.CurrentName
-	args := state.CurrentArgs.String()
+	args := state.CurrentArgs
 	content := state.CurrentContent
 	summary := state.CurrentSummary
 	thinking := state.CurrentThinking
@@ -693,12 +701,16 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	state.CurrentItemID = ""
 	state.CurrentCallID = ""
 	state.CurrentName = ""
-	state.CurrentArgs.Reset()
+	state.CurrentArgs = ""
 	state.CurrentContent = nil
+	state.currentArgsBuffer = nil
 	state.PendingToolInput = ""
 	state.CurrentSummary = ""
+	state.currentSummaryBuffer = nil
 	state.CurrentThinking = AnthropicContentBlock{}
+	state.currentSignatureBuffer = nil
 	state.TextAccum = ""
+	state.textAccumBuffer = nil
 	state.OutputIndex++
 	state.ContentIndex = 0
 

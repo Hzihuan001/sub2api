@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/keyrouting"
 )
 
@@ -148,14 +149,18 @@ func observeKeyAccountOpenAISSEBody(ctx context.Context, body []byte) {
 	}
 }
 
-func collectGeminiSSEForKeyAccount(resp *http.Response, isOAuth bool, observe func([]byte)) (map[string]any, *ClaudeUsage, geminiSSECollectStats, error) {
+func collectGeminiSSEForKeyAccount(resp *http.Response, isOAuth bool, observe func([]byte), configs ...*config.Config) (map[string]any, *ClaudeUsage, geminiSSECollectStats, error) {
+	var cfg *config.Config
+	if len(configs) > 0 {
+		cfg = configs[0]
+	}
 	proofContext := KeyAccountResponseContext(resp)
 	if proofContext == nil {
-		return collectGeminiSSEObserved(resp.Body, isOAuth, observe)
+		return collectGeminiSSEObserved(cfg, resp.Body, isOAuth, observe)
 	}
 	var failurePayload []byte
 	var actualUsage *ClaudeUsage
-	collected, usage, stats, err := collectGeminiSSEObserved(resp.Body, isOAuth, func(payload []byte) {
+	collected, usage, stats, err := collectGeminiSSEObserved(cfg, resp.Body, isOAuth, func(payload []byte) {
 		observeKeyAccountProtocolPayload(proofContext, payload)
 		if u := extractGeminiUsage(payload); u.hasObservedTokens() {
 			actualUsage = u

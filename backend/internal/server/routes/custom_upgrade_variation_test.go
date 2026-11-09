@@ -204,6 +204,10 @@ func TestCustomUpgradeRouteBoundaryVariants(t *testing.T) {
 						count++
 						require.Contains(t, chain[6], "OperatorTargetUserWriteGuard")
 					}
+					if strings.Contains(route, " /api/v1/admin/groups/") {
+						count++
+						require.Contains(t, chain[6], "ScopedAdminKeyGroupModels")
+					}
 					require.Len(t, chain, count, route)
 					require.Contains(t, chain[1], "PanelRateLimiter")
 					require.Contains(t, chain[3], "AdminRouteAuthorization")

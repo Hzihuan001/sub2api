@@ -201,6 +201,7 @@
         "backend/internal/server/routes/pelican_showcase.go",
         "backend/internal/service/pelican_showcase_service.go",
         "backend/internal/service/pelican_test_adapter.go",
+        "backend/internal/service/pelican_test_result.go",
         "backend/internal/service/scheduled_test_port.go",
         "backend/internal/service/scheduled_test_runner_service.go",
         "backend/internal/service/scheduled_test_service.go",

@@ -39,6 +39,7 @@ func (p bootstrapPermissionProvider) Permissions() []custom.Permission {
 
 func bootstrapHandlers() *handler.Handlers {
 	return &handler.Handlers{
+		MCPOAuth: handler.NewMCPOAuthHandler(nil, nil, nil, nil, &config.Config{}),
 		Admin: &handler.AdminHandlers{
 			Setting: &admin.SettingHandler{}, PromptAudit: securityaudit.NewPromptAdminHandler(nil),
 			PromptRule: &admin.PromptRuleHandler{}, APIKey: &admin.AdminAPIKeyHandler{},
@@ -169,9 +170,12 @@ func TestApplicationCustomRoutesPreserveOrderMiddlewareAndNativeSurface(t *testi
 	for route, method := range builtinAdminRouteContracts {
 		require.Contains(t, routes, route, "missing real application custom mount")
 		require.Contains(t, routes[route], "."+method+"-fm", "route must retain its actual handler")
-		expectedCount := 7 // auth, global limit, audit, authorization, financial filter, compliance, handler
+		expectedCount := 8 // admin middleware, account scope, and handler
 		if route == "POST /api/v1/admin/users/:id/api-keys" || route == "DELETE /api/v1/admin/api-keys/:id" {
 			expectedCount++
+		}
+		if strings.Contains(route, " /api/v1/admin/groups/") {
+			expectedCount++ // upstream group routes share the scoped model guard
 		}
 		require.Equal(t, expectedCount, counts[route], "route middleware changed: %s", route)
 		parts := strings.SplitN(route, " ", 2)
@@ -192,8 +196,11 @@ func TestApplicationCustomRoutesPreserveOrderMiddlewareAndNativeSurface(t *testi
 			require.Contains(t, chain[3], "AdminRouteAuthorization")
 			require.Contains(t, chain[4], "OperatorFinancialResponseFilter")
 			require.Contains(t, chain[5], "AdminComplianceGuard")
-			if expectedCount == 8 {
-				require.Contains(t, chain[6], "OperatorTargetUserWriteGuard", "retain the original per-resource write guard")
+			if route == "POST /api/v1/admin/users/:id/api-keys" || route == "DELETE /api/v1/admin/api-keys/:id" {
+				require.Contains(t, chain[7], "OperatorTargetUserWriteGuard", "retain the per-resource write guard")
+			}
+			if strings.Contains(route, " /api/v1/admin/groups/") {
+				require.Contains(t, chain[7], "ScopedAdminKeyGroupModels", "retain the group-scoped model guard")
 			}
 		}
 	}

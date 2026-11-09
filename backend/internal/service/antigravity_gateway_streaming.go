@@ -143,6 +143,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	}
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.settingService.cfg, maxLineSize, nil))
 	usage := &ClaudeUsage{}
 	var actualUsage *ClaudeUsage
 	var firstTokenMs *int
@@ -160,11 +161,16 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	// 独立 goroutine 读取上游，避免读取阻塞影响超时处理
 	events := make(chan scanEvent, 16)
 	done := make(chan struct{})
+	queueBudget := newSSEQueueBudget(s.settingService.cfg)
 	sendEvent := func(ev scanEvent) bool {
+		if !queueBudget.acquire(len(ev.line), done) {
+			return false
+		}
 		select {
 		case events <- ev:
 			return true
 		case <-done:
+			queueBudget.release(len(ev.line))
 			return false
 		}
 	}
@@ -257,6 +263,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	for {
 		select {
 		case ev, ok := <-events:
+			if ok {
+				queueBudget.release(len(ev.line))
+			}
 			if !ok {
 				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}, nil
 			}
@@ -384,6 +393,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	}
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.settingService.cfg, maxLineSize, nil))
 
 	usage := &ClaudeUsage{}
 	var actualUsage *ClaudeUsage
@@ -406,11 +416,16 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	// 独立 goroutine 读取上游，避免读取阻塞影响超时处理
 	events := make(chan scanEvent, 16)
 	done := make(chan struct{})
+	queueBudget := newSSEQueueBudget(s.settingService.cfg)
 	sendEvent := func(ev scanEvent) bool {
+		if !queueBudget.acquire(len(ev.line), done) {
+			return false
+		}
 		select {
 		case events <- ev:
 			return true
 		case <-done:
+			queueBudget.release(len(ev.line))
 			return false
 		}
 	}
@@ -450,6 +465,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 	for {
 		select {
 		case ev, ok := <-events:
+			if ok {
+				queueBudget.release(len(ev.line))
+			}
 			if !ok {
 				// 流结束，返回收集的响应
 				goto returnResponse
@@ -812,6 +830,7 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 	}
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.settingService.cfg, maxLineSize, nil))
 
 	var firstTokenMs *int
 	var actualUsage *ClaudeUsage
@@ -835,11 +854,16 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 	// 独立 goroutine 读取上游，避免读取阻塞影响超时处理
 	events := make(chan scanEvent, 16)
 	done := make(chan struct{})
+	queueBudget := newSSEQueueBudget(s.settingService.cfg)
 	sendEvent := func(ev scanEvent) bool {
+		if !queueBudget.acquire(len(ev.line), done) {
+			return false
+		}
 		select {
 		case events <- ev:
 			return true
 		case <-done:
+			queueBudget.release(len(ev.line))
 			return false
 		}
 	}
@@ -879,6 +903,9 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 	for {
 		select {
 		case ev, ok := <-events:
+			if ok {
+				queueBudget.release(len(ev.line))
+			}
 			if !ok {
 				// 流结束，转换并返回响应
 				goto returnResponse
@@ -1064,6 +1091,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	}
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.settingService.cfg, maxLineSize, nil))
 
 	// 辅助函数：转换 antigravity.ClaudeUsage 到 service.ClaudeUsage
 	convertUsage := func(agUsage *antigravity.ClaudeUsage) *ClaudeUsage {
@@ -1085,11 +1113,16 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	// 独立 goroutine 读取上游，避免读取阻塞影响超时处理
 	events := make(chan scanEvent, 16)
 	done := make(chan struct{})
+	queueBudget := newSSEQueueBudget(s.settingService.cfg)
 	sendEvent := func(ev scanEvent) bool {
+		if !queueBudget.acquire(len(ev.line), done) {
+			return false
+		}
 		select {
 		case events <- ev:
 			return true
 		case <-done:
+			queueBudget.release(len(ev.line))
 			return false
 		}
 	}
@@ -1162,6 +1195,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	for {
 		select {
 		case ev, ok := <-events:
+			if ok {
+				queueBudget.release(len(ev.line))
+			}
 			if !ok {
 				// 上游完成，发送结束事件
 				finalEvents, agUsage := processor.Finish()

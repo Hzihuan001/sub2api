@@ -488,9 +488,22 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
-	finalResp, usage := s.collectAnthropicResponseFromSSE(resp.Body, requestID, nil)
-	if result, err := keyAccountKiroNativeResult(resp, nil, nil, originalModel, mappedModel, false, startTime); err != nil {
+	finalResp, usage, streamFailure := s.collectAnthropicResponseFromSSE(resp.Body, requestID, nil)
+	var streamErr error
+	if streamFailure != nil {
+		streamErr = streamFailure.err
+	}
+	if result, err := keyAccountKiroNativeResult(resp, nil, streamErr, originalModel, mappedModel, false, startTime); err != nil && hasKeyAccountKiroProtocol(resp) {
 		return result, err
+	}
+	if streamFailure != nil {
+		_ = resp.Body.Close()
+		writeResponsesError(c, http.StatusBadGateway, "server_error", streamFailure.message)
+		return &ForwardResult{
+			RequestID: requestID, UpstreamHeaders: resp.Header, Usage: usage,
+			Model: originalModel, UpstreamModel: mappedModel, ReasoningEffort: reasoningEffort,
+			Duration: time.Since(startTime),
+		}, streamFailure.err
 	}
 
 	if finalResp == nil {
@@ -507,20 +520,22 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 // Anthropic 响应。onEvent 在每个事件解析成功后被调用（可为 nil），供调用方挂载
 // 心跳一类的副作用——compact 请求会借此在漫长的摘要生成期间向下游发送保活字节。
 func (s *GatewayService) collectAnthropicResponseFromSSE(
-	body io.Reader,
+	body io.ReadCloser,
 	requestID string,
 	onEvent func(),
-) (*apicompat.AnthropicResponse, ClaudeUsage) {
+) (*apicompat.AnthropicResponse, ClaudeUsage, *anthropicCompatStreamFailure) {
 	scanner := bufio.NewScanner(body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 	}
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.cfg, maxLineSize, nil))
 
 	// Accumulate the final Anthropic response from streaming events
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
+	streamStatus := &anthropicCompatStream{body: body, maxLineSize: maxLineSize}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -550,6 +565,11 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 		}
 		if onEvent != nil {
 			onEvent()
+		}
+
+		streamStatus.observe(&event, payload)
+		if streamStatus.upstreamErrType != "" {
+			break
 		}
 
 		// message_start carries the initial response structure
@@ -598,7 +618,8 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 			)
 		}
 	}
-	return finalResp, usage
+	streamStatus.readErr = scanner.Err()
+	return finalResp, usage, streamStatus.failure()
 }
 
 // writeResponsesBufferedResult 把聚合好的 Anthropic 响应转成 Responses JSON 写回。

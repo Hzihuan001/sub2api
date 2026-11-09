@@ -2907,7 +2907,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesAccountPriorityWith
 	}
 }
 
-func TestOpenAIAccountScheduler_SkipsAccountBlockedForRequestedModel(t *testing.T) {
+func TestOpenAIAccountScheduler_KeepsTransientModelFailuresRequestLocal(t *testing.T) {
 	now := time.Now()
 	account := &Account{ID: 21633, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 	svc := &OpenAIGatewayService{openaiModelTransient: newOpenAIAccountModelTransientState(128)}
@@ -2915,7 +2915,7 @@ func TestOpenAIAccountScheduler_SkipsAccountBlockedForRequestedModel(t *testing.
 	svc.openaiModelTransient.recordFailure(account.ID, "gpt-5.5", now.Add(time.Millisecond))
 	scheduler := &defaultOpenAIAccountScheduler{service: svc}
 
-	require.False(t, scheduler.isAccountRequestCompatible(context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.5"}))
+	require.True(t, scheduler.isAccountRequestCompatible(context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.5"}))
 	require.True(t, scheduler.isAccountRequestCompatible(context.Background(), account, OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.6-sol"}))
 }
 

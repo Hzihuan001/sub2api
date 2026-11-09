@@ -1,5 +1,14 @@
 # 定制功能日志
 
+### 2026-11-09 — upstream v0.2.20 — 本地合并候选（未发布）
+
+- **上游/基线**：官方 `v0.2.20` / `dab829a4e9b7d1cc307189aea8b0319eb29e29d0`；本地 `.17` 候选 `b0dde8b89d92a38ad6b42f0286e962e03b2c5db3`，分支 `upgrade/upstream-v0.2.20-20261109`。
+- **冲突与保留**：解决 27 个文件冲突，保留 custom providers、权限、Pelican 与 worker 接入；接入上游 MCP OAuth、请求体限制和超时、Gemini、管理员密钥与 OpenAI 图片尺寸路由。修复 Grok 诊断字段丢失、数据库托管 Grok 目录被旧表单值覆盖，以及 Responses 兼容流传输失败丢失部分 usage。
+- **迁移**：上游新增 `249_mcp_oauth.sql`。本次没有连接或迁移生产数据库。
+- **模块化**：运行时 `.s2plugin` 当前只支持 OpenAI OAuth outbound transport。Pelican 展示/API/UI/worker 适合先作为独立编译期 feature provider 重组，再建立单功能升级补丁；账号权限、测试调度、结果数据和计费仍由宿主负责。
+- **验证**：完整 `go test ./...` 通过；前端 113 项定向测试、类型检查、生产构建及 architecture-negative 35 项通过。
+- **发布/部署**：只在本地升级分支；未推送、未打 tag、未构建或发布镜像、未更新生产。生产仍运行 `.16`，`.17` 尚未部署。
+
 ### 2026-11-09 — 0.2.19-custom.17 — 测智作品校验与每日清理
 
 - 默认 Pelican 题目要求直接在回复中交付完整 HTML/SVG 源码，并明确本次请求是独立会话，不查目录、不创建本地文件、不声称交付文件、不运行测试。

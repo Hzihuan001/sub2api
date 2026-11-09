@@ -1,5 +1,15 @@
 # Upstream upgrade PRs
 
+### 2026-11-09 — upstream v0.2.20 — 本地合并候选
+
+- **上游**：`v0.2.20` / `dab829a4e9b7d1cc307189aea8b0319eb29e29d0`；本地基线 `b0dde8b89d92a38ad6b42f0286e962e03b2c5db3`，合并基点 `dece26153621959ccd7635814f4b2d08304e681a`。
+- **分支/状态**：`upgrade/upstream-v0.2.20-20261109`；本地候选版本文件为 `0.2.20-custom.1`。合并和本地验证已完成；尚未推送、打 tag、构建发布镜像或部署。
+- **冲突处理**：解决 27 个文本冲突，保留定制路由/权限/worker 接入，同时接入上游 MCP OAuth、请求体内存预算和读写超时、Gemini、图片尺寸档位及管理员密钥能力。恢复 Grok diagnostics 与数据库托管目录回填；保留 Responses 传输失败时已解析的 usage。
+- **迁移边界**：上游新增 `backend/migrations/249_mcp_oauth.sql`；本次没有连接生产或执行迁移。MCP 仍受 `MCP_PUBLIC_URL` 配置控制。
+- **插件化评估**：`.s2plugin` 运行时只接受 OpenAI OAuth 出站传输能力；Pelican 展示可作为编译期 custom provider 的独立模块候选，但路由注册、管理 UI、计划 worker 仍由宿主装配。先抽清 `pelican-showcase` provider/feature registry 和独立升级补丁，不扩展运行时权限协议；测智调度、账号权限、结果存储和计费保留在宿主。
+- **验证**：完整 `go test ./...` 通过；前端 113 项定向测试、类型检查、生产构建通过；custom architecture-negative 35 项通过。
+- **发布决定**：仅本地合并候选；生产按用户要求保持不更新，生产基线仍以 `CUSTOM_PROJECT_STATUS.md` 顶部记录为准。
+
 
 ### 2026-10-30 — P0 鹈鹕执行与调度租约候选（未发布）
 

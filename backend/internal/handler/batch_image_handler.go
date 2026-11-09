@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -89,12 +90,13 @@ func batchImageSubmitBindError(reqLog *zap.Logger, req *http.Request, err error)
 		code, kind = "BATCH_IMAGE_INVALID_JSON", "incomplete_json"
 		message = "Batch request body is empty or incomplete; send a complete JSON object"
 	default:
-		if maxErr, ok := extractMaxBytesError(err); ok {
+		failure := pkghttputil.DescribeRequestBodyReadFailure(req, err)
+		if failure.Kind == pkghttputil.RequestBodyReadErrorMaxBytes {
 			status, code, kind = http.StatusRequestEntityTooLarge, "BATCH_IMAGE_REQUEST_TOO_LARGE", "max_bytes"
-			message = buildBodyTooLargeMessage(maxErr.Limit) + "; use shared_reference_images for shared inputs, reduce image sizes, or split the batch into smaller tasks"
-			fields = append(fields, zap.Int64("limit_bytes", maxErr.Limit))
-		} else if requestBodyReadErrorKind(err) != "io_read" {
-			code, kind = "BATCH_IMAGE_REQUEST_READ_FAILED", requestBodyReadErrorKind(err)
+			message = buildBodyTooLargeMessage(failure.MaxBytesLimit) + "; use shared_reference_images for shared inputs, reduce image sizes, or split the batch into smaller tasks"
+			fields = append(fields, zap.Int64("limit_bytes", failure.MaxBytesLimit))
+		} else if failure.Kind != pkghttputil.RequestBodyReadErrorIO {
+			code, kind = "BATCH_IMAGE_REQUEST_READ_FAILED", failure.Kind
 			message = "Unable to read the complete batch request; retry the upload"
 		}
 	}
@@ -103,7 +105,7 @@ func batchImageSubmitBindError(reqLog *zap.Logger, req *http.Request, err error)
 		contentEncoding := "identity"
 		if req != nil {
 			contentLength = req.ContentLength
-			contentEncoding = requestContentEncodingCategory(req.Header.Get("Content-Encoding"))
+			contentEncoding = pkghttputil.RequestContentEncodingCategory(req.Header.Get("Content-Encoding"))
 		}
 		fields = append(fields, zap.String("error_kind", kind), zap.Int64("content_length", contentLength), zap.String("content_encoding", contentEncoding))
 		reqLog.Warn("batch image request binding failed", fields...)

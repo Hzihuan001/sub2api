@@ -25,6 +25,7 @@ import (
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -670,7 +671,9 @@ func lockAndMergeAccountProbeExtra(
 				false
 			),
 			extra -> 'opencode_go_usage_auto_refresh',
-			extra -> 'opencode_go_usage_snapshot'
+			extra -> 'opencode_go_usage_snapshot',
+			extra -> 'grok_observed_models',
+			extra -> 'upstream_model_metadata'
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -699,6 +702,8 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaSnapshot          []byte
 		currentOpenCodeAutoRefresh     []byte
 		currentOpenCodeSnapshot        []byte
+		currentGrokObservedModels      []byte
+		currentUpstreamModelMetadata   []byte
 	)
 	// The OpenCode Go managed-state columns were added after the original
 	// probe snapshot query.  Keep the scanner tolerant of older test doubles
@@ -723,6 +728,9 @@ func lockAndMergeAccountProbeExtra(
 			&currentOpenCodeAutoRefresh,
 			&currentOpenCodeSnapshot,
 		)
+		if len(columns) >= 14 {
+			scanTargets = append(scanTargets, &currentGrokObservedModels, &currentUpstreamModelMetadata)
+		}
 	}
 	if err := rows.Scan(scanTargets...); err != nil {
 		return nil, err
@@ -835,6 +843,21 @@ func lockAndMergeAccountProbeExtra(
 			} else if ok {
 				extra[service.OpenCodeGoUsageSnapshotExtraKey] = snapshot
 			}
+		}
+	}
+	// Grok catalog and capability metadata are managed by sync jobs. Preserve
+	// the latest locked database values instead of accepting stale form payloads.
+	for key, raw := range map[string][]byte{
+		"grok_observed_models":                currentGrokObservedModels,
+		service.UpstreamModelMetadataExtraKey: currentUpstreamModelMetadata,
+	} {
+		delete(extra, key)
+		value, ok, err := decodeAccountExtraJSON(raw)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			extra[key] = value
 		}
 	}
 	return extra, nil
@@ -1940,6 +1963,12 @@ func (r *accountRepository) GetGroups(ctx context.Context, accountID int64) ([]s
 }
 
 func (r *accountRepository) BindGroups(ctx context.Context, accountID int64, groupIDs []int64) error {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.BindGroups(ctx, accountID, groupIDs)
+	}
+	if adminaccess.RestrictedFromContext(ctx) != nil {
+		return r.scopedAdminBindGroups(ctx, accountID, groupIDs)
+	}
 	existingGroupIDs, err := r.loadAccountGroupIDs(ctx, accountID)
 	if err != nil {
 		return err
