@@ -146,6 +146,14 @@ func (s *ScheduledTestService) SaveResult(ctx context.Context, planID int64, max
 	return s.resultRepo.PruneOldResults(ctx, planID, maxResults)
 }
 
+func (s *ScheduledTestService) CleanupPelicanResultsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	cleaner, ok := s.resultRepo.(PelicanScheduledTestResultCleaner)
+	if !ok {
+		return 0, fmt.Errorf("scheduled test result repository does not support Pelican cleanup")
+	}
+	return cleaner.DeletePelicanResultsBefore(ctx, cutoff)
+}
+
 func computeNextRun(cronExpr string, from time.Time) (time.Time, error) {
 	sched, err := scheduledTestCronParser.Parse(cronExpr)
 	if err != nil {

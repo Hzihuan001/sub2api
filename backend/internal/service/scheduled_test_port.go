@@ -31,10 +31,13 @@ type ScheduledTestPlan struct {
 }
 
 const (
-	ScheduledTestKindConnection    = "connection"
-	ScheduledTestKindPelican       = "pelican"
-	LegacyDefaultPelicanTestPrompt = "Create a self-contained HTML file with a 2D SVG animation of a pelican riding a bicycle."
-	DefaultPelicanTestPrompt       = `创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画，你不需要任何测试。`
+	ScheduledTestKindConnection      = "connection"
+	ScheduledTestKindPelican         = "pelican"
+	LegacyDefaultPelicanTestPrompt   = "Create a self-contained HTML file with a 2D SVG animation of a pelican riding a bicycle."
+	PreviousDefaultPelicanTestPrompt = `创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画，你不需要任何测试。`
+	DefaultPelicanTestPrompt         = `创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画，你不需要任何测试。
+
+每次测智都是一次新会话，不要查找或沿用历史会话、目标目录或同名文件。请直接在本条回复中输出可保存的完整HTML源码，必须包含完整的 <html> 和 <svg> 标签及动画内容；不要尝试创建本地文件，不要声称已经创建文件，也不要用说明文字代替源码。不运行测试。`
 	DefaultPelicanShowcaseDescription = "作品由系统定时使用各分组账号生成。相同题目下，可以通过画面完整度、指令遵循和响应稳定性直观看出差异；页面不会改变正常请求、计费或账号调度。"
 )
 
@@ -125,4 +128,8 @@ type ScheduledTestResultRepository interface {
 	Create(ctx context.Context, result *ScheduledTestResult) (*ScheduledTestResult, error)
 	ListByPlanID(ctx context.Context, planID int64, limit int) ([]*ScheduledTestResult, error)
 	PruneOldResults(ctx context.Context, planID int64, keepCount int) error
+}
+
+type PelicanScheduledTestResultCleaner interface {
+	DeletePelicanResultsBefore(ctx context.Context, cutoff time.Time) (int64, error)
 }

@@ -384,6 +384,24 @@ func (r *scheduledTestResultRepository) PruneOldResults(ctx context.Context, pla
 	return err
 }
 
+func (r *scheduledTestResultRepository) DeletePelicanResultsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	result, err := r.db.ExecContext(ctx, `
+		DELETE FROM scheduled_test_results AS r
+		USING scheduled_test_plans AS p
+		WHERE r.plan_id = p.id
+		  AND p.test_kind = $1
+		  AND r.created_at < $2
+	`, service.ScheduledTestKindPelican, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
 // --- scan helpers ---
 
 type scannable interface {

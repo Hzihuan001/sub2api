@@ -1,11 +1,21 @@
 package service
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDefaultPelicanTestPrompt(t *testing.T) {
 	prompt := DefaultPelicanTestPrompt
-	want := "创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画，你不需要任何测试。"
-	if prompt != want {
-		t.Fatalf("default Pelican prompt = %q, want %q", prompt, want)
+	for _, required := range []string{
+		PreviousDefaultPelicanTestPrompt,
+		"每次测智都是一次新会话",
+		"输出可保存的完整HTML源码",
+		"不要声称已经创建文件",
+		"不运行测试",
+	} {
+		if !strings.Contains(prompt, required) {
+			t.Errorf("default Pelican prompt %q does not contain %q", prompt, required)
+		}
 	}
 }

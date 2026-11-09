@@ -81,7 +81,7 @@
             >
               <div class="relative aspect-square bg-gray-50 dark:bg-dark-900/60">
                 <iframe
-                  v-if="result.status === 'success' && isMarkup(result.response_text)"
+                  v-if="result.status === 'success' && hasPelicanArtifact(result.response_text) && isMarkup(result.response_text)"
                   class="h-full w-full border-0"
                   :srcdoc="sandboxDocument(extractMarkup(result.response_text || ''))"
                   sandbox="allow-scripts"
@@ -92,8 +92,8 @@
                   v-else
                   class="h-full overflow-auto whitespace-pre-wrap p-4 text-xs leading-5 text-gray-700 dark:text-dark-200"
                 >{{ result.response_text || '上游返回了空内容' }}</pre>
-                <span class="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-1 text-[11px] text-white">
-                  已完成
+                <span class="absolute left-3 top-3 rounded-full px-2 py-1 text-[11px]" :class="resultBadgeClass(result)">
+                  {{ resultBadgeLabel(result) }}
                 </span>
               </div>
               <div class="space-y-1 border-t border-gray-100 px-4 py-3 dark:border-dark-700">
@@ -210,17 +210,46 @@ function formatTime(value?: string) {
 }
 
 function statusLabel(group: PelicanShowcaseGroup) {
-  if (group.status === 'healthy') return '最近测试正常'
-  if (group.status === 'degraded') return '最近测试失败'
-  if (group.status === 'stale') return '测试已过期'
+  const status = effectiveGroupStatus(group)
+  if (status === 'healthy') return '最近测试正常'
+  if (status === 'degraded') return '最近测试失败'
+  if (status === 'stale') return '测试已过期'
   return '等待测试'
 }
 
 function statusClass(group: PelicanShowcaseGroup) {
-  if (group.status === 'healthy') return 'rounded-full bg-emerald-100 px-2.5 py-1 text-xs text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-  if (group.status === 'degraded') return 'rounded-full bg-red-100 px-2.5 py-1 text-xs text-red-700 dark:bg-red-500/15 dark:text-red-300'
-  if (group.status === 'stale') return 'rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+  const status = effectiveGroupStatus(group)
+  if (status === 'healthy') return 'rounded-full bg-emerald-100 px-2.5 py-1 text-xs text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+  if (status === 'degraded') return 'rounded-full bg-red-100 px-2.5 py-1 text-xs text-red-700 dark:bg-red-500/15 dark:text-red-300'
+  if (status === 'stale') return 'rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
   return 'rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500 dark:bg-dark-700 dark:text-dark-400'
+}
+
+function effectiveGroupStatus(group: PelicanShowcaseGroup) {
+  const newest = group.results?.[0] || group.latest
+  if (group.status === 'healthy' && newest?.status.toLowerCase() === 'success' && !hasPelicanArtifact(newest.response_text)) {
+    return 'degraded'
+  }
+  return group.status
+}
+
+function resultBadgeLabel(result: PelicanShowcaseResult) {
+  if (result.status.toLowerCase() !== 'success') return '失败'
+  return hasPelicanArtifact(result.response_text) ? '已完成' : '未交付源码'
+}
+
+function resultBadgeClass(result: PelicanShowcaseResult) {
+  if (result.status.toLowerCase() !== 'success') return 'bg-red-600/80 text-white'
+  return hasPelicanArtifact(result.response_text) ? 'bg-black/60 text-white' : 'bg-amber-600/90 text-white'
+}
+
+function hasPelicanArtifact(value?: string) {
+  const markup = (value || '').toLowerCase()
+  const htmlStart = markup.indexOf('<html')
+  const svgStart = markup.indexOf('<svg')
+  const svgEnd = markup.lastIndexOf('</svg>')
+  const htmlEnd = markup.lastIndexOf('</html>')
+  return htmlStart >= 0 && svgStart > htmlStart && svgEnd > svgStart && htmlEnd > svgEnd
 }
 
 function downloadResult(result: PelicanShowcaseResult) {

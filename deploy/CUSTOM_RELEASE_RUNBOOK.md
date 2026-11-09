@@ -1,8 +1,8 @@
 # Sub2API custom release runbook
 
-## Current release: custom.16 — actual-test fixes and default prompt (2026-11-06)
+## Current release: custom.17 — artifact validation and daily cleanup (2026-11-09)
 
-Release report: [`.16` release record](../docs/CUSTOM_RELEASE_0_2_19_CUSTOM16_20261106.md). Main, L1 and COS were updated from `0.2.19-custom.15` to `.16`, all on digest `sha256:a3f3a1e9cc5d51cfe262407faf3e32197a27b4b3f227eaaf39a4389d294aff30`. The authorized local build → GHCR → immutable pull-back acceptance → verified backups → natural-drain-only app rollout main → L1 → COS is complete. Do not make paid model calls or modify DNS/CDN/proxy configuration.
+Release report: [`custom.17` release record](../docs/CUSTOM_RELEASE_0_2_19_CUSTOM17_20261109.md). This release corrects false success on Pelican prose responses, requests inline complete HTML/SVG source, and removes Pelican results older than the current local day at 00:05 (plus a startup catch-up sweep). Preserve plans and ordinary connection-test results. Roll out app-only main → L1 → COS after verified backups and natural drain. Do not make paid model calls or modify DNS/CDN/proxy configuration.
 
 The new default prompt is exactly `创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画，你不需要任何测试。`; this is model prompt text and does not waive software verification. Scheduled plans support provider default, low, medium, high and `xhigh` reasoning strength. Migration 9007 is additive; preserve all business rows and prior migrations. Keep the `.15` digest as the application-only rollback target. The three-site backup is `/opt/sub2api-deploy-backups/custom16-20261106T044446Z/`.
 

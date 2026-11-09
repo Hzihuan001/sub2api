@@ -25,7 +25,7 @@ describe('PelicanShowcaseView successful results', () => {
         success_count: 2,
         failure_count: 3,
         results: [
-          { id: 11, status: 'success', model_id: 'gpt-test', response_text: '<html><body>good</body></html>', latency_ms: 1000, started_at: '', finished_at: '2026-11-04T01:00:00Z' },
+          { id: 11, status: 'success', model_id: 'gpt-test', response_text: '<html><body><svg></svg></body></html>', latency_ms: 1000, started_at: '', finished_at: '2026-11-04T01:00:00Z' },
           { id: 12, status: 'failed', model_id: 'gpt-test', error_message: 'secret upstream failure', latency_ms: 0, started_at: '', finished_at: '2026-11-04T00:59:00Z' },
         ],
         latest_failure: { id: 12, status: 'failed', model_id: 'gpt-test', error_message: 'secret upstream failure', latency_ms: 0, started_at: '', finished_at: '2026-11-04T00:59:00Z' },
@@ -64,5 +64,35 @@ describe('PelicanShowcaseView successful results', () => {
     expect(wrapper.text()).not.toContain('hidden reason')
     expect(wrapper.findAll('iframe')).toHaveLength(0)
     expect(wrapper.findAll('article article')).toHaveLength(0)
+  })
+
+  it('does not label a successful prose response as a completed Pelican artifact', async () => {
+    getPelicanShowcase.mockResolvedValueOnce({
+      groups: [{
+        id: 3,
+        name: 'Astra',
+        platform: 'openai',
+        status: 'healthy',
+        success_count: 1,
+        failure_count: 0,
+        results: [{
+          id: 31,
+          status: 'success',
+          model_id: 'gpt-6-astra',
+          response_text: 'I cannot create files in this environment.',
+          latency_ms: 1000,
+          started_at: '',
+          finished_at: '2026-11-09T01:00:00Z',
+        }],
+      }],
+    })
+
+    const wrapper = mount(PelicanShowcaseView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('最近测试失败')
+    expect(wrapper.text()).toContain('未交付源码')
+    expect(wrapper.text()).not.toContain('已完成')
+    expect(wrapper.findAll('iframe')).toHaveLength(0)
   })
 })

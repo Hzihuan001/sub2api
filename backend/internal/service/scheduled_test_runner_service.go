@@ -70,7 +70,11 @@ func (s *ScheduledTestRunnerService) Start() {
 			return
 		}
 		s.cron = c
+		if _, err := c.AddFunc("5 0 * * *", func() { s.cleanupPelicanResults(loc) }); err != nil {
+			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] daily cleanup not scheduled: %v", err)
+		}
 		s.cron.Start()
+		go s.cleanupPelicanResults(loc)
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] started (tick=every minute)")
 	})
 }
@@ -142,14 +146,14 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	var result *ScheduledTestResult
 	var err error
 	if plan.TestKind == ScheduledTestKindPelican {
-		prompt := plan.TestPrompt
-		if prompt == "" || prompt == LegacyDefaultPelicanTestPrompt {
-			prompt = DefaultPelicanTestPrompt
-		}
+		prompt, validateArtifact := normalizePelicanTestPrompt(plan.TestPrompt)
 		if plan.GroupID == nil || s.pelicanExecutor == nil {
 			err = fmt.Errorf("Pelican test requires a group-scoped executor")
 		} else {
 			result, err = s.pelicanExecutor.Run(ctx, plan.AccountID, *plan.GroupID, plan.ModelID, prompt, plan.ThinkingEffort)
+		}
+		if err == nil {
+			validatePelicanTestResult(result, validateArtifact)
 		}
 	} else {
 		result, err = s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
@@ -216,6 +220,32 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, now, nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func (s *ScheduledTestRunnerService) cleanupPelicanResults(loc *time.Location) {
+	if s == nil || s.scheduledSvc == nil {
+		return
+	}
+	if loc == nil {
+		loc = time.Local
+	}
+	cutoff := pelicanResultsCleanupCutoff(time.Now(), loc)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	deleted, err := s.scheduledSvc.CleanupPelicanResultsBefore(ctx, cutoff)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] daily Pelican result cleanup failed: %v", err)
+		return
+	}
+	logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] daily Pelican result cleanup removed %d results before %s", deleted, cutoff.Format(time.RFC3339))
+}
+
+func pelicanResultsCleanupCutoff(now time.Time, loc *time.Location) time.Time {
+	if loc == nil {
+		loc = time.Local
+	}
+	localNow := now.In(loc)
+	return time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, loc)
 }
 
 func scheduledTestFailureBackoff(streak int) time.Duration {

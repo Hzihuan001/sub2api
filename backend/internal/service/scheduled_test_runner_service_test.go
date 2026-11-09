@@ -8,9 +8,9 @@ import (
 )
 
 type scheduledRunnerPlanRepoStub struct {
-	updated   bool
-	lastRun   time.Time
-	nextRun   time.Time
+	updated bool
+	lastRun time.Time
+	nextRun time.Time
 }
 
 func (r *scheduledRunnerPlanRepoStub) Create(context.Context, *ScheduledTestPlan) (*ScheduledTestPlan, error) {
@@ -47,7 +47,9 @@ func (r *scheduledRunnerResultRepoStub) Create(_ context.Context, result *Schedu
 func (r *scheduledRunnerResultRepoStub) ListByPlanID(context.Context, int64, int) ([]*ScheduledTestResult, error) {
 	return r.results, nil
 }
-func (r *scheduledRunnerResultRepoStub) PruneOldResults(context.Context, int64, int) error { return nil }
+func (r *scheduledRunnerResultRepoStub) PruneOldResults(context.Context, int64, int) error {
+	return nil
+}
 
 type scheduledRunnerPelicanExecutorStub struct{}
 
@@ -59,12 +61,19 @@ func (scheduledRunnerPelicanExecutorStub) Run(_ context.Context, _, _ int64, _, 
 	}, nil
 }
 
+type scheduledRunnerPelicanResponseStub struct{ response string }
+
+func (s scheduledRunnerPelicanResponseStub) Run(context.Context, int64, int64, string, string, string) (*ScheduledTestResult, error) {
+	now := time.Now()
+	return &ScheduledTestResult{Status: "success", ResponseText: s.response, StartedAt: now, FinishedAt: now}, nil
+}
+
 func TestScheduledTestRunnerPersistsPelicanFailureAndAdvancesSchedule(t *testing.T) {
 	planRepo := &scheduledRunnerPlanRepoStub{}
 	resultRepo := &scheduledRunnerResultRepoStub{}
 	runner := &ScheduledTestRunnerService{
-		planRepo:       planRepo,
-		scheduledSvc:   NewScheduledTestService(planRepo, resultRepo),
+		planRepo:        planRepo,
+		scheduledSvc:    NewScheduledTestService(planRepo, resultRepo),
 		pelicanExecutor: scheduledRunnerPelicanExecutorStub{},
 	}
 	plan := &ScheduledTestPlan{
@@ -86,6 +95,34 @@ func TestScheduledTestRunnerPersistsPelicanFailureAndAdvancesSchedule(t *testing
 	}
 	if !planRepo.nextRun.After(planRepo.lastRun) {
 		t.Fatalf("next run %s is not after last run %s", planRepo.nextRun, planRepo.lastRun)
+	}
+}
+
+func TestScheduledTestRunnerMarksDefaultPelicanToolRefusalAsFailed(t *testing.T) {
+	planRepo := &scheduledRunnerPlanRepoStub{}
+	resultRepo := &scheduledRunnerResultRepoStub{}
+	runner := &ScheduledTestRunnerService{
+		planRepo:        planRepo,
+		scheduledSvc:    NewScheduledTestService(planRepo, resultRepo),
+		pelicanExecutor: scheduledRunnerPelicanResponseStub{response: "I cannot create files in this environment."},
+	}
+	plan := &ScheduledTestPlan{
+		ID: 12, AccountID: 23, GroupID: i64ptr(34), ModelID: "gpt-6-astra",
+		TestKind: ScheduledTestKindPelican, TestPrompt: PreviousDefaultPelicanTestPrompt,
+		CronExpression: "* * * * *", Enabled: true, MaxResults: 5,
+	}
+
+	runner.runOnePlan(context.Background(), plan)
+
+	if len(resultRepo.results) != 1 {
+		t.Fatalf("saved results = %d, want 1", len(resultRepo.results))
+	}
+	result := resultRepo.results[0]
+	if result.Status != "failed" || result.ErrorMessage != invalidPelicanArtifactError {
+		t.Fatalf("saved result = %#v, want failed artifact validation", result)
+	}
+	if result.ResponseText != "I cannot create files in this environment." {
+		t.Fatalf("response was not retained for diagnosis: %q", result.ResponseText)
 	}
 }
 
