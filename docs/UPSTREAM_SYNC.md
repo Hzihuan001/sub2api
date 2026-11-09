@@ -1,14 +1,13 @@
 # Upstream upgrade PRs
 
-### 2026-11-09 — upstream v0.2.20 — 本地合并候选
+### 2026-11-10 — upstream v0.2.20 — 合并、发布与生产部署完成
 
-- **上游**：`v0.2.20` / `dab829a4e9b7d1cc307189aea8b0319eb29e29d0`；本地基线 `b0dde8b89d92a38ad6b42f0286e962e03b2c5db3`，合并基点 `dece26153621959ccd7635814f4b2d08304e681a`。
-- **分支/状态**：`upgrade/upstream-v0.2.20-20261109`；本地合并提交 `fcebfd70ac91f0e2e1615dd170338f744388cc47`，候选版本文件为 `0.2.20-custom.1`。尚未推送、打 tag、构建发布镜像或部署。
-- **冲突处理**：解决 27 个文本冲突，保留定制路由/权限/worker 接入，同时接入上游 MCP OAuth、请求体内存预算和读写超时、Gemini、图片尺寸档位及管理员密钥能力。恢复 Grok diagnostics 与数据库托管目录回填；保留 Responses 传输失败时已解析的 usage。
-- **迁移边界**：上游新增 `backend/migrations/249_mcp_oauth.sql`；本次没有连接生产或执行迁移。MCP 仍受 `MCP_PUBLIC_URL` 配置控制。
-- **插件化评估**：`.s2plugin` 运行时只接受 OpenAI OAuth 出站传输能力；Pelican 展示可作为编译期 custom provider 的独立模块候选，但路由注册、管理 UI、计划 worker 仍由宿主装配。先抽清 `pelican-showcase` provider/feature registry 和独立升级补丁，不扩展运行时权限协议；测智调度、账号权限、结果存储和计费保留在宿主。
-- **验证**：完整 `go test ./...` 通过；前端 113 项定向测试、类型检查、生产构建通过；custom architecture-negative 35 项通过。
-- **发布决定**：仅本地合并候选；生产按用户要求保持不更新，生产基线仍以 `CUSTOM_PROJECT_STATUS.md` 顶部记录为准。
+- **上游/源码**：官方 `v0.2.20` / `dab829a4e9b7d1cc307189aea8b0319eb29e29d0`；定制升级分支 `upgrade/upstream-v0.2.20-20261109`，运行提交 `eb069def5b0dbcdd8f85f4294fa20434a6537015`，tag `custom-0.2.20.1`。
+- **制品**：`ghcr.io/hzihuan001/sub2api@sha256:f3a21007c4a9a2e5941435dffadaf5467b2dbd2a4db400baad0e165150578693`，版本 `0.2.20-custom.1`，`linux/amd64`；本地构建后推送并按 digest 拉回验收。没有宣称 GitHub Actions 执行成功。
+- **冲突处理**：解决 27 个文本冲突并保留定制 providers、权限、Pelican 和 worker 接入；接入 MCP OAuth、请求体预算/超时、Gemini、管理员密钥和图片尺寸路由；修复 Grok 诊断/目录回填与 Responses usage 保留。
+- **迁移**：新增 `249_mcp_oauth.sql`。主站 334→335，L1/COS 343→344；仅该迁移新增，旧文件名和 checksum 均未改变。
+- **生产**：main → L1 → COS 已逐站更新同一 digest；应用 healthy/restart 0，PostgreSQL/Redis 容器未重建。三站公网 `/health` 与 `/pelican-showcase` 均返回 200。备份、自然排空、UI 检查和限制见 [`.20` 发布记录](CUSTOM_RELEASE_0_2_20_CUSTOM1_20261110.md)。
+- **插件化评估**：Pelican 可作为编译期 provider/feature 拆分候选，需统一 handler/API、管理 UI 和 scheduled-test worker 注册边界；账号授权、调度、结果持久化和计费继续由宿主负责。
 
 
 ### 2026-10-30 — P0 鹈鹕执行与调度租约候选（未发布）

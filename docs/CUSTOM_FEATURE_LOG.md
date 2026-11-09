@@ -1,14 +1,12 @@
 # 定制功能日志
 
-### 2026-11-09 — upstream v0.2.20 — 本地合并候选（未发布）
+### 2026-11-10 — 0.2.20-custom.1 — 官方 v0.2.20 合并与三站生产发布
 
-- **上游/基线**：官方 `v0.2.20` / `dab829a4e9b7d1cc307189aea8b0319eb29e29d0`；本地 `.17` 候选 `b0dde8b89d92a38ad6b42f0286e962e03b2c5db3`，分支 `upgrade/upstream-v0.2.20-20261109`。
-- **本地合并提交**：`fcebfd70ac91f0e2e1615dd170338f744388cc47`；仅本地，尚未推送。
-- **冲突与保留**：解决 27 个文件冲突，保留 custom providers、权限、Pelican 与 worker 接入；接入上游 MCP OAuth、请求体限制和超时、Gemini、管理员密钥与 OpenAI 图片尺寸路由。修复 Grok 诊断字段丢失、数据库托管 Grok 目录被旧表单值覆盖，以及 Responses 兼容流传输失败丢失部分 usage。
-- **迁移**：上游新增 `249_mcp_oauth.sql`。本次没有连接或迁移生产数据库。
-- **模块化**：运行时 `.s2plugin` 当前只支持 OpenAI OAuth outbound transport。Pelican 展示/API/UI/worker 适合先作为独立编译期 feature provider 重组，再建立单功能升级补丁；账号权限、测试调度、结果数据和计费仍由宿主负责。
-- **验证**：完整 `go test ./...` 通过；前端 113 项定向测试、类型检查、生产构建及 architecture-negative 35 项通过。
-- **发布/部署**：只在本地升级分支；未推送、未打 tag、未构建或发布镜像、未更新生产。生产仍运行 `.16`，`.17` 尚未部署。
+- 官方 `v0.2.20` 已与 `.17` 定制改造合并；运行源码 `eb069def5b0dbcdd8f85f4294fa20434a6537015`，tag `custom-0.2.20.1`。`.17` 未独立部署，部署前生产仍为 `.16`。
+- 三站运行同一镜像 `ghcr.io/hzihuan001/sub2api@sha256:f3a21007c4a9a2e5941435dffadaf5467b2dbd2a4db400baad0e165150578693`，healthy、restart 0。应用级更新，未重建 PostgreSQL/Redis，未改卷、网络或反代。
+- 迁移仅新增 `249_mcp_oauth.sql`；旧账本行和 checksum 均保持不变。备份、逐站健康、浏览器页面和限制见 [发布记录](CUSTOM_RELEASE_0_2_20_CUSTOM1_20261110.md)。
+- 已检查测智卡片渲染、分组筛选、刷新和 `xhigh` 编辑控件；未提交计划变更、未发起模型调用或付费生成。
+- 模块化方向延续：Pelican handler/API、管理 UI、scheduled-test worker 需由同一编译期 provider/feature 边界注册；用户授权、调度、结果和计费仍由宿主负责。
 
 ### 2026-11-09 — 0.2.19-custom.17 — 测智作品校验与每日清理
 

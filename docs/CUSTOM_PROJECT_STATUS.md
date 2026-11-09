@@ -1,13 +1,14 @@
 # 定制项目状态与官方升级说明
 
-### 2026-11-09 — upstream v0.2.20 合并候选（本地、未发布）
+### 2026-11-10 — upstream v0.2.20 / custom.1 三站生产部署完成
 
-- **分支/源码**：`upgrade/upstream-v0.2.20-20261109`，基于本地 `.17` 候选 `b0dde8b89d92a38ad6b42f0286e962e03b2c5db3` 合并官方 `v0.2.20` / `dab829a4e9b7d1cc307189aea8b0319eb29e29d0`；版本文件为 `0.2.20-custom.1`。
-- **当前状态**：本地合并提交 `fcebfd70ac91f0e2e1615dd170338f744388cc47` 已生成；完整后端 `go test ./...` 和定向前端/架构检查通过。没有推送、打发布 tag、构建正式镜像、执行数据库迁移或更新生产；生产仍为 `0.2.19-custom.16`，`.17` 继续按用户要求暂缓。
-- **上游变更**：新增 MCP OAuth 迁移 `249_mcp_oauth.sql`，另含请求体预算/超时、Gemini、管理员密钥权限和 OpenAI 图片尺寸分流。MCP 需配置 `MCP_PUBLIC_URL` 才能启用。
-- **合并修复**：恢复 Grok 模型诊断回传和 `grok_observed_models` / `upstream_model_metadata` 的行锁数据库优先回填；修复 Responses 缓冲流在非 Kiro 传输失败时丢失已解析 usage 的路径；更新 `.20` 路由守卫断言。
-- **验证**：完整 `go test ./...` 通过；前端定向 113 项、类型检查、生产构建和架构合同 35 项通过。测试结果不作为生产验收或发布证据。
-- **插件化审查**：当前 `.s2plugin` 只支持 OpenAI OAuth 出站传输；业务定制采用编译期 `custom.Host` providers。Pelican 展示是优先拆分候选，下一步应把 handler/API 路由、管理 UI 与 scheduled-test worker 对齐到同一 `pelican-showcase` provider/feature 注册边界，再单独重建升级补丁。账号授权、测智调度、结果持久化、用量和计费仍由宿主拥有；不在本轮扩大运行时插件协议。
+- **源码/制品**：分支 `upgrade/upstream-v0.2.20-20261109`，运行提交 `eb069def5b0dbcdd8f85f4294fa20434a6537015`，tag `custom-0.2.20.1`，版本 `0.2.20-custom.1`。已合并 `.17` 改造；`.17` 未单独部署，生产更新前仍为 `.16`。
+- **上游与合并**：基于官方 `v0.2.20` / `dab829a4e9b7d1cc307189aea8b0319eb29e29d0`。接入 MCP OAuth、请求体预算/超时、Gemini、管理员密钥权限和 OpenAI 图片尺寸分流；保留 `.17` 的测智结果校验与每日清理，并修复 Grok 目录回填和 Responses usage 保留。
+- **生产状态**：主站 → L1 → COS 均运行 `0.2.20-custom.1`，同一不可变镜像 `sha256:f3a21007c4a9a2e5941435dffadaf5467b2dbd2a4db400baad0e165150578693`；容器 healthy、restart 0。仅更新应用容器，PostgreSQL、Redis、数据卷、网络和反代未重建或修改。
+- **数据库**：只新增上游 `249_mcp_oauth.sql`；主站账本 334→335，L1/COS 各 343→344。旧迁移行及 checksum 均未改变。详细逐站证据见 [`.20` 发布记录](CUSTOM_RELEASE_0_2_20_CUSTOM1_20261110.md)。
+- **备份**：部署前三站备份在 `/opt/sub2api-deploy-backups/custom20-20261109T191822Z/`，20 项 manifest、SHA-256、PostgreSQL restore list、应用数据和 OpenResty 归档校验通过。
+- **页面验收**：三站公网 `/health` 和 `/pelican-showcase` 返回 200。主站浏览器作品卡片渲染、分组筛选和刷新正常；测智计划编辑器展示默认/低/中/高/超高（`xhigh`）强度。L1/COS 当前浏览器会话未登录，页面正确跳转登录表单；没有提交模型请求或触发付费生成。
+- **插件化审查**：当前 `.s2plugin` 只支持 OpenAI OAuth 出站传输；Pelican 仍适合拆为编译期 provider/feature，统一 handler/API、管理 UI 与 scheduled-test worker 注册边界。账号授权、调度、结果持久化、用量与计费留在宿主；本轮未扩展运行时插件协议。
 
 ### 2026-11-09 — 0.2.19-custom.17 — 渠道测智作品校验与每日清理
 
