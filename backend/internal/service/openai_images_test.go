@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
@@ -40,6 +41,40 @@ func (w *failingOpenAIImageWriter) Write(p []byte) (int, error) {
 	}
 	w.writes++
 	return w.ResponseWriter.Write(p)
+}
+
+func TestOpenAIImagesTransientServerFailureClassification(t *testing.T) {
+	for _, status := range []int{http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, 524} {
+		require.True(t, isOpenAIImagesTransientServerFailure(status, []byte(`{"error":{"message":"gateway timeout"}}`), "gateway timeout"), "status %d", status)
+	}
+	require.False(t, isOpenAIImagesTransientServerFailure(http.StatusBadRequest, []byte(`{"error":{"message":"bad request"}}`), "bad request"))
+	require.False(t, isOpenAIImagesTransientServerFailure(http.StatusBadGateway, []byte(`{"error":{"code":"invalid_api_key"}}`), "invalid api key"))
+	require.False(t, isOpenAIImagesTransientServerFailure(http.StatusBadGateway, []byte(`{"error":{"code":"insufficient_quota"}}`), "insufficient quota"))
+
+	failoverErr := &UpstreamFailoverError{StatusCode: 524}
+	markOpenAIImagesTransientRetry(failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.Equal(t, NextAccountRetry, failoverErr.NextAccountAction)
+}
+
+func TestOpenAIImagesTransientTransportFailureClassification(t *testing.T) {
+	resetErr := &net.OpError{Op: "read", Net: "tcp", Err: errors.New("connection reset by peer")}
+	require.True(t, isOpenAIImagesTransientTransportError(resetErr))
+	require.True(t, isOpenAIImagesTransientTransportError(io.ErrUnexpectedEOF))
+	require.True(t, isOpenAIImagesTransientTransportError(context.DeadlineExceeded))
+	require.True(t, isOpenAIImagesTransientTransportError(&net.DNSError{Err: "temporary DNS failure", IsTemporary: true}))
+	require.False(t, isOpenAIImagesTransientTransportError(&net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", IsNotFound: true}}))
+	require.False(t, isOpenAIImagesTransientTransportError(context.Canceled))
+	require.False(t, isOpenAIImagesTransientTransportError(errors.New("invalid upstream URL")))
+
+	failoverErr := newOpenAIImagesTransportFailoverError()
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Equal(t, http.StatusBadGateway, failoverErr.ClientStatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.Equal(t, GatewayFailureScopeRequest, failoverErr.Scope)
+	require.Equal(t, NextAccountRetry, failoverErr.NextAccountAction)
 }
 
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSON(t *testing.T) {

@@ -1507,7 +1507,9 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
-			h.adminService.EnsureOpenAIPrivacy(ctx, account)
+			service.AfterAccountCommit(ctx, func(commitCtx context.Context) {
+				h.adminService.EnsureOpenAIPrivacy(commitCtx, account)
+			})
 			return nil, "", err
 		}
 
@@ -1559,7 +1561,9 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 			if updateErr != nil {
 				return nil, "", fmt.Errorf("failed to update credentials: %w", updateErr)
 			}
-			h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
+			service.AfterAccountCommit(ctx, func(commitCtx context.Context) {
+				h.adminService.EnsureAntigravityPrivacy(commitCtx, updatedAccount)
+			})
 			return updatedAccount, "missing_project_id_temporary", nil
 		}
 
@@ -1638,9 +1642,13 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 	}
 
 	// OpenAI OAuth: 刷新成功后检查并设置 privacy_mode
-	h.adminService.EnsureOpenAIPrivacy(ctx, updatedAccount)
+	service.AfterAccountCommit(ctx, func(commitCtx context.Context) {
+		h.adminService.EnsureOpenAIPrivacy(commitCtx, updatedAccount)
+	})
 	// Antigravity OAuth: 刷新成功后检查并设置 privacy_mode
-	h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
+	service.AfterAccountCommit(ctx, func(commitCtx context.Context) {
+		h.adminService.EnsureAntigravityPrivacy(commitCtx, updatedAccount)
+	})
 	// Kiro OAuth: 刷新成功后解析并回填 profile_arn
 	h.adminService.EnsureKiroProfileArn(ctx, updatedAccount)
 

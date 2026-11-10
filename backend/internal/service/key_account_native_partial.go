@@ -64,5 +64,5 @@ func keyAccountGeminiProtocolError(ctx context.Context, resp *http.Response, pay
 	if failure := keyAccountGeminiProtocolFailure(ctx, resp, payload); failure != nil {
 		return failure
 	}
-	return fmt.Errorf("Gemini upstream error %d: %s", code, keyAccountProtocolString(errObject["message"]))
+	return fmt.Errorf("gemini upstream error %d: %s", code, keyAccountProtocolString(errObject["message"]))
 }

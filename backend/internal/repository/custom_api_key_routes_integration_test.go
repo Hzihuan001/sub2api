@@ -46,6 +46,31 @@ func TestCustomAPIKeyRoutesDurableInvalidation(t *testing.T) {
 	}
 	require.Positive(t, count(), "route creation must enqueue durable invalidation")
 	clear()
+	for _, mutation := range []struct {
+		name, query string
+	}{
+		{"route update", "UPDATE custom_api_key_routes SET position = 2 WHERE api_key_id = $1"},
+		{"route policy insert", `INSERT INTO custom_api_key_route_policies(api_key_id, policy) VALUES($1, '{"rules":[]}'::jsonb)`},
+		{"route policy update", `UPDATE custom_api_key_route_policies SET policy = '{"rules":[]}'::jsonb WHERE api_key_id = $1`},
+		{"model policy insert", `INSERT INTO custom_api_key_model_policies(api_key_id, policy) VALUES($1, '{"enabled":true,"models":["test-model"]}'::jsonb)`},
+		{"model policy update", `UPDATE custom_api_key_model_policies SET policy = '{"enabled":true,"models":["other-model"]}'::jsonb WHERE api_key_id = $1`},
+		{"scope update", "UPDATE custom_api_key_account_routes SET scope = 'account_v2' WHERE api_key_id = $1"},
+	} {
+		_, err := integrationDB.ExecContext(ctx, mutation.query, key.ID)
+		require.NoError(t, err, mutation.name)
+		require.Equal(t, 1, count(), mutation.name+" must enqueue once despite the revision update")
+		clear()
+	}
+	_, err := integrationDB.ExecContext(ctx, "UPDATE custom_api_key_account_routes SET revision = nextval('custom_key_route_revision_seq') WHERE api_key_id = $1", key.ID)
+	require.NoError(t, err)
+	require.Zero(t, count(), "bookkeeping-only revisions must not enqueue")
+	_, err = integrationDB.ExecContext(ctx, "UPDATE groups SET name = name || '-cosmetic' WHERE id = $1", backup.ID)
+	require.NoError(t, err)
+	require.Zero(t, count(), "cosmetic backup updates must not enqueue")
+	_, err = integrationDB.ExecContext(ctx, `UPDATE groups SET model_allowlist = '["test-model"]'::jsonb WHERE id = $1`, backup.ID)
+	require.NoError(t, err)
+	require.Equal(t, 1, count(), "backup model permissions must invalidate even without a primary security-field change")
+	clear()
 	result, err := integrationDB.ExecContext(ctx, "UPDATE groups SET status = 'inactive' WHERE id = $1", backup.ID)
 	require.NoError(t, err)
 	affected, err := result.RowsAffected()

@@ -15,10 +15,10 @@ type MemoryAccountHealthStore struct {
 }
 
 type memoryAccountHealthEntry struct {
-	state    *AccountHealthState
-	keyScope string
+	state     *AccountHealthState
+	keyScope  string
 	siteScope string
-	expires  time.Time
+	expires   time.Time
 }
 
 func NewMemoryAccountHealthStore(opts AccountHealthOptions) *MemoryAccountHealthStore {

@@ -180,7 +180,7 @@ func recordKeyRouteForwardFailure(c *gin.Context, err error) {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, service.ErrUpstreamResponseBodyTooLarge) {
 		return
 	}
-	kind := keyrouting.OutcomeIgnored
+	var kind keyrouting.RouteOutcomeKind
 	var transport net.Error
 	_, _, streamFailure := service.OpenAIUpstreamStreamReadErrorDetails(err)
 	switch {

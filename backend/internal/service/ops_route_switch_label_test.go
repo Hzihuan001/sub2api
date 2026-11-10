@@ -21,7 +21,8 @@ func TestMarkOpsRouteSwitchAnnotatesOnlyCurrentAttemptError(t *testing.T) {
 	})
 	MarkOpsRouteSwitch(c, "备用分组")
 	events, _ := c.Get(OpsUpstreamErrorsKey)
-	items := events.([]*OpsUpstreamErrorEvent)
+	items, ok := events.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
 	require.Empty(t, items[0].RouteSwitchGroup)
 	require.Equal(t, "备用分组", items[1].RouteSwitchGroup)
 	require.Equal(t, OpsRouteSwitchLabelPrefix+"备用分组", LastOpsRouteSwitchLabel(items))
@@ -32,7 +33,8 @@ func TestMarkOpsRouteSwitchAnnotatesOnlyCurrentAttemptError(t *testing.T) {
 	BeginOpsRouteErrorAttempt(c, 30)
 	MarkOpsRouteSwitch(c, "ignored") // no new event was added in this attempt
 	events, _ = c.Get(OpsUpstreamErrorsKey)
-	items = events.([]*OpsUpstreamErrorEvent)
+	items, ok = events.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
 	require.Empty(t, items[2].RouteSwitchGroup)
 	require.Empty(t, LastOpsRouteSwitchLabel(items))
 	require.Equal(t, "备用分组", items[1].RouteSwitchGroup)
@@ -61,7 +63,8 @@ func TestMarkOpsRouteSwitchDoesNotInventOrRelabelACause(t *testing.T) {
 				c.Set(OpsUpstreamErrorsKey, []*OpsUpstreamErrorEvent{prior, {AccountID: 30, Message: "other account"}})
 			}
 			MarkOpsRouteSwitch(c, "new target")
-			items := c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+			items, ok := c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+			require.True(t, ok)
 			require.Equal(t, "original target", items[0].RouteSwitchGroup)
 			if tc.appendEvent {
 				require.Empty(t, items[1].RouteSwitchGroup)
@@ -78,11 +81,13 @@ func TestMarkOpsRouteSwitchCopiesSnapshotsAndConsumesCause(t *testing.T) {
 	old := []*OpsUpstreamErrorEvent{{AccountID: 41, Message: "overloaded"}}
 	c.Set(OpsUpstreamErrorsKey, old)
 	MarkOpsRouteSwitch(c, "second")
-	items := c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+	items, ok := c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
 	require.Empty(t, old[0].RouteSwitchGroup, "queued snapshots must not be mutated")
 	require.Equal(t, "second", items[0].RouteSwitchGroup)
 	MarkOpsRouteSwitch(c, "third")
-	items = c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+	items, ok = c.MustGet(OpsUpstreamErrorsKey).([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
 	require.Equal(t, "second", items[0].RouteSwitchGroup, "an empty intermediate group cannot steal the cause")
 }
 
@@ -115,7 +120,7 @@ func TestOpsRouteSwitchLabelContextAndApply(t *testing.T) {
 }
 
 func TestOpsRouteSwitchLabelNormalizesAndBoundsGroupName(t *testing.T) {
-	require.Empty(t, OpsRouteSwitchLabel(nil))
+	require.Empty(t, OpsRouteSwitchLabel(nil)) //nolint:staticcheck // Validate the nil-context fallback.
 	require.Empty(t, NormalizeOpsRouteSwitchLabel("切换备用分组："))
 
 	longName := make([]byte, maxOpsRouteSwitchGroupName+40)

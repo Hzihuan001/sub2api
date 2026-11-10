@@ -43,6 +43,9 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("GO_WANT_PG_DUMPER_HELPER") == "1" {
+		os.Exit(m.Run())
+	}
 	ctx := context.Background()
 
 	if err := timezone.Init("UTC"); err != nil {

@@ -98,7 +98,7 @@ func isOpenAIAccount(account *Account) bool {
 func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, canonicalModel ...string) bool {
 	if account != nil && account.IsOpenAICompatible() &&
 		classifyOpenAIGatewayFailure(statusCode, responseBody, "") == openAIGatewayFailureRequest &&
-		!(isOpenAIImagesSelfBuiltRequest(ctx) && isOpenAIImageCapabilityLossError(statusCode, responseBody)) {
+		(!isOpenAIImagesSelfBuiltRequest(ctx) || !isOpenAIImageCapabilityLossError(statusCode, responseBody)) {
 		return false
 	}
 	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, responseBody) {

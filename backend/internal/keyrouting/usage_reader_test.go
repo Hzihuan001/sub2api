@@ -90,7 +90,10 @@ func TestProtectUsageReaderBoundedAndErrorsUnchanged(t *testing.T) {
 		if err != originalErr || string(actual) != payload {
 			t.Fatal("bounded observer changed bytes or original read error")
 		}
-		wrapped := reader.(*firstContentUsageReader)
+		wrapped, ok := reader.(*firstContentUsageReader)
+		if !ok {
+			t.Fatal("expected a first-content usage observer")
+		}
 		if !wrapped.done || len(wrapped.line) != 0 || len(wrapped.data) != 0 {
 			t.Fatal("oversized metadata must stop observation and release its bounded prefix")
 		}

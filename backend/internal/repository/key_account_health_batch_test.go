@@ -140,13 +140,15 @@ func TestKeyAccountHealthBatchScopeBoundsAndCancellation(t *testing.T) {
 	cancel()
 	_, err = store.GetMany(ctx, []keyrouting.AccountHealthIdentity{id})
 	require.ErrorIs(t, err, context.Canceled)
-	_, err = store.GetMany(nil, []keyrouting.AccountHealthIdentity{id})
+	_, err = store.GetMany(nil, []keyrouting.AccountHealthIdentity{id}) //nolint:staticcheck // Deliberately verify the public API rejects nil contexts without Redis I/O.
 	require.Error(t, err)
 	results, err := store.GetMany(context.Background(), nil)
 	require.NoError(t, err)
 	require.Empty(t, results)
 	require.Zero(t, commands.Load(), "invalid or empty batch must not issue Redis reads")
-	_, err = NewKeyAccountHealthStore(nil, keyrouting.AccountHealthOptions{}).(*keyAccountHealthStore).GetMany(context.Background(), []keyrouting.AccountHealthIdentity{id})
+	unconfiguredStore, ok := NewKeyAccountHealthStore(nil, keyrouting.AccountHealthOptions{}).(*keyAccountHealthStore)
+	require.True(t, ok)
+	_, err = unconfiguredStore.GetMany(context.Background(), []keyrouting.AccountHealthIdentity{id})
 	require.Error(t, err)
 }
 

@@ -21,10 +21,10 @@ func NewPelicanTestAdapter(accountRepo AccountRepository, accountTestSvc *Accoun
 
 func (a *groupScopedPelicanTestAdapter) Run(ctx context.Context, accountID, groupID int64, modelID, prompt, thinkingEffort string) (*ScheduledTestResult, error) {
 	if a == nil || a.accountRepo == nil || a.accountTestSvc == nil {
-		return nil, fmt.Errorf("Pelican test adapter is unavailable")
+		return nil, fmt.Errorf("pelican test adapter is unavailable")
 	}
 	if accountID <= 0 || groupID <= 0 {
-		return nil, fmt.Errorf("Pelican tests require a valid account and group")
+		return nil, fmt.Errorf("pelican tests require a valid account and group")
 	}
 	accounts, err := a.accountRepo.ListByGroup(ctx, groupID)
 	if err != nil {

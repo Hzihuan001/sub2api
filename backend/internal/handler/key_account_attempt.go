@@ -75,6 +75,8 @@ func finishKeyAccountAttempt(c *gin.Context, attempt *keyrouting.AccountAttempt,
 }
 
 // Preserve a context-only lookup for native builders that do not receive Gin.
+//
+//nolint:unused // Used by the tagged unit tests for context isolation.
 func keyAccountAttemptFromRequestContext(ctx context.Context) *keyrouting.AccountAttempt {
 	return keyrouting.GetAccountAttempt(ctx)
 }

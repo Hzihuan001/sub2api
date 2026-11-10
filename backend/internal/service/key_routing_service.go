@@ -30,6 +30,7 @@ type KeyRoutingHTTPResponseSourceResolver interface {
 	SelectHTTPResponseSource(context.Context, *APIKey, KeyRoutingRequest, string) (*APIKey, int64, error)
 }
 
+//nolint:unused // Compatibility helper for native routing adapters.
 func keyRoutingRequestActive(ctx context.Context) bool {
 	if ctx == nil {
 		return false

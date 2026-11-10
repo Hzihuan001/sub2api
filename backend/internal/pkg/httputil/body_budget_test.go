@@ -301,7 +301,8 @@ func TestRequestBodyMemoryBudgetReusesTransientCapacityWhileHandlersWait(t *test
 		if recorder.Code != http.StatusServiceUnavailable {
 			t.Fatalf("third request escaped the transient peak budget: %d", recorder.Code)
 		}
-	case <-readDone:
+	case readErr := <-readDone:
+		_ = readErr
 		t.Fatal("third request escaped the transient peak budget")
 	case <-time.After(5 * time.Second):
 		t.Fatal("third request did not reject overload")

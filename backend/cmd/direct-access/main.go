@@ -189,11 +189,12 @@ func readDSN(path string) (string, error) {
 	if path == "" {
 		return "", errors.New("DIRECT_ACCESS_DSN_FILE is required")
 	}
-	f, err := os.Open(path)
+	// The operator selects this secret file via DIRECT_ACCESS_DSN_FILE; no request input reaches it.
+	f, err := os.Open(path) // #nosec G703
 	if err != nil {
 		return "", errors.New("cannot open database secret file")
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	b, err := io.ReadAll(io.LimitReader(f, 65537))
 	if err != nil || len(b) > 65536 || strings.TrimSpace(string(b)) == "" {
 		return "", errors.New("invalid database secret file")
@@ -210,7 +211,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return errors.New("invalid database configuration")
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(2)
 	db.SetConnMaxLifetime(5 * time.Minute)

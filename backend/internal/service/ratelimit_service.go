@@ -1570,6 +1570,7 @@ func calculateOpenAI429ResetTime(headers http.Header) *time.Time {
 	return nil
 }
 
+//nolint:unused // Unit tests exercise this default-time compatibility wrapper.
 func (s *RateLimitService) calculateOpenAI429ResetTime(headers http.Header) *time.Time {
 	return calculateOpenAI429ResetTime(headers)
 }
@@ -2123,6 +2124,8 @@ func persistOpenAI429PlanType(ctx context.Context, repo AccountRepository, accou
 // handle529 is retained as a compatibility shim for older call sites.  A bare
 // 529 never pauses an account: only an explicit group status-code rule (or an
 // explicit account custom-error rule) may change scheduling state.
+//
+//nolint:unused // Unit tests exercise this default-model compatibility wrapper.
 func (s *RateLimitService) handle529(ctx context.Context, account *Account) {
 	if account == nil {
 		return
@@ -2664,7 +2667,7 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
 		cooldown, reason = upstreamCodexPlanGatedModelCooldown, upstreamCodexPlanGatedModelReason
 	case account.IsOpenAICompatible() && classifyOpenAIGatewayFailure(statusCode, responseBody, "") == openAIGatewayFailureModelUnavailable &&
-		!(!isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody)):
+		(isOpenAIOAuthAccount(account) || !isOpenAICodexPlanGatedModelError(statusCode, responseBody)):
 		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
 	default:
 		return false

@@ -29,6 +29,8 @@ func TestKeyAccountPluginExitHelperProcess(t *testing.T) {
 
 func keyAccountExitedPluginClient(t *testing.T) *hcplugin.Client {
 	t.Helper()
+	// The child is the current test executable with a fixed helper-test selector.
+	// #nosec G702
 	command := exec.Command(os.Args[0], "-test.run=^TestKeyAccountPluginExitHelperProcess$")
 	command.Env = append(os.Environ(), "MOSHU_KEY_ACCOUNT_PLUGIN_EXIT_HELPER=1")
 	client := hcplugin.NewClient(&hcplugin.ClientConfig{

@@ -227,6 +227,7 @@ func TestAccountOverloadBreakerCacheFailureUsesPreviousLocalObservations(t *test
 	require.Equal(t, 1, repo.calls)
 }
 
+//nolint:staticcheck // Exercise nil-context and nil-service fallback contracts.
 func TestAccountOverloadBreakerSettingsAndNilDependencies(t *testing.T) {
 	var absent *RateLimitService
 	require.True(t, absent.RecordAccountOverload(nil, &Account{ID: 1}).IsZero())

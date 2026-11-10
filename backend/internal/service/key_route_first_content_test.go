@@ -110,7 +110,12 @@ func TestKeyRouteFirstContentDeadlineInterruptsHTTPHeadersAndBodyRead(t *testing
 				if sendHeaders {
 					w.Header().Set("Content-Type", "text/event-stream")
 					w.WriteHeader(http.StatusOK)
-					w.(http.Flusher).Flush()
+					flusher, ok := w.(http.Flusher)
+					if !ok {
+						t.Error("test server does not support flushing")
+						return
+					}
+					flusher.Flush()
 				}
 				<-r.Context().Done()
 			}))

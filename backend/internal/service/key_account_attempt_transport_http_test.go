@@ -222,7 +222,9 @@ func TestKeyAccountInferenceTransportHTTPFirstContentCancelAndLateUsage(t *testi
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(503)
-			w.(http.Flusher).Flush()
+			flusher, ok := w.(http.Flusher)
+			require.True(t, ok)
+			flusher.Flush()
 			<-release
 			_, _ = io.WriteString(w, "data: {\"usage\":{\"input_tokens\":7}}\n\n")
 		}))

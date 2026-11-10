@@ -83,7 +83,7 @@ func (s *OpenAIGatewayService) describeKeyAccountGrokComposerImage(ctx context.C
 		aux.ack(clean)
 	}
 	if !clean && err == nil {
-		err = errors.New("Grok image description cleanup was not acknowledged")
+		err = errors.New("grok image description cleanup was not acknowledged")
 	}
 	return description, usage, err
 }

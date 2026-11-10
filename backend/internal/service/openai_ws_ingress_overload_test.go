@@ -95,7 +95,7 @@ func TestProxyResponsesWebSocketFromClient_CountsOverloadOncePerUpstreamTurn(t *
 					serverErrCh <- err
 					return
 				}
-				defer conn.CloseNow()
+				defer func() { _ = conn.CloseNow() }()
 				readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
 				_, firstMessage, err := conn.Read(readCtx)
 				cancelRead()
@@ -119,7 +119,7 @@ func TestProxyResponsesWebSocketFromClient_CountsOverloadOncePerUpstreamTurn(t *
 			clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
 			cancelDial()
 			require.NoError(t, err)
-			defer clientConn.CloseNow()
+			defer func() { _ = clientConn.CloseNow() }()
 
 			for turn := 1; turn <= 3; turn++ {
 				writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)

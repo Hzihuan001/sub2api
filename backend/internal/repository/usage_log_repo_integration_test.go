@@ -693,6 +693,10 @@ func (s *UsageLogRepoSuite) TestListWithFilters() {
 func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 	now := time.Now().UTC()
 	todayStart := truncateToDayUTC(now)
+	aggRepo := newDashboardAggregationRepositoryWithSQL(s.tx)
+	aggStart := todayStart.Add(-2 * time.Hour)
+	aggEnd := now.Add(2 * time.Minute)
+	s.Require().NoError(aggRepo.AggregateRange(s.ctx, aggStart, aggEnd), "AggregateRange baseline")
 	baseStats, err := s.repo.GetDashboardStats(s.ctx)
 	s.Require().NoError(err, "GetDashboardStats base")
 
@@ -766,9 +770,6 @@ func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 	_, err = s.repo.Create(s.ctx, logPerf)
 	s.Require().NoError(err, "Create logPerf")
 
-	aggRepo := newDashboardAggregationRepositoryWithSQL(s.tx)
-	aggStart := todayStart.Add(-2 * time.Hour)
-	aggEnd := now.Add(2 * time.Minute)
 	s.Require().NoError(aggRepo.AggregateRange(s.ctx, aggStart, aggEnd), "AggregateRange")
 
 	stats, err := s.repo.GetDashboardStats(s.ctx)
@@ -809,6 +810,8 @@ func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 	todayStart := truncateToDayUTC(now)
 	rangeStart := todayStart.Add(-24 * time.Hour)
 	rangeEnd := now.Add(1 * time.Second)
+	baseStats, err := s.repo.GetDashboardStatsWithRange(s.ctx, rangeStart, rangeEnd)
+	s.Require().NoError(err)
 
 	user1 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u1@test.com"})
 	user2 := mustCreateUser(s.T(), s.client, &service.User{Email: "range-u2@test.com"})
@@ -829,7 +832,7 @@ func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 		DurationMs:   &d3,
 		CreatedAt:    rangeStart.Add(-1 * time.Hour),
 	}
-	_, err := s.repo.Create(s.ctx, logOutside)
+	_, err = s.repo.Create(s.ctx, logOutside)
 	s.Require().NoError(err)
 
 	logRange := &service.UsageLog{
@@ -867,17 +870,18 @@ func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 
 	stats, err := s.repo.GetDashboardStatsWithRange(s.ctx, rangeStart, rangeEnd)
 	s.Require().NoError(err)
-	s.Require().Equal(int64(2), stats.TotalRequests)
-	s.Require().Equal(int64(15), stats.TotalInputTokens)
-	s.Require().Equal(int64(26), stats.TotalOutputTokens)
-	s.Require().Equal(int64(1), stats.TotalCacheCreationTokens)
-	s.Require().Equal(int64(3), stats.TotalCacheReadTokens)
-	s.Require().Equal(int64(45), stats.TotalTokens)
-	s.Require().Equal(1.5, stats.TotalCost)
-	s.Require().Equal(1.4, stats.TotalActualCost)
+	s.Require().Equal(baseStats.TotalRequests+2, stats.TotalRequests)
+	s.Require().Equal(baseStats.TotalInputTokens+15, stats.TotalInputTokens)
+	s.Require().Equal(baseStats.TotalOutputTokens+26, stats.TotalOutputTokens)
+	s.Require().Equal(baseStats.TotalCacheCreationTokens+1, stats.TotalCacheCreationTokens)
+	s.Require().Equal(baseStats.TotalCacheReadTokens+3, stats.TotalCacheReadTokens)
+	s.Require().Equal(baseStats.TotalTokens+45, stats.TotalTokens)
+	s.Require().InDelta(baseStats.TotalCost+1.5, stats.TotalCost, 0.000001)
+	s.Require().InDelta(baseStats.TotalActualCost+1.4, stats.TotalActualCost, 0.000001)
 	// account_cost = COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1) = total_cost
-	s.Require().Equal(1.5, stats.TotalAccountCost)
-	s.Require().InEpsilon(150.0, stats.AverageDurationMs, 0.0001)
+	s.Require().InDelta(baseStats.TotalAccountCost+1.5, stats.TotalAccountCost, 0.000001)
+	wantDuration := (baseStats.AverageDurationMs*float64(baseStats.TotalRequests) + 300) / float64(baseStats.TotalRequests+2)
+	s.Require().InDelta(wantDuration, stats.AverageDurationMs, 0.000001)
 }
 
 // --- GetUserDashboardStats ---

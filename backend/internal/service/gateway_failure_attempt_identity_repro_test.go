@@ -254,7 +254,8 @@ func newGatewayFailureIdentityHarness(t *testing.T) *gatewayFailureIdentityHarne
 		_ = upstream.Close()
 		cancel(context.Canceled)
 		select {
-		case <-serverErr:
+		case err := <-serverErr:
+			_ = err // Relay cancellation is expected during cleanup.
 		case <-time.After(3 * time.Second):
 			t.Error("passthrough relay did not stop after test cleanup")
 		}

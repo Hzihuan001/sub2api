@@ -14,7 +14,7 @@ func TestScanPlanAcceptsNullLeaseMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New() error = %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	createdAt := time.Now().UTC()
 	updatedAt := createdAt.Add(time.Second)
@@ -44,7 +44,7 @@ func TestCreatePlanPersistsThinkingEffort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New() error = %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	nextRunAt := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
 	createdAt := time.Now().UTC()

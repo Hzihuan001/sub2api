@@ -1430,7 +1430,7 @@ func (s *OpenAIGatewayService) describeGrokComposerImageNative(
 		return "", OpenAIUsage{}, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	if KeyAccountForwardScopeFromContext(ctx) != nil && (resp == nil || resp.Body == nil) {
-		return "", OpenAIUsage{}, fmt.Errorf("Grok image description returned no readable response")
+		return "", OpenAIUsage{}, fmt.Errorf("grok image description returned no readable response")
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {

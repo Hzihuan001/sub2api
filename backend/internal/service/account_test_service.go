@@ -541,9 +541,10 @@ func supportedScheduledThinkingEffort(account *Account, modelID, requested strin
 	}
 	model := strings.TrimSpace(modelID)
 	if model == "" {
-		if account.Platform == PlatformOpenAI {
+		switch account.Platform {
+		case PlatformOpenAI:
 			model = openai.DefaultTestModel
-		} else if account.Platform == PlatformAnthropic {
+		case PlatformAnthropic:
 			model = claude.DefaultTestModel
 		}
 	}
@@ -3155,6 +3156,7 @@ func createOpenAITestPayloadWithPromptAndEffort(modelID string, isOAuth bool, pr
 	return payload
 }
 
+//nolint:unused // Compatibility entry point retained for payload tests and callers migrating to effort controls.
 func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[string]any {
 	return createOpenAIChatCompletionsTestPayloadWithEffort(modelID, prompt, "default")
 }

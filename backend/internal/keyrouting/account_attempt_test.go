@@ -161,7 +161,7 @@ func TestAccountAttemptRawUsageReaderSharesSafetyLatch(t *testing.T) {
 	a := NewAccountAttempt(accountAttemptTestMetadata(), 0)
 	ctx := a.Dispatch(context.Background())
 	reader := ProtectUsageReader(ctx, io.NopCloser(strings.NewReader("data: {\"usage\":{\"input_tokens\":\"3\"}}\n\n")))
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	if _, err := io.ReadAll(reader); err != nil {
 		t.Fatal(err)
 	}

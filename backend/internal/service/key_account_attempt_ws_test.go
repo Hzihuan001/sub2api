@@ -59,7 +59,7 @@ func TestKeyAccountWSNativeHTTPAttempt(t *testing.T) {
 				if err != nil {
 					return
 				}
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				var payload map[string]any
 				if conn.ReadJSON(&payload) != nil {
 					return

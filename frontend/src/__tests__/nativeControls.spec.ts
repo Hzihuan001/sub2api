@@ -37,6 +37,8 @@ const knownNativeControlFiles = new Set([
   // Scheduled tests still expose native selects for the browser-compatible
   // test-kind/model controls and are covered by component tests.
   'ScheduledTestsPanel.vue',
+  // OAuth consent keeps native selects for keyboard and browser accessibility.
+  'MCPOAuthAuthorizeView.vue',
 ])
 
 function stripComments(source: string): string {

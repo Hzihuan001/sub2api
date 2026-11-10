@@ -143,36 +143,36 @@ func TestNewGatewayServiceWiresCompositeModelOwnershipResolver(t *testing.T) {
 	}
 	resolver := NewCompositeRouteResolver(nil)
 	svc := NewGatewayService(
-		repo, // accountRepo
-		nil, // groupRepo
-		nil, // usageLogRepo
-		nil, // usageBillingRepo
-		nil, // userRepo
-		nil, // userSubRepo
-		nil, // userGroupRateRepo
-		nil, // cache
-		nil, // cfg
-		nil, // schedulerSnapshot
-		nil, // concurrencyService
-		nil, // billingService
-		nil, // rateLimitService
-		nil, // billingCacheService
-		nil, // identityService
-		nil, // httpUpstream
-		nil, // deferredService
-		nil, // claudeTokenProvider
-		nil, // kiroTokenProvider
-		nil, // kiroCooldownStore
-		nil, // sessionLimitCache
-		nil, // rpmCache
-		nil, // digestStore
-		nil, // settingService
-		nil, // tlsFPProfileService
-		nil, // channelService
-		nil, // resolver
+		repo,     // accountRepo
+		nil,      // groupRepo
+		nil,      // usageLogRepo
+		nil,      // usageBillingRepo
+		nil,      // userRepo
+		nil,      // userSubRepo
+		nil,      // userGroupRateRepo
+		nil,      // cache
+		nil,      // cfg
+		nil,      // schedulerSnapshot
+		nil,      // concurrencyService
+		nil,      // billingService
+		nil,      // rateLimitService
+		nil,      // billingCacheService
+		nil,      // identityService
+		nil,      // httpUpstream
+		nil,      // deferredService
+		nil,      // claudeTokenProvider
+		nil,      // kiroTokenProvider
+		nil,      // kiroCooldownStore
+		nil,      // sessionLimitCache
+		nil,      // rpmCache
+		nil,      // digestStore
+		nil,      // settingService
+		nil,      // tlsFPProfileService
+		nil,      // channelService
+		nil,      // resolver
 		resolver, // compositeResolver
-		nil, // balanceNotifyService
-		nil, // userPlatformQuotaRepo
+		nil,      // balanceNotifyService
+		nil,      // userPlatformQuotaRepo
 	)
 	require.Same(t, resolver, svc.compositeResolver)
 

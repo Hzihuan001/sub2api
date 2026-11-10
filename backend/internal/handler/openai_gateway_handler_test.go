@@ -3269,7 +3269,8 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 			require.Contains(t, closeErr.Reason, tc.closeReason)
 			_ = clientConn.CloseNow()
 			select {
-			case <-upstreamErrCh:
+			case upstreamCloseErr := <-upstreamErrCh:
+				_ = upstreamCloseErr // The rejected update's shutdown is asserted by the client close above.
 			case <-time.After(3 * time.Second):
 				t.Fatal("upstream did not close after rejected session update")
 			}
@@ -3302,7 +3303,8 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 			_ = clientConn.CloseNow()
 			if tc.midPayload != "" {
 				select {
-				case <-upstreamErrCh:
+				case upstreamCloseErr := <-upstreamErrCh:
+					_ = upstreamCloseErr // The rejected turn's shutdown is asserted by the client close above.
 				case <-time.After(3 * time.Second):
 					t.Fatal("等待策略拒绝后上游连接退出超时")
 				}

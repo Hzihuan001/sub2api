@@ -83,7 +83,7 @@ func TestKeyAccountPricingCarrierSeparatesGroupAndKindAndPreservesDeadline(t *te
 	_, suppressed := restored.Value(openAIProfitControlSuppressCtxKey{}).(struct{})
 	require.True(t, suppressed)
 	require.Zero(t, GatewayTokenRequestPricingAtFromContext(restored))
-	_, ok = CaptureKeyAccountPricingCarrier(nil, 4, KeyAccountPricingOpenAI)
+	_, ok = CaptureKeyAccountPricingCarrier(nil, 4, KeyAccountPricingOpenAI) //nolint:staticcheck // Exercise the explicit nil-context rejection contract.
 	require.False(t, ok)
 	_, ok = CaptureKeyAccountPricingCarrier(context.Background(), 4, KeyAccountPricingOpenAI)
 	require.False(t, ok)

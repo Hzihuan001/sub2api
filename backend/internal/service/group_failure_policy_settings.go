@@ -231,6 +231,8 @@ func groupFailurePolicyHasRules(policy *GroupFailurePolicy) bool {
 
 // cloneGroupFailurePolicy makes API-key route overrides safe to retain in
 // request/cache snapshots without sharing mutable rule slices with handlers.
+//
+//nolint:unused // Keep the typed cloning boundary for policy callers as settings evolve.
 func cloneGroupFailurePolicy(policy *GroupFailurePolicy) *GroupFailurePolicy {
 	if policy == nil {
 		return nil

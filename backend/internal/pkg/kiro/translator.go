@@ -2992,6 +2992,7 @@ func blockToMap(block gjson.Result) map[string]any {
 	return result
 }
 
+//nolint:unused // Untagged production uses the observer variant; tagged unit tests cover this adapter.
 func parseEventStream(body io.Reader) (string, []KiroToolUse, Usage, string, error) {
 	return parseEventStreamObserved(body, nil)
 }

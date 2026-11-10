@@ -113,7 +113,10 @@ func TestKeyRouteDispatchFinalOutcomeSwitchesAfterHandlerCleanup(t *testing.T) {
 	require.Equal(t, []dispatchOutcome{{group: 1, kind: keyrouting.OutcomeRateLimit}, {group: 2, kind: keyrouting.OutcomeSuccess}}, selector.outcomes)
 	require.Equal(t, []int64{1}, selector.switched)
 	require.Equal(t, "backup", c.GetString("custom.key_route_switch_group"))
-	events := c.MustGet(service.OpsUpstreamErrorsKey).([]*service.OpsUpstreamErrorEvent)
+	rawEvents, exists := c.Get(service.OpsUpstreamErrorsKey)
+	require.True(t, exists)
+	events, ok := rawEvents.([]*service.OpsUpstreamErrorEvent)
+	require.True(t, ok)
 	require.Equal(t, "backup", events[0].RouteSwitchGroup)
 }
 

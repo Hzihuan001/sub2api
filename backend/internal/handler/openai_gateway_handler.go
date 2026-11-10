@@ -565,10 +565,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int64("source_group_id", responseSourceGroupID),
 				zap.Int64("source_account_id", responseSourceAccountID),
 			)
-			if !dropUnavailableResponseReference("source_pin_unavailable") {
-				// Keep the verified source pin. If the opaque reference cannot be
-				// removed, do not allow a different credential to receive it.
-			}
+			// Rewrite failure retains the verified pin so another credential
+			// cannot receive the opaque reference.
+			dropUnavailableResponseReference("source_pin_unavailable")
 		}
 	}
 	if previousResponseID != "" {
@@ -597,10 +596,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int64("key_group_id", groupID),
 				zap.Int64("source_group_id", responseSourceGroupID),
 			)
-			if !dropUnavailableResponseReference("source_group_mismatch") {
-				// Keep the source pin on rewrite failure; never move an opaque
-				// provider reference across credentials.
-			}
+			// Rewrite failure retains the source pin.
+			dropUnavailableResponseReference("source_group_mismatch")
 		}
 		if previousResponseID != "" {
 			owned, ownershipErr := h.gatewayService.ValidateOpenAIHTTPResponseOwner(
@@ -614,10 +611,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				reqLog.Warn("openai.previous_response_owner_lookup_failed", zap.Error(ownershipErr))
 			}
 			if !owned {
-				if !dropUnavailableResponseReference("source_history_unavailable") {
-					// Keep the source pin on rewrite failure; never move an opaque
-					// provider reference across credentials.
-				}
+				// Rewrite failure retains the source pin.
+				dropUnavailableResponseReference("source_history_unavailable")
 			}
 		}
 	}
@@ -3285,7 +3280,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if sanitizeErr == nil {
 					responseReferenceFallbackTried = true
 					ctx = retryCtx
-					firstMessage = safeMessage
 					wsAttemptMessage = safeMessage
 					previousResponseID = ""
 					previousResponseCanMove = true
@@ -3316,7 +3310,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if sanitizeErr == nil {
 					responseReferenceFallbackTried = true
 					ctx = retryCtx
-					firstMessage = safeMessage
 					wsAttemptMessage = safeMessage
 					previousResponseID = ""
 					previousResponseCanMove = true
@@ -4063,7 +4056,15 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 }
 
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
-	if tryFinalKeyRouteFailover(c, failoverErr) {
+	h.handleFailoverExhaustedWithRouteFallback(c, failoverErr, streamStarted, true)
+}
+
+func (h *OpenAIGatewayHandler) handleImagesFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
+	h.handleFailoverExhaustedWithRouteFallback(c, failoverErr, streamStarted, false)
+}
+
+func (h *OpenAIGatewayHandler) handleFailoverExhaustedWithRouteFallback(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool, allowRouteFallback bool) {
+	if allowRouteFallback && tryFinalKeyRouteFailover(c, failoverErr) {
 		return
 	}
 	if failoverErr == nil {

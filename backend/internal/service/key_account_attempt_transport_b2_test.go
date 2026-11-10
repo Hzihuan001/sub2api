@@ -142,7 +142,9 @@ func TestKeyAccountInferenceTransportB2HTTPPreludeProofAndUnknownTimerRace(t *te
 				w.Header().Set("Content-Type", tc.contentType)
 				w.WriteHeader(200)
 				_, _ = io.WriteString(w, tc.prefix)
-				w.(http.Flusher).Flush()
+				flusher, ok := w.(http.Flusher)
+				require.True(t, ok)
+				flusher.Flush()
 				select {
 				case <-request.Context().Done():
 				case <-stop:
@@ -202,7 +204,9 @@ func TestKeyAccountInferenceTransportB2AmbiguousNetworkFailureCannotReplay(t *te
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		_, _ = io.Copy(io.Discard, request.Body)
 		received.Add(1)
-		conn, _, err := w.(http.Hijacker).Hijack()
+		hijacker, ok := w.(http.Hijacker)
+		require.True(t, ok)
+		conn, _, err := hijacker.Hijack()
 		if err == nil {
 			_ = conn.Close() // Simulate execution followed by loss before response headers.
 		}
@@ -230,7 +234,9 @@ func TestKeyAccountInferenceTransportB2CloseWinningBeforeTimerCannotForgeProof(t
 		_, _ = io.Copy(io.Discard, request.Body)
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = io.WriteString(w, ": ping\n\n")
-		w.(http.Flusher).Flush()
+		flusher, ok := w.(http.Flusher)
+		require.True(t, ok)
+		flusher.Flush()
 		select {
 		case <-request.Context().Done():
 		case <-stop:
@@ -326,7 +332,9 @@ func TestKeyAccountInferenceTransportB2HTTPVerifiedTTFTAllowsIndependentInternal
 		w.Header().Set("Content-Type", "text/event-stream")
 		if calls.Add(1) == 1 {
 			_, _ = io.WriteString(w, ": ping\n\n")
-			w.(http.Flusher).Flush()
+			flusher, ok := w.(http.Flusher)
+			require.True(t, ok)
+			flusher.Flush()
 			select {
 			case <-request.Context().Done():
 			case <-stop:
@@ -384,7 +392,9 @@ func TestKeyAccountInferenceTransportB2HTTPLateUnknownOrUsageAlwaysVetoes(t *tes
 				_, _ = io.Copy(io.Discard, request.Body)
 				w.Header().Set("Content-Type", "text/event-stream")
 				w.WriteHeader(200)
-				w.(http.Flusher).Flush()
+				flusher, ok := w.(http.Flusher)
+				require.True(t, ok)
+				flusher.Flush()
 				<-release
 				_, _ = io.WriteString(w, tc.payload)
 			}))

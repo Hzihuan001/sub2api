@@ -695,11 +695,12 @@ readLoop:
 		if failure := keyAccountAttempt.safeFailure(); failure != nil && !wroteDownstream {
 			// Retain native credential/rate-limit side effects; the Key-local
 			// adapter only changes replay admission, never global account state.
-			if eventType == "error" {
+			switch eventType {
+			case "error":
 				s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
 				code, kind, text := parseOpenAIWSErrorEventFields(message)
 				s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, code, kind, text, mappedModel)
-			} else if eventType == "response.failed" {
+			case "response.failed":
 				s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
 			}
 			lease.MarkBroken()

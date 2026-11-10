@@ -163,7 +163,7 @@ func TestKeyAccountRoutingRuntimeOptInAndFreeze(t *testing.T) {
 	if r.keyReads != before {
 		t.Fatal("native Key consulted metadata")
 	}
-	if _, err := s.runtime.NewSession(nil, key, s.request, s.budget); !errors.Is(err, ErrKeyAccountRouteScope) {
+	if _, err := s.runtime.NewSession(nil, key, s.request, s.budget); !errors.Is(err, ErrKeyAccountRouteScope) { //nolint:staticcheck // Validate nil-context rejection.
 		t.Fatalf("nil context: %v", err)
 	}
 }

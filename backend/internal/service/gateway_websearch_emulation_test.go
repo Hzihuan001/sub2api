@@ -111,12 +111,13 @@ func TestBuildSearchResultBlocks_WithResults(t *testing.T) {
 	require.Len(t, blocks, 2)
 	require.Equal(t, "web_search_result", blocks[0]["type"])
 	require.Equal(t, "https://a.com", blocks[0]["url"])
-	require.Equal(t, "snippet a", blocks[0]["page_content"])
+	require.Equal(t, "snippet a", blocks[0]["encrypted_content"])
 	require.Equal(t, "2 days", blocks[0]["page_age"])
-	// Second result has no PageAge
+	// Kiro wire format includes page_age as null when the source has no age.
 	require.Equal(t, "https://b.com", blocks[1]["url"])
-	_, hasPageAge := blocks[1]["page_age"]
-	require.False(t, hasPageAge)
+	pageAge, hasPageAge := blocks[1]["page_age"]
+	require.True(t, hasPageAge)
+	require.Nil(t, pageAge)
 }
 
 func TestBuildSearchResultBlocks_Empty(t *testing.T) {
@@ -126,8 +127,9 @@ func TestBuildSearchResultBlocks_Empty(t *testing.T) {
 
 func TestBuildSearchResultBlocks_SnippetEmpty(t *testing.T) {
 	blocks := buildSearchResultBlocks([]websearch.SearchResult{{URL: "https://x.com", Title: "X", Snippet: ""}})
-	_, hasContent := blocks[0]["page_content"]
-	require.False(t, hasContent)
+	require.Equal(t, "", blocks[0]["encrypted_content"])
+	_, hasPageContent := blocks[0]["page_content"]
+	require.False(t, hasPageContent)
 }
 
 // --- buildTextSummary ---

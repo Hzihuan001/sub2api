@@ -43,7 +43,8 @@ func TestKeyAccountPricingWrapperFreezesSameGroupAndSeparatesKinds(t *testing.T)
 	require.False(t, sharedAt.IsZero())
 	require.Equal(t, sharedAt, service.GatewayTokenRequestPricingAtFromContext(shared))
 	value, _ := c.Get(keyAccountPricingCarriersKey)
-	carriers := value.(map[keyAccountPricingSlot]service.KeyAccountPricingCarrier)
+	carriers, ok := value.(map[keyAccountPricingSlot]service.KeyAccountPricingCarrier)
+	require.True(t, ok)
 	require.Len(t, carriers, 2, "the same group keeps separate native pricing kinds")
 }
 

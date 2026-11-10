@@ -45,7 +45,7 @@ func (r *apiKeyRepository) GetKeyRouteRevision(ctx context.Context, keyID int64)
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return 0, err
@@ -71,7 +71,7 @@ func (r *apiKeyRepository) GetGroupRoutePolicySnapshot(ctx context.Context, grou
 	if err != nil {
 		return "", 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return "", 0, err
@@ -120,7 +120,7 @@ func (r *apiKeyRepository) attachAPIKeyAccountRoutes(ctx context.Context, keys [
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	seen := make(map[int64]bool, len(keys))
 	for rows.Next() {
 		var id, userID int64

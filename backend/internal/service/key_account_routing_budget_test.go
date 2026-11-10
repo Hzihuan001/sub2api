@@ -30,7 +30,7 @@ func TestKeyAccountRouteRetryAfterUsesEarliestObservedConfiguredGroup(t *testing
 	*now = now.Add(49 * time.Second)
 	require.Zero(t, KeyAccountRouteRetryAfter(ctx))
 	require.Zero(t, KeyAccountRouteRetryAfter(context.Background()))
-	require.Zero(t, KeyAccountRouteRetryAfter(nil))
+	require.Zero(t, KeyAccountRouteRetryAfter(nil)) //nolint:staticcheck // Validate the nil-context fallback.
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
 	require.Zero(t, KeyAccountRouteRetryAfter(cancelled))

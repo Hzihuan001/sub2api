@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -85,7 +84,7 @@ func (r *apiKeyRepository) checkAPIKeyRoutePrimary(ctx context.Context, keyID in
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if rows.Next() {
 		return errors.New("API key routes require a primary distinct from every backup")
 	}
@@ -104,55 +103,9 @@ func (r *apiKeyRepository) attachAPIKeyRoutes(ctx context.Context, keys []servic
 	return r.attachAPIKeyAccountRoutes(ctx, keys)
 }
 
-func (r *apiKeyRepository) attachAPIKeyRoutePolicies(ctx context.Context, keys []service.APIKey) error {
-	if len(keys) == 0 {
-		return nil
-	}
-	indices := make(map[int64]int, len(keys))
-	args := make([]any, len(keys))
-	placeholders := make([]string, len(keys))
-	for i := range keys {
-		indices[keys[i].ID] = i
-		args[i] = keys[i].ID
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
-		keys[i].KeyRouteFailurePolicy = nil
-	}
-	rows, err := clientFromContext(ctx, r.client).QueryContext(ctx,
-		"SELECT api_key_id, policy FROM custom_api_key_route_policies WHERE api_key_id IN ("+strings.Join(placeholders, ",")+")", args...)
-	if err != nil {
-		if isMissingAPIKeyRoutePolicyTable(err) {
-			return nil
-		}
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var keyID int64
-		var raw []byte
-		if err := rows.Scan(&keyID, &raw); err != nil {
-			return err
-		}
-		var policy service.KeyRouteFailurePolicy
-		if err := json.Unmarshal(raw, &policy); err != nil {
-			return fmt.Errorf("decode api key route policy %d: %w", keyID, err)
-		}
-		if err := validateStoredAPIKeyRoutePolicy(&policy); err != nil {
-			return fmt.Errorf("validate api key route policy %d: %w", keyID, err)
-		}
-		if i, ok := indices[keyID]; ok {
-			keys[i].KeyRouteFailurePolicy = cloneStoredAPIKeyRoutePolicy(&policy)
-		}
-	}
-	return rows.Err()
-}
-
 func validateStoredAPIKeyRoutePolicy(policy *service.KeyRouteFailurePolicy) error {
 	if policy == nil {
 		return sql.ErrNoRows
 	}
 	return policy.Validate()
-}
-
-func cloneStoredAPIKeyRoutePolicy(policy *service.KeyRouteFailurePolicy) *service.KeyRouteFailurePolicy {
-	return policy.Clone()
 }

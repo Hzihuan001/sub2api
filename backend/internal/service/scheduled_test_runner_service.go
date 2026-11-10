@@ -148,7 +148,7 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	if plan.TestKind == ScheduledTestKindPelican {
 		prompt, validateArtifact := normalizePelicanTestPrompt(plan.TestPrompt)
 		if plan.GroupID == nil || s.pelicanExecutor == nil {
-			err = fmt.Errorf("Pelican test requires a group-scoped executor")
+			err = fmt.Errorf("pelican test requires a group-scoped executor")
 		} else {
 			result, err = s.pelicanExecutor.Run(ctx, plan.AccountID, *plan.GroupID, plan.ModelID, prompt, plan.ThinkingEffort)
 		}

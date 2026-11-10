@@ -12,12 +12,14 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/textproto"
 	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -43,6 +45,57 @@ const (
 	openAIImagesResponsesMainModel         = "gpt-5.6-luna"
 	openAIImagesVerbatimPromptInstructions = "When invoking the image_generation tool, use the user's image prompt verbatim. Do not rewrite, expand, summarize, embellish, translate, normalize punctuation, or add or remove visual details or constraints. Preserve the original language, wording, capitalization, quotes, and punctuation exactly."
 )
+
+// Transient image gateway failures should be retried against the selected
+// account. A generated image may already have been accepted upstream, so the
+// caller bounds retries and returns the last upstream error if they all fail.
+func isOpenAIImagesTransientServerFailure(statusCode int, body []byte, message string) bool {
+	return statusCode >= http.StatusInternalServerError &&
+		classifyOpenAIGatewayFailure(statusCode, body, message) == openAIGatewayFailureUnknown
+}
+
+func markOpenAIImagesTransientRetry(err *UpstreamFailoverError) {
+	if err == nil {
+		return
+	}
+	err.RetryableOnSameAccount = true
+	err.RequestScopedTransient = true
+	err.NextAccountAction = NextAccountRetry
+}
+
+func isOpenAIImagesTransientTransportError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return dnsErr.IsTimeout || dnsErr.IsTemporary
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
+	}
+	return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, syscall.EPIPE)
+}
+
+func newOpenAIImagesTransportFailoverError() *UpstreamFailoverError {
+	failoverErr := &UpstreamFailoverError{
+		StatusCode:       http.StatusBadGateway,
+		Scope:            GatewayFailureScopeRequest,
+		Reason:           GatewayFailureReason("openai_images_transport_error"),
+		ClientStatusCode: http.StatusBadGateway,
+		ClientMessage:    "Upstream service temporarily unavailable",
+	}
+	markOpenAIImagesTransientRetry(failoverErr)
+	return failoverErr
+}
 
 // openAIImagesResponsesMainModelValue selects the Responses driver independently
 // of the image_generation tool model. An environment override lets operators
@@ -277,16 +330,16 @@ func validateSeedreamImagesRequest(req *OpenAIImagesRequest) error {
 		return nil
 	}
 	if req.N != 1 {
-		return fmt.Errorf("Seedream image generation supports n=1 only")
+		return fmt.Errorf("seedream image generation supports n=1 only")
 	}
 	if strings.TrimSpace(req.Quality) != "" {
-		return fmt.Errorf("Seedream image generation does not support quality")
+		return fmt.Errorf("seedream image generation does not support quality")
 	}
 	if strings.TrimSpace(req.InputFidelity) != "" {
-		return fmt.Errorf("Seedream image generation does not support input_fidelity")
+		return fmt.Errorf("seedream image generation does not support input_fidelity")
 	}
 	if outputFormat := strings.ToLower(strings.TrimSpace(req.OutputFormat)); outputFormat != "" && outputFormat != "png" && outputFormat != "jpeg" {
-		return fmt.Errorf("Seedream image generation supports png or jpeg output_format only")
+		return fmt.Errorf("seedream image generation supports png or jpeg output_format only")
 	}
 	return nil
 }
@@ -811,6 +864,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
+		if isOpenAIImagesTransientTransportError(err) {
+			return nil, newOpenAIImagesTransportFailoverError()
+		}
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	if resp.StatusCode >= 400 {
@@ -854,15 +910,23 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 				Kind:               "failover",
 				Message:            upstreamMsg,
 			})
-			shouldDisable := s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, upstreamModel)
-			retryableOnSameAccount := !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)
+			transientImageFailure := isOpenAIImagesTransientServerFailure(resp.StatusCode, respBody, upstreamMsg)
+			shouldDisable := false
+			if !transientImageFailure {
+				shouldDisable = s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, upstreamModel)
+			}
+			retryableOnSameAccount := transientImageFailure || (!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode))
 			if account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests {
 				return nil, s.newOpenAIAccountFailoverError(account, resp.StatusCode, resp.Header, respBody, upstreamMsg, shouldDisable, retryableOnSameAccount)
 			}
 			if isOpenAIHTTPUpstreamAccessStateError(resp.StatusCode, upstreamMsg, respBody) {
 				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, retryableOnSameAccount)
 			}
-			return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, retryableOnSameAccount)
+			failoverErr := newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, retryableOnSameAccount)
+			if transientImageFailure {
+				markOpenAIImagesTransientRetry(failoverErr)
+			}
+			return nil, failoverErr
 		}
 		return s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, upstreamModel)
 	}

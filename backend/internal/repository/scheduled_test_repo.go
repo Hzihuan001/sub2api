@@ -296,6 +296,15 @@ func (r *scheduledTestPlanRepository) FinalizeRun(ctx context.Context, planID in
 	if affected, err := res.RowsAffected(); err != nil {
 		return err
 	} else if affected != 1 {
+		// A plan disabled during an in-flight run must not be rescheduled. Its
+		// matching lease can still be discarded so a disabled row does not retain
+		// stale worker ownership indefinitely.
+		if _, clearErr := r.db.ExecContext(ctx, `UPDATE scheduled_test_plans
+			SET lease_token = NULL, lease_expires_at = NULL, active_run_id = NULL, updated_at = NOW()
+			WHERE id = $1 AND enabled = FALSE AND lease_token = $2 AND active_run_id = $3`,
+			planID, leaseToken, runID); clearErr != nil {
+			return clearErr
+		}
 		return fmt.Errorf("scheduled test lease lost for plan %d", planID)
 	}
 	return nil

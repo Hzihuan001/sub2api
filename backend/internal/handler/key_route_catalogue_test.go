@@ -95,8 +95,10 @@ func TestKeyRouteCatalogueUnionPriorityMetadataAndDetails(t *testing.T) {
 	entries := keyCatalogueEntries(t, r)
 	ids := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		ids = append(ids, entry["id"].(string))
-		detail := requestKeyRouteCatalogue(t, h, key, source, "/v1/models/"+entry["id"].(string), entry["id"].(string), r.Header().Get("ETag"), "")
+		id, ok := entry["id"].(string)
+		require.True(t, ok)
+		ids = append(ids, id)
+		detail := requestKeyRouteCatalogue(t, h, key, source, "/v1/models/"+id, id, r.Header().Get("ETag"), "")
 		require.Equal(t, http.StatusOK, detail.Code, detail.Body.String())
 		encoded, err := json.Marshal(entry)
 		require.NoError(t, err)

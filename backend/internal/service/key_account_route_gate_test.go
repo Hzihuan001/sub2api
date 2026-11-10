@@ -256,7 +256,7 @@ func TestKeyAccountRouteCandidateDegradationKeepsLocalFailuresAndHardErrors(t *t
 	if allowed, err := keyAccountRouteCandidateAdmission(canceled, &group, 8); allowed || !errors.Is(err, context.Canceled) || len(gate.candidateAccounts) != before {
 		t.Fatalf("cancellation entered candidate gate: %v %v", allowed, err)
 	}
-	if allowed, err := keyAccountRouteCandidateAdmission(nil, &group, 8); allowed || err == nil {
+	if allowed, err := keyAccountRouteCandidateAdmission(nil, &group, 8); allowed || err == nil { //nolint:staticcheck // Exercise the explicit nil-context rejection contract.
 		t.Fatalf("nil context accepted: %v %v", allowed, err)
 	}
 }

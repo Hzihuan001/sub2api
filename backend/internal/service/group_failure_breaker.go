@@ -98,7 +98,7 @@ type groupFailureLocalKey struct {
 	accountID int64
 	groupID   int64
 	kind      GroupFailureKind
-	revision  string
+	revision  string //nolint:unused // Unit recovery tests exercise distinct policy revisions.
 }
 
 type groupFailureLocalEntry struct {

@@ -52,8 +52,8 @@ func TestScheduledTestFailureBackoffIsBounded(t *testing.T) {
 func TestFinalizePelicanShowcaseKeepsOnlySuccessfulCards(t *testing.T) {
 	now := time.Now()
 	row := PelicanShowcaseGroup{
-		ID:      17,
-		Name:    "public group",
+		ID:   17,
+		Name: "public group",
 		Results: []*PelicanShowcaseResult{
 			{
 				ID: 2, AccountName: "private-account", ModelID: "gpt-6.1-sol",
@@ -109,12 +109,12 @@ func TestFinalizePelicanShowcaseKeepsOlderSuccessOutsideHealthWindow(t *testing.
 	}
 	olderSuccess := now.Add(-51 * time.Minute)
 	results = append(results, &PelicanShowcaseResult{
-		ID:         1,
-		ModelID:    "gpt-6.1-sol",
-		Status:     "success",
+		ID:           1,
+		ModelID:      "gpt-6.1-sol",
+		Status:       "success",
 		ResponseText: "older successful work",
-		FinishedAt:  olderSuccess,
-		StartedAt:   olderSuccess.Add(-time.Second),
+		FinishedAt:   olderSuccess,
+		StartedAt:    olderSuccess.Add(-time.Second),
 	})
 
 	row := PelicanShowcaseGroup{Results: results}

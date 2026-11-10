@@ -237,7 +237,7 @@ func (s *OpenAIGatewayService) openAIResponseRecoveryGET(ctx context.Context, ac
 	if err != nil {
 		return nil, fmt.Errorf("%w: retrieval request: %v", ErrOpenAIResponseRecoveryUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, openAIResponseRecoveryBodyLimit+1))
 	if readErr != nil || len(body) > openAIResponseRecoveryBodyLimit {
 		return nil, fmt.Errorf("%w: retrieval response body limit", ErrOpenAIResponseRecoveryUnavailable)

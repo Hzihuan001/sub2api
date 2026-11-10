@@ -173,7 +173,7 @@ func TestSQLStoreParameterizedAndStrict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	s := sqlStore{db: db}
 	for _, allowed := range []bool{true, false} {
 		mock.ExpectQuery(regexp.QuoteMeta(permissionQuery)).WithArgs("sk-' secret").

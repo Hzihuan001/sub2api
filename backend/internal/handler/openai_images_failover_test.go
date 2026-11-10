@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"syscall"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -63,11 +65,24 @@ type openAIImagesFailoverHTTPUpstream struct {
 	service.HTTPUpstream
 	mu         sync.Mutex
 	accountIDs []int64
+	responses  []*http.Response
+	errs       []error
 }
 
 func (u *openAIImagesFailoverHTTPUpstream) Do(_ *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
 	u.mu.Lock()
+	callIndex := len(u.accountIDs)
 	u.accountIDs = append(u.accountIDs, accountID)
+	if callIndex < len(u.errs) && u.errs[callIndex] != nil {
+		err := u.errs[callIndex]
+		u.mu.Unlock()
+		return nil, err
+	}
+	if callIndex < len(u.responses) {
+		resp := u.responses[callIndex]
+		u.mu.Unlock()
+		return resp, nil
+	}
 	u.mu.Unlock()
 	return &http.Response{
 		StatusCode: http.StatusOK,
@@ -87,7 +102,43 @@ func (u *openAIImagesFailoverHTTPUpstream) calls() []int64 {
 	return append([]int64(nil), u.accountIDs...)
 }
 
-func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhenExhausted(t *testing.T) {
+func openAIImagesRetrySuccessResponse() *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+			"X-Request-Id": []string{"req_img_retry"},
+		},
+		Body: io.NopCloser(bytes.NewBufferString("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_img_retry\",\"status\":\"completed\",\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2U=\"}]}}\n\n")),
+	}
+}
+
+func TestOpenAIGatewayHandlerImages_RetriesTransientServerErrorOnSameAccount(t *testing.T) {
+	upstream := &openAIImagesFailoverHTTPUpstream{responses: []*http.Response{{
+		StatusCode: 524,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewBufferString("{\"error\":{\"type\":\"server_error\",\"message\":\"gateway timeout\"}}")),
+	}, openAIImagesRetrySuccessResponse()}}
+	testOpenAIImagesSameAccountRetry(t, upstream, []int64{1, 1}, http.StatusOK, "failover")
+}
+
+func TestOpenAIGatewayHandlerImages_RetriesConnectionResetOnSameAccount(t *testing.T) {
+	resetErr := &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}
+	upstream := &openAIImagesFailoverHTTPUpstream{
+		errs:      []error{resetErr},
+		responses: []*http.Response{nil, openAIImagesRetrySuccessResponse()},
+	}
+	testOpenAIImagesSameAccountRetry(t, upstream, []int64{1, 1}, http.StatusOK, "request_error")
+}
+
+func TestOpenAIGatewayHandlerImages_ConnectionResetExhaustionStaysOnSameAccount(t *testing.T) {
+	resetErr := &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}
+	upstream := &openAIImagesFailoverHTTPUpstream{errs: []error{resetErr, resetErr, resetErr, resetErr}}
+	testOpenAIImagesSameAccountRetry(t, upstream, []int64{1, 1, 1, 1}, http.StatusBadGateway, "request_error")
+}
+
+func testOpenAIImagesSameAccountRetry(t *testing.T, upstream *openAIImagesFailoverHTTPUpstream, wantCalls []int64, wantStatus int, wantEventKind string) {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	groupID := int64(3130)
 	accounts := []service.Account{
@@ -115,7 +166,6 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 		},
 	}
 	accountRepo := openAIImagesFailoverAccountRepo{accounts: accounts}
-	upstream := &openAIImagesFailoverHTTPUpstream{}
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	gatewayService := service.NewOpenAIGatewayService(
 		accountRepo,
@@ -156,8 +206,6 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 		nil,
 		cfg,
 	)
-	handler.maxAccountSwitches = 10
-
 	body := []byte(`{"model":"gpt-image-1","prompt":"draw a cat","quality":"high","size":"1536x1024"}`)
 	core, observedLogs := observer.New(zap.DebugLevel)
 	requestCtx := logger.IntoContext(context.Background(), zap.New(core))
@@ -180,7 +228,7 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 	handler.Images(c)
 
 	accountSelectingLogs := observedLogs.FilterMessage("openai.images.account_selecting").All()
-	require.NotEmpty(t, accountSelectingLogs)
+	require.Len(t, accountSelectingLogs, 1, "retries must not rerun account selection")
 	loggedFields := make(map[string]string)
 	for _, field := range accountSelectingLogs[0].Context {
 		loggedFields[field.Key] = field.String
@@ -189,16 +237,25 @@ func TestOpenAIGatewayHandlerImages_ServerErrorFailsOverAndReturnsClearErrorWhen
 	require.Equal(t, "1536x1024", loggedFields["img_size"])
 	require.NotContains(t, loggedFields, "prompt")
 
-	require.Equal(t, []int64{1, 2}, upstream.calls())
-	require.Equal(t, http.StatusBadGateway, rec.Code)
-	require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
-	require.Equal(t, "Upstream service temporarily unavailable", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+	require.Equal(t, wantCalls, upstream.calls(), "body=%s logs=%#v", rec.Body.String(), observedLogs.All())
+	require.Equal(t, wantStatus, rec.Code)
+	if wantStatus == http.StatusOK {
+		require.Equal(t, "aW1hZ2U=", gjson.GetBytes(rec.Body.Bytes(), "data.0.b64_json").String())
+	} else {
+		require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+		require.NotContains(t, rec.Body.String(), "No available compatible accounts")
+	}
 
 	rawEvents, ok := c.Get(service.OpsUpstreamErrorsKey)
 	require.True(t, ok)
 	events, ok := rawEvents.([]*service.OpsUpstreamErrorEvent)
 	require.True(t, ok)
-	require.Len(t, events, 2)
-	require.Equal(t, "failover", events[0].Kind)
-	require.Equal(t, "failover", events[1].Kind)
+	wantEventCount := len(wantCalls)
+	if wantStatus == http.StatusOK {
+		wantEventCount--
+	}
+	require.Len(t, events, wantEventCount)
+	for _, event := range events {
+		require.Equal(t, wantEventKind, event.Kind)
+	}
 }

@@ -1525,7 +1525,7 @@ func (s *OpenAIGatewayService) ResolveOpenAIHTTPResponseSource(
 		if lookupErr != nil {
 			return 0, 0, fmt.Errorf("%w: group %d: %v", ErrOpenAIHTTPResponseSourceLookup, candidateGroupID, lookupErr)
 		}
-		if !found || (ownerUserID != userID && !(ownerUserID <= 0 && ownerAPIKeyID == apiKeyID)) {
+		if !found || (ownerUserID != userID && (ownerUserID > 0 || ownerAPIKeyID != apiKeyID)) {
 			continue
 		}
 		boundAccountID, accountErr := store.GetResponseAccount(ctx, candidateGroupID, responseID)

@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	batchImageMinDimension = 256
-	batchImageMaxDimension = 3840
-	batchImageMaxPixelArea = 3840 * 2160
+	batchImageMinDimension         = 256
+	batchImageMaxDimension         = 3840
+	batchImageMaxPixelArea         = 3840 * 2160
 	batchImageSeedreamMinPixelArea = 921_600
 	// Seedream 5.0 Pro exposes the 2K/custom contract through compatible
 	// adapters; keep the API-side limit aligned with the workbench so callers

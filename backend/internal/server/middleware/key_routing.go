@@ -72,7 +72,6 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 			requestmodel.ResetRequestBody(c.Request, body)
 			slog.WarnContext(c.Request.Context(), "key_route_invalid_response_reference_using_current_input", "api_key_id", key.ID)
 			hasPreviousResponseID = false
-			previousResponseID = ""
 		} else {
 			slog.WarnContext(c.Request.Context(), "key_route_response_reference_strip_failed_using_primary", "api_key_id", key.ID, "error", stripErr)
 			return key, true
@@ -152,7 +151,6 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 			}
 			requestmodel.ResetRequestBody(c.Request, body)
 			hasPreviousResponseID = false
-			previousResponseID = ""
 			slog.WarnContext(c.Request.Context(), "key_route_response_source_unavailable_using_current_input", "api_key_id", key.ID)
 		} else {
 			effective, sourceAccountID, err = sourceSelector.SelectHTTPResponseSource(c.Request.Context(), key, routingRequest, previousResponseID)
@@ -170,7 +168,6 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 				}
 				requestmodel.ResetRequestBody(c.Request, body)
 				hasPreviousResponseID = false
-				previousResponseID = ""
 			} else if sourceAccountID <= 0 || effective == nil || effective.GroupID == nil || effective.Group == nil {
 				body, err = keyRoutingDropStoredResponseReferences(body)
 				if err != nil {
@@ -180,7 +177,6 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 				requestmodel.ResetRequestBody(c.Request, body)
 				effective = nil
 				hasPreviousResponseID = false
-				previousResponseID = ""
 			}
 			if hasPreviousResponseID {
 				plan.SelectedGroupID = *effective.GroupID

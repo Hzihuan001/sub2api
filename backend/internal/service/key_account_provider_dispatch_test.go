@@ -99,10 +99,10 @@ func TestKeyAccountAnthropicPassthroughDispatchRecordsNativeTerminalAndUsage(t *
 		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-key-route"}},
 		Body:       io.NopCloser(strings.NewReader(responseBody)),
 	}}
-	ctx, scope, account := keyAccountTransportFixture(t, context.Background(), KeyAccountForwardOptions{
+	ctx, scope, _ := keyAccountTransportFixture(t, context.Background(), KeyAccountForwardOptions{
 		Metadata: keyrouting.AccountAttemptMetadata{Site: "test", APIKeyID: 11, GroupID: 21, Model: publicModel, Endpoint: "/v1/messages", PolicyRevision: 4},
 	})
-	account = newAnthropicAPIKeyAccountForTest()
+	account := newAnthropicAPIKeyAccountForTest()
 	account.Credentials["base_url"] = "http://anthropic.test"
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

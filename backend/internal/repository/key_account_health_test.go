@@ -31,7 +31,8 @@ func newKeyAccountHealthTestStore(t *testing.T, server *miniredis.Miniredis, opt
 	t.Helper()
 	client := redis.NewClient(&redis.Options{Addr: server.Addr(), MaxRetries: 0})
 	t.Cleanup(func() { _ = client.Close() })
-	store := NewKeyAccountHealthStore(client, opts).(*keyAccountHealthStore)
+	store, ok := NewKeyAccountHealthStore(client, opts).(*keyAccountHealthStore)
+	require.True(t, ok)
 	t.Cleanup(func() { _ = store.Close() })
 	return store.rdb, store
 }

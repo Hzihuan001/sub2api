@@ -101,7 +101,7 @@ func (e *OpenAIImagesUpstreamError) clientMessage() string {
 }
 
 // IsOpenAIImagesRetryableUpstreamError reports whether an Images error is an
-// upstream server failure that may be retried on another account.
+// upstream server failure that is safe for the image handler to retry.
 func IsOpenAIImagesRetryableUpstreamError(err *OpenAIImagesUpstreamError) bool {
 	return err != nil && err.StatusCode >= http.StatusInternalServerError
 }
@@ -997,7 +997,11 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 	if len(requestedModel) > 0 {
 		modelForCooldown = strings.TrimSpace(requestedModel[0])
 	}
-	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, modelForCooldown)
+	transientImageFailure := isOpenAIImagesTransientServerFailure(resp.StatusCode, body, upstreamMsg)
+	shouldDisable := false
+	if !transientImageFailure {
+		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, modelForCooldown)
+	}
 	failoverErr := s.newOpenAIAccountFailoverError(
 		account,
 		resp.StatusCode,
@@ -1005,9 +1009,12 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 		body,
 		upstreamMsg,
 		shouldDisable,
-		false,
+		transientImageFailure,
 	)
-	shouldFailover := shouldDisable || (account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests && failoverErr.RetryableOnSameAccount)
+	if transientImageFailure {
+		markOpenAIImagesTransientRetry(failoverErr)
+	}
+	shouldFailover := shouldDisable || transientImageFailure || (account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests && failoverErr.RetryableOnSameAccount)
 	kind := "http_error"
 	if shouldFailover {
 		kind = "failover"
@@ -1916,6 +1923,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
+		if isOpenAIImagesTransientTransportError(err) {
+			return nil, newOpenAIImagesTransportFailoverError()
+		}
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	if resp.StatusCode >= 400 {
@@ -1951,16 +1961,24 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 				Kind:               "failover",
 				Message:            upstreamMsg,
 			})
-			shouldDisable := s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, upstreamModel)
-			return nil, s.newOpenAIAccountFailoverError(
+			transientImageFailure := isOpenAIImagesTransientServerFailure(resp.StatusCode, respBody, upstreamMsg)
+			shouldDisable := false
+			if !transientImageFailure {
+				shouldDisable = s.handleFailoverSideEffects(upstreamCtx, resp, account, respBody, upstreamModel)
+			}
+			failoverErr := s.newOpenAIAccountFailoverError(
 				account,
 				resp.StatusCode,
 				resp.Header,
 				respBody,
 				upstreamMsg,
 				shouldDisable,
-				!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				transientImageFailure || (!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)),
 			)
+			if transientImageFailure {
+				markOpenAIImagesTransientRetry(failoverErr)
+			}
+			return nil, failoverErr
 		}
 		return s.handleOpenAIImagesErrorResponse(upstreamCtx, resp, c, account, upstreamModel)
 	}
@@ -2140,16 +2158,24 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 			return err
 		}
 		responseBody := []byte(fmt.Sprintf(`{"error":{"type":"upstream_error","code":%q,"message":%q}}`, code, message))
-		shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, headers, responseBody, requestedModel)
-		return s.newOpenAIAccountFailoverError(
+		transientImageFailure := isOpenAIImagesTransientServerFailure(statusCode, responseBody, message)
+		shouldDisable := false
+		if !transientImageFailure {
+			shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, statusCode, headers, responseBody, requestedModel)
+		}
+		failoverErr := s.newOpenAIAccountFailoverError(
 			account,
 			statusCode,
 			headers,
 			responseBody,
 			message,
 			shouldDisable,
-			!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode),
+			transientImageFailure || (!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)),
 		)
+		if transientImageFailure {
+			markOpenAIImagesTransientRetry(failoverErr)
+		}
+		return failoverErr
 	}
 	var upstreamErr *OpenAIImagesUpstreamError
 	if !errors.As(err, &upstreamErr) {
@@ -2213,14 +2239,22 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthResponseError(
 	if !retryable || responseWritten {
 		return err
 	}
-	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.StatusCode, headers, responseBody, requestedModel)
-	return s.newOpenAIAccountFailoverError(
+	transientImageFailure := isOpenAIImagesTransientServerFailure(upstreamErr.StatusCode, responseBody, upstreamErr.clientMessage())
+	shouldDisable := false
+	if !transientImageFailure {
+		shouldDisable = s.handleOpenAIAccountUpstreamError(ctx, account, upstreamErr.StatusCode, headers, responseBody, requestedModel)
+	}
+	failoverErr := s.newOpenAIAccountFailoverError(
 		account,
 		upstreamErr.StatusCode,
 		headers,
 		responseBody,
 		upstreamErr.clientMessage(),
 		shouldDisable,
-		!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode),
+		transientImageFailure || (!shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(upstreamErr.StatusCode)),
 	)
+	if transientImageFailure {
+		markOpenAIImagesTransientRetry(failoverErr)
+	}
+	return failoverErr
 }

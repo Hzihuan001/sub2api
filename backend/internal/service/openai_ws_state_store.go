@@ -94,7 +94,6 @@ type OpenAIWSStateStore interface {
 	HasAnySessionInvalidEncryptedContent() bool
 }
 
-
 type defaultOpenAIWSStateStore struct {
 	cache GatewayCache
 
