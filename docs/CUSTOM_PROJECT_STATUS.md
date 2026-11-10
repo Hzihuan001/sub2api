@@ -1,13 +1,16 @@
 # 定制项目状态与官方升级说明
 
-### 2026-11-11 — 0.2.20-custom.2 候选：网关、计费、鉴权缓存与前端回归修复（门禁推进中、未部署）
+### 2026-11-11 — 0.2.20-custom.2：网关、计费、鉴权缓存与前端回归修复（三站生产部署完成）
 
-- **当前状态**：基于 `0.2.20-custom.1` 的本地候选；最终运行版本/提交、tag、不可变镜像及三站部署坐标待确定。生产基线仍是下方已记录的 `.1`，本候选不标记为已上线；详细证据见[候选发布草稿](CUSTOM_RELEASE_0_2_20_CUSTOM2_20261111.md)。
+- **当前状态**：版本 `0.2.20-custom.2`，运行提交 `a90e15c1c1444c3f81b4ab9dc847b2a77ed60cac`，tag `custom-0.2.20.2` 已锁定并推送。全部源码门禁、精确发布镜像验收及主站 → L1 → COS 生产部署完成。三站均运行下述相同 digest、healthy、restart 0；详细证据见[发布记录](CUSTOM_RELEASE_0_2_20_CUSTOM2_20261111.md)。
+- **发布制品**：`ghcr.io/hzihuan001/sub2api@sha256:6d89fe835bee13987c48a60406f93b270046a4be4fa35d1813efda622f234b76` 已发布并拉回验证，`linux/amd64`，构建时间 `2026-11-10T19:06:27Z`，版本/提交/OCI revision 一致，`pg_dump` / `psql` 18.6。精确 digest 的 operator-test（项目 `sub2api-operator-test-custom202-20261111`，端口 18197）exit 0，测试资源已按项目清理；本次没有 Actions 运行。
 - **图片请求**：生成/编辑的瞬时 HTTP 5xx、TCP 重置、EOF/超时按账号配置有限重试（默认重试上限 3 次），固定首次选中的账号和并发槽位，不跨账号/分组；耗尽后返回上游错误。这类瞬时错误不写账号停用/冷却，明确鉴权/配额/工具不可用仍保留既有处理。DNS NXDOMAIN、客户端取消或已输出图片内容不重发；重放 POST 仍可能重复生成/计费。
 - **计费修复**：DeepSeek Pro 按官方更新日志撤销旧预定 Flash 降档逻辑，保留独立 Pro 档；补齐 `gpt-6.1-terra` fallback、缓存写入与 priority/Fast 定价；专用图片端点启用 `image_count` 时优先按张计费，混合消息请求仍保留 token 计费。
 - **状态与界面修复**：账号刷新隐私操作改为 `AfterAccountCommit` 提交后副作用；停用计划完成时清理匹配的 lease/run 且不重新排队；恢复合并时遗漏的 Grok 模型编辑、诊断面板和统一同步入口，保留上游 0.2.20/Kiro 等功能。
-- **迁移待审查**：新增追加迁移候选 `9008_custom_auth_invalidation_scope.sql`，收窄仅 revision/展示变更的无效鉴权缓存刷新，同时覆盖真实路由/安全权限及主备分组、用户允许分组变更。完整集成和回退兼容性审查仍待完成；不能再记为“无新增迁移”，旧迁移及 checksum 必须保持不变。
-- **已通过门禁**：后端全量 unit 已通过；锁定 Node 20.20.2 / pnpm 9.15.9 的前端 lint（exit 0，2 条已有警告）、typecheck、完整 Vitest（441 文件/3677 测试）及 build（含 i18n 4/4）均通过。Grok 专项 62/62 也通过；完整后端 integration、golangci-lint、9008 审查、精确镜像验收和生产页面功能仍待完成，不宣称全部发布门禁通过。
+- **迁移审查通过**：新增 `9008_custom_auth_invalidation_scope.sql`，仅追加/替换函数，收窄 revision/展示变更的冗余鉴权失效，保留真实路由/安全及主备分组、用户允许分组覆盖。完整集成与 `.1` 应用回退兼容性已通过；生产已验证全部旧迁移和 checksum 不变，每站仅增加 9008；最终实测账本 main/L1/COS 为 335→336、344→345、344→345。
+- **已通过源码门禁**：后端 unit（67 个测试包；service 248.257s）、完整 integration（service 155.170s）、golangci-lint 2.15 / Go 1.27.3（0 issues）均 exit 0；精确命令与根目录 `.tmp-full-*` 日志见发布记录。前端 Node 20.20.2 / pnpm 9.15.9 的 lint（2 条已有警告）、typecheck、441 文件/3677 测试、build（含 i18n 4/4）也均 exit 0，Grok 专项 62/62 通过。
+- **生产与备份证据**：已验证备份 `/opt/sub2api-backups/v0.2.20-custom.2-20261110T184754Z`，三站 `*-release-result.json` 均 `passed: true`；应用配置、PG/Redis 身份不变，critical 启动日志 0。主站/L1 对新推理入口临时 503 辅助自然排空（分别 54.4s / 60.4s），没有强制终止已有流；完成后原始 nginx 文件 SHA 一致、临时 map 不存在、`nginx -t` 通过。COS 自然归零无需围栏。2026-11-11 北京时间 03:39:58 最终复核仍均 healthy、restart 0、精确 digest 一致，证据 `.tmp/custom202-final-evidence.json`，逐站 UTC 时间见发布记录。
+- **页面验收边界**：每站 local/public 的 health、keys、image-studio、docs/tools/codex、pelican-showcase 均 200，匿名 admin settings/failure-policy/keys 均 401。最终公网复核 exit 0：`ai.moshu.cloud`、`api.tokenpulse.top`、备用 `api.moshu.cloud`、`cos.tokenpulse.top` 每域 5 个 URL（1 个 health + 4 个 HTML 页面）均 200，7 个 JS 资源 SHA 与 origin 一致、CSP nonce 匹配，日志 `.tmp/custom202-public-postdeploy.log`。CUA 无法确认 URL，视觉/交互验收已中止，未做付费模型测试。收尾前 fetch 后本地/远端分支左右计数 0/0；运行 tag 不移动，文档收尾另作独立提交。
 
 ### 2026-11-10 — upstream v0.2.20 / custom.1 三站生产部署完成
 
