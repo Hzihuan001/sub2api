@@ -33,13 +33,22 @@ export function isSeedreamImageModel(model: string | undefined | null): boolean 
   return normalized === 'seedream-5.0-pro' || normalized.startsWith('seedream-5.0-pro-') || normalized.includes('seedream-5-0-pro')
 }
 
+/** Grok Imagine image models expose 1K/2K/custom dimensions, but no explicit 4K tier. */
+export function isGrokImagineImageModel(model: string | undefined | null): boolean {
+  const normalized = String(model || '').trim().toLowerCase().split('/').pop() || ''
+  return normalized === 'grok-imagine'
+    || normalized === 'grok-imagine-image'
+    || normalized === 'grok-imagine-edit'
+    || normalized.startsWith('grok-imagine-image-')
+}
+
 export function supportsImageStudioCustomSize(model: string | undefined | null, nativeGemini = false): boolean {
   return !nativeGemini && !isGeminiNanoBananaModel(model)
 }
 
-/** Seedream 5.0 Pro's published contract tops out at the 2K tier. */
+/** Seedream 5.0 Pro and Grok Imagine do not expose an explicit 4K tier. */
 export function supportsImageStudio4K(model: string | undefined | null): boolean {
-  return !isSeedreamImageModel(model)
+  return !isSeedreamImageModel(model) && !isGrokImagineImageModel(model)
 }
 
 export function normalizeImageStudioCustomSize(model: string | undefined | null, width: number | string, height: number | string): string | null {

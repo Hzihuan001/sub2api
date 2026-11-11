@@ -1261,9 +1261,14 @@ var _ BatchImageGroupPricingRepository = (*publicBatchImageGroupRepo)(nil)
 var _ BatchImageUserGroupRateRepository = (*publicBatchImageUserGroupRateRepo)(nil)
 
 func TestMaxBatchImageReferenceImagesForModelSupportsGPTImage(t *testing.T) {
-	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2", "gpt-image-2.5-flare"} {
+	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"} {
 		t.Run(model, func(t *testing.T) {
 			require.Equal(t, 16, maxBatchImageReferenceImagesForModel(model))
+		})
+	}
+	for _, model := range []string{"grok-imagine-image-2.0", "grok-imagine-image-quality"} {
+		t.Run(model, func(t *testing.T) {
+			require.Equal(t, 5, maxBatchImageReferenceImagesForModel(model))
 		})
 	}
 	require.Equal(t, 3, maxBatchImageReferenceImagesForModel("gemini-2.5-flash-image"))
@@ -1275,7 +1280,7 @@ func TestMaxBatchImageReferenceImagesForModelSupportsGPTImage(t *testing.T) {
 
 func TestDefaultBatchImageModelCandidatesIncludesGPTImage(t *testing.T) {
 	candidates := defaultBatchImageModelCandidates()
-	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2", "gemini-nano-banana-2.1", "seedream-5.0-pro"} {
+	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2", "gpt-image-2.6-flare", "gpt-image-2.6-sunburst", "grok-imagine-image-2.0", "grok-imagine-image-quality", "gemini-nano-banana-2.1", "seedream-5.0-pro"} {
 		require.Contains(t, candidates, model)
 	}
 }
@@ -1287,5 +1292,27 @@ func TestValidateBatchImageReferenceLimitsForAccountResolvesModelAlias(t *testin
 		Credentials: map[string]any{"model_mapping": map[string]any{"paint": "gpt-image-2"}},
 	}
 	items := []BatchImageSubmitItem{{ReferenceImages: []BatchImageReferenceInput{{MimeType: "image/png", Data: []byte("x")}}}}
+	require.NoError(t, validateBatchImageReferenceLimitsForAccount("paint", items, account))
+}
+
+func TestValidateBatchImageReferenceLimitsForGrokImagineImage20(t *testing.T) {
+	account := &Account{
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"model_mapping": map[string]any{"paint": "grok-imagine-image-2.0"}},
+	}
+	items := []BatchImageSubmitItem{{ReferenceImages: make([]BatchImageReferenceInput, 5)}}
+	require.NoError(t, validateBatchImageReferenceLimitsForAccount("paint", items, account))
+	items[0].ReferenceImages = append(items[0].ReferenceImages, BatchImageReferenceInput{})
+	require.ErrorIs(t, validateBatchImageReferenceLimitsForAccount("paint", items, account), ErrBatchImageTooManyReferenceImages)
+}
+
+func TestValidateBatchImageReferenceLimitsForGrokImagineQualityAlias(t *testing.T) {
+	account := &Account{
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"model_mapping": map[string]any{"paint": "grok-imagine-image-quality"}},
+	}
+	items := []BatchImageSubmitItem{{ReferenceImages: make([]BatchImageReferenceInput, 5)}}
 	require.NoError(t, validateBatchImageReferenceLimitsForAccount("paint", items, account))
 }

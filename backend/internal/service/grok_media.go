@@ -32,8 +32,9 @@ const (
 	GrokMediaEndpointVideoStatus       GrokMediaEndpoint = "video_status"
 	GrokMediaEndpointVideoContent      GrokMediaEndpoint = "video_content"
 
-	// Official xAI Imagine image-edit limit.
-	grokMediaMaxEditSourceImages = 3
+	// Official xAI Imagine Image 2.0 image-edit limit. The legacy
+	// grok-imagine-image-quality alias is served by the same low-quality path.
+	grokMediaMaxEditSourceImages = 5
 )
 
 func (e GrokMediaEndpoint) RequiresRequestBody() bool {

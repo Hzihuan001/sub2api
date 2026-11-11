@@ -950,6 +950,7 @@ import { getImageOutputFormats, normalizeImageOutputFormat } from '@/utils/image
 import {
   IMAGE_STUDIO_CUSTOM_SIZE,
   isGeminiNanoBananaModel,
+  isGrokImagineImageModel,
   normalizeCustomImageSize,
   normalizeImageStudioCustomSize,
   parseImageDimensions,
@@ -1385,6 +1386,7 @@ const expandedReferenceUsage = computed(() => {
 function referenceImageLimitForModel(model: string) {
   const normalized = String(model || '').toLowerCase()
   if (normalized.includes('gpt-image')) return 16
+  if (isGrokImagineImageModel(normalized)) return 5
   if (isGeminiNanoBananaModel(normalized)) return 14
   if (normalized.includes('seedream-5.0-pro')) return 10
   if (normalized.includes('pro-image')) return 14
@@ -1424,7 +1426,7 @@ ${endpointBase.value}
 2. 从用户要求或上下文推断任务名称；没有明确名称时用当前时间生成任务名。
 3. 从用户要求或上下文推断输出目录；如果用户没有说保存到哪里，才询问用户。
 4. 提交前必须先计算 expected_output_count = 所有 item 的 output_count 之和。单个批量任务硬性最多 200 张输出图；超过 200 张必须拆成多组任务，不能提交一个超大任务，也不能把参考图附件上限当成生成张数上限。
-5. 如果用户提供参考图，可选择整组任务统一复用同一组图片，也可按用途绑定到具体 item。共享参考图会完整应用到每条 item，两种方式使用相同的模型单条上限：GPT-image 最多 16 张，Gemini 2.5 Flash Image 最多 3 张，Gemini 3 Pro Image / Nano Banana 最多 14 张，Seedream 5.0 Pro 最多 10 张；以模型接口公布的能力为准。参考图只是输入附件，不是输出图数量。不要把后端附件风控理解成单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
+5. 如果用户提供参考图，可选择整组任务统一复用同一组图片，也可按用途绑定到具体 item。共享参考图会完整应用到每条 item，两种方式使用相同的模型单条上限：GPT-image 最多 16 张，Grok Imagine 最多 5 张，Gemini 2.5 Flash Image 最多 3 张，Gemini 3 Pro Image / Nano Banana 最多 14 张，Seedream 5.0 Pro 最多 10 张；以模型接口公布的能力为准。参考图只是输入附件，不是输出图数量。不要把后端附件风控理解成单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
 6. 整组复用参考图时，先检查模型目录 supports_shared_reference_images。为 true 时将图片数组放在顶层 shared_reference_images，只上传一次，不要在每条 item 重复 base64；该数组覆盖各条 reference_images，空数组也表示清空。旧服务未公布支持时，改为把共享图写到每条 item 的 reference_images，不传顶层字段，避免旧服务忽略图片。按条绑定时不传 shared_reference_images，保留各条 reference_images。附件数量和解码后总量仍按 output_count 展开计算，超过限制时拆分任务。gs:// file_uri 仅适用于明确支持它的原生 Gemini/Vertex 通道，GPT-image 和工作台拆单并发通道使用 inline base64。
 7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。工作台使用 provider: "app_managed"，把任务拆为多个单图请求并发执行；Nano Banana 保留单图异步任务轮询，不调用官方批量接口。不要展示或询问内部 provider 名称。
 8. 调用批量生图 API 提交、轮询、下载，不要求用户去页面里手填。

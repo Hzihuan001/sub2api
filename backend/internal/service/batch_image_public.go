@@ -1056,6 +1056,11 @@ func maxBatchImageReferenceImagesForModel(model string) int {
 	if strings.Contains(model, "flash-image") {
 		return 3
 	}
+	// xAI Imagine Image 2.0 (and its retained quality compatibility alias)
+	// accepts up to five source images for a single edit request.
+	if strings.Contains(model, "grok-imagine-image-2.0") || strings.Contains(model, "grok-imagine-image-quality") {
+		return 5
+	}
 	return 0
 }
 
@@ -1504,6 +1509,10 @@ func defaultBatchImageModelCandidates() []string {
 		"gpt-image-2",
 		"gpt-image-2.5-flare",
 		"gpt-image-2.5-sunburst",
+		"gpt-image-2.6-flare",
+		"gpt-image-2.6-sunburst",
+		"grok-imagine-image-2.0",
+		"grok-imagine-image-quality",
 		"seedream-5.0-pro",
 		"gemini-2.0-flash-exp-image-generation",
 		"gemini-2.5-flash-image",

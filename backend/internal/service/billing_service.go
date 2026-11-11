@@ -2242,10 +2242,11 @@ type VideoPriceConfig struct {
 const (
 	defaultImageGenerationPrice = 0.134
 
-	defaultGrokImagineImagePrice1K        = 0.02
-	defaultGrokImagineImagePrice2K        = 0.02
-	defaultGrokImagineImageQualityPrice1K = 0.05
-	defaultGrokImagineImageQualityPrice2K = 0.07
+	defaultGrokImagineImagePrice1K = 0.02
+	defaultGrokImagineImagePrice2K = 0.02
+	// The retired quality slug is served as Imagine Image 2.0 quality=low.
+	defaultGrokImagineImageQualityPrice1K = 0.04
+	defaultGrokImagineImageQualityPrice2K = 0.06
 	defaultGrokImagineImage20Price1K      = 0.06 // default quality is Medium
 	defaultGrokImagineImage20Price2K      = 0.08
 

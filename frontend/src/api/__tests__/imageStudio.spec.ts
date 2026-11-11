@@ -211,15 +211,21 @@ describe('imageStudio API', () => {
         data: [
           { id: 'gpt-image-1', name: 'GPT Image' },
           { id: 'gpt-image-1', name: 'Duplicate' },
+          { id: 'gpt-image-2.6-flare', name: 'GPT Image 2.6 Flare' },
+          { id: 'gpt-image-2.6-sunburst', name: 'GPT Image 2.6 Sunburst' },
           { id: 'gpt-5', name: 'Chat' },
-          { id: 'grok-imagine-1.0' },
+          { id: 'grok-imagine-image-2.0' },
+          { id: 'grok-imagine-image-quality' },
         ],
       }),
     } as Response)
 
     await expect(listImageStudioModels('sk-image')).resolves.toEqual([
       { id: 'gpt-image-1', name: 'GPT Image' },
-      { id: 'grok-imagine-1.0', name: 'grok-imagine-1.0' },
+      { id: 'gpt-image-2.6-flare', name: 'GPT Image 2.6 Flare' },
+      { id: 'gpt-image-2.6-sunburst', name: 'GPT Image 2.6 Sunburst' },
+      { id: 'grok-imagine-image-2.0', name: 'grok-imagine-image-2.0' },
+      { id: 'grok-imagine-image-quality', name: 'grok-imagine-image-quality' },
     ])
     expect(fetch).toHaveBeenCalledWith(
       expect.stringMatching(/\/v1\/models$/),

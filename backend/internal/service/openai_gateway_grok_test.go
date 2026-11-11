@@ -1158,13 +1158,21 @@ func TestPrepareGrokImageEditNormalizesOfficialImageObjects(t *testing.T) {
 	}
 }
 
-func TestPrepareGrokImageEditRejectsMoreThanThreeSources(t *testing.T) {
-	body := []byte(`{"images":["https://example.com/1.png","https://example.com/2.png","https://example.com/3.png","https://example.com/4.png"]}`)
+func TestPrepareGrokImageEditAcceptsFiveSources(t *testing.T) {
+	body := []byte(`{"images":["https://example.com/1.png","https://example.com/2.png","https://example.com/3.png","https://example.com/4.png","https://example.com/5.png"]}`)
+
+	out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, "application/json")
+	require.NoError(t, err)
+	require.Len(t, gjson.GetBytes(out, "images").Array(), 5)
+}
+
+func TestPrepareGrokImageEditRejectsMoreThanFiveSources(t *testing.T) {
+	body := []byte(`{"images":["https://example.com/1.png","https://example.com/2.png","https://example.com/3.png","https://example.com/4.png","https://example.com/5.png","https://example.com/6.png"]}`)
 
 	out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, "application/json")
 	require.Error(t, err)
 	require.Nil(t, out)
-	require.Contains(t, err.Error(), "maximum of 3 source images")
+	require.Contains(t, err.Error(), "maximum of 5 source images")
 }
 
 func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {

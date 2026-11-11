@@ -1039,8 +1039,8 @@ func TestCalculateGrokImagineImageCostUsesDefaultRateCard(t *testing.T) {
 
 	require.InDelta(t, 0.02, standard1K.TotalCost, 1e-10)
 	require.InDelta(t, 0.02, standard2K.TotalCost, 1e-10)
-	require.InDelta(t, 0.05, quality1K.TotalCost, 1e-10)
-	require.InDelta(t, 0.07, quality2K.TotalCost, 1e-10)
+	require.InDelta(t, 0.04, quality1K.TotalCost, 1e-10)
+	require.InDelta(t, 0.06, quality2K.TotalCost, 1e-10)
 }
 
 func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {

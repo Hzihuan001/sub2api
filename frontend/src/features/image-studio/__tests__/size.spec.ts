@@ -9,6 +9,7 @@ import {
   imageStudioPresetForDimensions,
   resolveImageStudioPresetSize,
   resolveImageStudioRequestSize,
+  isGrokImagineImageModel,
   supportsImageStudio4K,
   supportsImageStudioCustomSize,
   verifyImageSize,
@@ -38,6 +39,14 @@ describe('image studio size helpers', () => {
     expect(supportsImageStudio4K('seedream-5.0-pro')).toBe(false)
     expect(supportsImageStudio4K('doubao-seedream-5-0-pro-260628')).toBe(false)
     expect(supportsImageStudio4K('gpt-image-2.5-sunburst')).toBe(true)
+    expect(isGrokImagineImageModel('grok-imagine-image-2.0')).toBe(true)
+    expect(isGrokImagineImageModel('grok-imagine-image-quality')).toBe(true)
+    expect(isGrokImagineImageModel('grok-imagine')).toBe(true)
+    expect(supportsImageStudio4K('grok-imagine-image-2.0')).toBe(false)
+    expect(supportsImageStudio4K('grok-imagine-image-quality')).toBe(false)
+    expect(supportsImageStudio4K('grok-imagine')).toBe(false)
+    expect(supportsImageStudioCustomSize('grok-imagine-image-2.0')).toBe(true)
+    expect(normalizeImageStudioCustomSize('grok-imagine-image-2.0', 1536, 1024)).toBe('1536x1024')
     expect(normalizeImageStudioCustomSize('seedream-5.0-pro', 2048, 2048)).toBe('2048x2048')
     expect(normalizeImageStudioCustomSize('seedream-5.0-pro', 960, 960)).toBe('960x960')
     expect(normalizeImageStudioCustomSize('seedream-5.0-pro', 256, 256)).toBeNull()

@@ -197,6 +197,17 @@ describe('Image Studio actual size visibility', () => {
     }), expect.any(AbortSignal))
   })
 
+  it.each(['grok-imagine-image-2.0', 'grok-imagine-image-quality', 'grok-imagine'])('limits %s to five references and hides the explicit 4K tier', async (model) => {
+    mocks.listModels.mockResolvedValue([{ id: model, name: 'Grok Imagine' }])
+    wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.text()).toContain('imageStudio.referenceHint: 5')
+    expect(wrapper.get('[data-test="image-studio-size"]').findAll('option').map((option) => option.attributes('value'))).toEqual(['1K', '2K', 'custom'])
+    const references = Array.from({ length: 6 }, (_, index) => new File(['image'], `grok-reference-${index}.png`, { type: 'image/png' }))
+    await attachReferences(references)
+    expect(wrapper.findAll('form img')).toHaveLength(5)
+  })
+
   it('caps an oversized GPT Image file selection at the first 16 references', async () => {
     vi.mocked(URL.createObjectURL).mockImplementation((blob) => `blob:reference-${(blob as File).name}`)
     wrapper = mountView()

@@ -44,6 +44,8 @@ const models = [
   { id: 'gemini-nano-banana-2.1', reference_image_limit: 14 },
   { id: 'seedream-5.0-pro', reference_image_limit: 10 },
   { id: 'gemini-2.5-flash-image', reference_image_limit: 3 },
+  { id: 'grok-imagine-image-2.0' },
+  { id: 'grok-imagine-image-quality' },
   { id: 'unknown-image-model' },
   { id: 'advertised-image-alias', reference_image_limit: 5 },
 ]
@@ -149,6 +151,14 @@ function promptRows(outputCounts: number[]) {
 }
 
 describe('Batch Image shared references', () => {
+  it.each(['grok-imagine-image-2.0', 'grok-imagine-image-quality'])('keeps 1K/2K/custom sizes and hides 4K for %s', async (model) => {
+    await openShared()
+    await selectModel(model)
+    const imageSizeSelect = wrapper!.findAll('form select')[2]!
+    expect(imageSizeSelect.findAll('option').map(option => option.attributes('value'))).toEqual(['1K', '2K', 'custom'])
+    expect(wrapper!.text()).toContain('batchImage.create.sharedReferenceHint: 5')
+  })
+
   it('uploads 16 shared references once in the serialized request for multiple prompts and outputs', async () => {
     await openShared()
     expect(input().attributes('multiple')).toBeDefined()
@@ -226,6 +236,8 @@ describe('Batch Image shared references', () => {
     ['gemini-nano-banana-2.1', 14],
     ['seedream-5.0-pro', 10],
     ['gemini-2.5-flash-image', 3],
+    ['grok-imagine-image-2.0', 5],
+    ['grok-imagine-image-quality', 5],
     ['unknown-image-model', 0],
     ['advertised-image-alias', 5],
   ])('respects the shared reference limit after switching to %s', async (model, limit) => {
