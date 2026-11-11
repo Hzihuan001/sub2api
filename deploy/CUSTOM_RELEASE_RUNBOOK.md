@@ -1,8 +1,16 @@
 # Sub2API custom release runbook
 
-## Current production release: custom.20.2 — rollout complete (2026-11-11)
+## Current production release: custom.21.2 — rollout complete (2026-11-11)
 
-> **Working tree candidate (not deployed)**: `0.2.21-custom.1` now includes upstream `v0.2.21` plus the image-task recovery and 1800-second image transport changes documented in [`CUSTOM_IMAGE_RECOVERY_20261111.md`](../docs/CUSTOM_IMAGE_RECOVERY_20261111.md). It has passed source gates but has no new image, tag, migration rollout, or production deployment. Keep the `.2` digest below as the production baseline until a separately approved release is built and deployed.
+Runtime source is locked to `dff2cb433fe219c60686a9dad3460c4e5a6cdba6`, version `0.2.21-custom.2`. The immutable artifact is `ghcr.io/hzihuan001/sub2api@sha256:5d24cc7b12bb8da8ebc657a29a9e53041083b6d270e7e2b5075670f56430cd40`; main → L1 → COS completed with all applications healthy/restart 0. Release evidence is in [`CUSTOM_RELEASE_0_2_21_CUSTOM2_20261111.md`](../docs/CUSTOM_RELEASE_0_2_21_CUSTOM2_20261111.md).
+
+This release keeps the image studio implementation already accepted in `.1` and adds idempotent migration `9009_custom_gpt_image_26_group_models.sql`. It appends GPT Image 2.6 Flare/Sunburst to existing OpenAI image groups so the group-filtered `/v1/models` response and user workbench expose the models. No existing allowlist entries are removed.
+
+Verified backup: `/opt/sub2api-deploy-backups/custom211-20261111T072120Z/`; PostgreSQL dumps, restore lists, app-data/Compose/environment archives, OpenResty config archive and SHA-256 manifest passed. The exact published-image operator gate passed on port `18092`. Four public domains each returned 200 for health, keys, image-studio, docs and showcase pages. Browser-authenticated generation and paid production model calls remain outside the gate.
+
+For application-only rollback, use the previous `.20.2` digest `sha256:6d89fe835bee13987c48a60406f93b270046a4be4fa35d1813efda622f234b76`; retain migration `9009`, current business data and all existing migration rows. Do not restore an older database over live data.
+
+> **Superseded intermediate**: `0.2.21-custom.1` contained the image-task recovery and 1800-second image transport changes and was briefly started on the main site during rollout. Production group data then showed that the existing image allowlist still needed the GPT Image 2.6 entries, so `.2` added the idempotent `9009` migration and superseded `.1` before L1/COS rollout. Keep the `.2` artifact above as the production baseline.
 
 Runtime source is locked to `a90e15c1c1444c3f81b4ab9dc847b2a77ed60cac`, tag `custom-0.2.20.2`, version `0.2.20-custom.2`. All source gates and exact-published-image acceptance passed; source branch and tag are pushed. Main → L1 → COS production rollout is complete on the exact digest below, all healthy/restart 0. Local/public HTTP, anonymous authorization, final public CSP/static-SHA/alias and migration-count checks passed. Browser visual/interaction and paid-model tests remain unverified. Record evidence in [the release report](../docs/CUSTOM_RELEASE_0_2_20_CUSTOM2_20261111.md).
 
@@ -22,7 +30,7 @@ Each site returned 200 locally/publicly for `/health`, `/keys`, `/image-studio`,
 
 Runtime tag `custom-0.2.20.2` stays fixed at `a90e15c1c1444c3f81b4ab9dc847b2a77ed60cac`; pre-closure `git fetch origin` showed branch left/right counts 0/0. Use a separate documentation closure commit and do not move that tag. For any later app-only rollback, naturally drain first and retain the current database, 9008 and new business data; never restore an older database over live data.
 
-## Previous release: custom.20.1 — production rollout complete (2026-11-10)
+## Previous release: custom.20.2 — production rollout complete (2026-11-11)
 
 Release report: [`custom.20` production record](../docs/CUSTOM_RELEASE_0_2_20_CUSTOM1_20261110.md). Runtime source/tag is `eb069def5b0dbcdd8f85f4294fa20434a6537015` / `custom-0.2.20.1`; all three applications previously ran `ghcr.io/hzihuan001/sub2api@sha256:f3a21007c4a9a2e5941435dffadaf5467b2dbd2a4db400baad0e165150578693`. The `.17` Pelican changes were merged into `.20`; `.17` was not separately deployed.
 

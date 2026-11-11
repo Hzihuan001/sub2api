@@ -1,5 +1,12 @@
 # 定制功能日志
 
+### 2026-11-11 — 0.2.21-custom.2 — GPT Image 2.6 生图组白名单补齐（三站已发布）
+
+- 工作台代码已支持 `gpt-image-2.6-flare` 与 `gpt-image-2.6-sunburst`；本次发布补齐生产数据层的 OpenAI 生图组 `model_allowlist`，追加两个模型并保留原有 2.5/2.0 条目。
+- 根因是 `.1` 镜像升级了代码但既有生产组白名单仍是旧配置，`/v1/models` 按组权限过滤后下拉框只能显示 GPT Image 2.5。迁移 `9009_custom_gpt_image_26_group_models.sql` 使用条件追加，重复执行不会产生重复条目。
+- 主站、L1、COS 已运行同一不可变 digest `sha256:5d24cc7b12bb8da8ebc657a29a9e53041083b6d270e7e2b5075670f56430cd40`，容器健康检查、公开页面检查和精确 digest operator 验收通过。此前生图工作台/对话回归不重复执行。
+- 详细部署、备份和验收边界见 [`CUSTOM_RELEASE_0_2_21_CUSTOM2_20261111.md`](CUSTOM_RELEASE_0_2_21_CUSTOM2_20261111.md)。
+
 ### 2026-11-11 — upstream v0.2.21 合并候选（尚未部署）
 
 - 官方 `v0.2.21` 已从 `v0.2.20` 共同基线合入，候选版本为 `0.2.21-custom.1`。Claude Fable/Mythos 5.2、OpenAI cache write 30m/12h 字段与计费、请求体内存预算、Responses/WS 修复和前端更新已同步；定制插件化入口、图片同账号重试以及异步任务找回保持可用。

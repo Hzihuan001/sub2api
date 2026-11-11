@@ -1,5 +1,12 @@
 # 定制项目状态与官方升级说明
 
+### 2026-11-11 — 0.2.21-custom.2：生图模型白名单补齐（三站生产部署完成）
+
+- **当前状态**：主站 → L1 → COS 已完成 `0.2.21-custom.2` 滚动发布，运行提交 `dff2cb433fe219c60686a9dad3460c4e5a6cdba6`，三站同一 digest `sha256:5d24cc7b12bb8da8ebc657a29a9e53041083b6d270e7e2b5075670f56430cd40`，均 healthy、restart 0。详见 [发布记录](CUSTOM_RELEASE_0_2_21_CUSTOM2_20261111.md)。
+- **问题与修复**：`.1` 代码已包含 GPT Image 2.6，但生产生图组的 `model_allowlist` 仍停留在 2.5，因此工作台下拉框按权限过滤后看不到 2.6。新增幂等迁移 `9009_custom_gpt_image_26_group_models.sql`，为启用图片生成的 OpenAI 组追加 `gpt-image-2.6-flare`、`gpt-image-2.6-sunburst`，不覆盖既有白名单。
+- **发布门禁**：精确 digest operator 验收通过（项目 `sub2api-operator-test-custom212-20261111`、端口 18092）；部署前备份 `/opt/sub2api-deploy-backups/custom211-20261111T072120Z/` 的 dump、归档、`pg_restore --list` 和 SHA-256 校验通过。四个公网域名的 health、keys、image-studio、文档和作品页共 20 个检查均 HTTP 200。
+- **边界**：没有重复此前已通过的生图对话验收，也没有发起生产付费模型调用；用户刷新主站工作台后即可重新读取带 2.6 的 API Key 模型目录。
+
 ### 2026-11-11 — upstream v0.2.21 合并候选（尚未部署）
 
 - **候选版本**：已从共同基线 `v0.2.20` 合并官方 `v0.2.21`（tag commit `10ba8f9b4dc2e6023d4a9879ab77b21841babd10`），当前源码版本为 `0.2.21-custom.1`。官方 Claude Fable/Mythos 5.2、缓存写入 TTL/计费、请求体内存预算、WS/Responses 修复和前端更新已纳入；定制插件化边界、图片重试与异步任务找回继续保留。
