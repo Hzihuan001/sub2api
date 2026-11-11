@@ -1,8 +1,8 @@
 # Sub2API custom release runbook
 
-## Current release: custom.20.2 — production rollout complete (2026-11-11)
+## Current production release: custom.20.2 — rollout complete (2026-11-11)
 
-> **Working tree candidate (not deployed)**: the 2026-11-11 image-task recovery and 1800-second image transport changes are documented in [`CUSTOM_IMAGE_RECOVERY_20261111.md`](../docs/CUSTOM_IMAGE_RECOVERY_20261111.md). They have passed source gates but have no new image, tag, or production rollout. Keep the `.2` digest below as the production baseline until a separately approved release is built and deployed.
+> **Working tree candidate (not deployed)**: `0.2.21-custom.1` now includes upstream `v0.2.21` plus the image-task recovery and 1800-second image transport changes documented in [`CUSTOM_IMAGE_RECOVERY_20261111.md`](../docs/CUSTOM_IMAGE_RECOVERY_20261111.md). It has passed source gates but has no new image, tag, migration rollout, or production deployment. Keep the `.2` digest below as the production baseline until a separately approved release is built and deployed.
 
 Runtime source is locked to `a90e15c1c1444c3f81b4ab9dc847b2a77ed60cac`, tag `custom-0.2.20.2`, version `0.2.20-custom.2`. All source gates and exact-published-image acceptance passed; source branch and tag are pushed. Main → L1 → COS production rollout is complete on the exact digest below, all healthy/restart 0. Local/public HTTP, anonymous authorization, final public CSP/static-SHA/alias and migration-count checks passed. Browser visual/interaction and paid-model tests remain unverified. Record evidence in [the release report](../docs/CUSTOM_RELEASE_0_2_20_CUSTOM2_20261111.md).
 

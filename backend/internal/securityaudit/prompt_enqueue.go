@@ -10,6 +10,7 @@ type Enqueuer struct {
 	repo    JobRepository
 	payload PayloadStore
 	metrics Metrics
+	notify  func()
 }
 
 type captureOnlyRepository interface {
@@ -120,6 +121,9 @@ func (e *Enqueuer) Enqueue(ctx context.Context, req Request) error {
 		}))
 		e.recordDropped()
 		return err
+	}
+	if e.notify != nil {
+		e.notify()
 	}
 	LogInfo(EventJobEnqueued, mergeLogFields(baseFields, map[string]any{
 		"job_id":         job.ID,

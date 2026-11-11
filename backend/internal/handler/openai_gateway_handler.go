@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -456,6 +457,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	// Reject invalid UTF-8 before JSON transformation so malformed bytes do not
+	// become retryable upstream errors.
+	if !utf8.Valid(body) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body must be valid UTF-8 JSON. Send UTF-8 encoded bytes.")
+		return
+	}
+
 	setOpsRequestContext(c, "", false)
 	sessionHashBody := body
 	body, ok = h.normalizeOpenAIResponsesCompactRequest(c, reqLog, body)
@@ -499,6 +507,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	} else if changed {
 		body = cappedBody
+	}
+	if normalizedBody, changed := normalizeCodexPageContext(body); changed {
+		body = normalizedBody
+		reqLog.Info("openai.codex_page_context_normalized",
+			zap.String("normalization", "call_output_to_user_message"),
+		)
 	}
 	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
 		body = normalizedBody
@@ -658,6 +672,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		forwardModel,
 		legacyCompact,
 	))
+
+	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
+	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
+		return
+	}
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
@@ -2092,6 +2111,52 @@ func (h *OpenAIGatewayHandler) ensureAnthropicErrorResponse(c *gin.Context, stre
 	}
 	h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", streamStarted)
 	return true
+}
+
+func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context, body []byte, reqLog *zap.Logger) bool {
+	if !gjson.GetBytes(body, `input.#(type=="function_call_output")`).Exists() {
+		return true
+	}
+
+	validation := service.ValidateFunctionCallOutputContextBytes(body)
+	if !validation.HasFunctionCallOutput {
+		return true
+	}
+
+	previousResponseID := gjson.GetBytes(body, "previous_response_id").String()
+	if strings.TrimSpace(previousResponseID) != "" || validation.HasToolCallContext {
+		return true
+	}
+
+	if validation.HasFunctionCallOutputMissingCallID {
+		// Preserve generic function_call_output pass-through. Desktop page snapshots
+		// use the agent namespace and are normalized before forwarding; only those
+		// synthetic items need the strict call_id check here.
+		strictPageContext := false
+		for _, item := range gjson.GetBytes(body, "input").Array() {
+			if item.Get("type").String() == "function_call_output" && item.Get("namespace").String() == "agent" {
+				strictPageContext = true
+				break
+			}
+		}
+		if !strictPageContext {
+			return true
+		}
+		reqLog.Warn("openai.request_validation_failed",
+			zap.String("reason", "function_call_output_missing_call_id"),
+		)
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
+		return false
+	}
+	if validation.HasItemReferenceForAllCallIDs {
+		return true
+	}
+
+	reqLog.Warn("openai.request_validation_failed",
+		zap.String("reason", "function_call_output_missing_item_reference"),
+	)
+	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
+	return false
 }
 
 func normalizeCodexDelegationBootstrap(body []byte) ([]byte, bool) {

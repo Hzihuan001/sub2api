@@ -1,5 +1,11 @@
 # 定制功能日志
 
+### 2026-11-11 — upstream v0.2.21 合并候选（尚未部署）
+
+- 官方 `v0.2.21` 已从 `v0.2.20` 共同基线合入，候选版本为 `0.2.21-custom.1`。Claude Fable/Mythos 5.2、OpenAI cache write 30m/12h 字段与计费、请求体内存预算、Responses/WS 修复和前端更新已同步；定制插件化入口、图片同账号重试以及异步任务找回保持可用。
+- 保留 `249_mcp_oauth.sql` 与 `9000`–`9008` 定制迁移，新增上游 `249_add_usage_logs_api_key_cost_index_notx.sql`、`250_openai_cache_write_ttl.sql`，尚未在生产数据库应用。
+- 后端 unit/integration、golangci-lint、前端 442 文件/3736 测试、lint/typecheck/build 均通过；仅完成源码合并验证，未构建镜像、推送或部署，生产仍为 `0.2.20-custom.2`。
+
 ### 2026-11-11 — 图片任务断线找回候选（尚未部署）
 
 - 图片流数据间隔候选默认值统一为 1800 秒；新增 HTTP/2 force-closed/lost、TCP reset 和 EOF 的同账号有限重试，不跨分组、不停用账号。客户端取消、DNS 错误和已有完整输出不重放。

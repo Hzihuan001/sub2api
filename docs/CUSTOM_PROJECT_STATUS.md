@@ -1,10 +1,17 @@
 # 定制项目状态与官方升级说明
 
+### 2026-11-11 — upstream v0.2.21 合并候选（尚未部署）
+
+- **候选版本**：已从共同基线 `v0.2.20` 合并官方 `v0.2.21`（tag commit `10ba8f9b4dc2e6023d4a9879ab77b21841babd10`），当前源码版本为 `0.2.21-custom.1`。官方 Claude Fable/Mythos 5.2、缓存写入 TTL/计费、请求体内存预算、WS/Responses 修复和前端更新已纳入；定制插件化边界、图片重试与异步任务找回继续保留。
+- **迁移**：保留定制迁移 `9000`–`9008` 及 `249_mcp_oauth.sql`，新增官方 `249_add_usage_logs_api_key_cost_index_notx.sql` 和 `250_openai_cache_write_ttl.sql`；生成的 Ent usage-log 字段与缓存 30m/12h 定价字段已同步。尚未应用到生产数据库。
+- **源码门禁**：后端 unit/integration 全量、golangci-lint、前端 442 文件/3736 测试、lint、typecheck、build 均通过；证据日志为 `.tmp/full-unit-v021-merge-final2.log`、`.tmp/full-integration-v021-merge.log`、`.tmp/golangci-v021-merge.log` 和 `.tmp/frontend-v021-merge.log`。
+- **发布状态**：已完成本地合并验证，未构建/推送新镜像，未部署生产。三站生产仍为 `0.2.20-custom.2`，digest `sha256:6d89fe835bee13987c48a60406f93b270046a4be4fa35d1813efda622f234b76`。
+
 ### 2026-11-11 — 图片任务断线找回候选（尚未部署）
 
-- **候选内容**：候选版本 `0.2.20-custom.3` 的图片专属空闲等待默认从 900 秒延长到 1800 秒，并识别 HTTP/2 连接丢失/force-closed、TCP reset、EOF 等瞬时传输错误，在同一账号内有限重试；普通同步请求的客户端断开 drain 规则保持不变。
+- **候选内容**：候选版本 `0.2.21-custom.1` 的图片专属空闲等待默认从 900 秒延长到 1800 秒，并识别 HTTP/2 连接丢失/force-closed、TCP reset、EOF 等瞬时传输错误，在同一账号内有限重试；普通同步请求的客户端断开 drain 规则保持不变。
 - **任务找回**：OpenAI/Grok 的 generations/edits 异步提交支持用户/API Key 作用域幂等键；浏览器保存任务 ID 和请求快照，断网/刷新后只继续 GET 查询，已保存完整结果通过受鉴权的本地持久文件和 Range 下载找回。结果未知时保留任务，不自动重新生成。
-- **门禁**：后端全量 unit 与 integration、后端定向恢复测试、前端全量测试（442 文件/3714 项）、前端 lint/typecheck/build 和 golangci-lint 已通过；候选说明见 [图片任务断线找回说明](CUSTOM_IMAGE_RECOVERY_20261111.md)。未构建新生产镜像、未推送、未部署。
+- **门禁**：后端全量 unit 与 integration、后端定向恢复测试、前端全量测试（442 文件/3736 项）、前端 lint/typecheck/build 和 golangci-lint 已通过；候选说明见 [图片任务断线找回说明](CUSTOM_IMAGE_RECOVERY_20261111.md)。未构建新生产镜像、未推送、未部署。
 - **生产基线**：三站仍运行 `0.2.20-custom.2`，图片间隔运行值仍为 900 秒；只读预检确认三站 `/app/data` 持久挂载且可写。普通同步图片客户端断开后的 1800 秒 drain 不是总请求硬超时；异步任务有约 30 分钟绝对执行截止和独立结果持久化预算。
 
 ### 2026-11-11 — 0.2.20-custom.2：网关、计费、鉴权缓存与前端回归修复（三站生产部署完成）
