@@ -3,11 +3,16 @@ package handler
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,9 +37,9 @@ func NewAsyncImageHandler(tasks *service.ImageTaskService, openAI *OpenAIGateway
 	return h
 }
 
-// enabled reports whether the async image task feature is available. Object
-// storage is the enablement gate: without it the endpoints are fully disabled
-// so that large base64 results never land in Redis.
+// enabled reports whether a result-storage binding is available. Results use
+// configured object storage or the private persistent data directory; large
+// base64 results never land in Redis. Explicit administrator disable is honored.
 func (h *AsyncImageHandler) enabled() bool {
 	return h != nil && h.tasks != nil && h.tasks.Enabled()
 }
@@ -49,7 +54,7 @@ func (h *AsyncImageHandler) pollable() bool {
 // Submit accepts the same payload as the synchronous Images endpoint and
 // returns before the upstream image generation begins.
 func (h *AsyncImageHandler) Submit(c *gin.Context) {
-	if !h.enabled() {
+	if !h.enabled() && c.GetHeader("Idempotency-Key") == "" {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
 		return
 	}
@@ -73,6 +78,13 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	if h == nil || h.tasks == nil || h.execute == nil {
 		imageTaskError(c, service.ErrImageTaskUnavailable)
 		return
+	}
+	idempotencyKey := c.GetHeader("Idempotency-Key")
+	if _, present := c.Request.Header["Idempotency-Key"]; present {
+		if len(c.Request.Header.Values("Idempotency-Key")) != 1 || service.ValidateImageTaskIdempotencyKey(idempotencyKey) != nil {
+			imageTaskError(c, service.ErrImageTaskInvalidIdempotencyKey)
+			return
+		}
 	}
 
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
@@ -107,7 +119,33 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	fingerprint := ""
+	if idempotencyKey != "" {
+		fingerprint, err = imageTaskRequestFingerprint(platform, c.Request.URL.Path, c.GetHeader("Content-Type"), body)
+		if err != nil {
+			imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+		owner := service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID}
+		existing, findErr := h.tasks.FindIdempotent(c.Request.Context(), owner, idempotencyKey, fingerprint)
+		if findErr == nil {
+			writeImageTaskAccepted(c, existing)
+			return
+		}
+		if !errors.Is(findErr, service.ErrImageTaskNotFound) {
+			imageTaskError(c, findErr)
+			return
+		}
+	}
 	if !h.checkSecurityAuditBeforeSubmit(c, apiKey, platform, body) {
+		return
+	}
+	// Capture the result-storage binding only after the security audit has
+	// passed. This preserves the audit-before-side-effects contract while
+	// pinning the binding for the accepted task if settings change afterward.
+	binding, available := h.tasks.CaptureCompletionBinding()
+	if !available {
+		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
 		return
 	}
 
@@ -118,28 +156,42 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		}
 		return
 	}
-	task, err := h.tasks.Create(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
+	task, created, err := h.tasks.CreateIdempotent(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID}, idempotencyKey, fingerprint)
 	if err != nil {
 		cancel()
 		imageTaskError(c, err)
 		return
 	}
+	if !created {
+		cancel()
+	}
+	complete := h.tasks.CompletionWriter(task, service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID}, idempotencyKey, fingerprint, binding)
 
+	writeImageTaskAccepted(c, task)
+	if created {
+		go h.run(task.ID, platform, taskCtx, recorder, cancel, complete)
+	}
+}
+
+func writeImageTaskAccepted(c *gin.Context, task *service.ImageTask) {
 	pollURL := imageTaskPollURL(c.Request.URL.Path, task.ID)
 	c.Header("Cache-Control", "no-store")
 	c.Header("Location", pollURL)
 	c.Header("Retry-After", "3")
 	c.JSON(http.StatusAccepted, gin.H{
-		"id":         task.ID,
-		"task_id":    task.TaskID,
-		"object":     task.Object,
-		"status":     task.Status,
-		"created_at": task.CreatedAt,
-		"expires_at": task.ExpiresAt,
-		"poll_url":   pollURL,
+		"id":                 task.ID,
+		"task_id":            task.TaskID,
+		"object":             task.Object,
+		"status":             task.Status,
+		"created_at":         task.CreatedAt,
+		"expires_at":         task.ExpiresAt,
+		"execution_deadline": task.ExecutionDeadline,
+		"result":             task.Result,
+		"error":              task.Error,
+		"http_status":        task.HTTPStatus,
+		"poll_url":           pollURL,
 	})
 
-	go h.run(task.ID, platform, taskCtx, recorder, cancel)
 }
 
 func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) bool {
@@ -237,7 +289,7 @@ func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) 
 	h.openAI.Images(c)
 }
 
-func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc) {
+func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc, complete func(context.Context, string, int, json.RawMessage) error) {
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -248,25 +300,89 @@ func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, r
 
 	h.execute(platform, taskCtx)
 	body := bytes.TrimSpace(recorder.Body.Bytes())
-	if err := taskCtx.Request.Context().Err(); err != nil && len(body) == 0 {
-		h.failTask(taskID, http.StatusGatewayTimeout, imageTaskErrorPayload("timeout_error", "image generation task timed out"))
-		return
-	}
 	statusCode := recorder.Code
 	if statusCode == 0 {
 		statusCode = http.StatusOK
+	}
+	validSuccess := statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices && len(body) > 0 && json.Valid(body)
+	if err := taskCtx.Request.Context().Err(); err != nil && !validSuccess {
+		taskErr, _ := json.Marshal(gin.H{"type": "timeout_error", "code": "image_task_result_unknown", "message": "image task execution budget expired without a saved result; outcome is unknown, do not automatically generate again"})
+		h.failTask(taskID, http.StatusGatewayTimeout, taskErr)
+		return
 	}
 	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
 		if len(body) == 0 || !json.Valid(body) {
 			h.failTask(taskID, http.StatusBadGateway, imageTaskErrorPayload("api_error", "upstream returned an invalid image response"))
 			return
 		}
-		if err := h.tasks.Complete(context.Background(), taskID, statusCode, json.RawMessage(body)); err != nil {
+		if err := complete(taskCtx.Request.Context(), taskID, statusCode, json.RawMessage(body)); err != nil {
 			logger.L().Error("image_task.complete_store_failed", zap.String("task_id", taskID), zap.Error(err))
 		}
 		return
 	}
 	h.failTask(taskID, statusCode, extractImageTaskError(body))
+}
+
+// Fingerprints never contain raw prompt/file bytes in Redis. Multipart is
+// normalized without its random boundary or order of distinct field names;
+// order within a repeated field remains significant (notably multiple images).
+func imageTaskRequestFingerprint(platform, path, contentType string, body []byte) (string, error) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", errors.New("invalid image request content type")
+	}
+	var payload []byte
+	if strings.EqualFold(mediaType, "multipart/form-data") {
+		if params["boundary"] == "" {
+			return "", errors.New("multipart boundary is required")
+		}
+		type partFingerprint struct {
+			Name        string `json:"name"`
+			Filename    string `json:"filename"`
+			ContentType string `json:"content_type"`
+			Size        int64  `json:"size"`
+			SHA256      string `json:"sha256"`
+		}
+		parts := make([]partFingerprint, 0)
+		reader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return "", errors.New("invalid multipart image request")
+			}
+			if len(parts) >= 1024 {
+				_ = part.Close()
+				return "", errors.New("too many multipart image fields")
+			}
+			hash := sha256.New()
+			size, err := io.Copy(hash, part)
+			_ = part.Close()
+			if err != nil {
+				return "", errors.New("invalid multipart image field")
+			}
+			parts = append(parts, partFingerprint{Name: part.FormName(), Filename: part.FileName(), ContentType: part.Header.Get("Content-Type"), Size: size, SHA256: hex.EncodeToString(hash.Sum(nil))})
+		}
+		sort.SliceStable(parts, func(i, j int) bool { return parts[i].Name < parts[j].Name })
+		payload, err = json.Marshal(parts)
+	} else {
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, body); err != nil {
+			return "", errors.New("invalid JSON image request")
+		}
+		payload = compact.Bytes()
+	}
+	if err != nil {
+		return "", err
+	}
+	// /v1 and unprefixed routes are aliases; edits and generations are distinct.
+	path = strings.TrimPrefix(strings.TrimSuffix(path, "/async"), "/v1")
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(platform + "\x00" + path + "\x00" + strings.ToLower(mediaType) + "\x00"))
+	_, _ = hash.Write(payload)
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json.RawMessage) {
@@ -284,6 +400,7 @@ func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Dura
 	}
 	base := context.WithoutCancel(retained)
 	executionCtx, cancelExecution := context.WithTimeout(base, timeoutDuration)
+	executionCtx = pkghttputil.PreserveUpstreamDeadline(executionCtx)
 	cancel := func() {
 		cancelExecution()
 		releaseBody()

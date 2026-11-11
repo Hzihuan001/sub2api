@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -75,6 +76,56 @@ func TestOpenAIImagesTransientTransportFailureClassification(t *testing.T) {
 	require.True(t, failoverErr.RequestScopedTransient)
 	require.Equal(t, GatewayFailureScopeRequest, failoverErr.Scope)
 	require.Equal(t, NextAccountRetry, failoverErr.NextAccountAction)
+}
+
+func TestOpenAIImagesHTTP2ConnectionFailureClassification(t *testing.T) {
+	for _, message := range []string{
+		"http2: client connection force closed via ClientConn.Close",
+		"http2: client connection lost",
+	} {
+		t.Run(message, func(t *testing.T) {
+			cause := errors.New(message)
+			wrapped := &url.Error{Op: "Post", URL: "https://upstream.invalid/v1/images/edits", Err: cause}
+			require.False(t, wrapped.Timeout(), "HTTP/2 sentinels do not report a timeout through url.Error")
+			require.True(t, isOpenAIImagesTransientTransportError(cause))
+			require.True(t, isOpenAIImagesTransientTransportError(fmt.Errorf("image request: %w", wrapped)))
+			require.False(t, isOpenAIImagesTransientTransportError(errors.Join(wrapped, context.Canceled)), "cancellation must still win")
+		})
+	}
+	for _, cause := range []error{
+		context.Canceled,
+		&net.DNSError{Err: "no such host", IsNotFound: true},
+		errors.New("tls: failed to verify certificate"),
+		errors.New("upstream rejected request: http2: client connection lost"),
+	} {
+		wrapped := &url.Error{Op: "Post", URL: "https://upstream.invalid/v1/images/edits", Err: cause}
+		require.False(t, isOpenAIImagesTransientTransportError(wrapped), "error=%v", cause)
+	}
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyHTTP2ConnectionFailure(t *testing.T) {
+	for _, message := range []string{
+		"http2: client connection force closed via ClientConn.Close",
+		"http2: client connection lost",
+	} {
+		t.Run(message, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat"}`)
+			c, _ := newOpenAIImagesTestContext(t, body)
+			svc := newOpenAIImagesTestService(&httpUpstreamRecorder{err: &url.Error{
+				Op: "Post", URL: "https://upstream.invalid/v1/images/generations", Err: errors.New(message),
+			}})
+			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+			require.NoError(t, err)
+			result, err := svc.ForwardImages(context.Background(), c, newOpenAIImagesAPIKeyAccount(), body, parsed, "")
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.True(t, failoverErr.RetryableOnSameAccount)
+			require.True(t, failoverErr.RequestScopedTransient)
+			require.Equal(t, NextAccountRetry, failoverErr.NextAccountAction)
+			require.False(t, c.Writer.Written(), "the handler may retry only while the response is untouched")
+		})
+	}
 }
 
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSON(t *testing.T) {

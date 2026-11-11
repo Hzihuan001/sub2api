@@ -1,12 +1,16 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,8 +22,170 @@ import (
 )
 
 type asyncImageMemoryStore struct {
-	mu    sync.RWMutex
-	tasks map[string]*service.ImageTaskRecord
+	mu     sync.RWMutex
+	tasks  map[string]*service.ImageTaskRecord
+	claims map[string]string
+}
+
+func TestAsyncImageHandlerIdempotentRetryNeverExecutesTwice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}
+	var enabled atomic.Bool
+	enabled.Store(true)
+	tasks := service.NewImageTaskServiceWithResolver(store, func() (*service.ImageResultUploader, bool) {
+		return service.NewImageResultUploader(nil, "", 0, nil), enabled.Load()
+	}, time.Hour, time.Minute)
+	var executed atomic.Int32
+	release := make(chan struct{})
+	h := &AsyncImageHandler{tasks: tasks, execute: func(_ string, c *gin.Context) {
+		executed.Add(1)
+		<-release
+		c.JSON(http.StatusOK, gin.H{"data": []gin.H{{"url": "https://example.test/single.png"}}})
+	}}
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{ID: 9, UserID: 7, Group: &service.Group{Platform: service.PlatformOpenAI, AllowImageGeneration: true}})
+		c.Next()
+	})
+	router.POST("/v1/images/generations/async", h.Submit)
+	submit := func(body, key string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/images/generations/async", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", key)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+	body := `{"model":"gpt-image-1","prompt":"cat"}`
+	var wg sync.WaitGroup
+	writers := make(chan *httptest.ResponseRecorder, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); writers <- submit(body, "retry-123") }()
+	}
+	wg.Wait()
+	close(writers)
+	id := ""
+	for writer := range writers {
+		require.Equal(t, http.StatusAccepted, writer.Code, writer.Body.String())
+		var task service.ImageTask
+		require.NoError(t, json.Unmarshal(writer.Body.Bytes(), &task))
+		if id == "" {
+			id = task.ID
+		}
+		require.Equal(t, id, task.ID)
+	}
+	require.Eventually(t, func() bool { return executed.Load() == 1 }, time.Second, time.Millisecond)
+	conflict := submit(`{"model":"gpt-image-1","prompt":"dog"}`, "retry-123")
+	require.Equal(t, http.StatusConflict, conflict.Code)
+	for _, key := range []string{"", "bad key", strings.Repeat("x", 129)} {
+		require.Equal(t, http.StatusBadRequest, submit(body, key).Code)
+	}
+	enabled.Store(false)
+	// A lost 202 can still be recovered after the operator disables submission.
+	replayed := submit(body, "retry-123")
+	require.Equal(t, http.StatusAccepted, replayed.Code)
+	require.Contains(t, replayed.Body.String(), id)
+	require.Equal(t, http.StatusNotFound, submit(body, "new-key").Code)
+	close(release)
+	require.Eventually(t, func() bool {
+		got, err := tasks.Get(context.Background(), service.ImageTaskOwner{UserID: 7, APIKeyID: 9}, id)
+		return err == nil && got.Status == service.ImageTaskStatusCompleted
+	}, time.Second, time.Millisecond)
+	replayed = submit(body, "retry-123")
+	require.Equal(t, http.StatusAccepted, replayed.Code)
+	require.Contains(t, replayed.Body.String(), "single.png")
+	require.EqualValues(t, 1, executed.Load())
+}
+
+func TestImageTaskMultipartFingerprintIgnoresBoundaryPreservesFiles(t *testing.T) {
+	build := func(boundary string, promptFirst bool, files []string) (string, []byte) {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		require.NoError(t, writer.SetBoundary(boundary))
+		if promptFirst {
+			require.NoError(t, writer.WriteField("prompt", "test cat"))
+		}
+		for _, data := range files {
+			part, err := writer.CreateFormFile("image[]", "input.png")
+			require.NoError(t, err)
+			_, err = io.WriteString(part, data)
+			require.NoError(t, err)
+		}
+		if !promptFirst {
+			require.NoError(t, writer.WriteField("prompt", "test cat"))
+		}
+		require.NoError(t, writer.WriteField("model", "gpt-image-1"))
+		require.NoError(t, writer.Close())
+		return writer.FormDataContentType(), body.Bytes()
+	}
+	contentType, body := build("boundary-a", true, []string{"image-a", "image-b"})
+	first, err := imageTaskRequestFingerprint(service.PlatformOpenAI, "/v1/images/edits/async", contentType, body)
+	require.NoError(t, err)
+	contentType, body = build("boundary-b", false, []string{"image-a", "image-b"})
+	second, err := imageTaskRequestFingerprint(service.PlatformOpenAI, "/images/edits/async", contentType, body)
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+	for _, files := range [][]string{{"image-b", "image-a"}, {"changed", "image-b"}} {
+		contentType, body = build("boundary-c", false, files)
+		other, err := imageTaskRequestFingerprint(service.PlatformOpenAI, "/images/edits/async", contentType, body)
+		require.NoError(t, err)
+		require.NotEqual(t, first, other)
+	}
+	generation, err := imageTaskRequestFingerprint(service.PlatformOpenAI, "/images/generations/async", contentType, body)
+	require.NoError(t, err)
+	require.NotEqual(t, first, generation)
+}
+
+func (s *asyncImageMemoryStore) CreateIfAbsent(_ context.Context, task *service.ImageTaskRecord, _ time.Duration) (*service.ImageTaskRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.claims == nil {
+		s.claims = make(map[string]string)
+	}
+	if task.IdempotencyKeyHash != "" {
+		if id := s.claims[task.IdempotencyKeyHash]; id != "" {
+			old := s.tasks[id]
+			if old.RequestFingerprint != task.RequestFingerprint {
+				return nil, false, service.ErrImageTaskIdempotencyConflict
+			}
+			copy := *old
+			return &copy, false, nil
+		}
+		s.claims[task.IdempotencyKeyHash] = task.ID
+	}
+	copy := *task
+	s.tasks[task.ID] = &copy
+	return &copy, true, nil
+}
+
+func (s *asyncImageMemoryStore) Finish(_ context.Context, task *service.ImageTaskRecord, _ time.Duration) (*service.ImageTaskRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old := s.tasks[task.ID]
+	if old == nil {
+		return nil, service.ErrImageTaskNotFound
+	}
+	if old.Status == service.ImageTaskStatusProcessing || (old.Status == service.ImageTaskStatusFailed && old.ResultUnknown && task.Status == service.ImageTaskStatusCompleted) {
+		copy := *task
+		copy.Result = append(json.RawMessage(nil), task.Result...)
+		copy.Error = append(json.RawMessage(nil), task.Error...)
+		s.tasks[task.ID] = &copy
+		old = &copy
+	}
+	copy := *old
+	return &copy, nil
+}
+
+func (s *asyncImageMemoryStore) FindIdempotent(_ context.Context, keyHash string) (*service.ImageTaskRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	id := s.claims[keyHash]
+	if id == "" {
+		return nil, service.ErrImageTaskNotFound
+	}
+	copy := *s.tasks[id]
+	return &copy, nil
 }
 
 func (s *asyncImageMemoryStore) Save(_ context.Context, task *service.ImageTaskRecord, _ time.Duration) error {

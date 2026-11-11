@@ -541,7 +541,7 @@ gateway:
   kiro_stream_keepalive_interval: 25
   # Image stream data interval timeout (seconds), 0=disable; independent from ordinary text streams
   # 图片流数据间隔超时（秒），0=禁用；独立于普通文本流式
-  image_stream_data_interval_timeout: 900
+  image_stream_data_interval_timeout: 1800
   # Image stream keepalive interval (seconds), 0=disable; independent from ordinary text streams
   # 图片流式 keepalive 间隔（秒），0=禁用；独立于普通文本流式
   image_stream_keepalive_interval: 10

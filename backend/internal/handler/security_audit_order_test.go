@@ -39,6 +39,7 @@ func TestPromptAuditGatePrecedesAccountBillingAndUpstreamSideEffects(t *testing.
 		"CheckBillingEligibility(", "SelectAccount", ".Forward", "acquireResponsesUserSlot(",
 		"AcquireUserSlot", "TryAcquireUserSlot", "acquireImageGenerationSlot(",
 		"h.tasks.Create(", "h.service.Submit(",
+		"h.tasks.CreateIdempotent(",
 	}
 	for _, tt := range tests {
 		t.Run(tt.file+"/"+tt.function, func(t *testing.T) {

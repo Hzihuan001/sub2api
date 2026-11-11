@@ -9,6 +9,20 @@ import (
 const DefaultUpstreamDrainTimeout = 180 * time.Second
 
 type upstreamDrainKey struct{}
+type upstreamDeadlineKey struct{}
+
+// PreserveUpstreamDeadline marks a background task context which has already
+// detached from its client. Further detach calls must retain its execution
+// deadline instead of granting another billing drain after that deadline.
+func PreserveUpstreamDeadline(ctx context.Context) context.Context {
+	return context.WithValue(ctx, upstreamDeadlineKey{}, true)
+}
+
+func HasPreservedUpstreamDeadline(ctx context.Context) bool {
+	preserved, _ := ctx.Value(upstreamDeadlineKey{}).(bool)
+	return preserved
+}
+
 type upstreamDrainPolicy struct {
 	client  context.Context
 	timeout time.Duration
@@ -21,6 +35,9 @@ type upstreamDrainPolicy struct {
 func DetachUpstreamContext(ctx context.Context, timeout ...time.Duration) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if HasPreservedUpstreamDeadline(ctx) {
+		return ctx
 	}
 	policy := upstreamDrainPolicy{client: ctx}
 	if previous, ok := ctx.Value(upstreamDrainKey{}).(upstreamDrainPolicy); ok {
@@ -38,6 +55,9 @@ func DetachUpstreamContext(ctx context.Context, timeout ...time.Duration) contex
 // throughout the drain window. release must run on error or response-body close.
 func NewUpstreamAttemptContext(parent context.Context, defaultTimeout time.Duration) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(parent)
+	if HasPreservedUpstreamDeadline(parent) {
+		return ctx, cancel
+	}
 	policy, ok := parent.Value(upstreamDrainKey{}).(upstreamDrainPolicy)
 	if !ok || policy.client.Done() == nil {
 		return ctx, cancel

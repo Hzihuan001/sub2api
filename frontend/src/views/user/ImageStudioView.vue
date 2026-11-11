@@ -133,8 +133,8 @@
               <p class="input-hint mt-1">{{ t('imageStudio.customSizeHint') }}</p>
             </div>
 
-            <div v-if="generationError" role="alert" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">
-              {{ generationError }}
+            <div v-if="generationError || taskError" role="alert" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">
+              {{ generationError || taskError }}
             </div>
 
             <div class="flex gap-3">
@@ -142,8 +142,10 @@
                 <Icon :name="generating ? 'refresh' : 'sparkles'" size="sm" class="mr-2" :class="generating ? 'animate-spin' : ''" />
                 {{ generating ? t('imageStudio.generating') : (inputImages.length ? t('imageStudio.editImage') : t('imageStudio.generate')) }}
               </button>
-              <button v-if="generating" type="button" class="btn btn-secondary" @click="cancelGeneration">{{ t('common.cancel') }}</button>
+              <button v-if="generating" type="button" class="btn btn-secondary" @click="cancelGeneration">{{ t('imageStudio.stopWaiting') }}</button>
             </div>
+            <p class="input-hint" data-test="image-studio-recovery-mode">{{ t(!asyncCapableKey || synchronousMode ? 'imageStudio.syncModeHint' : 'imageStudio.asyncModeHint') }}</p>
+            <p v-if="taskStorageUnavailable" role="alert" class="text-sm text-amber-700 dark:text-amber-300">{{ t('imageStudio.taskStorageUnavailable') }}</p>
           </form>
 
           <div class="min-w-0 p-5 md:p-6">
@@ -165,8 +167,19 @@
                 <span class="h-2.5 w-2.5 animate-pulse rounded-full bg-violet-500"></span>
                 <div>
                   <p class="text-sm font-medium text-violet-900 dark:text-violet-200">{{ t('imageStudio.requestRunning') }}</p>
-                  <p class="mt-0.5 text-xs text-violet-700 dark:text-violet-300">{{ t('imageStudio.requestRunningHint') }}</p>
+                  <p class="mt-0.5 text-xs text-violet-700 dark:text-violet-300">{{ t(!asyncCapableKey || synchronousMode ? 'imageStudio.requestRunningHint' : 'imageStudio.asyncRunningHint') }}</p>
                 </div>
+              </div>
+            </div>
+
+            <div v-if="pendingTasks.length" class="mb-4 space-y-2" data-test="image-studio-tasks">
+              <div v-for="task in pendingTasks" :key="task.operationId" class="rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-700">
+                <p class="font-medium">{{ task.request.model }} · {{ t(`imageStudio.taskStates.${task.state}`) }}</p>
+                <p class="mt-1 truncate text-gray-500 dark:text-dark-300">{{ task.request.prompt }}</p>
+                <p v-if="task.error" role="status" class="mt-1 break-words text-amber-700 dark:text-amber-300">{{ task.error }}</p>
+                <p v-if="task.state === 'unknown'" class="mt-1 text-xs text-amber-700 dark:text-amber-300">{{ t('imageStudio.unknownTaskHint') }}</p>
+                <p class="mt-1 text-xs text-gray-500">{{ t('imageStudio.taskExpires', { date: formatDate(task.expiresAt) }) }}</p>
+                <button v-if="task.state !== 'pending' && task.state !== 'expired'" type="button" class="btn btn-secondary btn-sm mt-2" :disabled="generating" @click="resumeTask(task)">{{ t('imageStudio.resumeTask') }}</button>
               </div>
             </div>
 
@@ -246,7 +259,9 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { keysAPI } from '@/api/keys'
-import { generateImageStudioImages, listImageStudioModels, type ImageStudioModel } from '@/api/imageStudio'
+import { fetchImageStudioTaskImage, generateImageStudioImages, listImageStudioModels, type ImageStudioGenerateRequest, type ImageStudioModel, type ImageStudioOutput } from '@/api/imageStudio'
+import { useImageStudioTasks } from '@/features/image-studio/useImageStudioTasks'
+import type { StoredStudioTask } from '@/features/image-studio/tasks'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
@@ -302,7 +317,7 @@ const maskInput = ref<HTMLInputElement | null>(null)
 const loadingKeys = ref(false)
 const loadingModels = ref(false)
 const loadingLibrary = ref(false)
-const generating = ref(false)
+const synchronousGenerating = ref(false)
 const modelError = ref('')
 const generationError = ref('')
 const storedGallery = ref<GalleryItem[]>([])
@@ -346,6 +361,20 @@ const modelOptions = computed(() => models.value.map((model) => ({
 })))
 const modelPlaceholder = computed(() => loadingModels.value ? t('imageStudio.loadingModels') : t('imageStudio.modelPlaceholder'))
 const nativeGeminiModel = computed(() => selectedKey.value?.group?.platform === 'gemini')
+const asyncCapableKey = computed(() => ['openai', 'grok'].includes(selectedKey.value?.group?.platform || ''))
+const taskRunner = useImageStudioTasks({
+  scope: libraryScope,
+  apiKey: selectedKey,
+  errorText: (code) => t(`imageStudio.errors.${code}`),
+  onCompleted: async (task, outputs, isCurrent) => {
+    const scope = libraryScope.value
+    if (scope === null || !isCurrent()) return false
+    return persistOutputs(outputs, task.request, task.apiKeyName, scope, task.taskId || task.operationId, task.createdAt, isCurrent,
+      task.taskId ? { taskId: task.taskId, apiKey: selectedKey.value!.key } : undefined)
+  },
+})
+const { tasks: pendingTasks, storageUnavailable: taskStorageUnavailable, synchronousMode, lastError: taskError } = taskRunner
+const generating = computed(() => synchronousGenerating.value || taskRunner.waiting.value)
 const imagePolicy = computed(() => getImageStudioModelPolicy(form.model, nativeGeminiModel.value))
 const customSizeSupported = computed(() => supportsImageStudioCustomSize(form.model, nativeGeminiModel.value))
 const customSize = computed(() => normalizeImageStudioCustomSize(form.model, customWidth.value, customHeight.value))
@@ -386,6 +415,7 @@ function apiKeyCanGenerateImages(key: ApiKey): boolean {
 }
 
 async function loadKeys(): Promise<void> {
+  const scope = libraryScope.value
   loadingKeys.value = true
   try {
     const collected: ApiKey[] = []
@@ -396,10 +426,11 @@ async function loadKeys(): Promise<void> {
       if (page >= response.pages || (response.items || []).length === 0) break
       page += 1
     }
+    if (scope !== libraryScope.value) return
     apiKeys.value = collected
     if (!selectedKey.value && collected.length) form.apiKeyId = String(collected[0].id)
   } catch (error) {
-    appStore.showError(errorMessage(error, t('imageStudio.errors.loadKeys')))
+    if (scope === libraryScope.value) appStore.showError(errorMessage(error, t('imageStudio.errors.loadKeys')))
   } finally {
     loadingKeys.value = false
   }
@@ -521,11 +552,12 @@ function selectImageSize(value: string): void {
   form.size = IMAGE_STUDIO_CUSTOM_SIZE
 }
 
-async function outputToBlob(output: { b64Json?: string; url?: string; mimeType?: string }, format: string): Promise<Blob | null> {
+async function outputToBlob(output: { b64Json?: string; url?: string; mimeType?: string }, format: string, task?: { taskId: string; apiKey: string }): Promise<Blob | null> {
   if (output.b64Json) return base64ImageToBlob(output.b64Json, output.mimeType?.split('/')[1] || format)
   if (!output.url) return null
   if (output.url.startsWith('data:')) return (await fetch(output.url)).blob()
   try {
+    if (task) return await fetchImageStudioTaskImage(task.apiKey, task.taskId, output.url)
     const response = await fetch(output.url)
     if (!response.ok) return null
     return response.blob()
@@ -534,69 +566,39 @@ async function outputToBlob(output: { b64Json?: string; url?: string; mimeType?:
   }
 }
 
-async function generate(): Promise<void> {
-  const key = selectedKey.value
-  if (!key || !form.model.trim() || !form.prompt.trim()) return
-  if (!requestSize.value) {
-    generationError.value = t('imageStudio.errors.invalidCustomSize')
-    return
-  }
-  const scopeAtStart = libraryScope.value
-  generationController?.abort()
-  const controller = new AbortController()
-  generationController = controller
-  generating.value = true
-  generationError.value = ''
-  const isCurrentGeneration = () => !controller.signal.aborted && libraryScope.value === scopeAtStart
-  try {
-    const outputs = await generateImageStudioImages(key.key, {
-      model: form.model.trim(), prompt: form.prompt.trim(), count: imagePolicy.value.forceSingleOutput ? 1 : Number(form.count) || 1,
-      size: requestSize.value,
-      quality: imagePolicy.value.supportsAdvancedOptions ? form.quality : 'auto',
-      outputFormat: normalizeImageOutputFormat(form.model, nativeGeminiModel.value, form.outputFormat),
-      background: imagePolicy.value.supportsAdvancedOptions ? form.background : 'auto',
-      inputFidelity: imagePolicy.value.supportsAdvancedOptions ? form.inputFidelity : 'auto',
-      images: inputImages.value.map((item) => item.file),
-      mask: imagePolicy.value.supportsAdvancedOptions ? maskFile.value : null,
-      nativeGemini: nativeGeminiModel.value,
-    }, controller.signal)
-    if (!isCurrentGeneration()) return
-    const now = Date.now()
-    const stored: StoredStudioImage[] = []
-    const temporary: GalleryItem[] = []
-    for (let index = 0; index < outputs.length; index += 1) {
-      if (!isCurrentGeneration()) return
-      const output = outputs[index]
-      const blob = await outputToBlob(output, form.outputFormat)
-      if (!isCurrentGeneration()) return
-      const actualSize = blob ? await detectImageDimensions(blob) : undefined
-      if (!isCurrentGeneration()) return
-      const metadata = {
-        id: makeID(), createdAt: now + index, prompt: form.prompt.trim(), revisedPrompt: output.revisedPrompt,
-        model: form.model.trim(), size: requestSize.value, actualSize,
-        outputFormat: output.mimeType?.split('/')[1] || form.outputFormat, apiKeyName: key.name,
-      }
-      if (blob) {
-        stored.push({ ...metadata, blob, bytes: blob.size })
-      } else if (output.url) {
-        temporary.push({ ...metadata, url: output.url, persisted: false })
-      }
+async function persistOutputs(
+  outputs: ImageStudioOutput[], snapshot: ImageStudioGenerateRequest, apiKeyName: string,
+  scopeAtStart: string | null, idPrefix: string, now: number, isCurrentGeneration: () => boolean,
+  task?: { taskId: string; apiKey: string },
+): Promise<boolean> {
+  const stored: StoredStudioImage[] = []
+  const temporary: GalleryItem[] = []
+  for (let index = 0; index < outputs.length; index += 1) {
+    if (!isCurrentGeneration()) return false
+    const output = outputs[index]
+    const blob = await outputToBlob(output, snapshot.outputFormat || 'png', task)
+    if (!isCurrentGeneration()) return false
+    if (!blob && task) throw new Error(t('imageStudio.errors.taskDownload'))
+    const actualSize = blob ? await detectImageDimensions(blob) : undefined
+    if (!isCurrentGeneration()) return false
+    const metadata = {
+      id: `${idPrefix}:${index}`, createdAt: now + index, prompt: snapshot.prompt, revisedPrompt: output.revisedPrompt,
+      model: snapshot.model, size: snapshot.size || 'auto', actualSize,
+      outputFormat: output.mimeType?.split('/')[1] || snapshot.outputFormat || 'png', apiKeyName,
     }
-    let storageFailed = false
-    if (stored.length && scopeAtStart !== null) {
-      try {
-        await saveStoredStudioImages(stored, scopeAtStart)
-        if (!isCurrentGeneration()) return
-      } catch {
-        if (!isCurrentGeneration()) return
-        storageFailed = true
-        temporary.push(...stored.map((item) => ({
-          ...item,
-          url: URL.createObjectURL(item.blob),
-          persisted: false,
-        })))
-      }
-    } else if (stored.length) {
+    if (blob) {
+      stored.push({ ...metadata, blob, bytes: blob.size })
+    } else if (output.url) {
+      temporary.push({ ...metadata, url: output.url, persisted: false })
+    }
+  }
+  let storageFailed = false
+  if (stored.length && scopeAtStart !== null) {
+    try {
+      await saveStoredStudioImages(stored, scopeAtStart)
+      if (!isCurrentGeneration()) return false
+    } catch {
+      if (!isCurrentGeneration()) return false
       storageFailed = true
       temporary.push(...stored.map((item) => ({
         ...item,
@@ -604,26 +606,70 @@ async function generate(): Promise<void> {
         persisted: false,
       })))
     }
-    if (!isCurrentGeneration()) {
-      revokeGalleryURLs(temporary)
-      return
-    }
-    temporaryGallery.value.unshift(...temporary)
-    if (stored.length && !storageFailed) await loadLibrary()
+  } else if (stored.length) {
+    storageFailed = true
+    temporary.push(...stored.map((item) => ({
+      ...item,
+      url: URL.createObjectURL(item.blob),
+      persisted: false,
+    })))
+  }
+  if (!isCurrentGeneration()) {
+    revokeGalleryURLs(temporary)
+    return false
+  }
+  temporaryGallery.value.unshift(...temporary)
+  if (stored.length && !storageFailed) await loadLibrary()
+  if (!isCurrentGeneration()) return false
+  if (storageFailed) {
+    appStore.showWarning(t('imageStudio.messages.storageUnavailable', { count: stored.length }))
+  } else if (temporary.length) {
+    appStore.showWarning(t('imageStudio.messages.temporaryResults', { count: temporary.length }))
+  }
+  appStore.showSuccess(t('imageStudio.messages.generated', { count: outputs.length }))
+  return !storageFailed && temporary.length === 0
+}
+
+async function generate(): Promise<void> {
+  const key = selectedKey.value
+  if (!key || generating.value || !form.model.trim() || !form.prompt.trim()) return
+  if (!requestSize.value) {
+    generationError.value = t('imageStudio.errors.invalidCustomSize')
+    return
+  }
+  const request: ImageStudioGenerateRequest = {
+    model: form.model.trim(), prompt: form.prompt.trim(), count: imagePolicy.value.forceSingleOutput ? 1 : Number(form.count) || 1,
+    size: requestSize.value,
+    quality: imagePolicy.value.supportsAdvancedOptions ? form.quality : 'auto',
+    outputFormat: normalizeImageOutputFormat(form.model, nativeGeminiModel.value, form.outputFormat),
+    background: imagePolicy.value.supportsAdvancedOptions ? form.background : 'auto',
+    inputFidelity: imagePolicy.value.supportsAdvancedOptions ? form.inputFidelity : 'auto',
+    images: inputImages.value.map((item) => item.file),
+    mask: imagePolicy.value.supportsAdvancedOptions ? maskFile.value : null,
+    nativeGemini: nativeGeminiModel.value,
+  }
+  generationError.value = ''
+  if (asyncCapableKey.value) {
+    await taskRunner.submit(request)
+    return
+  }
+  const scopeAtStart = libraryScope.value
+  generationController?.abort()
+  const controller = new AbortController()
+  generationController = controller
+  synchronousGenerating.value = true
+  const isCurrentGeneration = () => !controller.signal.aborted && libraryScope.value === scopeAtStart
+  try {
+    const outputs = await generateImageStudioImages(key.key, request, controller.signal)
     if (!isCurrentGeneration()) return
-    if (storageFailed) {
-      appStore.showWarning(t('imageStudio.messages.storageUnavailable', { count: stored.length }))
-    } else if (temporary.length) {
-      appStore.showWarning(t('imageStudio.messages.temporaryResults', { count: temporary.length }))
-    }
-    appStore.showSuccess(t('imageStudio.messages.generated', { count: outputs.length }))
+    await persistOutputs(outputs, request, key.name, scopeAtStart, makeID(), Date.now(), isCurrentGeneration)
   } catch (error) {
-    if (controller.signal.aborted) return
+    if (!isCurrentGeneration()) return
     generationError.value = errorMessage(error, t('imageStudio.errors.generate'))
   } finally {
     if (generationController === controller) {
       generationController = null
-      generating.value = false
+      synchronousGenerating.value = false
     }
   }
 }
@@ -631,7 +677,12 @@ async function generate(): Promise<void> {
 function cancelGeneration(): void {
   generationController?.abort()
   generationController = null
-  generating.value = false
+  synchronousGenerating.value = false
+  taskRunner.stop()
+}
+
+function resumeTask(task: StoredStudioTask): void {
+  void taskRunner.resume(task)
 }
 
 function revokeGalleryURLs(items: GalleryItem[]): void {
@@ -758,6 +809,9 @@ watch(libraryScope, (scope, previousScope) => {
   if (scope === previousScope) return
   cancelGeneration()
   generationError.value = ''
+  apiKeys.value = []
+  form.apiKeyId = ''
+  void loadKeys()
   showClearLibraryDialog.value = false
   revokeGalleryURLs(storedGallery.value)
   revokeGalleryURLs(temporaryGallery.value)

@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   generateImageStudioImages,
+  fetchImageStudioTaskImage,
+  getImageStudioTask,
+  imageStudioTaskOutputs,
+  isImageStudioAsyncDisabled,
   isLikelyImageModel,
   listImageStudioModels,
+  submitImageStudioTask,
 } from '../imageStudio'
 
 describe('imageStudio API', () => {
@@ -13,6 +18,7 @@ describe('imageStudio API', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('recognizes common image model IDs without treating chat models as image models', () => {
@@ -22,6 +28,142 @@ describe('imageStudio API', () => {
     expect(isLikelyImageModel('gemini-nano-banana-2.1')).toBe(true)
     expect(isLikelyImageModel('seedream-5.0-pro')).toBe(true)
     expect(isLikelyImageModel('claude-sonnet-4')).toBe(false)
+  })
+
+  it('submits an asynchronous generation with its idempotency key and accepts an already completed task', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: true, status: 202, json: async () => ({
+      id: 'imgtask_a', status: 'completed', created_at: 1, expires_at: 86401,
+      result: { data: [{ url: '/v1/images/tasks/imgtask_a/images/0.png' }] },
+    }) } as Response)
+    const task = await submitImageStudioTask('key', { model: 'gpt-image-2', prompt: 'a cat', count: 1, size: '3840x2160' }, 'operation-one')
+    expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/v1\/images\/generations\/async$/), expect.objectContaining({
+      headers: { Authorization: 'Bearer key', 'Content-Type': 'application/json', 'Idempotency-Key': 'operation-one' },
+    }))
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body))).toMatchObject({ size: '3840x2160', n: 1 })
+    expect(imageStudioTaskOutputs(task)).toEqual([{ url: '/v1/images/tasks/imgtask_a/images/0.png' }])
+  })
+
+  it('keeps 16 edit files in order on the asynchronous multipart route', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: true, status: 202, json: async () => ({ id: 'imgtask_a', status: 'processing' }) } as Response)
+    const images = Array.from({ length: 16 }, (_, i) => new File(['image'], `${i}.png`, { type: 'image/png' }))
+    await submitImageStudioTask('key', { model: 'gpt-image-2', prompt: 'edit', count: 1, images }, 'operation-edit')
+    const [url, options] = vi.mocked(fetch).mock.calls[0]
+    expect(String(url)).toMatch(/\/v1\/images\/edits\/async$/)
+    expect(options?.headers).toEqual({ Authorization: 'Bearer key', 'Idempotency-Key': 'operation-edit' })
+    expect(((options?.body as FormData).getAll('image') as File[]).map((file) => file.name)).toEqual(images.map((file) => file.name))
+  })
+
+  it('polls a task using only its ID and selected API key', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ id: 'imgtask_a', status: 'processing' }) } as Response)
+    await getImageStudioTask('key', 'imgtask_a')
+    expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/v1\/images\/tasks\/imgtask_a$/), expect.objectContaining({
+      headers: { Authorization: 'Bearer key' }, cache: 'no-store',
+    }))
+  })
+
+  it('automatically retries the same GET after a disconnect and 503 while still online, without a new POST', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ error: { message: 'busy' } }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'imgtask_retry', status: 'completed' }) } as Response)
+    const pending = getImageStudioTask('key', 'imgtask_retry')
+    await vi.advanceTimersByTimeAsync(2000)
+    await expect(pending).resolves.toMatchObject({ id: 'imgtask_retry', status: 'completed' })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(fetch).mock.calls.every(([url, options]) => String(url).endsWith('/v1/images/tasks/imgtask_retry') && !options?.method)).toBe(true)
+  })
+
+  it('limits automatic GET retries and retains the final error', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 502, json: async () => ({ error: { message: 'unavailable' } }) } as Response)
+    const pending = expect(getImageStudioTask('key', 'imgtask_retry')).rejects.toMatchObject({ status: 502, message: 'unavailable' })
+    await vi.advanceTimersByTimeAsync(2000)
+    await pending
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('ends a black-holed asynchronous POST after 30 seconds without changing its idempotency key', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    }))
+    const pending = expect(submitImageStudioTask('key', { model: 'gpt-image-2', prompt: 'cat', count: 1 }, 'operation-timeout')).rejects.toThrow('timed out')
+    await vi.advanceTimersByTimeAsync(30_000)
+    await pending
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({ 'Idempotency-Key': 'operation-timeout' })
+  })
+
+  it('times out a black-holed GET and automatically retries the same task', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    })).mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'imgtask_timeout', status: 'completed' }) } as Response)
+    const pending = getImageStudioTask('key', 'imgtask_timeout')
+    await vi.advanceTimersByTimeAsync(30_500)
+    await expect(pending).resolves.toMatchObject({ status: 'completed' })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => String(url))).toEqual([
+      expect.stringMatching(/\/v1\/images\/tasks\/imgtask_timeout$/), expect.stringMatching(/\/v1\/images\/tasks\/imgtask_timeout$/),
+    ])
+  })
+
+  it('honors caller abort immediately without retrying a task GET', async () => {
+    vi.mocked(fetch).mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    }))
+    const controller = new AbortController()
+    const pending = expect(getImageStudioTask('key', 'imgtask_abort', controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
+    controller.abort()
+    await pending
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it('allows a larger 120-second image download budget and retries GET without regenerating', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    })).mockResolvedValueOnce({ ok: true, blob: async () => new Blob(['image']) } as Response)
+    const pending = fetchImageStudioTaskImage('key', 'imgtask_timeout', '/v1/images/tasks/imgtask_timeout/images/0.png')
+    await vi.advanceTimersByTimeAsync(119_999)
+    expect(vi.mocked(fetch).mock.calls[0][1]?.signal?.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(501)
+    await expect(pending).resolves.toBeInstanceOf(Blob)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('recognizes only the explicit async-disabled 404', () => {
+    expect(isImageStudioAsyncDisabled(Object.assign(new Error('async image tasks are not enabled'), { status: 404 }))).toBe(true)
+    expect(isImageStudioAsyncDisabled(Object.assign(new Error('task not found'), { status: 404 }))).toBe(false)
+    expect(isImageStudioAsyncDisabled(Object.assign(new Error('async image tasks are not enabled'), { status: 503 }))).toBe(false)
+  })
+
+  it('authenticates protected result downloads for this exact task', async () => {
+    const blob = new Blob(['image'], { type: 'image/png' })
+    vi.mocked(fetch).mockResolvedValue({ ok: true, blob: async () => blob } as Response)
+    await expect(fetchImageStudioTaskImage('key', 'imgtask_a', '/v1/images/tasks/imgtask_a/images/0.png')).resolves.toBe(blob)
+    expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/v1\/images\/tasks\/imgtask_a\/images\/0.png$/), expect.objectContaining({ headers: { Authorization: 'Bearer key' } }))
+  })
+
+  it('resolves a protected relative result URL through the gateway origin', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: true, blob: async () => new Blob(['image']) } as Response)
+    await fetchImageStudioTaskImage('key', 'imgtask_a', '/v1/images/tasks/imgtask_a/images/0.png')
+    expect(String(vi.mocked(fetch).mock.calls[0][0])).not.toBe('/v1/images/tasks/imgtask_a/images/0.png')
+    expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toEqual({ Authorization: 'Bearer key' })
+  })
+
+  it.each([
+    'https://untrusted.example/v1/images/tasks/imgtask_a/images/0.png',
+    '//untrusted.example/v1/images/tasks/imgtask_a/images/0.png',
+    '/v1/images/tasks/another-task/images/0.png',
+    '/v1/images/tasks/imgtask_a/images/../../admin',
+    '/v1/images/tasks/imgtask_a/images/0.png?redirect=1',
+  ])('never sends an API key to any other result URL: %s', async (url) => {
+    vi.mocked(fetch).mockResolvedValue({ ok: true, blob: async () => new Blob() } as Response)
+    await fetchImageStudioTaskImage('key', 'imgtask_a', url)
+    const options = vi.mocked(fetch).mock.calls[0][1]
+    expect(options?.headers).toBeUndefined()
+    expect(options?.credentials).toBe('omit')
   })
 
   it('uses the native Gemini generateContent route for Gemini image keys', async () => {

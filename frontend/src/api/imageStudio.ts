@@ -52,6 +52,129 @@ interface GatewayImagesResponse {
   data?: GatewayImageItem[]
 }
 
+export interface ImageStudioTask {
+  id: string
+  task_id?: string
+  status: 'processing' | 'completed' | 'failed'
+  created_at: number
+  expires_at: number
+  execution_deadline?: number
+  result?: GatewayImagesResponse
+  error?: { message?: string; code?: string; error?: { message?: string; code?: string } }
+}
+
+export function isImageStudioAsyncDisabled(error: unknown): boolean {
+  return error instanceof Error
+    && (error as Error & { status?: number }).status === 404
+    && error.message === 'async image tasks are not enabled'
+}
+
+export function imageStudioTaskOutputs(task: ImageStudioTask): ImageStudioOutput[] {
+  return imageOutputs(task.result || {})
+}
+
+function imageOutputs(payload: GatewayImagesResponse): ImageStudioOutput[] {
+  return (payload.data || []).map((item) => ({
+    url: item.url,
+    b64Json: item.b64_json,
+    revisedPrompt: item.revised_prompt,
+  })).filter((item) => item.url || item.b64Json)
+}
+
+async function withImageStudioTimeout<T>(signal: AbortSignal | undefined, timeout: number, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController()
+  const abort = () => controller.abort(signal?.reason)
+  signal?.addEventListener('abort', abort, { once: true })
+  if (signal?.aborted) abort()
+  let timedOut = false
+  const timer = setTimeout(() => { timedOut = true; controller.abort() }, timeout)
+  try { return await run(controller.signal) } catch (error) {
+    if (timedOut) throw new Error('Image task request timed out')
+    throw error
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abort)
+  }
+}
+
+export async function submitImageStudioTask(
+  apiKey: string,
+  request: ImageStudioGenerateRequest,
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<ImageStudioTask> {
+  return withImageStudioTimeout(signal, 30_000, async (requestSignal) => {
+    const editing = (request.images?.length || 0) > 0
+    const response = await fetch(buildGatewayUrl(editing ? '/v1/images/edits/async' : '/v1/images/generations/async'), {
+      method: 'POST',
+      headers: authHeaders(apiKey, {
+        ...(!editing ? { 'Content-Type': 'application/json' } : {}),
+        'Idempotency-Key': idempotencyKey,
+      }),
+      body: editing ? buildEditForm(request) : JSON.stringify(buildJSONBody(request)),
+      signal: requestSignal,
+    })
+    if (!response.ok) throw await parseGatewayError(response)
+    const task = await response.json() as ImageStudioTask
+    if (!(task.task_id || task.id) || !['processing', 'completed', 'failed'].includes(task.status)) {
+      throw new Error('Image task response is invalid')
+    }
+    return task
+  })
+}
+
+async function retryImageStudioGet<T>(request: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await request() } catch (error) {
+      const status = (error as { status?: number })?.status
+      if (signal?.aborted || attempt >= 2 || (status !== undefined && status < 500)) throw error
+      await new Promise<void>((resolve, reject) => {
+        const finish = () => { signal?.removeEventListener('abort', abort); resolve() }
+        const timer = setTimeout(finish, attempt === 0 ? 500 : 1500)
+        const abort = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(new DOMException('Aborted', 'AbortError')) }
+        signal?.addEventListener('abort', abort, { once: true })
+        if (signal?.aborted) abort()
+      })
+    }
+  }
+}
+
+export async function getImageStudioTask(apiKey: string, taskID: string, signal?: AbortSignal): Promise<ImageStudioTask> {
+  return retryImageStudioGet(() => withImageStudioTimeout(signal, 30_000, async (requestSignal) => {
+    const response = await fetch(buildGatewayUrl(`/v1/images/tasks/${encodeURIComponent(taskID)}`), {
+      headers: authHeaders(apiKey), signal: requestSignal, cache: 'no-store',
+    })
+    if (!response.ok) throw await parseGatewayError(response)
+    return response.json() as Promise<ImageStudioTask>
+  }), signal)
+}
+
+/** Only this task's exact protected path may receive an API-key header. */
+export async function fetchImageStudioTaskImage(apiKey: string, taskID: string, url: string, signal?: AbortSignal): Promise<Blob> {
+  const prefix = `/v1/images/tasks/${encodeURIComponent(taskID)}/images/`
+  let requestURL = url
+  let protectedPath = url.startsWith(prefix) && /^\d+\.(png|jpe?g|webp|gif|avif)$/i.test(url.slice(prefix.length))
+  if (protectedPath) requestURL = buildGatewayUrl(url)
+  try {
+    const parsed = new URL(url, typeof window === 'undefined' ? 'http://localhost' : window.location.origin)
+    const gatewayOrigin = new URL(buildGatewayUrl('/'), parsed).origin
+    const sameGateway = parsed.origin === gatewayOrigin
+    const relativePath = `${parsed.pathname}${parsed.search}`
+    if (sameGateway && relativePath.startsWith(prefix) && /^\d+\.(png|jpe?g|webp|gif|avif)$/i.test(relativePath.slice(prefix.length))) {
+      requestURL = buildGatewayUrl(relativePath)
+      protectedPath = true
+    }
+  } catch { /* treat malformed or foreign URLs as unauthenticated */ }
+  return retryImageStudioGet(() => withImageStudioTimeout(signal, 120_000, async (requestSignal) => {
+    const response = await fetch(protectedPath ? requestURL : url, {
+      ...(protectedPath ? { headers: authHeaders(apiKey), redirect: 'error' as const } : { credentials: 'omit' as const }),
+      signal: requestSignal,
+    })
+    if (!response.ok) throw await parseGatewayError(response)
+    return response.blob()
+  }), signal)
+}
+
 interface GeminiImageResponse {
   candidates?: Array<{
     content?: {
@@ -183,11 +306,7 @@ export async function generateImageStudioImages(
   })
   if (!response.ok) throw await parseGatewayError(response)
   const payload = await response.json() as GatewayImagesResponse
-  const outputs = (payload.data || []).map((item) => ({
-    url: item.url,
-    b64Json: item.b64_json,
-    revisedPrompt: item.revised_prompt,
-  })).filter((item) => item.url || item.b64Json)
+  const outputs = imageOutputs(payload)
   if (outputs.length === 0) throw new Error('Image provider returned no image data')
   return outputs
 }

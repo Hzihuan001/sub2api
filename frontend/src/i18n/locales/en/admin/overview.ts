@@ -105,7 +105,7 @@ export default {
       },
       imageStorage: {
         title: 'Async image object storage',
-        description: 'Enables the asynchronous image endpoints and offloads generated images to object storage, keeping only short links in Redis. Shares the S3 client with backups and takes effect on save — no restart needed.',
+        description: 'Asynchronous image tasks use persistent local results when S3 has never been configured. Configuring object storage offloads generated images to S3 and keeps only short links in Redis. Explicitly disabling this setting rejects new async tasks; accepted tasks remain queryable. Changes take effect on save.',
         enabled: 'Enable async image tasks',
         reuseBackupS3: 'Reuse the backup S3 configuration above (different bucket/prefix only)',
         bucket: 'Bucket',

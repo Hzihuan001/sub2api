@@ -22,11 +22,12 @@ import (
 
 const defaultImageMaxDownloadBytes int64 = 32 << 20 // 32 MiB
 
-// ImageStorage 把图片字节写入对象存储并返回可访问 URL。
+// ImageStorage 把完整图片字节写入持久存储并返回可访问 URL。
 //
 // 这是对象存储的可插拔抽象：适配一个新的对象存储厂商，只需实现本接口
 // （例如包一个厂商 SDK），无需改动任务/网关逻辑。仓库内自带一个 S3 兼容实现
 // （repository.S3ImageStorage），适用于 AWS S3 / Cloudflare R2 / 阿里云 OSS / MinIO 等。
+// LocalImageStorage 则使用应用数据卷，通过任务鉴权端点提供下载。
 type ImageStorage interface {
 	// Save 把 data 以 key 存入对象存储，返回可下载的 URL（公开直链或 presigned 临时链接）。
 	// contentType 为图片 MIME 类型，如 "image/png"。
@@ -74,7 +75,7 @@ func newImageDownloadHTTPClient(proxy func(*http.Request) (*url.URL, error)) *ht
 	proxied := newImageDownloadBaseTransport(nil)
 	proxied.Proxy = proxy
 	return &http.Client{
-		Timeout:   60 * time.Second,
+		Timeout:   120 * time.Second,
 		Transport: &imageDownloadTransport{direct: direct, proxied: proxied, proxy: proxy, resolvesPrivate: isPrivateOrLoopbackHost},
 	}
 }
@@ -313,17 +314,47 @@ func (u *ImageResultUploader) decodeImageDataURL(rawURL string) ([]byte, string,
 }
 
 func (u *ImageResultUploader) download(ctx context.Context, rawURL string) ([]byte, string, error) {
+	// Retry fetching the same generated object, never the generation POST. A
+	// partially read response is discarded so bytes from different downloads
+	// cannot be joined into a corrupt image.
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		data, contentType, retry, err := u.downloadOnce(ctx, rawURL)
+		if err == nil || !retry {
+			return data, contentType, err
+		}
+		lastErr = err
+		if attempt == 2 {
+			break
+		}
+		timer := time.NewTimer(time.Duration(attempt+1) * 250 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, "", ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil, "", lastErr
+}
+
+func (u *ImageResultUploader) downloadOnce(ctx context.Context, rawURL string) ([]byte, string, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, "", fmt.Errorf("build download request: %w", err)
+		return nil, "", false, fmt.Errorf("build download request: %w", err)
 	}
 	resp, err := u.httpClient.Do(req)
 	if err != nil {
-		return nil, "", fmt.Errorf("download image: %w", err)
+		return nil, "", ctx.Err() == nil && isOpenAIImagesTransientTransportError(err), fmt.Errorf("download image: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, "", fmt.Errorf("download image: unexpected status %d", resp.StatusCode)
+		return nil, "", resp.StatusCode >= 500 && resp.StatusCode <= 599, fmt.Errorf("download image: unexpected status %d", resp.StatusCode)
+	}
+	// This request asks for the entire object. An unsolicited range must not
+	// be published as a complete result even if its Content-Length is correct.
+	if resp.StatusCode == http.StatusPartialContent || resp.Header.Get("Content-Range") != "" {
+		return nil, "", false, errors.New("download image: unexpected partial content")
 	}
 	limit := u.maxDownloadBytes
 	if limit <= 0 {
@@ -331,19 +362,25 @@ func (u *ImageResultUploader) download(ctx context.Context, rawURL string) ([]by
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
-		return nil, "", fmt.Errorf("read image body: %w", err)
+		return nil, "", ctx.Err() == nil && isOpenAIImagesTransientTransportError(err), fmt.Errorf("read image body: %w", err)
 	}
 	if int64(len(data)) > limit {
-		return nil, "", fmt.Errorf("downloaded image exceeds %d bytes", limit)
+		return nil, "", false, fmt.Errorf("downloaded image exceeds %d bytes", limit)
+	}
+	if resp.ContentLength > 0 && int64(len(data)) != resp.ContentLength {
+		return nil, "", true, fmt.Errorf("read image body: %w", io.ErrUnexpectedEOF)
 	}
 	contentType := strings.ToLower(strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0]))
 	if !strings.HasPrefix(contentType, "image/") {
 		// 声明与嗅探都不是图片时拒绝，避免把任意响应体（内部接口的 JSON/HTML 等）转存给租户。
 		if contentType = detectedImageContentType(data); contentType == "" {
-			return nil, "", errors.New("download image: content is not an image")
+			return nil, "", false, errors.New("download image: content is not an image")
 		}
 	}
-	return data, contentType, nil
+	if len(data) == 0 {
+		return nil, "", false, errors.New("download image: content is not an image")
+	}
+	return data, contentType, false, nil
 }
 
 func (u *ImageResultUploader) buildKey(taskID string, index int, contentType string) string {

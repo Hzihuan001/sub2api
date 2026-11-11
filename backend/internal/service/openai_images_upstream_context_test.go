@@ -8,11 +8,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/keyrouting"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 )
 
 func newOpenAIImagesTestContext(t *testing.T, body []byte) (*gin.Context, *httptest.ResponseRecorder) {
@@ -151,4 +154,122 @@ func TestDetachUpstreamContextSemantics(t *testing.T) {
 		defer release()
 		require.NoError(t, detached.Err())
 	})
+}
+
+func TestOpenAIImageDrainTimeoutStaysBoundedWhenIdleTimeoutDisabled(t *testing.T) {
+	var unavailable *OpenAIGatewayService
+	require.Equal(t, 30*time.Minute, unavailable.openAIImageDrainTimeout())
+	svc := newOpenAIImagesTestService(nil)
+	require.Zero(t, svc.openAIImageStreamDataInterval())
+	require.Equal(t, 30*time.Minute, svc.openAIImageDrainTimeout())
+	svc.cfg.Gateway.ImageStreamDataIntervalTimeout = 60
+	require.Equal(t, time.Minute, svc.openAIImageDrainTimeout(), "explicit shorter image timeout must remain effective")
+	svc.cfg.Gateway.ImageStreamDataIntervalTimeout = 1800
+	require.Equal(t, 30*time.Minute, svc.openAIImageDrainTimeout())
+}
+
+type imageDeadlineHTTPUpstream struct {
+	HTTPUpstream
+	client  *http.Client
+	attempt context.Context
+}
+
+type imageDeadlineResponseBody struct {
+	io.ReadCloser
+	release context.CancelFunc
+}
+
+func (b *imageDeadlineResponseBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.release()
+	return err
+}
+
+func (u *imageDeadlineHTTPUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	ctx, release := pkghttputil.NewUpstreamAttemptContext(req.Context(), time.Second)
+	u.attempt = ctx
+	resp, err := u.client.Do(req.WithContext(ctx))
+	if err != nil {
+		release()
+		return nil, err
+	}
+	resp.Body = &imageDeadlineResponseBody{ReadCloser: resp.Body, release: release}
+	return resp, nil
+}
+
+func TestForwardOpenAIImagesAPIKey_TaskDeadlineSurvivesDetachAndTransport(t *testing.T) {
+	for _, guarded := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ordinary context", true: "first content guard"}[guarded], func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				select {
+				case <-req.Context().Done():
+				case <-time.After(500 * time.Millisecond):
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = io.WriteString(w, `{"data":[{"b64_json":"aGVsbG8="}]}`)
+				}
+			}))
+			defer server.Close()
+			upstream := &imageDeadlineHTTPUpstream{client: &http.Client{Timeout: 2 * time.Second}}
+			svc := newOpenAIImagesTestService(upstream)
+			svc.cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+			svc.cfg.Security.URLAllowlist.AllowPrivateHosts = true
+			account := newOpenAIImagesAPIKeyAccount()
+			account.Credentials["base_url"] = server.URL
+			body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat"}`)
+			c, _ := newOpenAIImagesTestContext(t, body)
+			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+			require.NoError(t, err)
+			taskCtx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+			defer cancel()
+			deadline, _ := taskCtx.Deadline()
+			if guarded {
+				taskCtx = keyrouting.WithFirstContentGuard(taskCtx, keyrouting.NewFirstContentGuard(5*time.Second))
+			}
+			taskCtx = pkghttputil.PreserveUpstreamDeadline(taskCtx)
+
+			result, err := svc.ForwardImages(taskCtx, c, account, body, parsed, "")
+			require.Error(t, err)
+			require.Nil(t, result)
+			require.NotNil(t, upstream.attempt)
+			actualDeadline, ok := upstream.attempt.Deadline()
+			require.True(t, ok, "an async task must not receive another drain window at its deadline")
+			require.Equal(t, deadline, actualDeadline)
+			require.ErrorIs(t, upstream.attempt.Err(), context.DeadlineExceeded)
+		})
+	}
+}
+
+func TestForwardOpenAIImagesAPIKey_OrdinaryClientDisconnectStillDrainsAndCompletes(t *testing.T) {
+	clientCtx, cancelClient := context.WithCancel(context.Background())
+	defer cancelClient()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		cancelClient()
+		select {
+		case <-req.Context().Done():
+			return
+		case <-time.After(20 * time.Millisecond):
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"b64_json":"aGVsbG8="}]}`)
+	}))
+	defer server.Close()
+	upstream := &imageDeadlineHTTPUpstream{client: &http.Client{Timeout: 2 * time.Second}}
+	svc := newOpenAIImagesTestService(upstream)
+	svc.cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	svc.cfg.Security.URLAllowlist.AllowPrivateHosts = true
+	svc.cfg.Gateway.ImageStreamDataIntervalTimeout = 1
+	account := newOpenAIImagesAPIKeyAccount()
+	account.Credentials["base_url"] = server.URL
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat"}`)
+	c, _ := newOpenAIImagesTestContext(t, body)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	result, err := svc.ForwardImages(clientCtx, c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.ErrorIs(t, clientCtx.Err(), context.Canceled)
+	_, hasDeadline := upstream.attempt.Deadline()
+	require.False(t, hasDeadline, "the synchronous billing drain remains cancellation-triggered")
 }

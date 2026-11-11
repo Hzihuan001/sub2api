@@ -584,6 +584,9 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 	if ctx == nil {
 		return context.Background(), func() {}
 	}
+	if pkghttputil.HasPreservedUpstreamDeadline(ctx) {
+		return ctx, func() {}
+	}
 	if guard := keyrouting.GetFirstContentGuard(ctx); guard != nil {
 		return guard.Detach(ctx), func() {}
 	}
@@ -596,6 +599,9 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 func detachUpstreamContext(ctx context.Context, drainTimeout ...time.Duration) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {}
+	}
+	if pkghttputil.HasPreservedUpstreamDeadline(ctx) {
+		return ctx, func() {}
 	}
 	if guard := keyrouting.GetFirstContentGuard(ctx); guard != nil {
 		return guard.Detach(ctx), func() {}

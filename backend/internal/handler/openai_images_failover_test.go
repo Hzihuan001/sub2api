@@ -5,10 +5,12 @@ package handler
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 	"syscall"
 	"testing"
@@ -135,6 +137,28 @@ func TestOpenAIGatewayHandlerImages_ConnectionResetExhaustionStaysOnSameAccount(
 	resetErr := &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}
 	upstream := &openAIImagesFailoverHTTPUpstream{errs: []error{resetErr, resetErr, resetErr, resetErr}}
 	testOpenAIImagesSameAccountRetry(t, upstream, []int64{1, 1, 1, 1}, http.StatusBadGateway, "request_error")
+}
+
+func TestOpenAIGatewayHandlerImages_HTTP2ConnectionFailureRetriesStayOnSameAccount(t *testing.T) {
+	for _, message := range []string{
+		"http2: client connection force closed via ClientConn.Close",
+		"http2: client connection lost",
+	} {
+		t.Run(message, func(t *testing.T) {
+			transportErr := &url.Error{Op: "Post", URL: "https://upstream.invalid/v1/responses", Err: errors.New(message)}
+			t.Run("recovery", func(t *testing.T) {
+				upstream := &openAIImagesFailoverHTTPUpstream{
+					errs:      []error{transportErr},
+					responses: []*http.Response{nil, openAIImagesRetrySuccessResponse()},
+				}
+				testOpenAIImagesSameAccountRetry(t, upstream, []int64{1, 1}, http.StatusOK, "request_error")
+			})
+			t.Run("exhaustion", func(t *testing.T) {
+				upstream := &openAIImagesFailoverHTTPUpstream{errs: []error{transportErr, transportErr, transportErr, transportErr}}
+				testOpenAIImagesSameAccountRetry(t, upstream, []int64{1, 1, 1, 1}, http.StatusBadGateway, "request_error")
+			})
+		})
+	}
 }
 
 func testOpenAIImagesSameAccountRetry(t *testing.T, upstream *openAIImagesFailoverHTTPUpstream, wantCalls []int64, wantStatus int, wantEventKind string) {

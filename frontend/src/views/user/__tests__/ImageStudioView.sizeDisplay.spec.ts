@@ -6,6 +6,12 @@ import type { StoredStudioImage } from '@/features/image-studio/library'
 const mocks = vi.hoisted(() => ({
   listKeys: vi.fn(),
   generate: vi.fn(),
+  submitTask: vi.fn(),
+  getTask: vi.fn(),
+  fetchTaskImage: vi.fn(),
+  listTasks: vi.fn(),
+  saveTask: vi.fn(),
+  removeTask: vi.fn(),
   listModels: vi.fn(),
   listStored: vi.fn(),
   saveStored: vi.fn(),
@@ -17,9 +23,17 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/api/keys', () => ({ keysAPI: { list: mocks.listKeys } }))
-vi.mock('@/api/imageStudio', () => ({
+vi.mock('@/api/imageStudio', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/api/imageStudio')>(),
   generateImageStudioImages: mocks.generate,
   listImageStudioModels: mocks.listModels,
+  submitImageStudioTask: mocks.submitTask,
+  getImageStudioTask: mocks.getTask,
+  fetchImageStudioTaskImage: mocks.fetchTaskImage,
+}))
+vi.mock('@/features/image-studio/tasks', () => ({
+  listStudioTasks: mocks.listTasks, saveStudioTask: mocks.saveTask,
+  deleteStudioTask: mocks.removeTask,
 }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ user: { id: 7 } }) }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => mocks }))
@@ -75,6 +89,11 @@ beforeEach(() => {
   })
   mocks.listModels.mockResolvedValue([{ id: 'gpt-image-2.5-sunburst', name: 'Image model' }])
   mocks.generate.mockResolvedValue([{ b64Json: 'image-data' }])
+  mocks.submitTask.mockRejectedValue(Object.assign(new Error('async image tasks are not enabled'), { status: 404 }))
+  mocks.listTasks.mockResolvedValue([])
+  mocks.saveTask.mockResolvedValue(undefined)
+  mocks.removeTask.mockResolvedValue(undefined)
+  mocks.fetchTaskImage.mockResolvedValue(imageBlob)
   mocks.decodeImage.mockReturnValue(imageBlob)
   mocks.detectSize.mockResolvedValue('1672x941')
 })
@@ -97,6 +116,64 @@ async function attachReferences(files: File[]) {
 }
 
 describe('Image Studio actual size visibility', () => {
+  it('preserves synchronous Images API behavior for composite groups and explains the recovery limit', async () => {
+    mocks.listKeys.mockResolvedValue({ pages: 1, items: [{ id: 1, key: 'test-key', name: 'Composite', status: 'active', group: { status: 'active', platform: 'composite', allow_image_generation: true } }] })
+    wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.get('[data-test="image-studio-recovery-mode"]').text()).toBe('imageStudio.syncModeHint')
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('A composite image')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.generate).toHaveBeenCalledWith('test-key', expect.objectContaining({ nativeGemini: false }), expect.any(AbortSignal))
+    expect(mocks.submitTask).not.toHaveBeenCalled()
+  })
+
+  it('keeps a completed async task after a temporary protected-image download failure and retries GET only', async () => {
+    const completedTask = { id: 'imgtask_download', status: 'completed', created_at: Date.now() / 1000,
+      expires_at: Date.now() / 1000 + 86400, result: { data: [{ url: '/v1/images/tasks/imgtask_download/images/0.png' }] } }
+    mocks.submitTask.mockResolvedValue(completedTask)
+    mocks.getTask.mockResolvedValue(completedTask)
+    mocks.fetchTaskImage.mockRejectedValueOnce(new TypeError('temporary offline')).mockResolvedValue(imageBlob)
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('Original prompt')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.saveStored).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="image-studio-tasks"]').text()).toContain('imageStudio.errors.taskDownload')
+    await wrapper.get('[data-test="image-studio-prompt"]').setValue('Edited while waiting')
+    await wrapper.get('[data-test="image-studio-tasks"] button').trigger('click')
+    await flushPromises()
+    expect(mocks.submitTask).toHaveBeenCalledOnce()
+    expect(mocks.generate).not.toHaveBeenCalled()
+    expect(mocks.getTask).toHaveBeenCalledWith('test-key', 'imgtask_download', expect.any(AbortSignal))
+    expect(mocks.fetchTaskImage).toHaveBeenCalledWith('test-key', 'imgtask_download', '/v1/images/tasks/imgtask_download/images/0.png')
+    expect(mocks.saveStored).toHaveBeenCalledWith([expect.objectContaining({ id: 'imgtask_download:0', prompt: 'Original prompt', blob: imageBlob })], '7')
+    expect(wrapper.find('[data-test="image-studio-tasks"]').exists()).toBe(false)
+  })
+
+  it('uses stable task image IDs so recovery after a failed pending-record deletion does not duplicate the gallery', async () => {
+    const task = { operationId: 'recover-operation', apiKeyId: '1', apiKeyName: 'Image key', taskId: 'imgtask_saved',
+      createdAt: Date.now(), expiresAt: Date.now() + 86400000, submitAttempts: 1, state: 'paused',
+      request: { model: 'gpt-image-2.5-sunburst', prompt: 'Saved prompt', count: 1, size: '1024x1024', outputFormat: 'png' } }
+    mocks.listTasks.mockImplementation(async () => [{ ...task, request: { ...task.request } }])
+    mocks.getTask.mockResolvedValue({ id: 'imgtask_saved', status: 'completed', result: { data: [{ b64_json: 'image-data' }] } })
+    mocks.removeTask.mockRejectedValueOnce(new Error('delete failed'))
+    mocks.saveStored.mockImplementation(async (images: StoredStudioImage[]) => {
+      images.forEach((image) => { stored = [...stored.filter((old) => old.id !== image.id), image] })
+    })
+    wrapper = mountView()
+    await flushPromises()
+    expect(stored.map((image) => image.id)).toEqual(['imgtask_saved:0'])
+    wrapper.unmount()
+    wrapper = mountView()
+    await flushPromises()
+    expect(mocks.submitTask).not.toHaveBeenCalled()
+    expect(mocks.saveStored).toHaveBeenCalledTimes(2)
+    expect(stored.map((image) => image.id)).toEqual(['imgtask_saved:0'])
+    expect(wrapper.findAll('article')).toHaveLength(1)
+  })
+
   it('accepts and submits 16 GPT Image references, but ignores a seventeenth upload', async () => {
     vi.mocked(URL.createObjectURL).mockImplementation((blob) => `blob:reference-${(blob as File).name}`)
     wrapper = mountView()

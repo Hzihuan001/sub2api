@@ -74,6 +74,14 @@ func isOpenAIImagesTransientTransportError(err error) bool {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
+	// Go's HTTP/2 transport exposes these as private sentinel errors. Inspect
+	// the cause before net.Error: url.Error wraps them but reports no timeout.
+	for cause := err; cause != nil; cause = errors.Unwrap(cause) {
+		switch cause.Error() {
+		case "http2: client connection force closed via ClientConn.Close", "http2: client connection lost":
+			return true
+		}
+	}
 	var opErr *net.OpError
 	if errors.As(err, &opErr) {
 		return true
@@ -2104,5 +2112,5 @@ func (s *OpenAIGatewayService) openAIImageDrainTimeout() time.Duration {
 	if timeout := s.openAIImageStreamDataInterval(); timeout > 0 {
 		return timeout
 	}
-	return 900 * time.Second
+	return 1800 * time.Second
 }

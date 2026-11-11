@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -84,6 +85,27 @@ func NewImageStorageSettingService(
 func (s *ImageStorageSettingService) Resolver() ImageStorageResolver {
 	return func() (*ImageResultUploader, bool) {
 		return s.resolve()
+	}
+}
+
+// ResolverWithLocalFallback enables private local results on installations
+// which never configured object storage. An explicit admin disable remains
+// authoritative; incomplete configured object storage never silently falls back.
+func (s *ImageStorageSettingService) ResolverWithLocalFallback(local *ImageResultUploader) ImageStorageResolver {
+	return func() (*ImageResultUploader, bool) {
+		uploader, enabled := s.resolve()
+		if enabled || local == nil || s.fallback.Enabled {
+			return uploader, enabled
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if s.settingRepo != nil {
+			raw, err := s.settingRepo.GetValue(ctx, settingKeyImageStorageConfig)
+			if (err != nil && !errors.Is(err, ErrSettingNotFound)) || strings.TrimSpace(raw) != "" {
+				return nil, false
+			}
+		}
+		return local, true
 	}
 }
 
