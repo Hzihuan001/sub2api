@@ -57,7 +57,7 @@ describe('KeyRouteFailureRulesEditor', () => {
     expect(zh.keyRulesStatusCodeHelp).toContain('529 部分上游使用的服务过载状态码')
   })
 
-  it('starts inherited and seeds the five reference rules only when an empty draft is enabled', async () => {
+  it('starts inherited and seeds only consecutive failures when an empty draft is enabled', async () => {
     const wrapper = mount(KeyRouteFailureRulesEditor, { props: { modelValue: null } })
     expect(wrapper.get('[data-test="key-route-failure-rules-toggle"]').text()).toContain('keyRulesInherited')
     expect(wrapper.find('[data-test="key-route-rules-inherited-hint"]').exists()).toBe(false)
@@ -69,11 +69,7 @@ describe('KeyRouteFailureRulesEditor', () => {
     await wrapper.get('[data-test="key-route-failure-rules-switch"]').trigger('click')
     const emitted = wrapper.emitted('update:modelValue') ?? []
     expect(emitted.at(-1)).toEqual([{ rules: [
-      { type: 'ttft', first_content_seconds: 15, threshold: 3, sample_size: 20, cooldown_seconds: 120 },
-      { type: 'sla_success_rate', threshold: 90, sample_size: 20, cooldown_seconds: 120 },
-      { type: 'consecutive_failures', threshold: 5, cooldown_seconds: 120 },
-      { type: 'timeout', threshold: 10, sample_size: 20, cooldown_seconds: 120 },
-      { type: 'rate_limit', threshold: 10, sample_size: 20, cooldown_seconds: 120 }
+      { type: 'consecutive_failures', threshold: 6, cooldown_seconds: 60 }
     ] }])
   })
 
@@ -138,7 +134,7 @@ describe('KeyRouteFailureRulesEditor', () => {
   })
 
   it('shows only threshold and cooldown for consecutive failures', async () => {
-    const wrapper = mount(KeyRouteFailureRulesEditor, { props: { modelValue: { rules: [{ type: 'consecutive_failures', threshold: 3, cooldown_seconds: 120 }] } } })
+    const wrapper = mount(KeyRouteFailureRulesEditor, { props: { modelValue: { rules: [{ type: 'consecutive_failures', threshold: 6, cooldown_seconds: 60 }] } } })
     await wrapper.get('[data-test="key-route-rules-toggle-details"]').trigger('click')
     expect(wrapper.find('[data-test="key-route-rule-0-threshold"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="key-route-global-cooldown"]').exists()).toBe(true)
@@ -150,11 +146,11 @@ describe('KeyRouteFailureRulesEditor', () => {
   })
 
   it.each(['timeout', 'rate_limit'] as const)('edits %s rules using a request sample and validates the threshold', async (type) => {
-    const wrapper = mount(KeyRouteFailureRulesEditor, { props: { modelValue: { rules: [{ type: 'consecutive_failures', threshold: 3, cooldown_seconds: 120 }] } } })
+    const wrapper = mount(KeyRouteFailureRulesEditor, { props: { modelValue: { rules: [{ type: 'consecutive_failures', threshold: 6, cooldown_seconds: 60 }] } } })
     await wrapper.get('[data-test="key-route-rules-toggle-details"]').trigger('click')
     await wrapper.get('[data-test="key-route-rule-0-type"]').setValue(type)
-    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-0-sample_size"]').element.value).toBe('20')
-    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([{ rules: [{ type, threshold: 3, sample_size: 20, cooldown_seconds: 120 }] }])
+    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-0-sample_size"]').element.value).toBe('30')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([{ rules: [{ type, threshold: 18, sample_size: 30, cooldown_seconds: 60 }] }])
     await wrapper.get('[data-test="key-route-rule-0-sample_size"]').setValue('2')
     expect(wrapper.text()).toContain('keyRulesSampleValidation')
     await wrapper.get('[data-test="key-route-rule-0-threshold"]').setValue('2')
@@ -164,19 +160,19 @@ describe('KeyRouteFailureRulesEditor', () => {
   it('restores defaults for the selected rule type when numeric fields are cleared', async () => {
     const wrapper = mount(KeyRouteFailureRulesEditor, { props: { modelValue: { rules: [{ type: 'timeout', threshold: 7, sample_size: 30, cooldown_seconds: 300 }] } } })
     await wrapper.get('[data-test="key-route-rules-toggle-details"]').trigger('click')
-    for (const [field, value] of [['sample_size', '20'], ['threshold', '3']]) {
+    for (const [field, value] of [['sample_size', '30'], ['threshold', '18']]) {
       const input = wrapper.get<HTMLInputElement>(`[data-test="key-route-rule-0-${field}"]`)
       await input.setValue('')
       await input.trigger('blur')
       expect(input.element.value).toBe(value)
     }
     await wrapper.get('[data-test="key-route-rule-0-type"]').setValue('status_code')
-    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-0-window_seconds"]').element.value).toBe('60')
+    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-0-window_seconds"]').element.value).toBe('120')
     expect(wrapper.get<HTMLInputElement>('[data-test="key-route-global-cooldown"]').element.value).toBe('300')
     const cooldown = wrapper.get<HTMLInputElement>('[data-test="key-route-global-cooldown"]')
     await cooldown.setValue('')
     await cooldown.trigger('blur')
-    expect(cooldown.element.value).toBe('120')
+    expect(cooldown.element.value).toBe('60')
   })
 
   it('offers each semantic rule only once while allowing additional status rules', async () => {
@@ -203,9 +199,29 @@ describe('KeyRouteFailureRulesEditor', () => {
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([{ rules: [{ type: 'ttft', first_content_seconds: 8, threshold: 3, sample_size: 20, cooldown_seconds: 120 }] }])
     await wait.setValue('')
     await wait.trigger('blur')
-    expect(wait.element.value).toBe('15')
+    expect(wait.element.value).toBe('20')
     expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-0-sample_size"]').element.value).toBe('20')
     expect(wrapper.text()).toContain('keyRulesTTFTSafety')
+  })
+
+  it('uses the current TTFT default when an older policy omits the wait threshold', async () => {
+    const wrapper = mount(KeyRouteFailureRulesEditor, { props: { modelValue: { rules: [{ type: 'ttft', threshold: 5, sample_size: 30, cooldown_seconds: 60 }] } } })
+    await wrapper.get('[data-test="key-route-rules-toggle-details"]').trigger('click')
+    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-0-first_content_seconds"]').element.value).toBe('20')
+  })
+
+  it('uses relaxed defaults when adding SLA and status-code rules', async () => {
+    const wrapper = mount(KeyRouteFailureRulesEditor, { props: { modelValue: { rules: [{ type: 'consecutive_failures', threshold: 6, cooldown_seconds: 60 }] } } })
+    await wrapper.get('[data-test="key-route-rules-toggle-details"]').trigger('click')
+    await wrapper.get('[data-test="key-route-rule-add"]').trigger('click')
+    await wrapper.get('[data-test="key-route-rule-1-type"]').setValue('sla_success_rate')
+    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-1-threshold"]').element.value).toBe('85')
+    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-1-sample_size"]').element.value).toBe('30')
+    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-global-cooldown"]').element.value).toBe('60')
+    await wrapper.get('[data-test="key-route-rule-add"]').trigger('click')
+    await wrapper.get('[data-test="key-route-rule-2-type"]').setValue('status_code')
+    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-2-window_seconds"]').element.value).toBe('120')
+    expect(wrapper.get<HTMLInputElement>('[data-test="key-route-rule-2-threshold"]').element.value).toBe('5')
   })
 
   it('uses SLA threshold as a percentage, not a failure count bounded by sample size', async () => {

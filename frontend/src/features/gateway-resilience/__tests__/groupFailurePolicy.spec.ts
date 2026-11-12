@@ -16,7 +16,7 @@ const rule = (overrides: Partial<GroupFailureRule> = {}): GroupFailureRule => ({
 describe('group failure status-code policy contract', () => {
   it('accepts a rule with several status codes and the documented defaults', () => {
     expect(isValidRule(rule())).toBe(true)
-    expect(ruleDefaults).toEqual({ threshold: 3, window_seconds: 60, cooldown_seconds: 600 })
+    expect(ruleDefaults).toEqual({ threshold: 5, window_seconds: 120, cooldown_seconds: 60 })
     expect(isValidStatusCode(100)).toBe(true)
     expect(isValidStatusCode(599)).toBe(true)
   })

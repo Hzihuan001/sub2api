@@ -33,15 +33,22 @@ type keyRoutingAccounts struct {
 	accounts map[int64][]Account
 	calls    []int64
 	err      error
+	listHook func(int64)
 }
 
 func (r *keyRoutingAccounts) ListSchedulableByGroupIDAndPlatform(_ context.Context, id int64, _ string) ([]Account, error) {
 	r.calls = append(r.calls, id)
+	if r.listHook != nil {
+		r.listHook(id)
+	}
 	return r.accounts[id], r.err
 }
 
 func (r *keyRoutingAccounts) ListSchedulableByGroupIDAndPlatforms(_ context.Context, id int64, _ []string) ([]Account, error) {
 	r.calls = append(r.calls, id)
+	if r.listHook != nil {
+		r.listHook(id)
+	}
 	return r.accounts[id], r.err
 }
 
@@ -388,7 +395,7 @@ func TestKeyRoutingServiceKeyOverrideCooldownWorksWithoutSettings(t *testing.T) 
 	require.Equal(t, []int64{1, 2}, accounts.calls)
 }
 
-func TestKeyRoutingServiceAllCoolingUsesLastReadyGroupOnceAndRetainsCooldown(t *testing.T) {
+func TestKeyRoutingServiceAllCoolingReturnsToFirstReadyGroupAndRetainsCooldown(t *testing.T) {
 	svc, key, accounts, _, _ := newKeyRoutingFixture()
 	key.KeyRouteFailurePolicy = keyRoutingCooldownPolicy()
 	request := KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}
@@ -397,14 +404,41 @@ func TestKeyRoutingServiceAllCoolingUsesLastReadyGroupOnceAndRetainsCooldown(t *
 		accounts.calls = nil
 		effective, plan, err := svc.Select(context.Background(), key, request)
 		require.NoError(t, err)
-		require.EqualValues(t, 3, *effective.GroupID)
-		require.EqualValues(t, 3, plan.SelectedGroupID)
-		require.Equal(t, []int64{1, 2, 3, 3}, accounts.calls, "only the last ready cooled candidate receives one native recheck")
+		require.EqualValues(t, 1, *effective.GroupID)
+		require.EqualValues(t, 1, plan.SelectedGroupID)
+		require.Equal(t, []int64{1, 2, 3, 1}, accounts.calls, "the first configured cooled candidate is rechecked first")
 		require.Len(t, plan.Attempts, 4)
 		for _, id := range []int64{1, 2, 3} {
 			cooling, _ := svc.failures.IsCooling(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: id, Model: request.Model, Endpoint: request.Endpoint}, *key.KeyRouteFailurePolicy)
 			require.True(t, cooling, "one request-local fallback must not release the route cooldown")
 		}
+	}
+}
+
+func TestKeyRoutingServiceCoolingFallbackContinuesWhenEarlierGroupsAreUnavailable(t *testing.T) {
+	svc, key, accounts, _, _ := newKeyRoutingFixture()
+	key.KeyRouteFailurePolicy = keyRoutingCooldownPolicy()
+	request := KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions}
+	coolKeyRouteGroups(t, svc, key, request, 1, 2, 3)
+	// Groups 1 and 2 become genuinely unschedulable before their request-local
+	// rechecks. The fallback must continue in route order and reach group 3.
+	groupChecks := map[int64]int{}
+	accounts.listHook = func(groupID int64) {
+		groupChecks[groupID]++
+		if groupChecks[groupID] >= 2 && groupID <= 2 {
+			accounts.accounts[groupID][0].Schedulable = false
+		}
+	}
+
+	effective, plan, err := svc.Select(context.Background(), key, request)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, plan.SelectedGroupID)
+	require.EqualValues(t, 3, *effective.GroupID)
+	require.Equal(t, []int64{1, 2, 3, 1, 2, 3}, accounts.calls)
+
+	for _, id := range []int64{1, 2} {
+		cooling, _ := svc.failures.IsCooling(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: id, Model: request.Model, Endpoint: request.Endpoint}, *key.KeyRouteFailurePolicy)
+		require.True(t, cooling, "request-local fallback must not release group %d cooldown", id)
 	}
 }
 
@@ -420,17 +454,23 @@ func TestKeyRoutingServiceCooldownFallbackNeverBypassesNativeReadiness(t *testin
 				accounts.accounts[1][0].Schedulable = false
 				accounts.accounts[2][0].Schedulable = false
 			}
-			effective, plan, err := svc.Select(context.Background(), key, request)
+			ctx := context.Background()
 			if allDisabled {
-				require.ErrorIs(t, err, keyrouting.ErrNoSchedulableAccounts)
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(WithKeyRouteAvailabilityPolling(ctx), 5*time.Millisecond)
+				defer cancel()
+			}
+			effective, plan, err := svc.Select(ctx, key, request)
+			if allDisabled {
+				require.ErrorIs(t, err, context.DeadlineExceeded)
 				require.Nil(t, effective)
-				require.Equal(t, []int64{1, 2, 3}, accounts.calls)
+				require.GreaterOrEqual(t, len(accounts.calls), 3)
 				return
 			}
 			require.NoError(t, err)
-			require.EqualValues(t, 2, plan.SelectedGroupID)
-			require.EqualValues(t, 2, *effective.GroupID)
-			require.Equal(t, []int64{1, 2, 3, 2}, accounts.calls)
+			require.EqualValues(t, 1, plan.SelectedGroupID)
+			require.EqualValues(t, 1, *effective.GroupID)
+			require.Equal(t, []int64{1, 2, 3, 1}, accounts.calls)
 		})
 	}
 }
@@ -447,6 +487,28 @@ func TestKeyRoutingServiceCooldownFallbackDoesNotBypassAuthorization(t *testing.
 	require.Equal(t, []int64{1, 2}, accounts.calls, "revoked access must fail closed, not use a cooled group")
 }
 
+func TestKeyRoutingServiceUnavailableGroupsPollUntilEarlierGroupRecovers(t *testing.T) {
+	svc, key, accounts, _, _ := newKeyRoutingFixture()
+	for _, groupID := range []int64{1, 2, 3} {
+		accounts.accounts[groupID][0].Schedulable = false
+	}
+	listCalls := 0
+	accounts.listHook = func(groupID int64) {
+		listCalls++
+		if listCalls > 3 && groupID == 1 {
+			accounts.accounts[1][0].Schedulable = true
+		}
+	}
+	ctx, cancel := context.WithTimeout(WithKeyRouteAvailabilityPolling(context.Background()), time.Second)
+	defer cancel()
+
+	effective, plan, err := svc.Select(ctx, key, KeyRoutingRequest{Model: "deepseek-chat", Endpoint: CompositeRouteEndpointChatCompletions})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, plan.SelectedGroupID)
+	require.EqualValues(t, 1, *effective.GroupID)
+	require.GreaterOrEqual(t, listCalls, 4)
+}
+
 func TestKeyRoutingServiceSelectNextCooldownFallbackNeverWraps(t *testing.T) {
 	svc, key, accounts, _, _ := newKeyRoutingFixture()
 	key.KeyRouteFailurePolicy = keyRoutingCooldownPolicy()
@@ -454,9 +516,9 @@ func TestKeyRoutingServiceSelectNextCooldownFallbackNeverWraps(t *testing.T) {
 	coolKeyRouteGroups(t, svc, key, request, 1, 2, 3)
 	effective, plan, err := svc.SelectNext(context.Background(), key, request, 1)
 	require.NoError(t, err)
-	require.EqualValues(t, 3, plan.SelectedGroupID)
-	require.EqualValues(t, 3, *effective.GroupID)
-	require.Equal(t, []int64{2, 3, 3}, accounts.calls)
+	require.EqualValues(t, 2, plan.SelectedGroupID)
+	require.EqualValues(t, 2, *effective.GroupID)
+	require.Equal(t, []int64{2, 3, 2}, accounts.calls)
 	accounts.calls = nil
 	effective, _, err = svc.SelectNext(context.Background(), key, request, 3)
 	require.Error(t, err)

@@ -167,15 +167,20 @@ const statusLabel = computed(() => {
   return t('custom.keyRouting.keyRulesInherited')
 })
 let syncing = false
+const DEFAULT_TTFT_FIRST_CONTENT_SECONDS = 20
 
 function fromRule(rule: KeyRouteFailureRule): DraftRule {
-  return { id: nextId++, type: rule.type ?? 'status_code', legacyStatusCode: rule.type === undefined, status_codes_input: rule.status_codes?.join(', ') ?? '', threshold: rule.threshold, window_seconds: rule.window_seconds ?? KEY_ROUTE_RULE_DEFAULTS.window_seconds, sample_size: rule.sample_size ?? KEY_ROUTE_USER_RULE_DEFAULTS.sample_size, first_content_seconds: rule.first_content_seconds ?? 15, cooldown_seconds: rule.cooldown_seconds }
+  return { id: nextId++, type: rule.type ?? 'status_code', legacyStatusCode: rule.type === undefined, status_codes_input: rule.status_codes?.join(', ') ?? '', threshold: rule.threshold, window_seconds: rule.window_seconds ?? KEY_ROUTE_RULE_DEFAULTS.window_seconds, sample_size: rule.sample_size ?? KEY_ROUTE_USER_RULE_DEFAULTS.sample_size, first_content_seconds: rule.first_content_seconds ?? DEFAULT_TTFT_FIRST_CONTENT_SECONDS, cooldown_seconds: rule.cooldown_seconds }
 }
 
 function defaultRule(type: KeyRouteFailureRuleType = 'consecutive_failures'): DraftRule {
   return fromRule(type === 'status_code'
     ? { type, status_codes: [502, 503, 504, 529], ...KEY_ROUTE_RULE_DEFAULTS }
-    : { type, ...KEY_ROUTE_USER_RULE_DEFAULTS, ...(type === 'sla_success_rate' ? { threshold: 90 } : {}), ...(type === 'ttft' ? { first_content_seconds: 15 } : {}) })
+    : { type, ...KEY_ROUTE_USER_RULE_DEFAULTS,
+        ...(type === 'consecutive_failures' ? { threshold: 6 } : {}),
+        ...(type === 'timeout' || type === 'rate_limit' ? { threshold: 18 } : {}),
+        ...(type === 'sla_success_rate' ? { threshold: 85 } : {}),
+        ...(type === 'ttft' ? { first_content_seconds: DEFAULT_TTFT_FIRST_CONTENT_SECONDS } : {}) })
 }
 
 function toRule(rule: DraftRule): KeyRouteFailureRule {
@@ -218,14 +223,13 @@ function toggleOverride() {
     return
   }
   mode.value = 'override'
-  // Seed only an empty draft. Persisted policies and a temporarily disabled
-  // local draft must never be replaced by the reference UI's starting values.
+  // Enable only the conservative consecutive-failure rule by default.
+  // Persisted policies and a temporarily disabled local draft must never be
+  // replaced by the reference UI's starting values. Other signals are added
+  // explicitly by the user so enabling routing does not combine five
+  // independent triggers unexpectedly.
   if (!draftRules.value.length) draftRules.value = [
-    { type: 'ttft', first_content_seconds: 15, threshold: 3, sample_size: 20, cooldown_seconds: 120 },
-    { type: 'sla_success_rate', threshold: 90, sample_size: 20, cooldown_seconds: 120 },
-    { type: 'consecutive_failures', threshold: 5, cooldown_seconds: 120 },
-    { type: 'timeout', threshold: 10, sample_size: 20, cooldown_seconds: 120 },
-    { type: 'rate_limit', threshold: 10, sample_size: 20, cooldown_seconds: 120 }
+    { type: 'consecutive_failures', threshold: 6, cooldown_seconds: 60 }
   ].map((rule) => fromRule(rule as KeyRouteFailureRule))
   emitCurrent()
 }

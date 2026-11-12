@@ -68,6 +68,12 @@ const (
 	// and to permit only pre-first-byte group switching.
 	KeyRoutingActive Key = "ctx_key_routing_active"
 
+	// KeyRoutingPollUnavailable permits the ingress multi-group selector to
+	// keep polling when every configured group is temporarily unschedulable.
+	// It is set only for a real client request; internal readiness probes must
+	// retain their bounded, fail-fast behavior.
+	KeyRoutingPollUnavailable Key = "ctx_key_routing_poll_unavailable"
+
 	// KeyRoutingPrimaryGroupID keeps the authenticated key's configured primary
 	// group when the request-local effective key is a backup group.
 	KeyRoutingPrimaryGroupID Key = "ctx_key_routing_primary_group_id"

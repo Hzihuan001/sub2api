@@ -6,15 +6,15 @@ export const MAX_BACKUP_GROUPS = 4
 export const MAX_ROUTE_GROUPS = MAX_BACKUP_GROUPS + 1
 
 export const KEY_ROUTE_RULE_DEFAULTS = {
-  threshold: 3,
-  window_seconds: 60,
-  cooldown_seconds: 600
+  threshold: 5,
+  window_seconds: 120,
+  cooldown_seconds: 60
 } as const
 
 export const KEY_ROUTE_USER_RULE_DEFAULTS = {
-  threshold: 3,
-  sample_size: 20,
-  cooldown_seconds: 120
+  threshold: 5,
+  sample_size: 30,
+  cooldown_seconds: 60
 } as const
 
 export const KEY_ROUTE_RULE_TYPES: readonly KeyRouteFailureRuleType[] = ['ttft', 'sla_success_rate', 'consecutive_failures', 'timeout', 'rate_limit', 'status_code']

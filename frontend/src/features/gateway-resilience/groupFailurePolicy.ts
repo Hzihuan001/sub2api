@@ -14,9 +14,9 @@ export interface GroupFailurePolicy {
 
 /** Values used when an administrator adds a new rule. */
 export const ruleDefaults = {
-  threshold: 3,
-  window_seconds: 60,
-  cooldown_seconds: 600
+  threshold: 5,
+  window_seconds: 120,
+  cooldown_seconds: 60
 } as const
 
 export const ruleLimits = {

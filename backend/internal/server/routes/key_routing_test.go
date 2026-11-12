@@ -203,6 +203,11 @@ func TestKeyRoutingRegisteredGatewayForwardAndBilling(t *testing.T) {
 			request.Header.Set("Authorization", "Bearer "+key.Key)
 			request.Header.Set("Content-Type", "application/json")
 			recorder := httptest.NewRecorder()
+			if scenario.allCooling {
+				ctx, cancel := context.WithTimeout(request.Context(), 25*time.Millisecond)
+				defer cancel()
+				request = request.WithContext(ctx)
+			}
 			router.ServeHTTP(recorder, request)
 			if scenario.allCooling {
 				require.Equal(t, http.StatusServiceUnavailable, recorder.Code, recorder.Body.String())

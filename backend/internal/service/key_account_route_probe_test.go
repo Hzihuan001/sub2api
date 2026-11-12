@@ -110,7 +110,7 @@ func TestKeyAccountRouteProbeConservativeFailedPathDoesNotChangeRealRouting(t *t
 			s, key, accounts, _, store, request := keyAccountProbeFixture(t)
 			key.BackupGroupIDs = []int64{2}
 			accounts.accounts[1] = accounts.accounts[1][:1]
-			ctx, err := s.PrepareAccountRouteContext(context.Background(), key, request)
+			ctx, err := s.PrepareAccountRouteContext(WithKeyRouteAvailabilityPolling(context.Background()), key, request)
 			require.NoError(t, err)
 			session := GetKeyAccountRoutingSession(ctx)
 			failed := keyrouting.AccountRouteFingerprint{AccountID: 20, UpstreamModel: "previous-mapping", Platform: PlatformDeepseek, Endpoint: request.Endpoint}

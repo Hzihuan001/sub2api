@@ -63,6 +63,8 @@ type cachedKeyRouteFailurePolicy struct {
 
 const keyRouteFailurePolicyCacheTTL = 2 * time.Second
 
+const keyRouteUnavailablePollInterval = 250 * time.Millisecond
+
 func NewKeyRoutingService(groups GroupRepository, rates UserGroupRateRepository, native *GatewayService, openai *OpenAIGatewayService, composite *CompositeRouteResolver, cfg *config.Config, settings ...*SettingService) *KeyRoutingService {
 	var settingService *SettingService
 	if len(settings) > 0 {
@@ -92,6 +94,24 @@ func (s *KeyRoutingService) InvalidateGroupFailurePolicy(groupID int64) {
 
 func (s *KeyRoutingService) Select(ctx context.Context, key *APIKey, request KeyRoutingRequest) (*APIKey, keyrouting.Plan, error) {
 	return s.selectFrom(ctx, key, request, 0, false)
+}
+
+// WithKeyRouteAvailabilityPolling marks a real ingress request as eligible to
+// wait for a temporarily unavailable configured group to recover. Internal
+// probes should not set this marker, so an absent or unbounded probe context
+// still returns ErrNoSchedulableAccounts promptly.
+func WithKeyRouteAvailabilityPolling(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ctxkey.KeyRoutingPollUnavailable, true)
+}
+
+func withoutKeyRouteAvailabilityPolling(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ctxkey.KeyRoutingPollUnavailable, false)
 }
 
 // SelectHTTPResponseSource resolves a previous_response_id in the API key's
@@ -229,9 +249,11 @@ func (s *KeyRoutingService) selectFrom(ctx context.Context, key *APIKey, request
 	}
 	groups := make(map[int64]*Group, 1+len(key.BackupGroupIDs))
 	// A cooled candidate may be used only as a last-resort request-local
-	// fallback. Remember it only after native readiness succeeds, so ignoring
-	// route cooldown never bypasses permission, model, account or quota gates.
-	var lastCoolingGroupID int64
+	// fallback. Remember every candidate only after native readiness succeeds,
+	// so ignoring route cooldown never bypasses permission, model, account or
+	// quota gates. Keeping the whole ordered set lets the fallback probe wrap
+	// through the configured route instead of getting stuck on the last group.
+	var coolingGroupIDs []int64
 	ignoreRouteCooldown := false
 	planner := keyrouting.Planner{Evaluator: keyrouting.EvaluatorFunc(func(ctx context.Context, groupID int64, req keyrouting.Request) (keyrouting.CandidateState, error) {
 		state := keyrouting.CandidateState{Authorized: true}
@@ -311,27 +333,55 @@ func (s *KeyRoutingService) selectFrom(ctx context.Context, key *APIKey, request
 		if !allowUnavailableSource && key.KeyRouteScope != KeyRouteScopeAccountV2 && err == nil && state.SupportsModel && state.HasSchedulableAccounts && !ignoreRouteCooldown && s.failures != nil && (s.settings != nil || key.KeyRouteFailurePolicy != nil) {
 			if policy, policyErr := s.loadRouteFailurePolicy(ctx, key, groupID); policyErr == nil {
 				if cooling, _ := s.failures.IsCooling(keyrouting.RouteFailureIdentity{APIKeyID: key.ID, GroupID: groupID, Model: req.Model, Endpoint: req.Endpoint}, policy); cooling {
-					lastCoolingGroupID = groupID
+					coolingGroupIDs = append(coolingGroupIDs, groupID)
 					state.HasSchedulableAccounts = false
 				}
 			}
 		}
 		return state, err
 	})}
-	plan, err := planner.PlanFrom(ctx, keyrouting.Config{PrimaryGroupID: *key.GroupID, BackupGroupIDs: key.BackupGroupIDs}, keyrouting.Request{Model: request.Model, Endpoint: request.Endpoint}, start)
-	if errors.Is(err, keyrouting.ErrNoSchedulableAccounts) && lastCoolingGroupID > 0 {
-		// Retry only the last otherwise-eligible candidate from this traversal.
-		// SelectNext's cursor therefore cannot wrap to a previously attempted
-		// group. The cooldown itself is retained for all subsequent requests.
-		ignoreRouteCooldown = true
-		fallback, fallbackErr := planner.Plan(ctx, keyrouting.Config{PrimaryGroupID: lastCoolingGroupID}, keyrouting.Request{Model: request.Model, Endpoint: request.Endpoint})
-		plan.Attempts = append(plan.Attempts, fallback.Attempts...)
-		if fallbackErr != nil {
-			return nil, plan, fallbackErr
+	var plan keyrouting.Plan
+	var err error
+	pollUnavailable := start == 0 && keyRouteAvailabilityPollingEnabled(ctx)
+	for {
+		// Each polling round must observe fresh group/account state. A route
+		// cooldown bypass is request-local and must never leak into the next
+		// round.
+		coolingGroupIDs = nil
+		ignoreRouteCooldown = false
+		plan, err = planner.PlanFrom(ctx, keyrouting.Config{PrimaryGroupID: *key.GroupID, BackupGroupIDs: key.BackupGroupIDs}, keyrouting.Request{Model: request.Model, Endpoint: request.Endpoint}, start)
+		if errors.Is(err, keyrouting.ErrNoSchedulableAccounts) && len(coolingGroupIDs) > 0 {
+			// Retry each otherwise-eligible cooled candidate at most once in the
+			// configured route order. This immediately returns to the primary or
+			// earliest recovered backup instead of pinning traffic to the last
+			// fallback group. SelectNext still cannot wrap before its current cursor
+			// because coolingGroupIDs only contains groups evaluated by this
+			// PlanFrom call. The cooldown itself is retained for later requests.
+			ignoreRouteCooldown = true
+			for index := 0; index < len(coolingGroupIDs); index++ {
+				fallback, fallbackErr := planner.Plan(ctx, keyrouting.Config{PrimaryGroupID: coolingGroupIDs[index]}, keyrouting.Request{Model: request.Model, Endpoint: request.Endpoint})
+				plan.Attempts = append(plan.Attempts, fallback.Attempts...)
+				if fallbackErr != nil {
+					if errors.Is(fallbackErr, keyrouting.ErrNoSchedulableAccounts) {
+						continue
+					}
+					return nil, plan, fallbackErr
+				}
+				plan.SelectedGroupID = fallback.SelectedGroupID
+				plan.Reason = keyrouting.ReasonNoSchedulableAccounts
+				err = nil
+				break
+			}
 		}
-		plan.SelectedGroupID = fallback.SelectedGroupID
-		plan.Reason = keyrouting.ReasonNoSchedulableAccounts
-		err = nil
+		if err == nil {
+			break
+		}
+		if !pollUnavailable || !errors.Is(err, keyrouting.ErrNoSchedulableAccounts) || !keyRoutePlanHasRetryableCapacity(plan) {
+			break
+		}
+		if err := waitForKeyRouteAvailability(ctx); err != nil {
+			return nil, plan, err
+		}
 	}
 	if err != nil {
 		return nil, plan, err
@@ -362,6 +412,37 @@ func (s *KeyRoutingService) selectFrom(ctx context.Context, key *APIKey, request
 		}
 	}
 	return &effective, plan, nil
+}
+
+func keyRouteAvailabilityPollingEnabled(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	enabled, _ := ctx.Value(ctxkey.KeyRoutingPollUnavailable).(bool)
+	return enabled
+}
+
+func keyRoutePlanHasRetryableCapacity(plan keyrouting.Plan) bool {
+	for _, attempt := range plan.Attempts {
+		if attempt.Decision == keyrouting.DecisionNoSchedulableAccounts {
+			return true
+		}
+	}
+	return false
+}
+
+func waitForKeyRouteAvailability(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	timer := time.NewTimer(keyRouteUnavailablePollInterval)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *KeyRoutingService) loadRouteFailurePolicy(ctx context.Context, key *APIKey, groupID int64) (keyrouting.RouteFailurePolicy, error) {

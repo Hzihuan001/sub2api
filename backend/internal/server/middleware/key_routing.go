@@ -116,6 +116,10 @@ func selectAPIKeyGroupRoute(c *gin.Context, key *service.APIKey, selector APIKey
 		AbortWithError(c, http.StatusServiceUnavailable, "KEY_ROUTE_UNAVAILABLE", "Multi-group routing is unavailable")
 		return nil, false
 	}
+	// A real client request may wait until one of its configured groups becomes
+	// schedulable. Internal service probes do not carry this marker and remain
+	// fail-fast even when their context has no deadline.
+	c.Request = c.Request.WithContext(service.WithKeyRouteAvailabilityPolling(c.Request.Context()))
 	if key.KeyRouteScope == service.KeyRouteScopeAccountV2 {
 		preparer, ok := selector.(interface {
 			PrepareAccountRouteContext(context.Context, *service.APIKey, service.KeyRoutingRequest) (context.Context, error)

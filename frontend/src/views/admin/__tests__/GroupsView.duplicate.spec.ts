@@ -234,7 +234,7 @@ describe('GroupsView duplicate action', () => {
     await wrapper.get('[data-testid="failure-policy-save"]').trigger('click')
     await flushPromises()
     expect(failurePolicyAPI.put).toHaveBeenCalledWith('/admin/groups/42/failure-policy', {
-      rules: [{ status_codes: [502, 503], threshold: 3, window_seconds: 60, cooldown_seconds: 600 }]
+      rules: [{ status_codes: [502, 503], threshold: 5, window_seconds: 120, cooldown_seconds: 60 }]
     }, expect.anything())
     expect(wrapper.find('[data-testid="group-failure-policy"]').exists()).toBe(false)
     wrapper.unmount()

@@ -141,16 +141,12 @@ describe('KeyRouteFailureRulesEditor real parent v-model interaction', () => {
     await wrapper.get('[data-test="key-route-failure-rules-switch"]').trigger('click')
     await wrapper.get('[data-test="key-route-rule-add"]').trigger('click')
     expect(policy.value).toEqual({ rules: [
-      { type: 'ttft', first_content_seconds: 15, threshold: 3, sample_size: 20, cooldown_seconds: 120 },
-      { type: 'sla_success_rate', threshold: 90, sample_size: 20, cooldown_seconds: 120 },
-      { type: 'consecutive_failures', threshold: 5, cooldown_seconds: 120 },
-      { type: 'timeout', threshold: 10, sample_size: 20, cooldown_seconds: 120 },
-      { type: 'rate_limit', threshold: 10, sample_size: 20, cooldown_seconds: 120 },
-      { type: 'status_code', status_codes: [502, 503, 504, 529], threshold: 3, window_seconds: 60, cooldown_seconds: 120 }
+      { type: 'consecutive_failures', threshold: 6, cooldown_seconds: 60 },
+      { type: 'ttft', first_content_seconds: 20, threshold: 5, sample_size: 30, cooldown_seconds: 60 }
     ] })
     expect(removeButtons(wrapper).every((button) => !removedIds.includes(button.attributes('data-rule-id')))).toBe(true)
     await removeButtons(wrapper)[0].trigger('click')
-    expect(policy.value?.rules.map((rule) => rule.type)).toEqual(['sla_success_rate', 'consecutive_failures', 'timeout', 'rate_limit', 'status_code'])
+    expect(policy.value?.rules.map((rule) => rule.type)).toEqual(['ttft'])
   })
 
   it.each(['key-route-rule-add', 'key-route-rules-inherit', 'key-route-rules-toggle-details', 'key-route-failure-rules-switch'])('keeps %s actionable while an empty focused field would change layout on blur', async (testId) => {
