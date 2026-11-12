@@ -1,5 +1,12 @@
 # 定制功能日志
 
+### 2026-11-13 — 0.2.21-custom.3 — 故障切换默认策略放宽（三站已发布）
+
+- 新建 Key 路由故障规则默认只创建连续失败规则：连续失败阈值 6、冷却 60 秒。状态码、TTFT、SLA、超时和限流规则不再自动批量启用，用户添加对应规则后才生效；默认采样/时间窗口及冷却值同步调整为较宽松配置。已有持久化策略保持原样。
+- 继续保留多分组在冷却期间的备用排序轮询、可用即返回前序分组和同组账号重试行为，避免所有组同时冷却时立即返回 `No schedulable account is available in the configured groups`。
+- 版本 `0.2.21-custom.3` 已在主站、L1、COS 使用同一 digest 发布；前端 442/3748、后端 service/routes 定向测试、vet、精确 digest operator 及公网页面检查通过。
+- 详细备份、逐站时间、迁移账本和验收边界见 [`CUSTOM_RELEASE_0_2_21_CUSTOM3_20261113.md`](CUSTOM_RELEASE_0_2_21_CUSTOM3_20261113.md)。
+
 ### 2026-11-11 — 0.2.21-custom.2 — GPT Image 2.6 生图组白名单补齐（三站已发布）
 
 - 工作台代码已支持 `gpt-image-2.6-flare` 与 `gpt-image-2.6-sunburst`；本次发布补齐生产数据层的 OpenAI 生图组 `model_allowlist`，追加两个模型并保留原有 2.5/2.0 条目。

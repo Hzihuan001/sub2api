@@ -1,6 +1,18 @@
 # Sub2API custom release runbook
 
-## Current production release: custom.21.2 — rollout complete (2026-11-11)
+## Current production release: custom.21.3 — rollout complete (2026-11-13)
+
+Runtime source is locked to `6e72928b09967df5d92bb547758bce0e99ff5227`, tag `custom-0.2.21.3`, version `0.2.21-custom.3`. The immutable artifact is `ghcr.io/hzihuan001/sub2api@sha256:a3aab14ed40f643babfb020c5f71caf431ec00aa8d5c9ca82b005a1a4a81c358`; main → L1 → COS completed with all applications healthy/restart 0. Release evidence is in [`CUSTOM_RELEASE_0_2_21_CUSTOM3_20261113.md`](../docs/CUSTOM_RELEASE_0_2_21_CUSTOM3_20261113.md).
+
+This release changes only the defaults for newly created key route failure policies. Consecutive failures are enabled by default with threshold 6 and 60-second cooldown. Status-code, TTFT, SLA, timeout and rate-limit rules are created only when explicitly added by the user; their default windows/samples and cooldowns are relaxed. Existing persisted policies are not rewritten. Multi-group cooldown polling and immediate return to an earlier available group remain enabled.
+
+Verified backup: `/opt/sub2api-backups/v0.2.21-custom.3-20261112T165449Z/`; all three PostgreSQL dumps, restore lists, app/config archives and SHA-256 manifest passed. The exact published-image operator gate passed on port `18198`, and resources were cleaned. Four public domains each returned 200 for health, keys, image-studio, docs and showcase pages. No paid production model call, real generation, fault injection or browser-authenticated interaction is claimed; previously accepted image-workbench/chat tests were not repeated.
+
+No database migration was added: the production migration ledger remains main 339 and L1/COS 348. For application-only rollback, use the previous `.2` digest `sha256:5d24cc7b12bb8da8ebc657a29a9e53041083b6d270e7e2b5075670f56430cd40`; retain current business data and migration rows, and never restore an older database over live data.
+
+Runtime tag `custom-0.2.21.3` remains fixed at the source commit above. Documentation closure is a separate commit and must not move the runtime tag.
+
+## Previous production release: custom.21.2 — rollout complete (2026-11-11)
 
 Runtime source is locked to `dff2cb433fe219c60686a9dad3460c4e5a6cdba6`, version `0.2.21-custom.2`. The immutable artifact is `ghcr.io/hzihuan001/sub2api@sha256:5d24cc7b12bb8da8ebc657a29a9e53041083b6d270e7e2b5075670f56430cd40`; main → L1 → COS completed with all applications healthy/restart 0. Release evidence is in [`CUSTOM_RELEASE_0_2_21_CUSTOM2_20261111.md`](../docs/CUSTOM_RELEASE_0_2_21_CUSTOM2_20261111.md).
 
