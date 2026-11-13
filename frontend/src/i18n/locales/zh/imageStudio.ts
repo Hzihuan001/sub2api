@@ -87,7 +87,7 @@ export default {
       submitUnconfirmed: '尚未确认提交状态，请继续查询同一请求以安全找回任务。',
       notSaved: '结果尚未保存到本地，请继续查询同一任务并重新保存。',
       emptyResult: '图片服务没有返回图片数据。',
-      taskDownload: '暂时无法下载已生成的图片，请继续查询同一任务找回结果。',
+      taskDownload: '图片已生成，正在自动找回结果；系统会继续重试下载。',
       loadKeys: '无法加载生图密钥。',
       loadModels: '无法加载模型列表。',
       noModels: '该密钥没有返回可识别的生图模型，你仍可手动输入模型 ID。',

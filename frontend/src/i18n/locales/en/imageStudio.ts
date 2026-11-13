@@ -87,7 +87,7 @@ export default {
       submitUnconfirmed: 'Submission is not confirmed. Continue this request to check it safely.',
       notSaved: 'The result is not saved locally. Continue querying to save it again.',
       emptyResult: 'The image provider returned no image data.',
-      taskDownload: 'The generated image could not be downloaded yet. Continue querying this task to retrieve it.',
+      taskDownload: 'The image is ready; we are recovering it automatically and will keep retrying the download.',
       loadKeys: 'Unable to load image API keys.',
       loadModels: 'Unable to load models.',
       noModels: 'This key returned no recognizable image models. You can still enter a model ID manually.',

@@ -162,6 +162,23 @@ describe('recoverable Image Studio tasks', () => {
     expect(runner.tasks.value).toEqual([])
   })
 
+  it('automatically re-queries a completed task after a temporary result download failure', async () => {
+    const { runner, completed } = harness()
+    completed.mockRejectedValueOnce(Object.assign(new Error('temporary offline'), { code: 'image_task_download_unavailable' }))
+      .mockResolvedValue(true)
+    const operation = runner.submit(request())
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(100)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(100)
+    await operation
+
+    expect(mocks.submit).toHaveBeenCalledOnce()
+    expect(mocks.get).toHaveBeenCalledTimes(2)
+    expect(completed).toHaveBeenCalledTimes(2)
+    expect(runner.tasks.value).toEqual([])
+  })
+
   it('keeps unknown results for manual GET recovery without a new generation', async () => {
     storage.set('7:10', [stored()])
     mocks.get.mockResolvedValueOnce({ ...response('failed'), error: { code: 'image_task_result_unknown', message: 'Result not confirmed' } })

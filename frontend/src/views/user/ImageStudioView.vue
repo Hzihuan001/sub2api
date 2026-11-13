@@ -260,7 +260,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { keysAPI } from '@/api/keys'
 import { fetchImageStudioTaskImage, generateImageStudioImages, listImageStudioModels, type ImageStudioGenerateRequest, type ImageStudioModel, type ImageStudioOutput } from '@/api/imageStudio'
-import { useImageStudioTasks } from '@/features/image-studio/useImageStudioTasks'
+import { IMAGE_STUDIO_TASK_DOWNLOAD_ERROR, useImageStudioTasks } from '@/features/image-studio/useImageStudioTasks'
 import type { StoredStudioTask } from '@/features/image-studio/tasks'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
@@ -578,7 +578,11 @@ async function persistOutputs(
     const output = outputs[index]
     const blob = await outputToBlob(output, snapshot.outputFormat || 'png', task)
     if (!isCurrentGeneration()) return false
-    if (!blob && task) throw new Error(t('imageStudio.errors.taskDownload'))
+    if (!blob && task) {
+      const error = new Error(t('imageStudio.errors.taskDownload'))
+      ;(error as Error & { code?: string }).code = IMAGE_STUDIO_TASK_DOWNLOAD_ERROR
+      throw error
+    }
     const actualSize = blob ? await detectImageDimensions(blob) : undefined
     if (!isCurrentGeneration()) return false
     const metadata = {

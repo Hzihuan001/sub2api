@@ -128,10 +128,11 @@ describe('Image Studio actual size visibility', () => {
     expect(mocks.submitTask).not.toHaveBeenCalled()
   })
 
-  it('keeps a completed async task after a temporary protected-image download failure and retries GET only', async () => {
+  it('automatically re-queries a completed async task after a temporary protected-image download failure', async () => {
+    vi.useFakeTimers()
     const completedTask = { id: 'imgtask_download', status: 'completed', created_at: Date.now() / 1000,
       expires_at: Date.now() / 1000 + 86400, result: { data: [{ url: '/v1/images/tasks/imgtask_download/images/0.png' }] } }
-    mocks.submitTask.mockResolvedValue(completedTask)
+    mocks.submitTask.mockResolvedValue({ ...completedTask, status: 'processing' })
     mocks.getTask.mockResolvedValue(completedTask)
     mocks.fetchTaskImage.mockRejectedValueOnce(new TypeError('temporary offline')).mockResolvedValue(imageBlob)
     wrapper = mountView()
@@ -140,14 +141,19 @@ describe('Image Studio actual size visibility', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(mocks.saveStored).not.toHaveBeenCalled()
-    expect(wrapper.get('[data-test="image-studio-tasks"]').text()).toContain('imageStudio.errors.taskDownload')
-    await wrapper.get('[data-test="image-studio-prompt"]').setValue('Edited while waiting')
-    await wrapper.get('[data-test="image-studio-tasks"] button').trigger('click')
+    expect(wrapper.find('[data-test="image-studio-tasks"] button').exists()).toBe(false)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(3000)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(3000)
+    await flushPromises()
     await flushPromises()
     expect(mocks.submitTask).toHaveBeenCalledOnce()
     expect(mocks.generate).not.toHaveBeenCalled()
-    expect(mocks.getTask).toHaveBeenCalledWith('test-key', 'imgtask_download', expect.any(AbortSignal))
-    expect(mocks.fetchTaskImage).toHaveBeenCalledWith('test-key', 'imgtask_download', '/v1/images/tasks/imgtask_download/images/0.png')
+    expect(mocks.getTask).toHaveBeenCalledTimes(2)
+    expect(mocks.getTask).toHaveBeenNthCalledWith(1, 'test-key', 'imgtask_download', expect.any(AbortSignal))
+    expect(mocks.getTask).toHaveBeenNthCalledWith(2, 'test-key', 'imgtask_download', expect.any(AbortSignal))
+    expect(mocks.fetchTaskImage).toHaveBeenCalledTimes(2)
     expect(mocks.saveStored).toHaveBeenCalledWith([expect.objectContaining({ id: 'imgtask_download:0', prompt: 'Original prompt', blob: imageBlob })], '7')
     expect(wrapper.find('[data-test="image-studio-tasks"]').exists()).toBe(false)
   })

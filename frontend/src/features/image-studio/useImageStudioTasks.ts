@@ -12,7 +12,13 @@ interface Options {
   apiKey: Readonly<Ref<StudioTaskKey | null>>
   onCompleted: (task: StoredStudioTask, outputs: ImageStudioOutput[], isCurrent: () => boolean) => Promise<boolean>
   pollInterval?: number
-  errorText?: (code: 'submitUnconfirmed' | 'notSaved' | 'emptyResult') => string
+  errorText?: (code: 'submitUnconfirmed' | 'notSaved' | 'emptyResult' | 'taskDownload') => string
+}
+
+export const IMAGE_STUDIO_TASK_DOWNLOAD_ERROR = 'image_task_download_unavailable'
+
+function isTaskDownloadError(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === IMAGE_STUDIO_TASK_DOWNLOAD_ERROR
 }
 
 function message(error: unknown): string {
@@ -92,6 +98,7 @@ export function useImageStudioTasks(options: Options) {
       task.error = undefined
       await update()
       if (!isCurrent()) return
+      let downloadRecoveryAttempts = 0
       let response: ImageStudioTask | undefined
       if (!task.taskId) {
         const attempts = automatic ? Math.max(0, 2 - task.submitAttempts) : 2
@@ -138,7 +145,29 @@ export function useImageStudioTasks(options: Options) {
         if (response.status === 'completed') {
           const outputs = imageStudioTaskOutputs(response)
           if (!outputs.length) throw new Error(options.errorText?.('emptyResult') || 'Image provider returned no image data')
-          const saved = await options.onCompleted(task, outputs, isCurrent)
+          let saved: boolean
+          try {
+            saved = await options.onCompleted(task, outputs, isCurrent)
+          } catch (error) {
+            if (!isCurrent() || !isTaskDownloadError(error)) throw error
+            // The task is complete and the server still owns the result. Keep
+            // the same task ID, retry its protected image GET automatically,
+            // and let stop()/unmount abort the wait without creating a POST.
+            downloadRecoveryAttempts += 1
+            task.state = 'pending'
+            task.error = options.errorText?.('taskDownload') || 'Image result is being recovered automatically.'
+            await update()
+            if (!isCurrent()) return
+            const delay = Math.min(60_000, (options.pollInterval ?? 3_000) * (2 ** Math.min(downloadRecoveryAttempts - 1, 4)))
+            await new Promise<void>((resolve) => {
+              const finish = () => { clearTimeout(timer); controller.signal.removeEventListener('abort', finish); resolve() }
+              const timer = setTimeout(finish, delay)
+              controller.signal.addEventListener('abort', finish, { once: true })
+            })
+            if (!isCurrent()) return
+            response = undefined
+            continue
+          }
           if (!isCurrent()) return
           if (saved) await remove(task, current.scope, isCurrent)
           else { task.state = 'error'; task.error = options.errorText?.('notSaved') || 'Result is not saved locally. Continue querying to save it again.'; await update() }
