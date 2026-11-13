@@ -1,6 +1,18 @@
 # Sub2API custom release runbook
 
-## Current production release: custom.21.3 — rollout complete (2026-11-13)
+## Current production release: custom.21.4 — rollout complete (2026-11-13)
+
+Runtime source is locked to `548f4360c908a3f2b5ba18cbd47394ec6b68eaa5`, tag `custom-0.2.21.4`, version `0.2.21-custom.4`. The immutable artifact is `ghcr.io/hzihuan001/sub2api@sha256:2f0aa58a7091303d652aa7529cdccdf692a13309669bba2f4e4908a181c4d8b8`; main → L1 → COS completed with all applications healthy/restart 0. Release evidence is in [`CUSTOM_RELEASE_0_2_21_CUSTOM4_20261113.md`](../docs/CUSTOM_RELEASE_0_2_21_CUSTOM4_20261113.md).
+
+This release automatically recovers completed image tasks when the result download is interrupted: it keeps the same task id, retries GET/status with bounded exponential backoff from 3 seconds to a 60-second maximum, and never replays the original POST or charges again. Browser task metadata survives refresh/unmount, and stopping the wait does not delete the task. The user-facing message now describes automatic recovery.
+
+Verified backup: `/opt/sub2api-backups/v0.2.21-custom.4-20261113T104618Z/`; all three PostgreSQL dumps, restore lists, app/config archives and SHA-256 manifest passed. The exact published-image operator gate passed on port `18199`; resources were cleaned. Four public domains each returned 200 for health, keys, image-studio, docs and showcase pages. No paid production model call, real generation, fault injection or browser-authenticated interaction is claimed; previously accepted image-workbench/chat tests were not repeated.
+
+No database migration was added: the production migration ledger remains main 339 and L1/COS 348. For application-only rollback, use the previous `.3` digest `sha256:a3aab14ed40f643babfb020c5f71caf431ec00aa8d5c9ca82b005a1a4a81c358`; retain current business data and migration rows, and never restore an older database over live data.
+
+Runtime tag `custom-0.2.21.4` remains fixed at the source commit above. Documentation closure is a separate commit and must not move the runtime tag.
+
+## Previous production release: custom.21.3 — rollout complete (2026-11-13)
 
 Runtime source is locked to `6e72928b09967df5d92bb547758bce0e99ff5227`, tag `custom-0.2.21.3`, version `0.2.21-custom.3`. The immutable artifact is `ghcr.io/hzihuan001/sub2api@sha256:a3aab14ed40f643babfb020c5f71caf431ec00aa8d5c9ca82b005a1a4a81c358`; main → L1 → COS completed with all applications healthy/restart 0. Release evidence is in [`CUSTOM_RELEASE_0_2_21_CUSTOM3_20261113.md`](../docs/CUSTOM_RELEASE_0_2_21_CUSTOM3_20261113.md).
 
