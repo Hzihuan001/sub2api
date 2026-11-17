@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 30 // v30: require_privacy_set group snapshot plus custom API-key routing fields
+const apiKeyAuthSnapshotVersion = 31 // v31: force_openai_ultrafast plus custom API-key routing fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -438,6 +438,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			AllowMessagesDispatch:           groupForSnapshot.AllowMessagesDispatch,
 			AllowLive:                       groupForSnapshot.AllowLive,
 			ForceOpenAIFast:                 groupForSnapshot.ForceOpenAIFast,
+			ForceOpenAIUltrafast:            groupForSnapshot.ForceOpenAIUltrafast,
 			FreeOpenAIFast:                  groupForSnapshot.FreeOpenAIFast,
 			DefaultMappedModel:              groupForSnapshot.DefaultMappedModel,
 			MessagesDispatchModelConfig:     groupForSnapshot.MessagesDispatchModelConfig,
@@ -556,6 +557,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			AllowMessagesDispatch:           snapshot.Group.AllowMessagesDispatch,
 			AllowLive:                       snapshot.Group.AllowLive,
 			ForceOpenAIFast:                 snapshot.Group.ForceOpenAIFast,
+			ForceOpenAIUltrafast:            snapshot.Group.ForceOpenAIUltrafast,
 			FreeOpenAIFast:                  snapshot.Group.FreeOpenAIFast,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,

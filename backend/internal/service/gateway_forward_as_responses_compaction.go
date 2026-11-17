@@ -51,11 +51,11 @@ func (s *GatewayService) handleResponsesCompactionResponse(
 	// 大上下文摘要期间上游可能长时间不产出可见内容，而下游在拿到终态事件前收不到
 	// 任何字节，反向代理容易按空闲超时掐断（OpenAI 侧同源问题见 #3887）。这里在
 	// 上游每个事件到达时补发 SSE 注释行保活；非流式客户端不发（响应是 JSON）。
-	heartbeat := func() {}
+	heartbeat := func(string) {}
 	if clientStream {
 		hb := newCompactionHeartbeat(c)
 		defer hb.stop()
-		heartbeat = hb.tick
+		heartbeat = func(string) { hb.tick() }
 	}
 
 	finalResp, usage, streamFailure := s.collectAnthropicResponseFromSSE(resp.Body, requestID, heartbeat)

@@ -18,64 +18,6 @@
 
 </div>
 
-> **Sub2API 官方仅使用  `sub2api.org` 与 `pincc.ai` 两个域名。其他使用 Sub2API 名义的网站可能为第三方部署或服务，与本项目无关，请自行甄别。**
----
-
-## 在线体验
-
-体验地址：**[https://demo.sub2api.org/](https://demo.sub2api.org/)**
-
-演示账号（共享演示环境；自建部署不会自动创建该账号）：
-
-| 邮箱 | 密码 |
-|------|------|
-| admin@sub2api.org | admin123 |
-
-## 交流群
-
-- **Telegram**：[点击加入](https://t.me/+Pv3T6ncordwxOTZl)
-- **微信群**：扫描下方二维码
-
-<img src="assets/community/wechat-group.jpg" alt="微信交流群二维码" width="280">
-
-## 项目概述
-
-Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的 API 配额。用户通过平台生成的 API Key 调用上游 AI 服务，平台负责鉴权、计费、负载均衡和请求转发。
-
-## Kiro 支持 Fork
-
-由于官方上游项目对 Kiro 渠道的维护意愿不高，本仓库维护了一个长期支持 Kiro 的 fork，并保持与官方分支稳定合并。
-
-本 fork 额外提供的 Kiro 相关能力：
-
-- Kiro 渠道支持，包括 OAuth / AWS Builder ID / Token 导入，以及兼容 API Key 的上游接入。
-- 面向 Kiro 流量的 Anthropic Prompt Cache 用量模拟。
-- 按分组配置 Kiro 模拟缓存开关，并支持调整模拟比例。
-
-## Kiro 功能截图
-
-<p align="center">
-  <img src="assets/screenshots/kiro-add-account.png" alt="添加 Kiro 账号" width="58%">
-  <img src="assets/screenshots/kiro-cache-emulation.png" alt="Kiro 分组模拟缓存配置" width="35%">
-</p>
-
-<p align="center">
-  <img src="assets/screenshots/kiro-account-management.png" alt="Kiro 账号管理" width="100%">
-</p>
-
-## 核心功能
-
-- **多账号管理** - 支持多种上游账号类型（OAuth、API Key）
-- **API Key 分发** - 为用户生成和管理 API Key
-- **精确计费** - Token 级别的用量追踪和成本计算
-- **智能调度** - 智能账号选择，支持粘性会话
-- **并发控制** - 用户级和账号级并发限制
-- **速率限制** - 可配置的请求和 Token 速率限制
-- **Kiro 渠道支持** - 长期维护 Kiro 支持 fork，并保持与官方分支稳定合并
-- **Kiro 模拟缓存** - 为 Kiro 分组模拟 Anthropic Prompt Cache 用量，并支持按分组调整模拟比例
-- **内置支付系统** - 支持 EasyPay 易支付、支付宝官方、微信官方、Stripe，用户自助充值，无需独立部署支付服务（[配置指南](docs/PAYMENT_CN.md)）
-- **管理后台** - Web 界面进行监控和管理
-- **外部系统集成** - 支持通过 iframe 嵌入外部系统（如工单等），扩展管理后台功能
 
 ## ⚠️ 重要提醒
 
@@ -90,15 +32,18 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 
 > [想出现在这里？](mailto:support@sub2api.org)
 
-<table>
-<tr>
-<td width="180" align="center" valign="middle"><a href="https://shop.pincc.ai/"><img src="assets/partners/logos/pincc-logo.png" alt="pincc" width="150"></a></td>
-<td valign="middle"><b><a href="https://shop.pincc.ai/">PinCC</a></b> 是基于 Sub2API 搭建的官方中转服务，提供 Claude Code、Codex、Gemini 等主流模型的稳定中转，开箱即用，免去自建部署与运维烦恼。</td>
-</tr>
+<details open>
+<summary>点击折叠</summary>
 
-<tr>
-<td width="180"><a href="https://www.packyapi.com/register?aff=sub2api"><img src="assets/partners/logos/packycode.png" alt="PackyCode" width="150"></a></td>
-<td>感谢 PackyCode 赞助了本项目！PackyCode 是一家稳定、高效的API中转服务商，提供 Claude Code、Codex、Gemini 等多种中转服务。PackyCode 为本软件的用户提供了特别优惠，使用<a href="https://www.packyapi.com/register?aff=sub2api">此链接</a>注册并在充值时填写"sub2api"优惠码，首次充值可以享受9折优惠！</td>
+<p align="center"><a href="https://wandapi.com/go/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-cn-dark.svg"><img src="assets/partners/banners/wandapi-cn.svg" alt="WandAPI" width="100%"></picture></a></p>
+
+**[WandAPI](https://wandapi.com/go/sub2api)** —— 由该项目核心贡献者打造的企业级稳定 AI 大模型 API 网关。一个 API Key 即可调用 Claude、GPT、Gemini 等主流模型，原生兼容 OpenAI 与 Anthropic 协议，Claude Code、Codex 及现有 SDK 只需修改 Base URL 即可接入。按延迟与上游健康度实时路由，毫秒级自动故障切换，请求不掉线；服务可用性达 99.99%。按量计费，每次请求的 token 与费用明细清晰可查。
+
+**免费试用额度**：通过[专属链接](https://wandapi.com/go/sub2api)注册，即可领取免费试用额度。
+
+---
+
+<table>
 
 <tr>
 <td width="180"><a href="https://cctk.ai/register?aff=SUB2API"><img src="assets/partners/logos/cctk.jpg" alt="CCTK.AI" width="150"></a></td>
@@ -121,28 +66,13 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 </tr>
 
 <tr>
-<td width="180"><a href="https://aigocode.com/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>感谢 AIGoCode 赞助了本项目！AIGoCode 是一站式集成 Claude Code、Codex 以及最新 Gemini 模型的综合平台，为您提供稳定、高效、高性价比的 AI 编程服务。平台提供灵活的订阅方案，零封号风险，免 VPN 直连，响应极速。AIGoCode 为 sub2api 用户准备了专属福利：通过<a href="https://aigocode.com/invite/SUB2API">此链接</a>注册，首次充值可额外获得 10% 赠送额度！</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://code.silkapi.com/register?aff=SUB2API"><img src="assets/partners/logos/silkapi.png" alt="silkapi" width="150"></a></td>
-<td>感谢 丝绸API 赞助了本项目！ <a href="https://code.silkapi.com/register?aff=SUB2API">丝绸API</a> 是基于 Sub2API 搭建的中转服务，专注于提供 Codex 高速稳定API中转。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://ylscode.com/"><img src="assets/partners/logos/ylscode.png" alt="ylscode" width="150"></a></td>
-<td>感谢 伊莉思Code 赞助了本项目！ <a href="https://ylscode.com/">伊莉思Code</a> 致力于构建安全的企业级Coding Agent生产力服务，提供稳定快速的 Codex / Claude / Gemini 订阅服务与即用即付API多种方案灵活选择，限时注册赠送 3 天 Codex 试用福利！</td>
+<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/logos/aigocode-dark.png"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></picture></a></td>
+<td>感谢 AIGoCode 赞助了本项目！订阅制 AI 编程平台，不只按token 算钱。一个账号包月畅用 Claude Code、Codex、Gemini，国内直连、响应快。通过<a href="https://api.aigocode.dev/invite/SUB2API">此链接</a>订阅额外送 10% 额度！</td>
 </tr>
 
 <tr>
 <td width="180"><a href="https://codex-everywhere.com"><img src="assets/partners/logos/codex-everywhere.jpg" alt="CodexEverywhere" width="150"></a></td>
 <td>Real GPT-5.6 series at 3% of OpenAI pricing — <a href="https://codex-everywhere.com">CodexEverywhere</a> is democratizing access to frontier models for developers worldwide. We believe in transparency and honesty, with model quality verified by active community oversight for months. USD and crypto friendly. Start with a free $20 trial at <a href="https://codex-everywhere.com">codex-everywhere.com</a>.</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://shop.bmoplus.com/?utm_source=github"><img src="assets/partners/logos/bmoplus.jpg" alt="bmoplus" width="150"></a></td>
-<td>感谢 BmoPlus 赞助了本项目！BmoPlus 是一家专为AI订阅重度用户打造的可靠 AI 账号代充服务商，提供稳定的 ChatGPT Plus / ChatGPT Pro(全程质保) / Claude Pro / Super Grok / Gemini Pro 的官方代充&成品账号。 通过<a href="https://shop.bmoplus.com/?utm_source=github">BmoPlus AI成品号专卖/代充</a>注册下单的用户，可享GPT 官网订阅一折 的震撼价格！</td>
 </tr>
 
 <tr>
@@ -164,67 +94,14 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 </tr>
 
 <tr>
-<td width="180"><a href="https://runapi.co/register?aff=fu2E"><img src="assets/partners/logos/runapi.png" alt="RunAPI" width="150"></a></td>
-<td>感谢 RunAPI 赞助本项目！ <a href="https://runapi.co/register?aff=fu2E">RunAPI</a> 是高效稳定的API OpenRouter平替平台，一个 API Key 即可访问 OpenAI、Claude、Gemini、DeepSeek、Grok 等 150+ 主流模型，低至 1 折，极其稳定，可以无缝兼容 Claude Code、OpenClaw 等工具。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://unity2.ai/register?source=sub2api"><img src="assets/partners/logos/unity2.png" alt="unity2" width="150"></a></td>
-<td>感谢 Unity2 赞助本项目！ <a href="https://unity2.ai/register?source=sub2api">Unity2</a> 是面向个人开发者、团队、企业的高性能 AI 模型 API 中转平台，长期服务国内头部企业，日均承载超 300 亿 token 调用，支持 5000 RPM 级高并发。一个 API Key 即可适配 Claude Code、Codex、OpenAI 模型、IDE 插件和 Agent 工作流等场景。具备企业级稳定供应能力，在高并发、持续调用和团队集中采购场景下依然保持低延迟、高可用。同时支持余额计费、组合订阅、首充优惠、企业开票、专属 1v1 对接，适合个人高频使用和企业长期接入。现在注册 Unity2.ai 可领取 $2 余额，加入官方群再送 $10 余额，合计最高可领 $12 免费额度，适合先体验后长期使用。<a href="https://unity2.ai/register?source=sub2api">注册链接</a>
-</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://veilx.io/#/hello/SJRBRVDV"><img src="assets/partners/logos/veilx.png" alt="veilx" width="150"></a></td>
 <td>感谢 Veilx 赞助本项目！ <a href="https://veilx.io/#/hello/SJRBRVDV">Veilx</a> CDN 专为超大规模 API 请求场景打造，针对 AI 中转站业务与 AI API 调用链路进行了深度优化，轻松应对高并发、高频请求与大流量传输，为开发者与企业提供更快、更稳、更低延迟的加速体验。无论是 OpenAI、Claude、Gemini 等 AI 接口中转，还是聊天、绘图、Embedding、流式输出等复杂场景，Veilx 都能显著提升响应速度与连接稳定性，有效降低网络波动带来的超时与失败问题。同时，Veilx 提供中国三网优化回国极速线路，大幅提升中国大陆地区访问海外 AI 服务的速度与稳定性，特别适合全球 AI 中转平台、海外 AI SaaS、跨境业务与高并发 API 系统部署。专为 AI API 而生，让你的 AI 中转服务更快、更稳、更省心。<a href="https://veilx.io/#/hello/SJRBRVDV">购买地址</a>
 </td>
 </tr>
 
-
 <tr>
 <td width="180"><a href="https://roxybrowser.com/invite/bgGKG7"><img src="assets/partners/logos/RoxyBrowser.png" alt="RoxyBrowser" width="150"></a></td>
 <td>感谢 RoxyBrowser 赞助本项目！<a href="https://roxybrowser.com/invite/bgGKG7">RoxyBrowser</a> 是 Sub2API 的理想搭档：内置原生 Roxy AI Agent 与高质量原生住宅 IP，支持通过简单命令实现批量自动化，显著提升多账号管理的安全性与效率！点击<a href="https://roxybrowser.com/invite/bgGKG7">此链接</a>注册，可领取免费住宅 IP 套餐与终身 9 折优惠。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://apikl.ai"><img src="assets/partners/logos/apikl.png" alt="apikl" width="150"></a></td>
-<td>感谢 Apikl 赞助本项目！平台基于 Sub2API 搭建，为开发者提供 Codex / Claude 系列模型的中转服务，专注于长期稳定、高速直连与高性价比。支持按量计费的余额结算、企业级正规发票及一对一专属对接。<a href="https://apikl.ai">立即注册</a>即享充值 1:1 赠送 — 余额翻倍！
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://tokeneum.ai"><img src="assets/partners/logos/tokeneum.png" alt="tokeneum" width="150"></a></td>
-<td>感谢 TokenEum 赞助本项目！<a href="https://tokeneum.ai">TokenEum</a> 是一家综合性 AI 模型聚合平台与智能体开发公司，汇聚 Claude、Gemini、OpenAI 等国际顶级模型，以及 GLM、Qwen、Kimi 等主流开源模型，提供不同质量与价格梯度的丰富选择，满足多样化需求。平台还接入了 Seedance2.0、Happy Horse 等前沿视频生成模型。秉持透明诚信的经营理念，TokenEum 确保所有模型信息真实可靠。访问 <a href="https://tokeneum.ai">tokeneum.ai</a> 开始使用。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://666api.work/sub2api"><img src="assets/partners/logos/666api.jpg" alt="666api" width="150"></a></td>
-<td>感谢 666api 赞助本项目！<a href="https://666api.work/sub2api">666api</a> 是一站式综合服务平台，提供：<br>
-⚡ API 中转 — 全球模型按量计费接入，100% 官方源直供，最高 75 折优惠<br>
-&nbsp;&nbsp;&nbsp;&nbsp;独家特惠：智谱 GLM 5 折 · DeepSeek V4-pro 5 折 · Seedance 2.0 0.8 折（白名单）· HappyHorse 海外版 3 折（白名单）<br>
-🔑 GPT 订阅账号（含同源 IP）· 全球住宅 IP<br>
-💰 支持开票
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
-<td>感谢 随想AI网关 赞助本项目！<a href="https://sui-xiang.com/">随想AI网关</a>  是一家可靠高效的 API 中继服务提供商，提供 Claude、Codex、Gemini 等的中继服务。注重隐私的中转站·无数据倒卖·无模型掺水，隐私，透明，极速售后。新账户注册每日签到就送 0.5 元测试额度，充值额度 1:1，无需订阅，按量付费。多线路冗余、跨区域容灾、自动故障切换,长链路 SSE 不中断。99.9% 可用性,关键调用从不掉队。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
-<td>感谢 Proxy4Free 赞助本项目！Proxy4Free 是面向开发者和 AI 应用的数据代理服务商，提供住宅代理、静态住宅代理、ISP 代理及数据中心代理等多种代理解决方案，适用于 Web Scraping、Browser Automation、AI Agent 等场景。支持全球 IP 资源、稳定连接与灵活切换，帮助开发者提升数据采集成功率，降低 IP 封禁风险。通过<a href="https://www.proxy4free.com/?keyword=4yjqecpc">此链接注册</a>即可开始体验，轻松构建更稳定、高效的自动化工作流。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
-<td>感谢 Aimzoon 对本项目的赞助！ <a href="http://aimzoon.com">Aimzoon</a> 提供稳定、高性价比的 AI API 接入服务，支持开发者将常用 AI 服务快速接入 Codex、Claude Code、Gemini CLI 等编程工具。无需复杂配置，更快接入，更稳调用，更省成本。codex倍率优惠，特价倍率等促销不断，注册即送免费体验额度，让 AI 编程真正进入日常工作流。<a href="http://aimzoon.com">点击这里</a>注册体验！
 </td>
 </tr>
 
@@ -244,11 +121,6 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 </tr>
 
 <tr>
-<td width="180"><a href="https://lanox.ai/?c=6"><img src="assets/partners/logos/lanox.jpg" alt="LanoX AI" width="150"></a></td>
-<td>感谢 LanoX AI 对本项目的赞助！<a href="https://lanox.ai/?c=6">LanoX AI</a> 为开发者、团队与企业提供稳定、高性价比的全球模型接入服务。 🎁 新用户福利 — 免费领取 百万 Token ,更有500+ 免费模型 — 低成本测试、验证、部署更轻松 🧠 全球主流模型 — GPT · Claude · Gemini · Qwen · Grok... 🎬 多模态创作 — Seedance 2.0 · GPT Image · Gemini Nano Banana 🛡️ 企业级稳定服务 — 高可用💎原生能力输出💎不降智💎不混模💎调用与计费透明💎 💰 更低调用成本 — 顶级模型低至官方价 1 折起，文档清晰、接入简单、支持开票与企业批量调用 🏢 企业优选 — 适用于 AI 产品、Agent、内容平台、研发团队批量调用</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://www.rapidproxy.io/?ref=sub2api"><img src="assets/partners/logos/rapidproxy.jpg" alt="RapidProxy" width="150"></a></td>
 <td><a href="https://www.rapidproxy.io/?ref=sub2api">RapidProxy</a> 是面向开发者的数据采集代理解决方案，提供稳定可靠的住宅代理服务。通过 9000 万+全球住宅 IP和 200+国家覆盖、智能轮换机制和精准地区定位能力，帮助爬虫、AI 数据训练、SEO 监控、电商数据分析等项目突破访问限制，提高数据采集效率。支持 Playwright、Selenium、Puppeteer 等主流自动化框架，价格低至 $0.65/GB，<a href="https://www.rapidproxy.io/?ref=sub2api">立即免费测试吧</a>。</td>
 </tr>
@@ -261,16 +133,6 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 <tr>
 <td width="180"><a href="https://www.swiftproxy.net/?ref=sub2api"><img src="assets/partners/logos/swiftprox.png" alt="Swiftproxy" width="150"></a></td>
 <td>Swiftproxy 是面向开发者的高性能代理解决方案，提供稳定可靠的住宅代理和静态住宅代理服务。拥有 9000 万+ 纯净住宅 IP，覆盖全球，支持灵活轮换和精准地理定位，帮助网页抓取、AI 自动化、浏览器自动化、SEO 监控和多账号管理等项目突破访问限制，提升工作流效率。支持 HTTP(S) 和 SOCKS5 协议，兼容 Playwright、Selenium、Puppeteer 等主流自动化工具，动态代理流量用完为止永不过期，支持免费测试 — <a href="https://www.swiftproxy.net/?ref=sub2api">立即开始免费测试</a>！</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.duckip.cn/?keyword=cu7oog6y"><img src="assets/partners/logos/duckip.png" alt="DuckIP" width="150"></a></td>
-<td><a href="https://www.duckip.cn/?keyword=cu7oog6y">DuckIP</a> - 9000 万+ 全球住宅网络资源，覆盖 195+ 国家和地区，支持轮换和粘性会话，适用于公共数据采集、RAG 更新、模型评估和多区域数据工作负载。🟢住宅代理 - 8 折优惠；🟢静态住宅代理 - ¥50.00/IP 起；🟢无限住宅代理 - ¥19.8/小时 起。✅免费领取 500M 试用流量。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://go.apimart.ai/gh-sub2api"><img src="assets/partners/logos/apimart.jpg" alt="APIMart" width="150"></a></td>
-<td>感谢 APIMart 赞助了本项目！<a href="https://go.apimart.ai/gh-sub2api">APIMart</a> 是专注于 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可生成 160+ 张图片。图片、视频一套异步 API 通吃：提交任务获取 ID，通过轮询或回调获取结果；批量生成上万张图片也不会超时，切换模型无需修改代码。按量付费、无月费，通过<a href="https://go.apimart.ai/gh-sub2api">此注册链接</a>注册即可开始使用。</td>
 </tr>
 
 <tr>
@@ -288,11 +150,57 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 <td>ColaProxy 提供专为网页抓取、自动化和多账号管理打造的高质量住宅代理。免费试用，流量永不过期，价格低至 $0.3/GB，支持无限并发连接和智能 IP 轮换，带来更流畅、更稳定的代理体验。使用优惠码 COLA10 立享 9 折优惠，立即开始使用可靠的住宅代理扩展您的项目。<a href="https://colaproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api">立即开始使用 ColaProxy</a></td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://modelflare.dev/zh/sign-up?utm_source=github&utm_campaign=sub2api"><img src="assets/partners/logos/modelflare.png" alt="Modelflare" width="150"></a></td>
+<td>Modelflare：满血稳定不掺水，低成本享受全球 SOTA 模型。站点由美国 LLC 主体 Havenbyte LLC 运营，支持 GPT、Claude、Gemini、Grok 等主流模型和常用兼容协议，还支持 40 多种图片和视频模型。缓存补偿是一大亮点：部分 OpenAI 价格优先、稳定和高级分组提供每日 65%、75%、85% 的缓存命中率保障，符合条件的请求没达到目标的，平台补偿差额，结算后可在用量看板查看。特惠活动：单笔充值 US$20 即可解锁 0.015 倍价格倍率的 GPT 特惠分组，单笔充值 US$50 即可解锁 0.03 倍价格倍率的 Claude 特惠分组。通过<a href="https://modelflare.dev/zh/sign-up?utm_source=github&utm_campaign=sub2api">专属链接</a>注册即可参与</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://x.com/chenju_ai"><img src="assets/partners/logos/chenju_ai.png" alt="Chenju" width="150"></a></td>
+<td>感谢 <a href="https://x.com/chenju_ai">陈局</a> 赞助了本项目！这大概是本栏唯一一个不让你注册的广告位。好的开源项目值得被付费，陈局来随个份子，敬作者一杯。X 上找 <a href="https://x.com/chenju_ai">陈局</a>，聊中转、聊上游、吹吹水。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://t.me/AACC8888888"><img src="assets/partners/logos/ooko.ai.png" alt="ooko.ai" width="150"></a></td>
+<td>🔑 高价收 AI 账号｜Gemini · Claude · GPT｜大小号通收，各种渠道都要｜支持按量跑付｜寻一手大厂资源，我上 KEY 。<br>微信：Liuyou-zawd｜TG：<a href="https://t.me/AACC8888888">AACC8888888</a></td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api"><img src="assets/partners/logos/NiuProxy.jpg" alt="NiuProxy" width="150"></a></td>
+<td><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api">NiuProxy</a> 为网页抓取、AI 智能体、自动化和数据采集提供高性价比的全球代理解决方案。住宅代理低至 $0.35/GB，覆盖 190+ 个国家和地区，套餐灵活，支持 HTTP(S)/SOCKS5 协议。<br>🎁 使用优惠码 PAY2 充值立享 9 折优惠！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://soleapi.com/r/sub2api"><img src="assets/partners/logos/soleapi.png" alt="SoleAPI" width="150"></a></td>
+<td>感谢 <a href="https://soleapi.com/r/sub2api">SoleAPI</a> 对本项目的支持！SoleAPI 是面向开发者与企业的 AI 模型网关：一个 API Key 即可调用 Claude、GPT、Gemini 等 30+ 主流模型。原生兼容 OpenAI 与 Anthropic 协议，Claude Code、Codex、Cursor 及现有 SDK 只需修改 Base URL 即可接入。请求按延迟与上游健康度实时路由，毫秒级自动切换至备用通道，服务可用性达 99.99%，并提供 7×24 小时技术支持。所有调用统一账单结算，每次请求的 token 与费用明细随时可查。通过本项目的<a href="https://soleapi.com/r/sub2api">推荐链接</a>注册即可获得免费试用额度，邀请好友充值还可持续获得返现！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://api.muteki.site/register?aff=Sub2"><img src="assets/partners/logos/marucode.jpg" alt="MaruCode" width="150"></a></td>
+<td><a href="https://api.muteki.site/register?aff=Sub2">MaruCode</a> ——偶尔做做慈善的小破站 API，站内 🍟每周星期四 会做 限时倍率活动 ，目前已运营半年有余，大群3K人，主打稳定、欢迎高校、企业等合作，感谢🙇，目前已经营半年有余，自营号池，不搞充值营销套路，主要提供 Codex（GPT 6.2 Astra）、Claude Code(Claude Opus 5.5)、GPT Image 2.6 等主流模型，支持 WebSocket 协议，明码标价(Codex 0.3x, CC 1.7x)，透明汇率(1:1)</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://massivetokens.com/signup?ref=SUB2API"><img src="assets/partners/logos/massivetokens.jpg" alt="Massive Tokens" width="150"></a></td>
+<td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> 以批发价向企业和大用量开发者提供 Claude API。提供标准的 Anthropic Messages API，Claude Code、Sub2API、LiteLLM、One API 无需改代码即可接入。使用邀请码 SUB2API 注册，每次调用立减 5%；注册后加入 Telegram 群 @massivetokens (<a href="https://t.me/massivetokens">https://t.me/massivetokens</a>)，向管理员申请 $10 额度。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3"><img src="assets/partners/logos/DataEyesAI.png" alt="DataEyesAI" width="150"></a></td>
+<td><a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3">DataEyesAI</a> 是面向开发者与企业的一站式 AI API 服务平台，通过统一接口接入 OpenAI、Claude、Gemini 等主流模型，覆盖 AI 编程及文本、图像、音频、视频生成。支持 Claude Code、Codex 等主流 AI 编程工具，提供按量付费、实时用量与成本监控，以及 7×24 小时技术支持，让模型接入更便捷、开发成本更可控。新用户通过<a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3">此链接</a>注册，可领取使用额度，从代码开发到多模态创作，一站开启 AI 应用之旅！</td>
+</tr>
+
 </table>
+
+</details>
 
 ## 项目概述
 
 Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的 API 配额。用户通过平台生成的 API Key 调用上游 AI 服务，平台负责鉴权、计费、负载均衡和请求转发。
+
+## Kiro 支持
+
+本 fork 保留 Kiro 渠道支持，包括 OAuth、AWS Builder ID、Token 导入和兼容 API Key 的上游接入，并提供 Anthropic Prompt Cache 用量模拟。模拟缓存可按分组配置并调整模拟比例。
 
 ## 核心功能
 
@@ -441,8 +349,6 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 
 - Docker 20.10+
 - Docker Compose v2+
-
-Compose 文件默认使用上游发布的 `weishaw/sub2api:latest`。生产环境可在 `.env` 中通过 `SUB2API_IMAGE=weishaw/sub2api:<版本号>` 固定版本。
 
 #### 快速开始（一键部署）
 

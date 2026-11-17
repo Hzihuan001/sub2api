@@ -61,7 +61,8 @@
         "backend/internal/repository/key_account_health_batch.go",
         "backend/internal/repository/key_account_route_wiring.go",
         "backend/migrations/9003_custom_api_key_account_routes.sql",
-        "backend/migrations/9004_custom_key_route_site.sql"
+        "backend/migrations/9004_custom_key_route_site.sql",
+        "backend/migrations/9008_custom_auth_invalidation_scope.sql"
       ],
       "dependencies": [],
       "tests": [
@@ -131,6 +132,7 @@
         "backend/internal/repository/batch_image_queue.go",
         "backend/internal/repository/batch_image_repo.go",
         "backend/migrations/9000_custom_batch_image_no_discount.sql",
+        "backend/migrations/9009_custom_gpt_image_26_group_models.sql",
         "frontend/src/api/batchImage.ts",
         "frontend/src/composables/useBatchImageAccess.ts",
         "frontend/src/i18n/locales/en/batchImage.ts",

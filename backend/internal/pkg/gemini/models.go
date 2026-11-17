@@ -22,6 +22,7 @@ func DefaultModels() []Model {
 		{Name: "models/gemini-2.5-flash", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-2.5-flash-image", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-3.1-flash-image", SupportedGenerationMethods: methods},
+		{Name: "models/gemini-3-pro-image", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-nano-banana-2.1", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-2.5-pro", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-3.5-flash", SupportedGenerationMethods: methods},
@@ -30,6 +31,7 @@ func DefaultModels() []Model {
 		{Name: "models/gemini-3.1-pro-preview", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-3.1-pro-preview-customtools", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-4-argon", SupportedGenerationMethods: methods},
+		{Name: "models/gemini-4-carbon", SupportedGenerationMethods: methods},
 	}
 }
 

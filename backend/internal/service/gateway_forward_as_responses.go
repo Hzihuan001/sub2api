@@ -197,23 +197,33 @@ func (s *GatewayService) ForwardAsResponses(
 			proxyURL = account.Proxy.URL()
 		}
 
-		// 10. Build upstream request
-		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
-		upstreamReq, forwardedBody, err = s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
-		releaseUpstreamCtx()
-		if err != nil {
-			return nil, fmt.Errorf("build upstream request: %w", err)
-		}
-
-		// 11. Send request
-		resp, err = KeyAccountInferenceDoWithTLS(s.httpUpstream, upstreamReq, proxyURL, account, mappedModel, s.tlsFPProfileService.ResolveTLSProfile(account))
-		if err != nil {
-			if resp != nil && resp.Body != nil {
-				_ = resp.Body.Close()
+		// Recover once when another request rotated the stored OAuth token while
+		// this request was in flight. Keep key-route-aware transport and accounting.
+		for retriedRotatedToken := false; ; {
+			upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+			upstreamReq, forwardedBody, err = s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
+			releaseUpstreamCtx()
+			if err != nil {
+				return nil, fmt.Errorf("build upstream request: %w", err)
 			}
-			return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
-				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
-			})
+			resp, err = KeyAccountInferenceDoWithTLS(s.httpUpstream, upstreamReq, proxyURL, account, mappedModel, s.tlsFPProfileService.ResolveTLSProfile(account))
+			if err != nil {
+				if resp != nil && resp.Body != nil {
+					_ = resp.Body.Close()
+				}
+				return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
+					UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
+				})
+			}
+			if resp.StatusCode == http.StatusUnauthorized && !retriedRotatedToken {
+				if rotatedToken := s.rotatedClaudeAccessToken(ctx, account, token); rotatedToken != "" {
+					_ = resp.Body.Close()
+					token = rotatedToken
+					retriedRotatedToken = true
+					continue
+				}
+			}
+			break
 		}
 	}
 	protectKeyRouteUsageResponse(ctx, resp)
@@ -221,6 +231,7 @@ func (s *GatewayService) ForwardAsResponses(
 	// Use the final Anthropic body for billing. The bridge maps Responses
 	// xhigh to Anthropic max; a bare thinking flag is not an explicit effort.
 	reasoningEffort = NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
+	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
 
 	// 12. Handle error response with failover
 	if resp.StatusCode >= 400 {
@@ -488,8 +499,11 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	startTime time.Time,
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 ) (*ForwardResult, error) {
+	observer := beginUpstreamResponseModelObservation(c)
 	requestID := resp.Header.Get("x-request-id")
-	finalResp, usage, streamFailure := s.collectAnthropicResponseFromSSE(resp.Body, requestID, nil)
+	finalResp, usage, streamFailure := s.collectAnthropicResponseFromSSE(resp.Body, requestID, func(payload string) {
+		observer.ObserveAnthropic([]byte(payload))
+	})
 	var streamErr error
 	if streamFailure != nil {
 		streamErr = streamFailure.err
@@ -501,7 +515,10 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 		_ = resp.Body.Close()
 		writeResponsesError(c, http.StatusBadGateway, "server_error", streamFailure.message)
 		return &ForwardResult{
-			RequestID: requestID, UpstreamHeaders: resp.Header, Usage: usage,
+			UpstreamResponseModel:         observer.Model(),
+			UpstreamResponseModelConflict: observer.Conflict(),
+			UpstreamResponseServiceTier:   observer.ServiceTier(),
+			RequestID:                     requestID, UpstreamHeaders: resp.Header, Usage: usage,
 			Model: originalModel, UpstreamModel: mappedModel, ReasoningEffort: reasoningEffort,
 			Duration: time.Since(startTime),
 		}, streamFailure.err
@@ -513,7 +530,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	}
 	return s.writeResponsesBufferedResult(
 		c, resp, finalResp, usage, requestID,
-		originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping,
+		originalModel, mappedModel, reasoningEffort, startTime, clientToolMapping, observer,
 	)
 }
 
@@ -523,7 +540,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 func (s *GatewayService) collectAnthropicResponseFromSSE(
 	body io.ReadCloser,
 	requestID string,
-	onEvent func(),
+	onEvent func(string),
 ) (*apicompat.AnthropicResponse, ClaudeUsage, *anthropicCompatStreamFailure) {
 	scanner := bufio.NewScanner(body)
 	maxLineSize := defaultMaxLineSize
@@ -565,7 +582,7 @@ func (s *GatewayService) collectAnthropicResponseFromSSE(
 			continue
 		}
 		if onEvent != nil {
-			onEvent()
+			onEvent(payload)
 		}
 
 		streamStatus.observe(&event, payload)
@@ -635,6 +652,7 @@ func (s *GatewayService) writeResponsesBufferedResult(
 	reasoningEffort *string,
 	startTime time.Time,
 	clientToolMapping apicompat.ResponsesClientToolMapping,
+	observer *upstreamResponseModelObserver,
 ) (*ForwardResult, error) {
 	// Update usage from accumulated delta. 无条件赋值：纯缓存命中的响应
 	// （input/output 均为 0 但 cache read/write 非 0）不能被整体丢弃。
@@ -673,14 +691,17 @@ func (s *GatewayService) writeResponsesBufferedResult(
 	}
 
 	return &ForwardResult{
-		RequestID:       requestID,
-		UpstreamHeaders: resp.Header,
-		Usage:           usage,
-		Model:           originalModel,
-		UpstreamModel:   mappedModel,
-		ReasoningEffort: reasoningEffort,
-		Stream:          false,
-		Duration:        time.Since(startTime),
+		UpstreamResponseModel:         observer.Model(),
+		UpstreamResponseModelConflict: observer.Conflict(),
+		UpstreamResponseServiceTier:   observer.ServiceTier(),
+		RequestID:                     requestID,
+		UpstreamHeaders:               resp.Header,
+		Usage:                         usage,
+		Model:                         originalModel,
+		UpstreamModel:                 mappedModel,
+		ReasoningEffort:               reasoningEffort,
+		Stream:                        false,
+		Duration:                      time.Since(startTime),
 	}, nil
 }
 
@@ -695,6 +716,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	startTime time.Time,
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 ) (*ForwardResult, error) {
+	observer := beginUpstreamResponseModelObservation(c)
 	requestID := resp.Header.Get("x-request-id")
 
 	if s.responseHeaderFilter != nil {
@@ -720,16 +742,19 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 
 	resultWithUsage := func() *ForwardResult {
 		return &ForwardResult{
-			RequestID:        requestID,
-			UpstreamHeaders:  resp.Header,
-			Usage:            usage,
-			Model:            originalModel,
-			UpstreamModel:    mappedModel,
-			ReasoningEffort:  reasoningEffort,
-			Stream:           true,
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ClientDisconnect: stream.clientDisconnected,
+			UpstreamResponseModel:         observer.Model(),
+			UpstreamResponseModelConflict: observer.Conflict(),
+			UpstreamResponseServiceTier:   observer.ServiceTier(),
+			RequestID:                     requestID,
+			UpstreamHeaders:               resp.Header,
+			Usage:                         usage,
+			Model:                         originalModel,
+			UpstreamModel:                 mappedModel,
+			ReasoningEffort:               reasoningEffort,
+			Stream:                        true,
+			Duration:                      time.Since(startTime),
+			FirstTokenMs:                  firstTokenMs,
+			ClientDisconnect:              stream.clientDisconnected,
 		}
 	}
 
@@ -806,7 +831,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 				if err != nil {
 					continue
 				}
-				out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+				out := reverseToolNamesIfPresentString(c, sse)
 				fmt.Fprint(c.Writer, out) //nolint:errcheck
 			}
 			c.Writer.Flush()

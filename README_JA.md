@@ -27,48 +27,20 @@
 - **📖 免責事項**：本プロジェクトは技術的な学習および研究の目的でのみ提供されます。本プロジェクトの使用により生じたアカウントの停止、サービスの中断、データの損失、その他一切の直接的または間接的な損害について、作者は一切の責任を負いません。
 - **🚫 商用利用の非許諾**：本プロジェクトの開発者は、いかなる個人または組織に対しても、本プロジェクトを利用したいかなる形態の商業運営も一切許諾していません。本プロジェクトの名義で、または本プロジェクトに基づいて行われる商業行為はすべて本プロジェクトおよびその開発者とは無関係であり、それにより生じる一切の紛争、損失、法的責任は行為者自身が負うものとします。
 
-## 概要
-
-Sub2API は、AI 製品のサブスクリプションから API クォータを配分・管理するために設計された AI API ゲートウェイプラットフォームです。ユーザーはプラットフォームが生成した API キーを通じて上流の AI サービスにアクセスでき、プラットフォームは認証、課金、負荷分散、リクエスト転送を処理します。
-
-## Kiro サポート Fork
-
-公式上流プロジェクトでは Kiro チャネルへのメンテナンス優先度が高くないため、このリポジトリでは Kiro を長期的にサポートする fork として、公式ブランチとの安定したマージを継続しています。
-
-この fork で追加されている Kiro 関連機能:
-
-- OAuth / AWS Builder ID / トークンインポート、および API キー互換の上流接続を含む Kiro チャネルサポート。
-- Kiro トラフィック向けの Anthropic Prompt Cache 使用量エミュレーション。
-- グループ単位での Kiro キャッシュエミュレーション設定と、エミュレーション比率の調整。
-
-## Kiro スクリーンショット
-
-<p align="center">
-  <img src="assets/screenshots/kiro-account-management.png" alt="Kiro account management" width="100%">
-</p>
-
-<p align="center">
-  <img src="assets/screenshots/kiro-add-account.png" alt="Add Kiro account" width="58%">
-  <img src="assets/screenshots/kiro-cache-emulation.png" alt="Kiro cache emulation group settings" width="35%">
-</p>
-
-## 機能
-
-- **マルチアカウント管理** - 複数の上流アカウントタイプ（OAuth、APIキー）をサポート
-- **APIキー配布** - ユーザー向けの APIキーの生成と管理
-- **精密な課金** - トークンレベルの使用量追跡とコスト計算
-- **スマートスケジューリング** - スティッキーセッション付きのインテリジェントなアカウント選択
-- **同時実行制御** - ユーザーごと・アカウントごとの同時実行数制限
-- **レート制限** - 設定可能なリクエスト数およびトークンレート制限
-- **Kiro チャネルサポート** - Kiro 対応 fork を長期的に保守し、公式ブランチとの安定したマージを継続
-- **Kiro キャッシュエミュレーション** - Kiro グループ向けに Anthropic Prompt Cache 使用量をエミュレートし、グループ単位で比率を調整可能
-- **内蔵決済システム** - EasyPay、Alipay、WeChat Pay、Stripe に対応。ユーザーのセルフサービスチャージが可能で、別途決済サービスのデプロイは不要（[設定ガイド](docs/PAYMENT.md)）
-- **管理ダッシュボード** - 監視・管理のための Web インターフェース
-- **外部システム連携** - 外部システム（チケット管理など）を iframe 経由で管理ダッシュボードに埋め込み可能
-
 ## ❤️ スポンサー
 
 > [こちらに掲載しませんか？](mailto:support@sub2api.org)
+
+<details open>
+<summary>クリックで折りたたむ</summary>
+
+<p align="center"><a href="https://wandapi.com/go/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-en-dark.svg"><img src="assets/partners/banners/wandapi-en.svg" alt="WandAPI" width="100%"></picture></a></p>
+
+**[WandAPI](https://wandapi.com/go/sub2api)** — 本プロジェクトのコアコントリビューターが手がける、エンタープライズグレードで安定した AI モデル API ゲートウェイ。1 つの API キーで Claude、GPT、Gemini などの主要モデルを利用でき、OpenAI と Anthropic のプロトコルにネイティブ対応しているため、Claude Code、Codex や既存の SDK も Base URL を変更するだけで接続できます。レイテンシと上流の稼働状況に応じたリアルタイムルーティングとミリ秒単位の自動フェイルオーバーでリクエストを途切れさせず、99.99% のサービス可用性を実現します。従量課金で、リクエストごとの token 数と費用の内訳を確認できます。
+
+**無料トライアルクレジット**：[専用リンク](https://wandapi.com/go/sub2api)から登録すると、無料トライアルクレジットを受け取れます。
+
+---
 
 <table>
 
@@ -93,18 +65,13 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 </tr>
 
 <tr>
-<td width="180"><a href="https://aigocode.com/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>AIGoCode のご支援に感謝します！AIGoCode は Claude Code、Codex、最新の Gemini モデルを統合したオールインワンプラットフォームで、安定的かつ効率的でコストパフォーマンスに優れた AI コーディングサービスを提供します。柔軟なサブスクリプションプラン、アカウント停止リスクゼロ、VPN 不要の直接アクセス、超高速レスポンスが特長です。AIGoCode は sub2api ユーザー向けに特別特典を用意しています：<a href="https://aigocode.com/invite/SUB2API">こちらのリンク</a>から登録すると、初回チャージ時に 10% のボーナスクレジットを追加プレゼント！</td>
+<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/logos/aigocode-dark.png"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></picture></a></td>
+<td>AIGoCode のご支援に感謝します！トークン従量課金だけではない、サブスクリプション型の AI コーディングプラットフォームです。1 つのアカウント・月額プランで Claude Code、Codex、Gemini を使い放題。中国本土から直接接続でき、レスポンスも高速です。<a href="https://api.aigocode.dev/invite/SUB2API">こちらのリンク</a>から購読すると、10% の追加クレジットをプレゼント！</td>
 </tr>
 
 <tr>
 <td width="180"><a href="https://codex-everywhere.com"><img src="assets/partners/logos/codex-everywhere.jpg" alt="CodexEverywhere" width="150"></a></td>
 <td>OpenAI 公式価格のわずか 3% で本物の GPT-5.6 シリーズを提供 — <a href="https://codex-everywhere.com">CodexEverywhere</a> は世界中の開発者にフロンティアモデルへのアクセスを民主化しています。私たちは透明性と誠実さを信条とし、モデル品質は数か月にわたるアクティブなコミュニティの監視によって検証されています。USD および暗号通貨に対応。<a href="https://codex-everywhere.com">codex-everywhere.com</a> で $20 の無料トライアルから始めましょう。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://shop.bmoplus.com/?utm_source=github"><img src="assets/partners/logos/bmoplus.jpg" alt="bmoplus" width="150"></a></td>
-<td>本プロジェクトにご支援いただいた BmoPlus に感謝いたします！BmoPlusは、AIサブスクリプションのヘビーユーザー向けに特化した信頼性の高いAIアカウントサービスプロバイダーであり、安定した ChatGPT Plus / ChatGPT Pro (完全保証) / Claude Pro / Super Grok / Gemini Pro の公式代行チャージおよび即納アカウントを提供しています。こちらの<a href="https://shop.bmoplus.com/?utm_source=github">BmoPlus AIアカウント専門店/代行チャージ</a>経由でご登録・ご注文いただいたユーザー様は、GPTを 公式サイト価格の約1割（90% OFF） という驚異的な価格でご利用いただけます！</td>
 </tr>
 
 <tr>
@@ -138,42 +105,6 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 </tr>
 
 <tr>
-<td width="180"><a href="https://apikl.ai"><img src="assets/partners/logos/apikl.png" alt="apikl" width="150"></a></td>
-<td>Apikl のご支援に感謝します！Sub2API をベースに構築された本プラットフォームは、開発者向けに Codex / Claude シリーズモデルの中継サービスを提供しています。長期安定性、高速直結、高いコストパフォーマンスを重視し、従量課金の残高ベース課金、エンタープライズグレードの正規請求書、1対1の専属サポートを提供します。<a href="https://apikl.ai">今すぐ登録</a>でチャージ 1:1 ボーナス — 残高が倍に！
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://tokeneum.ai"><img src="assets/partners/logos/tokeneum.png" alt="tokeneum" width="150"></a></td>
-<td>TokenEum のご支援に感謝します！<a href="https://tokeneum.ai">TokenEum</a> は総合的な AI モデル集約プラットフォームおよびインテリジェントエージェント開発企業です。Claude、Gemini、OpenAI などの世界トップクラスのモデルに加え、GLM、Qwen、Kimi などの主要なオープンソースモデルも集約しており、品質と価格の異なる豊富な選択肢を提供してあらゆるニーズに対応します。また、Seedance2.0 や Happy Horse などの最先端の動画生成モデルも利用可能です。TokenEum は透明性と誠実なビジネスを重視し、すべてのモデル情報の正確性と信頼性を保証します。<a href="https://tokeneum.ai">tokeneum.ai</a> でぜひお試しください。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://666api.work/sub2api"><img src="assets/partners/logos/666api.jpg" alt="666api" width="150"></a></td>
-<td>666api のご支援に感謝します！<a href="https://666api.work/sub2api">666api</a> はオールインワンプラットフォームで、以下を提供しています：⚡ API 中継 — グローバルモデルへの従量課金アクセス、100% 公式ソースから直接供給、公式価格の最大 75% オフ。独占特典：Zhipu GLM 50% オフ・DeepSeek V4-pro 50% オフ・Seedance2.0 8% オフ（ホワイトリスト）・HappyHorse Overseas 30% オフ（ホワイトリスト）🔑 GPT サブスクリプションアカウント — 同源 IP 込み・グローバル住宅 IP 💰 請求書発行対応
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://sui-xiang.com/"><img src="assets/partners/logos/sui-xiang.jpg" alt="sui-xiang" width="150"></a></td>
-<td>随想AI ゲートウェイのご支援に感謝します！<a href="https://sui-xiang.com/">随想AI ゲートウェイ</a> は信頼性と効率に優れた API 中継サービスプロバイダーで、Claude、Codex、Gemini などの中継サービスを提供しています。プライバシー重視の中継ステーション・データ転売なし・モデル水増しなし、プライバシー・透明性・超高速アフターサービス。新規アカウント登録後、毎日サインインで 0.5 元のテストクレジットがもらえ、チャージは 1:1、サブスクリプション不要、従量課金。マルチライン冗長、クロスリージョン災害復旧、自動フェイルオーバー、長時間 SSE 接続が途切れません。99.9% の可用性、重要な呼び出しは決して遅れません。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
-<td>Proxy4Free のご支援に感謝します！Proxy4Free は開発者と AI アプリケーション向けのデータプロキシサービスプロバイダーで、住宅プロキシ、静的住宅プロキシ、ISP プロキシ、データセンタープロキシなど多様なプロキシソリューションを提供しており、Web Scraping、Browser Automation、AI Agent などのシナリオに適しています。グローバル IP リソース、安定した接続、柔軟な切り替えをサポートし、開発者のデータ収集成功率の向上と IP ブロックリスクの低減を支援します。<a href="https://www.proxy4free.com/?keyword=4yjqecpc">こちらのリンクから登録</a>して、より安定した効率的な自動化ワークフローを簡単に構築しましょう。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
-<td>Aimzoon のご支援に感謝します！<a href="http://aimzoon.com">Aimzoon</a> は安定してコストパフォーマンスに優れた AI API 接続サービスを提供し、開発者が主要な AI サービスを Codex、Claude Code、Gemini CLI などのコーディングツールへ素早く接続できるようにします。複雑な設定は不要で、より速い接続、より安定した呼び出し、より低いコストを実現。Codex レート割引や特価レートなどのキャンペーンも随時開催中、登録するだけで無料お試しクレジットをプレゼント。AI コーディングを日常のワークフローへ。<a href="http://aimzoon.com">こちら</a>から登録してお試しください！
-</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://nagora.ai/"><img src="assets/partners/logos/nagora.png" alt="Nagora" width="150"></a></td>
 <td><a href="https://nagora.ai/">Nagora</a>は、開発者やチーム向けに設計されたマルチモデルAI APIゲートウェイです。1つのアカウントと1つのAPIキーだけで、26種類以上の主要なテキストモデルおよび画像モデルを一元的に利用できます。OpenAI、Anthropic、Geminiの各プロトコルに対応し、Claude Code、Codex、Gemini CLIなどの開発ツールにもシームレスに接続できます。 プラットフォームには、インテリジェントルーティング、自動フェイルオーバー、透明性の高い料金体系、請求の一元管理に加え、予算管理、レート制限、同時実行数の制御機能が備わっています。これにより、個人開発、チームでの共同作業、本番環境におけるAI APIの利用を、より安定的かつ柔軟に管理できます。 既存のアプリケーションを改修する必要はありません。Base URLとAPIキーを置き換えるだけで、最短1分で導入を完了できます。</td>
 </tr>
@@ -186,11 +117,6 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 <tr>
 <td width="180"><a href="https://api.fenno.ai/s/dC4k"><img src="assets/partners/logos/fennoai.jpg" alt="FennoAI" width="150"></a></td>
 <td>FennoAI のご支援に感謝します！FennoAI は、企業の研究開発チームと開発者向けの高安定・高性能 API 中継サービスプロバイダーです。OpenAI と Anthropic のプロトコルに対応し、Codex、Claude Code、OpenCode などの主要 AI コーディングツールにシームレスに接続できます。エンタープライズ級の安定性を備え、1 日あたり千億規模の Token 呼び出しに対応。国内外法人間の企業間決済と請求書発行もサポートし、企業の研究開発・調達ニーズに応えます。Sub2API ユーザー限定特典として、<a href="https://api.fenno.ai/s/dC4k">専用リンク</a>からサブスクリプションを購入すると、わずか 1.99 ドルで 50 ドル相当の Coding Plan クレジットを獲得できます。さらに招待報酬にも対応しており、友達の購入で最大 20% の還元を獲得可能。招待が多いほど、報酬も増えます。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://lanox.ai/?c=6"><img src="assets/partners/logos/lanox.jpg" alt="LanoX AI" width="150"></a></td>
-<td>本プロジェクトをご支援いただいている <a href="https://lanox.ai/?c=6">LanoX AI</a> に感謝します！LanoX AI は、開発者、チーム、企業向けに、安定性とコストパフォーマンスに優れたグローバルモデル接続サービスを提供しています。 🎁 新規ユーザー特典 — 数百万 Token を無料で獲得可能。さらに 500+ の無料モデルで、低コストなテスト、検証、デプロイをより簡単に 🧠 世界の主要モデル — GPT · Claude · Gemini · Qwen · Grok... 🎬 マルチモーダル制作 — Seedance 2.0 · GPT Image · Gemini Nano Banana 🛡️ エンタープライズ級の安定性 — 高可用性 💎 ネイティブ能力の出力 💎 性能劣化なし 💎 モデル混在なし 💎 利用量と課金が透明 💎 💰 より低い利用コスト — トップモデルを公式価格の 1 割から利用可能。明確なドキュメント、簡単な接続、請求書発行、企業向け一括利用に対応 🏢 企業に最適 — AI プロダクト、Agent、コンテンツプラットフォーム、大量利用する開発チームに最適</td>
 </tr>
 
 <tr>
@@ -209,16 +135,6 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 </tr>
 
 <tr>
-<td width="180"><a href="https://www.duckip.cn/?keyword=cu7oog6y"><img src="assets/partners/logos/duckip.png" alt="DuckIP" width="150"></a></td>
-<td><a href="https://www.duckip.cn/?keyword=cu7oog6y">DuckIP</a> - 195 以上の国と地域にわたる 9,000 万以上のグローバルレジデンシャルネットワークリソース。ローテーションとスティッキーセッションに対応し、パブリックデータ収集、RAG 更新、モデル評価、マルチリージョンデータワークロードに最適。🟢レジデンシャルプロキシ - 20% オフ；🟢スタティックレジデンシャルプロキシ - ¥50.00/IP から；🟢無制限レジデンシャルプロキシ - ¥19.8/時間 から。✅500M 無料トライアルを取得。</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://go.apimart.ai/gh-sub2api"><img src="assets/partners/logos/apimart.jpg" alt="APIMart" width="150"></a></td>
-<td>APIMart のご支援に感謝します！<a href="https://go.apimart.ai/gh-sub2api">APIMart</a> は AI 画像・動画生成に特化した低価格 API プラットフォームです。GPT-Image-2 は 1 枚 $0.006 から、1 ドルで 160 枚以上の画像を生成できます。画像と動画の両方に対応する非同期 API を 1 つで利用でき、タスクを送信して ID を取得し、ポーリングまたはコールバックで結果を取得できます。数万枚規模のバッチ処理でもタイムアウトせず、モデルを変更してもコードの変更は不要です。月額料金なしの従量課金制で、<a href="https://go.apimart.ai/gh-sub2api">こちらの登録リンク</a>からすぐに利用を開始できます。</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://www.axisnow.io/"><img src="assets/partners/logos/axisnow.jpg" alt="AxisNow" width="150"></a></td>
 <td>AxisNow のご支援に感謝します！<a href="https://www.axisnow.io/">AxisNow</a> はウェブサイトと API を保護・高速化し、中国本土および世界中で快適なアクセス体験を実現します。クライアント SDK により、ネイティブ／モバイルアプリにも高速化・セキュリティ機能を拡張できます — <strong>自社構築・プライベートデプロイ CDN</strong>｜<strong>サブスクリプション型高防御 CDN</strong>｜<strong>自律制御で柔軟に組み合わせられる CDN ネットワーク</strong>。</td>
 </tr>
@@ -233,11 +149,52 @@ Sub2API は、AI 製品のサブスクリプションから API クォータを�
 <td>ColaProxy は、Web スクレイピング、自動化、マルチアカウント管理向けに構築された高品質な住宅プロキシを提供します。有効期限なしのトラフィックで無料トライアルが利用でき、料金は $0.3/GB から、無制限の同時接続とインテリジェントな IP ローテーションにより、よりスムーズで安定したプロキシ体験を実現します。割引コード COLA10 で 10% オフ、信頼性の高い住宅プロキシでプロジェクトを今すぐスケールしましょう。<a href="https://colaproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api">ColaProxy を始める</a></td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://modelflare.dev/ja/sign-up?utm_source=github&utm_campaign=sub2api"><img src="assets/partners/logos/modelflare.png" alt="Modelflare" width="150"></a></td>
+<td>Modelflare：フルスペック、安定、水増しなし。世界の SOTA モデルを、より低いコストで。米国拠点の Havenbyte LLC が運営する Modelflare は、一般的な互換プロトコルを通じて GPT、Claude、Gemini、Grok などの主要モデルに対応し、さらに 40 以上の画像・動画モデルも利用できます。注目はキャッシュ補償です。対象の OpenAI グループ（価格優先・安定・プレミアム）は、1 日のキャッシュヒット率をそれぞれ 65%、75%、85% で保証します。対象リクエストがこの水準に達しない場合、Modelflare が差額を返金し、精算後に利用状況ダッシュボードで確認できます。特別オファー：US$20 を 1 回チャージすると、価格倍率 0.015 倍の GPT 割引グループが解放されます。US$50 を 1 回チャージすると、価格倍率 0.03 倍の Claude 割引グループが解放されます。<a href="https://modelflare.dev/ja/sign-up?utm_source=github&utm_campaign=sub2api">こちらの専用リンク</a>から登録して始めましょう。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://x.com/chenju_ai"><img src="assets/partners/logos/chenju_ai.png" alt="Chenju" width="150"></a></td>
+<td><a href="https://x.com/chenju_ai">陈局（Chenju）</a>様、本プロジェクトへのご支援ありがとうございます！これはおそらく、この欄で唯一「登録しなくていい」広告枠です。良いオープンソースには対価が払われるべき——というわけで、陈局がご祝儀を包んで作者に一杯おごります。X で <a href="https://x.com/chenju_ai">陈局</a> を見つけて、中継サービスや上流の話、雑談でもどうぞ。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://t.me/AACC8888888"><img src="assets/partners/logos/ooko.ai.png" alt="ooko.ai" width="150"></a></td>
+<td>🔑 AI アカウント高価買取｜Gemini · Claude · GPT｜メイン・サブアカウントすべて買取、チャネル問わず歓迎｜従量制での支払いに対応｜大手の一次リソースを求めています、KEY は私が用意します。<br>WeChat：Liuyou-zawd｜Telegram：<a href="https://t.me/AACC8888888">AACC8888888</a></td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api"><img src="assets/partners/logos/NiuProxy.jpg" alt="NiuProxy" width="150"></a></td>
+<td><a href="https://niuproxy.com/?utm_source=sub2api&utm_medium=sub2api&ref=sub2api">NiuProxy</a> は、Web スクレイピング、AI エージェント、自動化、データ収集向けに、手頃な価格のグローバルプロキシソリューションを提供します。住宅プロキシは $0.35/GB から、190 以上の国と地域をカバーし、柔軟なプランと HTTP(S)/SOCKS5 に対応しています。<br>🎁 コード PAY2 でチャージが 10% オフ！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://soleapi.com/r/sub2api"><img src="assets/partners/logos/soleapi.png" alt="SoleAPI" width="150"></a></td>
+<td><a href="https://soleapi.com/r/sub2api">SoleAPI</a> 様、本プロジェクトへのご支援ありがとうございます！SoleAPI は開発者と企業向けの AI モデルゲートウェイです。1 つの API キーで Claude、GPT、Gemini をはじめとする 30 以上の主要モデルを利用できます。OpenAI と Anthropic のプロトコルにネイティブ対応しているため、Claude Code、Codex、Cursor や既存の SDK も Base URL を変更するだけで動作します。リクエストはレイテンシと上流の稼働状況に応じてリアルタイムにルーティングされ、ミリ秒単位でバックアップチャネルへ自動フェイルオーバーします。サービス可用性は 99.99%、24 時間 365 日の技術サポートも提供しています。すべての呼び出しは 1 つの請求書にまとめられ、リクエストごとの token 数と費用の内訳をいつでも確認できます。本プロジェクトの<a href="https://soleapi.com/r/sub2api">紹介リンク</a>から登録すると無料トライアルクレジットを受け取れ、友人を招待してチャージしてもらうと継続的にキャッシュバックを獲得できます！</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://massivetokens.com/signup?ref=SUB2API"><img src="assets/partners/logos/massivetokens.jpg" alt="Massive Tokens" width="150"></a></td>
+<td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> は、企業や大量に利用する開発者向けに、Claude API を token 単位の卸売価格で提供しています。標準の Anthropic Messages API を提供しているため、Claude Code、Sub2API、LiteLLM、One API とコードを変更せずに連携できます。招待コード SUB2API で登録すると、すべての呼び出しが 5% オフになります。登録後は Telegram グループ @massivetokens (<a href="https://t.me/massivetokens">https://t.me/massivetokens</a>) に参加し、管理者に $10 分のクレジットをリクエストしてください。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3"><img src="assets/partners/logos/DataEyesAI.png" alt="DataEyesAI" width="150"></a></td>
+<td><a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3">DataEyesAI</a> は、開発者と企業向けのワンストップ AI API プラットフォームです。統一 API を通じて OpenAI、Claude、Gemini などの主要モデルを利用でき、AI コーディングからテキスト・画像・音声・動画の生成まで幅広く対応しています。Claude Code や Codex などの主要な AI コーディングツールに対応し、従量課金、リアルタイムの利用状況・コスト監視、24時間365日のテクニカルサポートを提供。モデル連携をより手軽にし、開発コストを管理しやすくします。<a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3">こちらのリンク</a>から新規登録すると、利用クレジットを受け取れます。コード開発からマルチモーダル制作まで、AI 活用をここから始めましょう！</td>
+</tr>
+
 </table>
+
+</details>
 
 ## 概要
 
 Sub2API は、AI 製品のサブスクリプションから API クォータを配分・管理するために設計された AI API ゲートウェイプラットフォームです。ユーザーはプラットフォームが生成した API キーを通じて上流の AI サービスにアクセスでき、プラットフォームは認証、課金、負荷分散、リクエスト転送を処理します。
+
+## Kiro サポート
+
+この fork は Kiro チャネルを維持し、OAuth、AWS Builder ID、トークンインポート、API キー互換の上流接続に対応します。また、Anthropic Prompt Cache の使用量エミュレーションを提供し、グループごとに有効化と比率を設定できます。
 
 ## 機能
 
@@ -362,8 +319,6 @@ PostgreSQL と Redis のコンテナを含む Docker Compose でデプロイし�
 
 - Docker 20.10+
 - Docker Compose v2+
-
-Compose ファイルは、アップストリームが公開する `weishaw/sub2api:latest` をデフォルトで使用します。本番環境では `.env` に `SUB2API_IMAGE=weishaw/sub2api:<version>` を設定してリリースを固定できます。
 
 #### クイックスタート（ワンクリックデプロイ）
 

@@ -430,7 +430,7 @@ func grokAuditReadBufferedTerminal(t *testing.T, sse string) (string, error) {
 	t.Helper()
 	c, _ := grokAuditContext("/v1/messages")
 	resp := grokAuditHTTPResponse("text/event-stream", sse)
-	response, _, _, err := (&OpenAIGatewayService{}).readOpenAICompatBufferedTerminal(resp, c, "openai messages buffered", "req-bound")
+	response, _, _, err := (&OpenAIGatewayService{}).readOpenAICompatBufferedTerminal(resp, c, nil, "openai messages buffered", "req-bound")
 	if err != nil {
 		return "", err
 	}
