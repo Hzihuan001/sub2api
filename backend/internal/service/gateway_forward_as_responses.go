@@ -870,6 +870,10 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
+		// Keep the response-model/service-tier observation in sync with the
+		// buffered compatibility path. Anthropic's message_start carries both
+		// fields, while later SSE frames may refine the model for audit/billing.
+		observer.ObserveAnthropic([]byte(payload))
 		mergeKiroCreditsFromAnthropicPayload(&usage, payload)
 		stream.observe(&event, payload)
 		if stream.upstreamErrType != "" {

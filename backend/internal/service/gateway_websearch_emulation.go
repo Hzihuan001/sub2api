@@ -78,13 +78,12 @@ func shouldEmulateWebSearchFor(
 		return false
 	}
 
-	switch {
-	case account.Platform == PlatformAnthropic || (account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey):
-		// API key accounts can explicitly force/disable emulation; other
-		// Anthropic account types inherit the channel setting as upstream does.
-		if account.Type != AccountTypeAPIKey {
-			return isChannelWebSearchEmulationEnabled(ctx, channelService, groupID, account.Platform)
-		}
+	if isKiroDirectModeAccount(account) {
+		return isChannelWebSearchEmulationEnabled(ctx, channelService, groupID, account.Platform)
+	}
+	if account.Type == AccountTypeAPIKey {
+		// API key accounts can explicitly force/disable emulation for every
+		// compatible platform; default follows the channel setting.
 		mode := account.GetWebSearchEmulationMode()
 		switch mode {
 		case WebSearchModeEnabled:
@@ -94,11 +93,11 @@ func shouldEmulateWebSearchFor(
 		default:
 			return isChannelWebSearchEmulationEnabled(ctx, channelService, groupID, account.Platform)
 		}
-	case isKiroDirectModeAccount(account):
-		return isChannelWebSearchEmulationEnabled(ctx, channelService, groupID, account.Platform)
-	default:
+	}
+	if account.Platform == PlatformOpenAI {
 		return false
 	}
+	return isChannelWebSearchEmulationEnabled(ctx, channelService, groupID, account.Platform)
 }
 
 func isChannelWebSearchEmulationEnabled(ctx context.Context, channelService *ChannelService, groupID *int64, platform string) bool {

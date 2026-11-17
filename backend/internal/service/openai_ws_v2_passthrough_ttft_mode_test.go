@@ -71,6 +71,7 @@ func runOpenAIWSPassthroughTTFTModeCase(t *testing.T, mode string) {
 
 	const reasoningDelay = 600 * time.Millisecond
 	const tolerance = 250 * time.Millisecond
+	const measurementTolerance = 5 * time.Millisecond
 	// The second turn's events wait so its response.create is accepted first.
 	turns := [][]openAIWSTTFTModeTestEvent{
 		openAIWSTTFTModeTestTurn("resp_ttft_1", 0, reasoningDelay),
@@ -167,7 +168,9 @@ func runOpenAIWSPassthroughTTFTModeCase(t *testing.T, mode string) {
 		expected := openAIWSTTFTModeHTTPExpectedMs(t, turn, mode)
 		require.NotNil(t, result.FirstTokenMs, "turn %d must record first token", i+1)
 		got := time.Duration(*result.FirstTokenMs) * time.Millisecond
-		require.GreaterOrEqual(t, got, expected, "turn %d first token must not precede the SSE first-token event", i+1)
+		// FirstTokenMs is floored to whole milliseconds; allow the tiny rounding
+		// difference between that sample and the event-delay sum.
+		require.GreaterOrEqual(t, got+measurementTolerance, expected, "turn %d first token must not precede the SSE first-token event", i+1)
 		require.Less(t, got, expected+tolerance, "turn %d first token must match the SSE rule for mode %s", i+1, mode)
 	}
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")

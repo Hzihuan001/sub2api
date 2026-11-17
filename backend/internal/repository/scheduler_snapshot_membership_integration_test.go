@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
@@ -23,6 +24,15 @@ func TestSchedulerSnapshotConfiguredMembership(t *testing.T) {
 			group := mustCreateGroup(t, client, &service.Group{Name: "snapshot-pool", Platform: platform})
 			other := mustCreateGroup(t, client, &service.Group{Name: "snapshot-other", Platform: platform})
 			future, past := time.Now().Add(time.Hour), time.Now().Add(-time.Hour)
+			// Integration tests share one disposable database. Simple mode and
+			// ungrouped lookups intentionally include eligible rows left by earlier
+			// tests, so capture that baseline before this test inserts its fixtures.
+			baselineRows, err := client.Account.Query().
+				Where(dbaccount.StatusEQ(service.StatusActive), dbaccount.SchedulableEQ(true)).
+				All(ctx)
+			require.NoError(t, err)
+			baselineAccounts, err := repo.accountsToService(ctx, baselineRows)
+			require.NoError(t, err)
 			ids := make(map[int64]map[string]int64)
 			for _, gid := range []int64{0, group.ID, other.ID} {
 				ids[gid] = make(map[string]int64)
@@ -83,6 +93,21 @@ func TestSchedulerSnapshotConfiguredMembership(t *testing.T) {
 							if mixed {
 								wantReady = append(wantReady, ids[gid]["mixed_on"])
 								wantMembers = append(wantMembers, ids[gid]["mixed_on"])
+							}
+						}
+						if scope != "group" {
+							for _, account := range baselineAccounts {
+								if account.Platform != platform &&
+									!(mixed && account.Platform == service.PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
+									continue
+								}
+								if scope == "ungrouped" && len(account.GroupIDs) > 0 {
+									continue
+								}
+								wantMembers = append(wantMembers, account.ID)
+								if account.IsSchedulable() {
+									wantReady = append(wantReady, account.ID)
+								}
 							}
 						}
 						cache := NewSchedulerCache(testRedis(t))
