@@ -1,6 +1,14 @@
 # Sub2API custom release runbook
 
-## Current production release: 0.2.22-custom.2 (2026-11-18)
+## Current production release: 0.2.23-custom.1 (2026-11-18)
+
+Runtime source: `004a07e3dc360cb9bfd80c1eeb18792d74936575`, tag `custom-0.2.23.1`, merged upstream `v0.2.23`. COS, L1 and main run `ghcr.io/hzihuan001/sub2api@sha256:b63e2626afb938e3750effdcff508211cdfc4cc6ff2157e335b88143d83e3f73`, all healthy with zero restarts. See the [release record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM1_20261118.md) for test and production evidence.
+
+When draining main, include callers that forward to it over the container network. L1 continued to reach main while the `ai.moshu.cloud` and `nocf.moshu.cloud` inference entrances were paused. The successful drain included both L1 domain aliases in the same bounded OpenResty change; pages, health and image task queries remained available during the drain. Confirm zero active work before recreating the application. After the switch, check original proxy file hashes, absence of the temporary map, `nginx -t`, and readiness through all entrances.
+
+Verified backup: `/opt/sub2api-backups/v0.2.23-custom.1-20261118T043023Z/`. Each site added only `252_channel_pricing_ultrafast_multiplier.sql` (main 341→342, L1/COS 350→351). Application-only rollback target: `ghcr.io/hzihuan001/sub2api@sha256:4f621022934baf627a83258369788148ff81b748506933b4aa12e9629607a035` (`0.2.22-custom.2`), preserving the live database, Redis and ledger. Keep the runtime tag on the tested commit when appending documentation.
+
+## Previous production release: 0.2.22-custom.2 (2026-11-18)
 
 Runtime source: `d3d8f49fbdfe7677ee0e4ab3e12d97415af3c859`, tag `custom-0.2.22.2`, merged upstream `v0.2.22`. Production runs `ghcr.io/hzihuan001/sub2api@sha256:4f621022934baf627a83258369788148ff81b748506933b4aa12e9629607a035`. COS → L1 → main passed with all three containers healthy/restart 0. `.1` was a preproduction candidate. See the [release record](../docs/CUSTOM_RELEASE_0_2_22_CUSTOM2_20261118.md).
 
@@ -303,6 +311,7 @@ match `^9[0-9]{3}_custom_[a-z0-9][a-z0-9_-]*\.sql$`; published files remain immu
 ## Main → L1 → COS application-only deployment
 
 1. Complete read-only preflight, published-image acceptance and all three backup gates. Before each site, recheck the installed version and drain regular/live account/user/Key/WS slots, user/account waits, unfinished batch jobs and Redis `image_task:*` processing tasks. Read only a bounded status prefix, not base64 results; unknown states fail closed. `.12` waited for zero and rechecked immediately before the app change; it did not force active requests to end.
+   Identify upstream callers with direct container-network access as well as public and direct domains. If a short ingress pause is needed, cover sites that forward to the application in the same reversible change. Keep status reads available; check that each paused entrance restores its original bytes and response after deployment.
 2. Change only the Sub2API service image to the approved GHCR digest.
 3. Pull the digest and run `docker compose up -d --no-deps --pull never <application-service>`: `sub2api` for main, `api` for L1/COS (or the
    equivalent 1Panel operation that recreates only the application container).
