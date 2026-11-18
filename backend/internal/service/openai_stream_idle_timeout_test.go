@@ -68,7 +68,7 @@ func TestRelayStallsIdleFailoverBoundary(t *testing.T) {
 			c, _ := gin.CreateTestContext(rec)
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 			resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
-			account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+			account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 			_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
 			require.Error(t, err)
 			var failover *UpstreamFailoverError
@@ -78,9 +78,59 @@ func TestRelayStallsIdleFailoverBoundary(t *testing.T) {
 				require.Contains(t, rec.Body.String(), "stream_timeout")
 			} else {
 				require.ErrorAs(t, err, &failover)
+				require.Equal(t, http.StatusGatewayTimeout, failover.StatusCode)
+				require.True(t, failover.ShouldRetryNextAccount())
+				require.False(t, failover.RetryableOnSameAccount)
 				require.True(t, failover.SafeToFailoverAfterWrite, "idle failover must share the one-switch first-output budget")
+				_, _, eligible := classifyOpenAIAPIKeyHealthFailure(err)
+				require.False(t, eligible, "stream timeout handling has already made the cooldown decision")
 				require.Empty(t, rec.Body.String())
 			}
+		})
+	}
+}
+
+func TestRelayStallsIdleAfterBillableMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name       string
+		frame      string
+		wantInput  int
+		wantImages int
+	}{
+		{
+			name:      "usage",
+			frame:     `{"type":"response.in_progress","response":{"id":"r","usage":{"input_tokens":17}}}`,
+			wantInput: 17,
+		},
+		{
+			name:       "image",
+			frame:      `{"type":"response.in_progress","response":{"id":"r"},"data":[{"b64_json":"YWJj","size":"1024x1024"}]}`,
+			wantImages: 1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+				MaxLineSize: defaultMaxLineSize, StreamDataIntervalTimeout: 1,
+			}}}
+			pr, pw := io.Pipe()
+			defer func() { _ = pr.Close() }()
+			defer func() { _ = pw.Close() }()
+			go func() {
+				_, _ = io.WriteString(pw, "data: "+tc.frame+"\n\n")
+			}()
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+			account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+			result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
+			require.ErrorContains(t, err, "stream data interval timeout")
+			var failover *UpstreamFailoverError
+			require.False(t, errors.As(err, &failover), "an attempt with billable usage or an image result must not be replayed")
+			require.Equal(t, tc.wantInput, result.usage.InputTokens)
+			require.Equal(t, tc.wantImages, result.imageCount)
+			require.Contains(t, rec.Body.String(), "stream_timeout")
 		})
 	}
 }

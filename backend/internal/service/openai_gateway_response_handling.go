@@ -1010,19 +1010,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
 			}
+			// Usage and images can arrive in metadata before anything is flushed.
 			if account != nil && account.Platform == PlatformOpenAI &&
-				!openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
+				!openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush && !eventStartsClientOutput &&
+				!openAIUsageHasTokens(usage) && usage.ImageCacheReadTokens <= 0 && usage.KiroCredits <= 0 &&
+				imageCounter.Count() == 0 && searchCounter == 0 {
 				_ = resp.Body.Close()
-				failoverErr := s.newOpenAIStreamFailoverErrorWithModel(
-					c, account, false, upstreamRequestID, nil,
-					"OpenAI upstream stream idle timeout before model output", mappedModel, resp.Header,
-				)
-				// Only keepalive comments can have reached the client. Joining the
-				// first-output failover budget also bounds the replay to one account
-				// switch, so one stalled request cannot walk the whole pool and apply
-				// HandleStreamTimeout to every account it touches.
-				failoverErr.SafeToFailoverAfterWrite = true
-				return resultWithUsage(), failoverErr
+				return resultWithUsage(), newOpenAIStreamIdleFailoverError(c, account, upstreamRequestID, resp.Header)
 			}
 			// Grok: short cool + account failover when no client-visible bytes
 			// were committed yet (pre-commit). After output started we keep the
@@ -1094,6 +1088,31 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		}
 	}
 
+}
+
+func newOpenAIStreamIdleFailoverError(c *gin.Context, account *Account, requestID string, headers http.Header) *UpstreamFailoverError {
+	const message = "OpenAI upstream stream idle timeout before model output"
+	setOpsUpstreamError(c, http.StatusGatewayTimeout, message, "")
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		AccountName:        account.Name,
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
+		UpstreamStatusCode: http.StatusGatewayTimeout,
+		UpstreamRequestID:  requestID,
+		Kind:               "stream_idle_timeout",
+		Message:            message,
+	})
+	return &UpstreamFailoverError{
+		StatusCode:      http.StatusGatewayTimeout,
+		ResponseBody:    []byte(`{"error":{"type":"stream_timeout","message":"` + message + `"}}`),
+		ResponseHeaders: headers.Clone(),
+		// HandleStreamTimeout owns cooldown; do not also trip the API key health breaker.
+		RequestScopedTransient: true,
+		// Keepalive comments may have been written. Share the one-switch first-output budget.
+		SafeToFailoverAfterWrite: true,
+	}
 }
 
 // extractOpenAISSEDataLine 低开销提取 SSE `data:` 行内容。
