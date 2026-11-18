@@ -76,12 +76,14 @@ func signedThinkingHistoryBody() []byte {
 
 func TestFilterThinkingBlocksSignedHistorySkipsDecode(t *testing.T) {
 	body := signedThinkingHistoryBody()
-	allocs := testing.AllocsPerRun(5, func() {
+	check := func() {
 		got := filterThinkingBlocksInternal(body, false)
 		if &got[0] != &body[0] {
 			t.Fatal("valid signed history must be returned unchanged")
 		}
-	})
+	}
+	// AllocsPerRun also counts background goroutines from the service suite.
+	allocs := min(testing.AllocsPerRun(32, check), testing.AllocsPerRun(32, check), testing.AllocsPerRun(32, check))
 	require.Less(t, allocs, float64(16), "allocs: %v", allocs)
 }
 

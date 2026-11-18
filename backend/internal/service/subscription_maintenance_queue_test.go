@@ -46,11 +46,12 @@ func TestSubscriptionMaintenanceQueue_TryEnqueue_PanicDoesNotKillWorker(t *testi
 	done := make(chan struct{})
 	require.NoError(t, q.TryEnqueue(func() { close(done) }))
 
+	// Stop waits for the worker to drain the queue before we check the follow-up task.
+	q.Stop()
 	select {
 	case <-done:
-		// ok
-	case <-time.After(time.Second):
-		t.Fatalf("worker did not continue after panic")
+	default:
+		t.Fatal("worker did not continue after panic")
 	}
 }
 
