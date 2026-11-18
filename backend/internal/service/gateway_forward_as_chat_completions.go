@@ -399,14 +399,8 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
 
-	// Update usage from accumulated delta. 无条件赋值：纯缓存命中的响应
-	// （input/output 均为 0 但 cache read/write 非 0）不能被整体丢弃。
-	finalResp.Usage = apicompat.AnthropicUsage{
-		InputTokens:              usage.InputTokens,
-		OutputTokens:             usage.OutputTokens,
-		CacheCreationInputTokens: usage.CacheCreationInputTokens,
-		CacheReadInputTokens:     usage.CacheReadInputTokens,
-	}
+	// Normalize even when the only reported usage comes from the cache.
+	normalizeAnthropicEventUsageForResponses(&apicompat.AnthropicStreamEvent{Message: finalResp}, usage)
 
 	// Chain: Anthropic → Responses → Chat Completions
 	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)

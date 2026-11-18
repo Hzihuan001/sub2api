@@ -248,6 +248,7 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	}
 	resolved.BasePricing.FastMultiplier = chPricing.FastMultiplier
 	resolved.BasePricing.FlexMultiplier = chPricing.FlexMultiplier
+	resolved.BasePricing.UltrafastMultiplierOverride = chPricing.UltrafastMultiplier
 	// Reasoning-effort multipliers are part of the channel pricing override.
 	// Keep a private copy on the resolved snapshot so billing uses the same
 	// effective rule as the request and cannot observe later mutations to the
