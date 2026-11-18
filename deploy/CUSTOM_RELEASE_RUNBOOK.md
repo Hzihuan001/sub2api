@@ -1,6 +1,14 @@
 # Sub2API custom release runbook
 
-## Current production release: custom.21.4 — rollout complete (2026-11-13)
+## Current production release: 0.2.22-custom.2 (2026-11-18)
+
+Runtime source: `d3d8f49fbdfe7677ee0e4ab3e12d97415af3c859`, tag `custom-0.2.22.2`, merged upstream `v0.2.22`. Production runs `ghcr.io/hzihuan001/sub2api@sha256:4f621022934baf627a83258369788148ff81b748506933b4aa12e9629607a035`. COS → L1 → main passed with all three containers healthy/restart 0. `.1` was a preproduction candidate. See the [release record](../docs/CUSTOM_RELEASE_0_2_22_CUSTOM2_20261118.md).
+
+The source gates used Go 1.27.4. Backend unit/integration and a separate PostgreSQL/Redis audit gate passed; frontend 444 files/3,782 tests, typecheck, lint and build passed. Operator acceptance used the exact published digest on port `18223`. Production checks covered all four public domains, decoded matching JS assets, anonymous authorization and authenticated main-site browser pages.
+
+Verified backup: `/opt/sub2api-backups/v0.2.22-custom.2-20261118T034647Z/`. The only migrations added are `251_group_force_openai_ultrafast.sql` and `251_group_usage_rollup_nonblocking_build.sql` (main 341, L1/COS 350); prior ledger rows match. Application-only rollback target: `ghcr.io/hzihuan001/sub2api@sha256:2f0aa58a7091303d652aa7529cdccdf692a13309669bba2f4e4908a181c4d8b8` (`0.2.21-custom.4`). Retain the live database and its upgraded schema on rollback. Do not move the runtime tag when appending release records.
+
+## Previous production release: custom.21.4 — rollout complete (2026-11-13)
 
 Runtime source is locked to `548f4360c908a3f2b5ba18cbd47394ec6b68eaa5`, tag `custom-0.2.21.4`, version `0.2.21-custom.4`. The immutable artifact is `ghcr.io/hzihuan001/sub2api@sha256:2f0aa58a7091303d652aa7529cdccdf692a13309669bba2f4e4908a181c4d8b8`; main → L1 → COS completed with all applications healthy/restart 0. Release evidence is in [`CUSTOM_RELEASE_0_2_21_CUSTOM4_20261113.md`](../docs/CUSTOM_RELEASE_0_2_21_CUSTOM4_20261113.md).
 
