@@ -7,6 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func gatewayFailureAllocs(f func()) float64 {
+	// AllocsPerRun includes process-wide allocations. Sample repeatedly to
+	// avoid counting unrelated goroutines from the rest of the service suite.
+	return min(testing.AllocsPerRun(512, f), testing.AllocsPerRun(512, f), testing.AllocsPerRun(512, f))
+}
+
 func TestGatewayFailureDecisionPreservesEnvelopeDistinctions(t *testing.T) {
 	tests := []struct {
 		name, body, message                              string
@@ -72,7 +78,7 @@ func TestGatewayFailureDecisionStreamShortCircuitKeepsCompleteMetadata(t *testin
 		t.Run(tt.code, func(t *testing.T) {
 			body := []byte(`{"response":{"error":{"code":"` + tt.code + `"}}}`)
 			var classified openAIGatewayFailureClass
-			classificationAllocs := testing.AllocsPerRun(100, func() {
+			classificationAllocs := gatewayFailureAllocs(func() {
 				classified = classifyOpenAIGatewayFailure(0, body, "")
 			})
 			require.Equal(t, tt.class, classified)
@@ -88,7 +94,7 @@ func TestGatewayFailureDecisionStreamShortCircuitKeepsCompleteMetadata(t *testin
 				require.Equal(t, envelope.status, complete.semanticStatus)
 				require.Equal(t, tt.wantFailover, complete.shouldFailover)
 				var failover bool
-				booleanAllocs := testing.AllocsPerRun(100, func() {
+				booleanAllocs := gatewayFailureAllocs(func() {
 					failover = shouldFailoverOpenAIGatewayFailure(input)
 				})
 				require.Equal(t, tt.wantFailover, failover)
@@ -101,13 +107,13 @@ func TestGatewayFailureDecisionStreamShortCircuitKeepsCompleteMetadata(t *testin
 func TestGatewayFailureDecisionHTTPStatusShortCircuitAllocations(t *testing.T) {
 	body := []byte(`{"error":{"code":"server_is_overloaded","message":"overloaded"}}`)
 	var classified openAIGatewayFailureClass
-	classificationAllocs := testing.AllocsPerRun(100, func() {
+	classificationAllocs := gatewayFailureAllocs(func() {
 		classified = classifyOpenAIGatewayFailure(http.StatusServiceUnavailable, body, "")
 	})
 	require.Equal(t, openAIGatewayFailureUnknown, classified)
 	input := openAIGatewayFailureDecisionInput{kind: openAIGatewayFailureHTTP, statusCode: http.StatusServiceUnavailable, body: body}
 	var decision openAIGatewayFailureDecision
-	decisionAllocs := testing.AllocsPerRun(100, func() { decision = decideOpenAIGatewayFailure(input) })
+	decisionAllocs := gatewayFailureAllocs(func() { decision = decideOpenAIGatewayFailure(input) })
 	require.True(t, decision.shouldFailover)
 	require.Equal(t, http.StatusServiceUnavailable, decision.semanticStatus)
 	require.LessOrEqual(t, decisionAllocs, classificationAllocs, "normal HTTP must not add the passthrough-only access-state scan")

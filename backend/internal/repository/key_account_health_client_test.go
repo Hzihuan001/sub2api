@@ -6,6 +6,7 @@ import (
 	"net"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/keyrouting"
@@ -43,24 +44,29 @@ func TestKeyAccountHealthPrivatePoolOptionsAndClose(t *testing.T) {
 }
 
 func TestKeyAccountHealthPrivatePoolHonorsShortContext(t *testing.T) {
-	var dials atomic.Int64
-	native := redis.NewClient(&redis.Options{Addr: "synthetic-unresponsive-redis", ReadTimeout: 3 * time.Second, MaxRetries: 3, Dialer: func(context.Context, string, string) (net.Conn, error) {
-		dials.Add(1)
-		client, peer := net.Pipe()
-		t.Cleanup(func() { _ = peer.Close() })
-		go func() { _, _ = io.Copy(io.Discard, peer) }()
-		return client, nil
-	}})
-	t.Cleanup(func() { _ = native.Close() })
-	store, ok := NewKeyAccountHealthStore(native, keyrouting.AccountHealthOptions{}).(*keyAccountHealthStore)
-	require.True(t, ok)
-	t.Cleanup(func() { _ = store.Close() })
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-	start := time.Now()
-	_, err := store.Get(ctx, keyAccountHealthTestID())
-	require.Error(t, err)
-	require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
-	require.Less(t, time.Since(start), 300*time.Millisecond, "soft health must not wait native 3-second network timeouts")
-	require.EqualValues(t, 1, dials.Load(), "private health client must not retry the failed network operation")
+	synctest.Test(t, func(t *testing.T) {
+		var dials atomic.Int64
+		native := redis.NewClient(&redis.Options{Addr: "synthetic-unresponsive-redis", ReadTimeout: 3 * time.Second, MaxRetries: 3, Dialer: func(context.Context, string, string) (net.Conn, error) {
+			dials.Add(1)
+			client, peer := net.Pipe()
+			t.Cleanup(func() { _ = peer.Close() })
+			go func() { _, _ = io.Copy(io.Discard, peer) }()
+			return client, nil
+		}})
+		t.Cleanup(func() { _ = native.Close() })
+		store, ok := NewKeyAccountHealthStore(native, keyrouting.AccountHealthOptions{}).(*keyAccountHealthStore)
+		require.True(t, ok)
+		t.Cleanup(func() { _ = store.Close() })
+		const timeout = 20 * time.Millisecond
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		start := time.Now()
+		_, err := store.Get(ctx, keyAccountHealthTestID())
+		// The socket and context timers share a deadline and can fire in either order.
+		var timeoutErr net.Error
+		require.ErrorAs(t, err, &timeoutErr)
+		require.True(t, timeoutErr.Timeout())
+		require.Equal(t, timeout, time.Since(start), "socket operations must honor the shorter context deadline")
+		require.EqualValues(t, 1, dials.Load(), "private health client must not retry the failed network operation")
+	})
 }
