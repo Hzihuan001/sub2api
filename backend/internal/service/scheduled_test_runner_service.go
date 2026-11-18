@@ -12,7 +12,10 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-const scheduledTestDefaultMaxWorkers = 10
+const (
+	scheduledTestDefaultMaxWorkers  = 10
+	scheduledTestPersistenceTimeout = 30 * time.Second
+)
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
@@ -179,7 +182,15 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		result.RunID = plan.ActiveRunID
 	}
 
-	saveErr := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result)
+	// An upstream timeout must not also cancel saving the failure and finalizing
+	// the lease. Stop persistence before another worker can reclaim the plan.
+	persistDeadline := time.Now().Add(scheduledTestPersistenceTimeout)
+	if plan.LeaseExpiresAt != nil && plan.LeaseExpiresAt.Before(persistDeadline) {
+		persistDeadline = *plan.LeaseExpiresAt
+	}
+	persistCtx, cancelPersist := context.WithDeadline(context.WithoutCancel(ctx), persistDeadline)
+	defer cancelPersist()
+	saveErr := s.scheduledSvc.SaveResult(persistCtx, plan.ID, plan.MaxResults, result)
 	if saveErr != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, saveErr)
 		// A leased run must not be finalized after its result failed to persist.
@@ -212,12 +223,12 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	}
 
 	if claimer, ok := s.planRepo.(ScheduledTestPlanClaimer); ok && plan.LeaseToken != "" && plan.ActiveRunID != "" {
-		if err := claimer.FinalizeRun(ctx, plan.ID, plan.LeaseToken, plan.ActiveRunID, now, nextRun, failureStreak, lastError); err != nil {
+		if err := claimer.FinalizeRun(persistCtx, plan.ID, plan.LeaseToken, plan.ActiveRunID, now, nextRun, failureStreak, lastError); err != nil {
 			logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d FinalizeRun error: %v", plan.ID, err)
 		}
 		return
 	}
-	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, now, nextRun); err != nil {
+	if err := s.planRepo.UpdateAfterRun(persistCtx, plan.ID, now, nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
 }
