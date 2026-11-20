@@ -3,7 +3,7 @@
 ### 2026-11-20 — COS 暂停运营和发布
 
 - 后续生产更新仅覆盖主站 `ai.moshu.cloud` 和 L1 `api.tokenpulse.top` / `api.moshu.cloud`。COS `cos.tokenpulse.top` 保持停用，保留配置及持久数据；在用户明确要求恢复前，跳过部署、迁移和上线验收。共享镜像仍可正常构建和发布。详见 [生产发布手册](../deploy/CUSTOM_RELEASE_RUNBOOK.md#production-targets-2026-11-20)。
-- COS 的应用、PostgreSQL 和 Redis 均已正常停止。清理 15 个旧镜像和一批未使用的构建缓存后，根盘从 78% 降到 69%。复查约有 22.5 GiB 可用，已知备份目录合计约 19.2 GiB，为最大单项。详见 [VPS 空间核查与保留建议](CUSTOM_VPS_STORAGE_20261120.md)。
+- COS 的应用、PostgreSQL 和 Redis 均已正常停止。先清理 15 个旧镜像和一批未使用的构建缓存，根盘从 78% 降到 69%；后续清理 Go 缓存及无需保留的备份并去重，降至 62%，可用约 27.7 GiB。正式恢复点已复查。详见 [VPS 空间核查与清理记录](CUSTOM_VPS_STORAGE_20261120.md)。
 
 ### 2026-11-18 — 0.2.23-custom.1：合并官方 v0.2.23（三站生产部署完成）
 
