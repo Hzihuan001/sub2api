@@ -4,6 +4,8 @@
 
 The active production targets are **main** (`ai.moshu.cloud`) and **L1** (`api.tokenpulse.top` / `api.moshu.cloud`). **COS** (`cos.tokenpulse.top`) is paused until the owner explicitly requests its return. Skip COS in release preflight, rollout, migrations, rollback and post-release acceptance. Leave its Compose image pinned and its containers stopped; preserve its persistent data and configuration. Publishing the shared artifact to GHCR is independent of deploying it to a site. Earlier three-site release records describe past deployments and do not add COS to the current target list.
 
+For current VPS disk usage and separate accounting for backups, Docker and live data, see the [2026-11-20 storage audit](../docs/CUSTOM_VPS_STORAGE_20261120.md). Treat release dumps and archives as recovery data; check restore coverage and verify an off-host copy before pruning old restore points.
+
 ## Current production release: 0.2.23-custom.1 (2026-11-18)
 
 Runtime source: `004a07e3dc360cb9bfd80c1eeb18792d74936575`, tag `custom-0.2.23.1`, merged upstream `v0.2.23`. On November 18, COS, L1 and main were deployed with `ghcr.io/hzihuan001/sub2api@sha256:b63e2626afb938e3750effdcff508211cdfc4cc6ff2157e335b88143d83e3f73` and passed rollout health checks with zero restarts. See the [release record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM1_20261118.md) for test and production evidence.
