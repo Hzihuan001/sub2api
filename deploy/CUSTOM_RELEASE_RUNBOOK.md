@@ -6,7 +6,11 @@ The active production targets are **main** (`ai.moshu.cloud`) and **L1** (`api.t
 
 For current VPS disk usage and separate accounting for backups, Docker and live data, see the [2026-11-20 storage audit](../docs/CUSTOM_VPS_STORAGE_20261120.md). Treat release dumps and archives as recovery data; check restore coverage and verify an off-host copy before pruning old restore points.
 
-## Current production release: 0.2.23-custom.1 (2026-11-18)
+## Current production release 0.2.23-custom.2 (2026-11-21)
+
+Main and L1 run `ghcr.io/hzihuan001/sub2api@sha256:594fe3566ce73ed6ea2ebaecaca7f175b6a1616b44304f10d215ba03bed4e315` from commit `95653e29d0adfa1313ad0840186b87e56286ae38` and tag `custom-0.2.23.2`. L1's paired production Images API route and same-key result retrieval passed real generation and independent ledger checks. The PostgreSQL migration counts are 342 for main and 351 for L1. The verified backup is `/opt/sub2api-backups/v0.2.23-custom.2-20261120T204041Z`. Restore the matching application configuration with the `.1` image below for application rollback and retain the live databases and relay data directories. [Release record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM2_20261121.md)
+
+## Previous production release 0.2.23-custom.1 (2026-11-18)
 
 Runtime source: `004a07e3dc360cb9bfd80c1eeb18792d74936575`, tag `custom-0.2.23.1`, merged upstream `v0.2.23`. On November 18, COS, L1 and main were deployed with `ghcr.io/hzihuan001/sub2api@sha256:b63e2626afb938e3750effdcff508211cdfc4cc6ff2157e335b88143d83e3f73` and passed rollout health checks with zero restarts. See the [release record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM1_20261118.md) for test and production evidence.
 

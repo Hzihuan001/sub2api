@@ -1,5 +1,10 @@
 # Upstream upgrade PRs
 
+### 2026-11-21 — v0.2.23 定制增量发布
+
+- `0.2.23-custom.2` 运行提交 `95653e29d0adfa1313ad0840186b87e56286ae38`。同步图片转发的签名、暂存和账本逻辑集中在 `backend/internal/imagerelay` 与 `openai_image_relay` 服务文件。升级清单保护模块及关键宿主入口。
+- 主站和 L1 生产部署及实际生图验收已完成。 [生产发布记录](CUSTOM_RELEASE_0_2_23_CUSTOM2_20261121.md)
+
 ### 2026-11-10 — upstream v0.2.20 — 合并、发布与生产部署完成
 
 - **上游/源码**：官方 `v0.2.20` / `dab829a4e9b7d1cc307189aea8b0319eb29e29d0`；定制升级分支 `upgrade/upstream-v0.2.20-20261109`，运行提交 `eb069def5b0dbcdd8f85f4294fa20434a6537015`，tag `custom-0.2.20.1`。
