@@ -15,24 +15,39 @@ type imageConcurrencyLimiter struct {
 	enabled bool
 }
 
+type imageAdmission uint8
+
+const (
+	imageAdmitted imageAdmission = iota
+	imageAtCapacity
+	imageQueueFull
+	imageQueueTimeout
+	imageRequestEnded
+)
+
 func (l *imageConcurrencyLimiter) TryAcquire(enabled bool, limit int) (func(), bool) {
-	return l.acquire(context.Background(), enabled, limit, false, 0, 0)
+	return l.Acquire(context.Background(), enabled, limit, false, 0, 0)
 }
 
 func (l *imageConcurrencyLimiter) Acquire(ctx context.Context, enabled bool, limit int, wait bool, timeout time.Duration, maxWaiting int) (func(), bool) {
-	return l.acquire(ctx, enabled, limit, wait, timeout, maxWaiting)
+	release, admission := l.acquire(ctx, enabled, limit, wait, timeout, maxWaiting)
+	return release, admission == imageAdmitted
 }
 
-func (l *imageConcurrencyLimiter) acquire(ctx context.Context, enabled bool, limit int, wait bool, timeout time.Duration, maxWaiting int) (func(), bool) {
-	if !enabled || limit <= 0 {
-		return nil, true
-	}
+func (l *imageConcurrencyLimiter) acquire(ctx context.Context, enabled bool, limit int, wait bool, timeout time.Duration, maxWaiting int) (func(), imageAdmission) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	parent := ctx
+	if parent.Err() != nil {
+		return nil, imageRequestEnded
+	}
+	if !enabled || limit <= 0 {
+		return nil, imageAdmitted
+	}
 	if wait {
 		if timeout <= 0 {
-			return nil, false
+			return nil, imageQueueTimeout
 		}
 		waitCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
@@ -41,19 +56,38 @@ func (l *imageConcurrencyLimiter) acquire(ctx context.Context, enabled bool, lim
 	if maxWaiting < 0 {
 		maxWaiting = 0
 	}
+	stopped := func() imageAdmission {
+		if parent.Err() != nil {
+			return imageRequestEnded
+		}
+		return imageQueueTimeout
+	}
 	for {
+		if ctx.Err() != nil {
+			return nil, stopped()
+		}
 		release, acquired, waitRelease, notify := l.tryAcquireLocked(enabled, limit, wait, maxWaiting)
 		if acquired {
-			return release, acquired
+			if ctx.Err() != nil {
+				release()
+				return nil, stopped()
+			}
+			return release, imageAdmitted
 		}
-		if !wait || notify == nil {
-			return nil, false
+		if !wait {
+			return nil, imageAtCapacity
+		}
+		if notify == nil {
+			if ctx.Err() != nil {
+				return nil, stopped()
+			}
+			return nil, imageQueueFull
 		}
 		if !l.waitForSlot(ctx, notify) {
 			if waitRelease != nil {
 				waitRelease()
 			}
-			return nil, false
+			return nil, stopped()
 		}
 		if waitRelease != nil {
 			waitRelease()

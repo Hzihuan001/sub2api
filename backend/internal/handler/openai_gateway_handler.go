@@ -4124,7 +4124,8 @@ func (h *OpenAIGatewayHandler) acquireImageGenerationSlot(c *gin.Context, stream
 	}
 	imageConcurrency := h.cfg.Gateway.ImageConcurrency
 	wait := strings.TrimSpace(imageConcurrency.OverflowMode) == config.ImageConcurrencyOverflowModeWait
-	release, acquired := h.imageLimiter.Acquire(
+	start := time.Now()
+	release, admission := h.imageLimiter.acquire(
 		c.Request.Context(),
 		imageConcurrency.Enabled,
 		imageConcurrency.MaxConcurrentRequests,
@@ -4132,10 +4133,31 @@ func (h *OpenAIGatewayHandler) acquireImageGenerationSlot(c *gin.Context, stream
 		time.Duration(imageConcurrency.WaitTimeoutSeconds)*time.Second,
 		imageConcurrency.MaxWaitingRequests,
 	)
-	if acquired {
+	if admission == imageAdmitted {
 		return release, true
 	}
-	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error", gatewayConcurrencyLimitCode, "Image generation concurrency limit exceeded, please retry later", streamStarted, false)
+	if strings.HasSuffix(c.FullPath(), "/async") {
+		h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error", gatewayConcurrencyLimitCode, "Image generation concurrency limit exceeded, please retry later", streamStarted, false)
+		return nil, false
+	}
+	reason := "capacity"
+	code, message := gatewayConcurrencyLimitCode, "Image generation concurrency limit exceeded, please retry later"
+	switch admission {
+	case imageRequestEnded:
+		requestLogger(c, "handler.openai_gateway.image_admission").Info("image_admission_request_ended",
+			zap.Duration("queue_elapsed", time.Since(start)))
+		if !c.Writer.Written() {
+			c.Status(pkghttputil.StatusClientClosedRequest)
+		}
+		return nil, false
+	case imageQueueFull:
+		reason, code, message = "queue_full", gatewayQueueFullCode, "Image generation queue is full, please retry later"
+	case imageQueueTimeout:
+		reason, message = "queue_timeout", "Timed out waiting for an image generation slot, please retry later"
+	}
+	requestLogger(c, "handler.openai_gateway.image_admission").Info("image_admission_rejected",
+		zap.String("reason", reason), zap.Duration("queue_elapsed", time.Since(start)))
+	h.handleStreamingAwareErrorWithCode(c, http.StatusTooManyRequests, "rate_limit_error", code, message, streamStarted, false)
 	return nil, false
 }
 

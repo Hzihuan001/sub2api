@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/imagerelay"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -791,6 +792,9 @@ func (s *OpenAIGatewayService) ForwardImages(
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
+	if _, signed := inboundImageRelay(ctx); signed && account.Type != AccountTypeAPIKey {
+		return nil, fmt.Errorf("image relay requires a compatible upstream account")
+	}
 	switch account.Type {
 	case AccountTypeAPIKey:
 		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
@@ -850,6 +854,38 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err != nil {
 		return nil, err
 	}
+	outbound, err := s.prepareImageRelayL1(ctx, c, upstreamReq, account, parsed, forwardBody)
+	if err != nil {
+		if errors.Is(err, errImageRelayHandled) {
+			return nil, nil
+		}
+		if (errors.Is(err, imagerelay.ErrSpoolCapacity) || errors.Is(err, imagerelay.ErrResultCapacity)) && ctx.Err() == nil {
+			c.Header("Retry-After", "15")
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{
+				"type": "server_error", "code": "image_delivery_capacity", "message": "Image delivery is busy, please retry later",
+			}})
+		}
+		return nil, err
+	}
+	if outbound != nil {
+		defer outbound.close()
+	}
+	inboundBinding, inbound := inboundImageRelay(ctx)
+	terminalDispatch := inbound || outbound != nil
+	if inbound {
+		x := c.Request.Context().Value(imageRelayInboundOperationKey{}).(imageRelayOperationContext)
+		budget := min(resolveUpstreamResponseReadLimit(s.cfg), int64(imagerelay.MaxResultBodyBytes))
+		reservation, reserveErr := s.imageRelayRuntime().results.Reserve(x.op.ID, x.owner.APIKeyID, budget)
+		if reserveErr != nil {
+			_ = s.imageRelayRuntime().journal.MarkFailed(x.owner, x.op.ID, time.Now())
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"type": "server_error", "code": "image_delivery_capacity", "message": "Image delivery is busy"}})
+			return nil, reserveErr
+		}
+		defer reservation.Close()
+		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), imageRelayInboundReservationKey{}, reservation))
+		upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamRedirectsDisabled(upstreamReq.Context()))
+		upstreamReq.GetBody = nil
+	}
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -872,16 +908,27 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
+		if terminalDispatch {
+			return nil, errors.New("image relay upstream response is uncertain")
+		}
 		if isOpenAIImagesTransientTransportError(err) {
 			return nil, newOpenAIImagesTransportFailoverError()
 		}
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+	}
+	if terminalDispatch && resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		_ = resp.Body.Close()
+		return nil, errors.New("image relay upstream returned a redirect")
 	}
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
 		_ = resp.Body.Close()
 		respBody = s.redactAgentIdentitySensitiveBody(upstreamCtx, account, respBody)
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		if terminalDispatch {
+			imagerelay.StripHeaders(resp.Header)
+			return s.handleOpenAIImagesHTTPError(upstreamCtx, resp, c, account, false, upstreamModel)
+		}
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 		// Image API-key accounts need a dedicated balance classification.  The
@@ -987,27 +1034,45 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			ImageOutputSizes: imageOutputSizes,
 		}, nil
 	} else {
-		nonStreamUsage, nonStreamCount, nonStreamSizes, err := s.handleOpenAIImagesNonStreamingResponse(upstreamCtx, resp, c, account, parsed)
+		var nonStreamUsage OpenAIUsage
+		var nonStreamCount int
+		var nonStreamSizes []string
+		var delivery *imageRelayDelivery
+		relayID := inboundBinding.OperationID
+		if outbound != nil {
+			relayID = outbound.binding.OperationID
+			nonStreamUsage, nonStreamCount, nonStreamSizes, delivery, err = outbound.receive(upstreamCtx, resp, upstreamModel)
+		} else if inbound {
+			var resultBody []byte
+			resultBody, nonStreamUsage, nonStreamCount, nonStreamSizes, err = s.readOpenAIImageResult(upstreamCtx, resp, c, account, parsed)
+			if err == nil {
+				delivery, err = s.storeMainImageRelay(c, resp, parsed, resultBody, nonStreamUsage, nonStreamCount, nonStreamSizes)
+			}
+		} else {
+			nonStreamUsage, nonStreamCount, nonStreamSizes, err = s.handleOpenAIImagesNonStreamingResponse(upstreamCtx, resp, c, account, parsed)
+		}
 		if err != nil {
 			return nil, err
 		}
 		usage = nonStreamUsage
 		imageCount = resolveBillableImageCount(nonStreamCount, parsed.N, imageCountBillingEnabled(getAPIKeyFromContext(c)))
 		return &OpenAIForwardResult{
-			RequestID:        resp.Header.Get("x-request-id"),
-			UpstreamHeaders:  resp.Header,
-			Usage:            usage,
-			Model:            requestModel,
-			UpstreamModel:    upstreamModel,
-			Stream:           parsed.Stream,
-			ResponseHeaders:  resp.Header.Clone(),
-			Duration:         time.Since(startTime),
-			FirstTokenMs:     firstTokenMs,
-			ImageEndpoint:    true,
-			ImageCount:       imageCount,
-			ImageSize:        parsed.SizeTier,
-			ImageInputSize:   parsed.Size,
-			ImageOutputSizes: nonStreamSizes,
+			RequestID:          resp.Header.Get("x-request-id"),
+			UpstreamHeaders:    resp.Header,
+			Usage:              usage,
+			Model:              requestModel,
+			UpstreamModel:      upstreamModel,
+			Stream:             parsed.Stream,
+			ResponseHeaders:    resp.Header.Clone(),
+			Duration:           time.Since(startTime),
+			FirstTokenMs:       firstTokenMs,
+			ImageEndpoint:      true,
+			ImageCount:         imageCount,
+			ImageSize:          parsed.SizeTier,
+			ImageInputSize:     parsed.Size,
+			ImageOutputSizes:   nonStreamSizes,
+			imageRelayDelivery: delivery,
+			imageRelayID:       relayID,
 		}, nil
 	}
 }
@@ -1202,9 +1267,34 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 	account *Account,
 	parsed *OpenAIImagesRequest,
 ) (OpenAIUsage, int, []string, error) {
-	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	body, usage, count, sizes, err := s.readOpenAIImageResult(ctx, resp, c, account, parsed)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
+	}
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	imagerelay.StripHeaders(c.Writer.Header())
+	contentType := "application/json"
+	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
+		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" {
+			contentType = upstreamType
+		}
+	}
+	if _, ok := inboundImageRelay(c.Request.Context()); ok {
+		if gjson.ValidBytes(body) && s.signImageRelayResult(c, resp.StatusCode, parsed, body, usage, count, sizes) == nil {
+			c.Header("Content-Length", strconv.Itoa(len(body)))
+			c.Writer.Header().Del("Content-Encoding")
+			contentType = "application/json"
+		}
+	}
+	c.Data(resp.StatusCode, contentType, body)
+	return usage, count, sizes, nil
+}
+
+func (s *OpenAIGatewayService) readOpenAIImageResult(ctx context.Context, resp *http.Response, c *gin.Context,
+	account *Account, parsed *OpenAIImagesRequest) ([]byte, OpenAIUsage, int, []string, error) {
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return nil, OpenAIUsage{}, 0, nil, err
 	}
 	body = s.backfillOpenAIImagesB64JSON(ctx, account, parsed, body)
 	// API-key Images providers commonly return only b64_json and either omit
@@ -1215,17 +1305,10 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 	// untouched unless they contain an inline data URL (or the optional b64
 	// backfill above has populated b64_json).
 	body = reconcileOpenAIImagesAPIResponseSizes(body)
-	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	contentType := "application/json"
-	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
-		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" {
-			contentType = upstreamType
-		}
-	}
-	c.Data(resp.StatusCode, contentType, body)
-
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
-	return usage, extractOpenAIImageCountFromJSONBytes(body), collectOpenAIResponseImageOutputSizesFromJSONBytes(body), nil
+	count := extractOpenAIImageCountFromJSONBytes(body)
+	sizes := collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
+	return body, usage, count, sizes, nil
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(

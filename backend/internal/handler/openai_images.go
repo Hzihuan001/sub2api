@@ -103,6 +103,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
+	if status, err := h.gatewayService.AuthorizeImageRelay(c, apiKey, parsed, body); err != nil {
+		h.errorResponse(c, status, "api_error", err.Error())
+		return
+	}
 	imageReleaseFunc, acquired := h.acquireImageGenerationSlot(c, streamStarted)
 	if !acquired {
 		return
@@ -254,13 +258,16 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		// account selection here could route a retry to a different account.
 		for {
 			service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
-			if !parsed.Stream && !jsonKeepaliveStarted {
+			if !parsed.Stream && !jsonKeepaliveStarted && !h.gatewayService.ImageRelayDirectResponse(c, account, parsed) {
 				stopJSONKeepalive = service.StartOpenAIImagesJSONKeepalive(c, h.openAIImagesJSONKeepaliveInterval())
 				jsonKeepaliveStarted = true
 			}
 			forwardStart := time.Now()
 			writerSizeBeforeForward := service.OpenAIImagesJSONKeepaliveAdjustedWrittenSize(c)
 			result, err := h.gatewayService.ForwardImages(requestCtx, c, account, body, parsed, channelMapping.MappedModel)
+			if result == nil && err == nil && c.Writer.Written() {
+				return
+			}
 			forwardDurationMs := time.Since(forwardStart).Milliseconds()
 			upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 			responseLatencyMs := forwardDurationMs
@@ -391,7 +398,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}
 			sessionID := service.ExtractClientSessionID(c)
 			channelUsageFields := clientRequestedUsageFields(c, channelMapping, requestModel, upstreamModel)
-			h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+			recordUsage := func(ctx context.Context) error {
 				if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 					Result:             result,
 					APIKey:             apiKey,
@@ -416,14 +423,49 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						zap.String("model", clientRequestModel),
 						zap.Int64("account_id", account.ID),
 					).Error("openai.images.record_usage_failed", zap.Error(err))
+					return err
 				}
-			})
+				return nil
+			}
+			if result.ImageRelayPendingDelivery() {
+				defer result.CloseImageRelayDelivery()
+				billingCtx, stopBilling := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 12*time.Second)
+				err := recordUsage(billingCtx)
+				stopBilling()
+				if err != nil {
+					h.errorResponse(c, http.StatusBadGateway, "api_error", "Image settlement is pending. Do not submit this image again")
+					return
+				}
+				for _, release := range []func(){accountReleaseFunc, userReleaseFunc, imageReleaseFunc, inflightDone} {
+					if release != nil {
+						release()
+					}
+				}
+				if err := result.ServeImageRelayDelivery(c); err != nil {
+					reqLog.Info("image_relay_delivery_interrupted")
+				}
+				return
+			}
+			h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) { _ = recordUsage(ctx) })
 
 			reqLog.Debug("openai.images.request_completed",
 				zap.Int64("account_id", account.ID),
 			)
 			return
 		}
+	}
+}
+
+// RecoverRelayedImage serves the original charged result to the same API key.
+func (h *OpenAIGatewayHandler) RecoverRelayedImage(c *gin.Context) {
+	key, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+	status, err := h.gatewayService.RecoverImageRelayResult(c, key, c.Param("operation_id"))
+	if status != 0 && err != nil && !c.Writer.Written() {
+		h.errorResponse(c, status, "api_error", err.Error())
 	}
 }
 

@@ -916,6 +916,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 	account *Account,
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
+	return s.handleOpenAIImagesHTTPError(ctx, resp, c, account, true, requestedModel...)
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesHTTPError(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	allowFailover bool,
+	requestedModel ...string,
+) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
@@ -1014,7 +1025,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesErrorResponse(
 	if transientImageFailure {
 		markOpenAIImagesTransientRetry(failoverErr)
 	}
-	shouldFailover := shouldDisable || transientImageFailure || (account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests && failoverErr.RetryableOnSameAccount)
+	shouldFailover := allowFailover && (shouldDisable || transientImageFailure || (account.IsOpenAIOAuthLike() && resp.StatusCode == http.StatusTooManyRequests && failoverErr.RetryableOnSameAccount))
 	kind := "http_error"
 	if shouldFailover {
 		kind = "failover"

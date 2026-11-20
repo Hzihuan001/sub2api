@@ -292,6 +292,8 @@ type OpenAIForwardResult struct {
 	ImageInputSize     string
 	ImageOutputSize    string
 	ImageOutputSizes   []string
+	imageRelayDelivery *imageRelayDelivery
+	imageRelayID       string
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
 	VideoCount         int
@@ -482,6 +484,10 @@ type OpenAIGatewayService struct {
 	liveAttestationCipher SecretEncryptor
 
 	openaiWSPoolOnce               sync.Once
+	imageRelayOnce                 sync.Once
+	imageRelay                     *imageRelayRuntime
+	imageRelayMaintenanceCancel    context.CancelFunc
+	imageRelayMaintenanceDone      chan struct{}
 	openaiWSStateStoreOnce         sync.Once
 	openaiSchedulerOnce            sync.Once
 	openaiProxyStreamCircuitOnce   sync.Once
@@ -601,6 +607,7 @@ func NewOpenAIGatewayService(
 		openAITokenProvider.SetAccountRuntimeBlocker(svc)
 	}
 	svc.logOpenAIWSModeBootstrap()
+	svc.startImageRelayMaintenance()
 	return svc
 }
 

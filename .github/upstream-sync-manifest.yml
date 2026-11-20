@@ -27,6 +27,17 @@ protected_paths:
   - backend/internal/repository/overload_failure_cache.go
   - backend/internal/authz
   - backend/internal/securityaudit
+  - backend/internal/imagerelay
+  - backend/internal/config/image_relay.go
+  - backend/internal/service/openai_image_relay.go
+  - backend/internal/service/openai_image_relay_l1.go
+  - backend/internal/handler/image_concurrency_limiter.go
+  - backend/internal/handler/image_concurrency_limiter_test.go
+  - backend/internal/handler/openai_images.go
+  - backend/internal/service/openai_images.go
+  - backend/internal/service/openai_images_responses.go
+  - backend/internal/service/openai_gateway_usage.go
+  - deploy/config.example.yaml
   - frontend/src/authz
   - frontend/src/features/image-studio
   - backend/internal/handler/pelican_showcase_handler.go

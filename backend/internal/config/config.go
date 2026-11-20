@@ -1049,6 +1049,20 @@ type ImageConcurrencyConfig struct {
 	MaxWaitingRequests int `mapstructure:"max_waiting_requests"`
 }
 
+// ImageRelayConfig selects the private synchronous image exchange for one
+// explicitly paired deployment. The zero value keeps the exchange disabled.
+type ImageRelayConfig struct {
+	Role            string `mapstructure:"role"`
+	SourceSite      string `mapstructure:"source_site"`
+	DestinationSite string `mapstructure:"destination_site"`
+	MainAPIKeyID    int64  `mapstructure:"main_api_key_id"`
+	L1AccountID     int64  `mapstructure:"l1_account_id"`
+	MainOrigin      string `mapstructure:"main_origin"`
+	KeyID           string `mapstructure:"key_id"`
+	SecretHex       string `mapstructure:"secret_hex" json:"-"`
+	PrivateDir      string `mapstructure:"private_dir"`
+}
+
 const (
 	ImageConcurrencyOverflowModeReject = "reject"
 	ImageConcurrencyOverflowModeWait   = "wait"
@@ -1139,6 +1153,7 @@ type GatewayConfig struct {
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	ImageRelay       ImageRelayConfig       `mapstructure:"image_relay"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -2634,6 +2649,15 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
 	viper.SetDefault("gateway.image_concurrency.wait_timeout_seconds", 30)
 	viper.SetDefault("gateway.image_concurrency.max_waiting_requests", 100)
+	viper.SetDefault("gateway.image_relay.role", "")
+	viper.SetDefault("gateway.image_relay.source_site", "")
+	viper.SetDefault("gateway.image_relay.destination_site", "")
+	viper.SetDefault("gateway.image_relay.main_api_key_id", 0)
+	viper.SetDefault("gateway.image_relay.l1_account_id", 0)
+	viper.SetDefault("gateway.image_relay.main_origin", "")
+	viper.SetDefault("gateway.image_relay.key_id", "")
+	viper.SetDefault("gateway.image_relay.secret_hex", "")
+	viper.SetDefault("gateway.image_relay.private_dir", "")
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
@@ -3550,6 +3574,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ImageConcurrency.MaxWaitingRequests < 0 {
 		return fmt.Errorf("gateway.image_concurrency.max_waiting_requests must be non-negative")
+	}
+	if err := c.Gateway.ImageRelay.validate(c.Gateway.UpstreamResponseReadMaxBytes); err != nil {
+		return err
 	}
 	if c.Gateway.MaxIdleConns <= 0 {
 		return fmt.Errorf("gateway.max_idle_conns must be positive")

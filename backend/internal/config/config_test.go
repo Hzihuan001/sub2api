@@ -40,6 +40,29 @@ func TestAutoRequestBodyMemoryBudget(t *testing.T) {
 	require.Equal(t, int64(math.MaxUint64/4), autoRequestBodyMemoryBudget(math.MaxUint64))
 }
 
+func TestLoadImageRelayPairFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	secret := strings.Repeat("1a", 32)
+	privateDir := t.TempDir()
+	t.Setenv("GATEWAY_IMAGE_RELAY_ROLE", "l1")
+	t.Setenv("GATEWAY_IMAGE_RELAY_SOURCE_SITE", "l1")
+	t.Setenv("GATEWAY_IMAGE_RELAY_DESTINATION_SITE", "main")
+	t.Setenv("GATEWAY_IMAGE_RELAY_MAIN_API_KEY_ID", "21")
+	t.Setenv("GATEWAY_IMAGE_RELAY_L1_ACCOUNT_ID", "32")
+	t.Setenv("GATEWAY_IMAGE_RELAY_MAIN_ORIGIN", "http://main:8080")
+	t.Setenv("GATEWAY_IMAGE_RELAY_KEY_ID", "test")
+	t.Setenv("GATEWAY_IMAGE_RELAY_SECRET_HEX", secret)
+	t.Setenv("GATEWAY_IMAGE_RELAY_PRIVATE_DIR", privateDir)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, ImageRelayConfig{
+		Role: "l1", SourceSite: "l1", DestinationSite: "main",
+		MainAPIKeyID: 21, L1AccountID: 32, MainOrigin: "http://main:8080",
+		KeyID: "test", SecretHex: secret, PrivateDir: privateDir,
+	}, cfg.Gateway.ImageRelay)
+}
+
 func TestLoadRequestBodyMemoryBudget(t *testing.T) {
 	t.Run("auto-sized from memory limit when unset", func(t *testing.T) {
 		resetViperWithJWTSecret(t)
