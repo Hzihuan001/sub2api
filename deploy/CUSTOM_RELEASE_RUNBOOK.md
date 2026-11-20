@@ -1,8 +1,12 @@
 # Sub2API custom release runbook
 
+## Production targets (2026-11-20)
+
+The active production targets are **main** (`ai.moshu.cloud`) and **L1** (`api.tokenpulse.top` / `api.moshu.cloud`). **COS** (`cos.tokenpulse.top`) is paused until the owner explicitly requests its return. Skip COS in release preflight, rollout, migrations, rollback and post-release acceptance. Leave its Compose image pinned and its containers stopped; preserve its persistent data and configuration. Publishing the shared artifact to GHCR is independent of deploying it to a site. Earlier three-site release records describe past deployments and do not add COS to the current target list.
+
 ## Current production release: 0.2.23-custom.1 (2026-11-18)
 
-Runtime source: `004a07e3dc360cb9bfd80c1eeb18792d74936575`, tag `custom-0.2.23.1`, merged upstream `v0.2.23`. COS, L1 and main run `ghcr.io/hzihuan001/sub2api@sha256:b63e2626afb938e3750effdcff508211cdfc4cc6ff2157e335b88143d83e3f73`, all healthy with zero restarts. See the [release record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM1_20261118.md) for test and production evidence.
+Runtime source: `004a07e3dc360cb9bfd80c1eeb18792d74936575`, tag `custom-0.2.23.1`, merged upstream `v0.2.23`. On November 18, COS, L1 and main were deployed with `ghcr.io/hzihuan001/sub2api@sha256:b63e2626afb938e3750effdcff508211cdfc4cc6ff2157e335b88143d83e3f73` and passed rollout health checks with zero restarts. See the [release record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM1_20261118.md) for test and production evidence.
 
 When draining main, include callers that forward to it over the container network. L1 continued to reach main while the `ai.moshu.cloud` and `nocf.moshu.cloud` inference entrances were paused. The successful drain included both L1 domain aliases in the same bounded OpenResty change; pages, health and image task queries remained available during the drain. Confirm zero active work before recreating the application. After the switch, check original proxy file hashes, absence of the temporary map, `nginx -t`, and readiness through all entrances.
 
@@ -171,7 +175,7 @@ The subsequent read-only comparison confirmed three distinct site namespaces. Ac
 
 1. Pull the exact published digest locally; verify version/commit, health, PostgreSQL utilities and bounded shared-Key-editor/protocol checks. Do not substitute earlier candidate results for the actual artifact.
 2. Inspect each live deployment's Compose path/service, old image, migration ledger, site namespace and configuration. Take private, readable PostgreSQL/configuration/persistent-data/proxy backups before mutation; record checksums and verify archive/dump readability without exposing credentials.
-3. Deploy **main → L1 → COS**, only after the previous site's checks pass. Drain using read-only account/user/Key/live/WebSocket slots, waiting counters, batch jobs and image tasks. A timeout does not authorize forced cancellation. Update only the application service; preserve PostgreSQL, Redis, volumes, environment, networks and reverse-proxy configuration. Do not make paid model or payment calls without separate authorization.
+3. Deploy sequentially to the active production targets listed at the top, only after the previous site's checks pass. Drain using read-only account/user/Key/live/WebSocket slots, waiting counters, batch jobs and image tasks. A timeout does not authorize forced cancellation. Update only the application service; preserve PostgreSQL, Redis, volumes, environment, networks and reverse-proxy configuration. Do not make paid model or payment calls without separate authorization.
 4. On a failed station gate, stop subsequent stations and apply the recorded compatible fallback only when migration and routing-scope guards allow it. Do not restore older business data. Record exact outcomes, limits and immutable coordinates.
 
 Documentation-only closure commits must not move the runtime tag. The older release records below remain historical evidence, not current `.13` acceptance or rollback instructions.
@@ -254,7 +258,7 @@ of a fresh full performance run or complete production browser validation.
 
 ## Read-only server preflight
 
-Run this for main, L1 and COS before making any application change. Save the
+Run this for each active production target before making any application change. Save the
 output in the release report, redacting secret values. Recheck active requests,
 long connections and unfinished batch jobs immediately before each site's update;
 wait for existing work to finish rather than forcing it to complete.
@@ -282,7 +286,7 @@ downgrade it.
 
 ## Backup gate
 
-Before the three-site rollout, create timestamped backups for every site outside
+Before rollout, create timestamped backups for every active target outside
 the application volume. Verify non-empty files, readable archives and checksums;
 record whether any later production changes require a fresh backup:
 
@@ -308,18 +312,18 @@ counts were main 324→326 and L1/COS 333→335. Do not use the historical `.7`
 one-migration or `.6` unchanged-total assertion. New custom migration names must
 match `^9[0-9]{3}_custom_[a-z0-9][a-z0-9_-]*\.sql$`; published files remain immutable.
 
-## Main → L1 → COS application-only deployment
+## Application-only deployment to active targets
 
-1. Complete read-only preflight, published-image acceptance and all three backup gates. Before each site, recheck the installed version and drain regular/live account/user/Key/WS slots, user/account waits, unfinished batch jobs and Redis `image_task:*` processing tasks. Read only a bounded status prefix, not base64 results; unknown states fail closed. `.12` waited for zero and rechecked immediately before the app change; it did not force active requests to end.
+1. Complete read-only preflight, published-image acceptance and the backup gate for each active target. Before each site, recheck the installed version and drain regular/live account/user/Key/WS slots, user/account waits, unfinished batch jobs and Redis `image_task:*` processing tasks. Read only a bounded status prefix, not base64 results; unknown states fail closed. `.12` waited for zero and rechecked immediately before the app change; it did not force active requests to end.
    Identify upstream callers with direct container-network access as well as public and direct domains. If a short ingress pause is needed, cover sites that forward to the application in the same reversible change. Keep status reads available; check that each paused entrance restores its original bytes and response after deployment.
 2. Change only the Sub2API service image to the approved GHCR digest.
-3. Pull the digest and run `docker compose up -d --no-deps --pull never <application-service>`: `sub2api` for main, `api` for L1/COS (or the
+3. Pull the digest and run `docker compose up -d --no-deps --pull never <application-service>`: `sub2api` for main, `api` for L1 (or the
    equivalent 1Panel operation that recreates only the application container).
 4. Verify the container is healthy, its restart count, embedded version/commit, image ID/digest and Compose reference. Check internal/public health, relevant public entrypoints and startup logs before moving to the next site.
 5. Record exactly which checks ran. The local role/API Key/WebSocket matrix does not become a production role/browser/SSE matrix by inference. A reachable login or image-studio URL is not a logged-in workflow or paid generation test. Production fault injection, paid model calls and extra SSE load are outside this approved sequence.
-6. Record timestamps, commands and results separately for main, L1 and COS. Stop the sequence on failure and roll back only the failed site's application as appropriate; do not start the next site while a check is failing.
+6. Record timestamps, commands and results separately for each deployed site, and note COS as paused. Stop the sequence on failure and roll back only the failed site's application as appropriate; do not start the next site while a check is failing.
 
-Use the same accepted digest at all three sites; never rebuild there. Preserve
+Use the same accepted digest at all deployed sites; never rebuild there. Preserve
 JWT/TOTP keys, database, Redis, volumes, ports, networks, OpenResty and Cloudflare
 settings. Record the actual post-deploy observation duration and any planned
 30-minute or 24-hour follow-up separately; neither window is complete merely
