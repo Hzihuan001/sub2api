@@ -1,9 +1,9 @@
 # Upstream upgrade PRs
 
-### 2026-11-21 — 生图任务和本地图片保留期候选
+### 2026-11-21 — 0.2.23-custom.4 生图任务和本地图片保留期候选
 
 - 生成完成后任务记录和工作台图片下载保留 1 小时，未确认提交恢复窗口为 1 小时。图片按任务到期时间成组清理，清理 worker 在启动时扫描，之后每小时运行，并在应用关闭时停止。任务到期后图片无法经工作台下载，文件物理删除最多延迟不足 1 小时。
-- 相关实现位于 `backend/internal/service/image_task.go`、`image_task_local.go` 和 `backend/cmd/server/wire.go`。本地候选尚未发布或部署。 [功能日志](CUSTOM_FEATURE_LOG.md)
+- 相关实现位于 `backend/internal/service/image_task.go`、`image_task_local.go` 和 `backend/cmd/server/wire.go`。文件系统访问使用任务目录根句柄约束路径。全量 lint 的 38 条既存诊断与生产 `.2` 基线一致，增量 lint 无新增。候选尚未发布或部署，生产仍为 `0.2.23-custom.2`。 [功能日志](CUSTOM_FEATURE_LOG.md)
 
 ### 2026-11-21 — 生图工作台界面候选
 

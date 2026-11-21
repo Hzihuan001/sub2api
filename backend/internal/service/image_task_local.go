@@ -227,6 +227,11 @@ func (s *LocalImageStorage) StopCleanupWorker() {
 func (s *LocalImageStorage) cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	root, err := os.OpenRoot(s.dir)
+	if err != nil {
+		return
+	}
+	defer func() { _ = root.Close() }()
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		return
@@ -247,7 +252,7 @@ func (s *LocalImageStorage) cleanup() {
 		if infoErr != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		data, readErr := os.ReadFile(filepath.Join(s.dir, entry.Name()))
+		data, readErr := root.ReadFile(entry.Name())
 		var task ImageTaskRecord
 		if readErr == nil && json.Unmarshal(data, &task) == nil && task.ID == taskID && task.ExpiresAt > now.Unix() {
 			activeTasks[taskID] = struct{}{}
@@ -255,7 +260,7 @@ func (s *LocalImageStorage) cleanup() {
 		}
 		if readErr != nil || info.ModTime().Before(cutoff) || task.ExpiresAt <= now.Unix() {
 			expiredTasks[taskID] = struct{}{}
-			_ = os.Remove(filepath.Join(s.dir, entry.Name()))
+			_ = root.Remove(entry.Name())
 		}
 	}
 	for _, entry := range entries {
@@ -275,7 +280,7 @@ func (s *LocalImageStorage) cleanup() {
 		}
 		info, infoErr := entry.Info()
 		if infoErr == nil && info.Mode().IsRegular() && (taskExpired || (!taskActive && info.ModTime().Before(cutoff))) {
-			_ = os.Remove(filepath.Join(s.dir, entry.Name()))
+			_ = root.Remove(entry.Name())
 		}
 	}
 }
