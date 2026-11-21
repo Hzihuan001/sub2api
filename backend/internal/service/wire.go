@@ -754,6 +754,7 @@ func ProvideImageTaskService(store ImageTaskStore, settings *ImageStorageSetting
 		base = "./data"
 	}
 	local := NewLocalImageStorage(filepath.Join(base, "image-tasks"))
+	local.StartCleanupWorker(imageTaskCleanupInterval)
 	uploader := NewImageResultUploader(local, "", 0, nil)
 	tasks := NewImageTaskServiceWithResolver(store, settings.ResolverWithLocalFallback(uploader), defaultImageTaskTTL, defaultImageTaskExecutionTimeout)
 	tasks.SetLocalStorage(local)

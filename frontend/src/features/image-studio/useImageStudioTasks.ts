@@ -16,6 +16,7 @@ interface Options {
 }
 
 export const IMAGE_STUDIO_TASK_DOWNLOAD_ERROR = 'image_task_download_unavailable'
+const PENDING_TASK_RETENTION_MS = 60 * 60 * 1000
 
 function isTaskDownloadError(error: unknown): boolean {
   return (error as { code?: unknown } | null)?.code === IMAGE_STUDIO_TASK_DOWNLOAD_ERROR
@@ -210,7 +211,7 @@ export function useImageStudioTasks(options: Options) {
     const task: StoredStudioTask = {
       operationId: operationID(), apiKeyId: String(current.key.id), apiKeyName: current.key.name,
       request: { ...request, images: [...(request.images || [])] }, createdAt: Date.now(),
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000, submitAttempts: 0, state: 'pending',
+      expiresAt: Date.now() + PENDING_TASK_RETENTION_MS, submitAttempts: 0, state: 'pending',
     }
     tasks.value = [task, ...tasks.value]
     await run(task)

@@ -86,19 +86,19 @@ func TestLocalImageStorageRejectsInvalidPaths(t *testing.T) {
 func TestLocalImageStorageCleanupRetainsFreshAndUnrelatedFiles(t *testing.T) {
 	dir := t.TempDir()
 	oldNames := []string{localImageTestTaskID + "-0.png", localImageTestTaskID + ".json", ".image-abandoned"}
-	old := time.Now().Add(-49 * time.Hour)
+	old := time.Now().Add(-61 * time.Minute)
 	for _, name := range append(append([]string(nil), oldNames...), "unrelated.txt") {
 		path := filepath.Join(dir, name)
 		require.NoError(t, os.WriteFile(path, []byte("old"), 0600))
 		require.NoError(t, os.Chtimes(path, old, old))
 	}
-	freshName := localImageTestTaskID + "-1.png"
+	freshTaskID := "imgtask_ffffffffffffffffffffffffffffffff"
+	freshName := freshTaskID + "-1.png"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, freshName), []byte("fresh"), 0600))
 	directoryName := localImageTestTaskID + "-2.png"
 	require.NoError(t, os.Mkdir(filepath.Join(dir, directoryName), 0700))
 	storage := NewLocalImageStorage(dir)
-	_, err := storage.Save(context.Background(), localImageTestTaskID+"-3.png", "image/png", []byte("new"))
-	require.NoError(t, err)
+	storage.cleanup()
 	for _, name := range oldNames {
 		_, err := os.Stat(filepath.Join(dir, name))
 		require.ErrorIs(t, err, os.ErrNotExist, "expired object %q", name)
@@ -107,6 +107,71 @@ func TestLocalImageStorageCleanupRetainsFreshAndUnrelatedFiles(t *testing.T) {
 		_, err := os.Stat(filepath.Join(dir, name))
 		require.NoError(t, err, "retained entry %q", name)
 	}
+}
+
+func TestLocalImageStorageCleanupKeepsImagesUntilTaskExpiry(t *testing.T) {
+	dir := t.TempDir()
+	storage := NewLocalImageStorage(dir)
+	imageName := localImageTestTaskID + "-0.png"
+	imagePath := filepath.Join(dir, imageName)
+	old := time.Now().Add(-61 * time.Minute)
+	require.NoError(t, os.WriteFile(imagePath, []byte("image"), 0600))
+	require.NoError(t, os.Chtimes(imagePath, old, old))
+
+	result, err := json.Marshal(map[string]any{"data": []map[string]string{{
+		"url": "/v1/images/tasks/" + localImageTestTaskID + "/images/0.png",
+	}}})
+	require.NoError(t, err)
+	task := &ImageTaskRecord{
+		ID: localImageTestTaskID, Status: ImageTaskStatusCompleted, Result: result,
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	}
+	manifest, err := json.Marshal(task)
+	require.NoError(t, err)
+	manifestPath := filepath.Join(dir, task.ID+".json")
+	require.NoError(t, os.WriteFile(manifestPath, manifest, 0600))
+
+	storage.cleanup()
+	_, err = os.Stat(imagePath)
+	require.NoError(t, err, "an image remains available through its task expiry")
+
+	task.ExpiresAt = time.Now().Add(-time.Minute).Unix()
+	manifest, err = json.Marshal(task)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, manifest, 0600))
+	storage.cleanup()
+	for _, path := range []string{imagePath, manifestPath} {
+		_, err = os.Stat(path)
+		require.ErrorIs(t, err, os.ErrNotExist, "expired task file %q is removed", filepath.Base(path))
+	}
+}
+
+func TestLocalImageStorageCleanupWorkerRunsAtStartupAndOnInterval(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-61 * time.Minute)
+	startupExpired := localImageTestTaskID + "-0.png"
+	startupPath := filepath.Join(dir, startupExpired)
+	require.NoError(t, os.WriteFile(startupPath, []byte("old"), 0600))
+	require.NoError(t, os.Chtimes(startupPath, old, old))
+
+	storage := NewLocalImageStorage(dir)
+	storage.StartCleanupWorker(20 * time.Millisecond)
+	t.Cleanup(storage.StopCleanupWorker)
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(startupPath)
+		return errors.Is(err, os.ErrNotExist)
+	}, time.Second, 5*time.Millisecond)
+
+	intervalExpired := localImageTestTaskID + "-1.png"
+	intervalPath := filepath.Join(dir, intervalExpired)
+	require.NoError(t, os.WriteFile(intervalPath, []byte("old"), 0600))
+	require.NoError(t, os.Chtimes(intervalPath, old, old))
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(intervalPath)
+		return errors.Is(err, os.ErrNotExist)
+	}, time.Second, 5*time.Millisecond)
+	storage.StopCleanupWorker()
+	storage.StopCleanupWorker()
 }
 
 func TestLocalImageTaskCheckpointSurvivesStoreReconstructionAndChecksOwner(t *testing.T) {
@@ -120,7 +185,7 @@ func TestLocalImageTaskCheckpointSurvivesStoreReconstructionAndChecksOwner(t *te
 	now := time.Now()
 	task := &ImageTaskRecord{
 		ID: localImageTestTaskID, UserID: 7, APIKeyID: 9, Status: ImageTaskStatusCompleted,
-		Result: result, CreatedAt: now.Unix(), ExpiresAt: now.Add(24 * time.Hour).Unix(),
+		Result: result, CreatedAt: now.Unix(), ExpiresAt: now.Add(time.Hour).Unix(),
 	}
 	require.NoError(t, storage.SaveResult(task))
 	restarted := NewLocalImageStorage(dir)
@@ -132,7 +197,7 @@ func TestLocalImageTaskCheckpointSurvivesStoreReconstructionAndChecksOwner(t *te
 	// A local completed checkpoint must remain usable during a Redis outage.
 	svc := NewImageTaskService(&imageTaskMemoryStore{getErr: errors.New("Redis unavailable")})
 	svc.SetLocalStorage(restarted)
-	require.Equal(t, 24*time.Hour, svc.ttl)
+	require.Equal(t, time.Hour, svc.ttl)
 	f, err := svc.OpenLocalImage(context.Background(), ImageTaskOwner{UserID: 7, APIKeyID: 9}, task.ID, "0.png")
 	require.NoError(t, err)
 	actual, readErr := io.ReadAll(f)

@@ -1,5 +1,14 @@
 # Upstream upgrade PRs
 
+### 2026-11-21 — 生图任务和本地图片保留期候选
+
+- 生成完成后任务记录和工作台图片下载保留 1 小时，未确认提交恢复窗口为 1 小时。图片按任务到期时间成组清理，清理 worker 在启动时扫描，之后每小时运行，并在应用关闭时停止。任务到期后图片无法经工作台下载，文件物理删除最多延迟不足 1 小时。
+- 相关实现位于 `backend/internal/service/image_task.go`、`image_task_local.go` 和 `backend/cmd/server/wire.go`。本地候选尚未发布或部署。 [功能日志](CUSTOM_FEATURE_LOG.md)
+
+### 2026-11-21 — 生图工作台界面候选
+
+- 基线与远端 `custom/integration` 的 `6bfb19d29` 一致。工作台任务记录折叠位于 `ImageStudioView.vue` 和中英文 `imageStudio.ts`，后续同步时随工作台一起移植。 [功能日志](CUSTOM_FEATURE_LOG.md)
+
 ### 2026-11-21 — v0.2.23 定制增量发布
 
 - `0.2.23-custom.2` 运行提交 `95653e29d0adfa1313ad0840186b87e56286ae38`。同步图片转发的签名、暂存和账本逻辑集中在 `backend/internal/imagerelay` 与 `openai_image_relay` 服务文件。升级清单保护模块及关键宿主入口。

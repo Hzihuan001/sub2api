@@ -20,9 +20,11 @@ var localImageTaskPattern = regexp.MustCompile(`^imgtask_[a-f0-9]{32}$`)
 // LocalImageStorage keeps generated objects on the application's persistent
 // data volume. URLs are always served through task ownership authentication.
 type LocalImageStorage struct {
-	dir         string
-	mu          sync.Mutex
-	lastCleanup time.Time
+	dir        string
+	mu         sync.Mutex
+	workerMu   sync.Mutex
+	cancel     context.CancelFunc
+	workerDone chan struct{}
 }
 
 func NewLocalImageStorage(dir string) *LocalImageStorage {
@@ -43,7 +45,6 @@ func (s *LocalImageStorage) Save(ctx context.Context, key, _ string, data []byte
 	if err := os.MkdirAll(s.dir, 0700); err != nil {
 		return "", err
 	}
-	s.cleanup()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	target := filepath.Join(s.dir, key)
@@ -114,7 +115,6 @@ func (s *LocalImageStorage) SaveResult(task *ImageTaskRecord) error {
 	if task == nil || !localImageTaskPattern.MatchString(task.ID) || task.Status != ImageTaskStatusCompleted {
 		return errors.New("invalid completed image task")
 	}
-	s.cleanup()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, err := s.LoadResult(task.ID); err == nil {
@@ -171,34 +171,122 @@ func (s *LocalImageStorage) LoadResult(id string) (*ImageTaskRecord, error) {
 	return &task, nil
 }
 
-// Results remain queryable for 24 hours after completion. A 48-hour file
-// retention window leaves room for completion persistence retries. Cleanup is
-// throttled and runs only against strictly named files in this private folder.
+const (
+	imageTaskLocalFileRetention = defaultImageTaskTTL
+	imageTaskCleanupInterval    = time.Hour
+)
+
+// StartCleanupWorker removes expired local task results at startup and hourly.
+func (s *LocalImageStorage) StartCleanupWorker(interval time.Duration) {
+	if s == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = imageTaskCleanupInterval
+	}
+	s.workerMu.Lock()
+	defer s.workerMu.Unlock()
+	if s.cancel != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+	s.workerDone = make(chan struct{})
+	go func(done chan struct{}) {
+		defer close(done)
+		s.cleanup()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.cleanup()
+			}
+		}
+	}(s.workerDone)
+}
+
+func (s *LocalImageStorage) StopCleanupWorker() {
+	if s == nil {
+		return
+	}
+	s.workerMu.Lock()
+	defer s.workerMu.Unlock()
+	if s.cancel == nil {
+		return
+	}
+	s.cancel()
+	<-s.workerDone
+	s.cancel = nil
+	s.workerDone = nil
+}
+
+// cleanup scans only task result files and temporary files in this private folder.
 func (s *LocalImageStorage) cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if time.Since(s.lastCleanup) < time.Hour {
-		return
-	}
-	s.lastCleanup = time.Now()
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		return
 	}
-	cutoff := time.Now().Add(-48 * time.Hour)
+	now := time.Now()
+	cutoff := now.Add(-imageTaskLocalFileRetention)
+	expiredTasks := make(map[string]struct{})
+	activeTasks := make(map[string]struct{})
 	for _, entry := range entries {
-		manifest := strings.HasSuffix(entry.Name(), ".json") && localImageTaskPattern.MatchString(strings.TrimSuffix(entry.Name(), ".json"))
-		if entry.IsDir() || (!manifest && !localImageNamePattern.MatchString(entry.Name()) && !strings.HasPrefix(entry.Name(), ".image-")) {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
-		info, err := entry.Info()
-		if err == nil && info.Mode().IsRegular() && info.ModTime().Before(cutoff) {
+		taskID := strings.TrimSuffix(entry.Name(), ".json")
+		if !localImageTaskPattern.MatchString(taskID) {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		data, readErr := os.ReadFile(filepath.Join(s.dir, entry.Name()))
+		var task ImageTaskRecord
+		if readErr == nil && json.Unmarshal(data, &task) == nil && task.ID == taskID && task.ExpiresAt > now.Unix() {
+			activeTasks[taskID] = struct{}{}
+			continue
+		}
+		if readErr != nil || info.ModTime().Before(cutoff) || task.ExpiresAt <= now.Unix() {
+			expiredTasks[taskID] = struct{}{}
+			_ = os.Remove(filepath.Join(s.dir, entry.Name()))
+		}
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		match := localImageNamePattern.FindStringSubmatch(entry.Name())
+		taskExpired := match != nil
+		taskActive := false
+		if taskExpired {
+			_, taskExpired = expiredTasks[match[1]]
+			_, taskActive = activeTasks[match[1]]
+		}
+		isTemporary := strings.HasPrefix(entry.Name(), ".image-")
+		if match == nil && !isTemporary {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr == nil && info.Mode().IsRegular() && (taskExpired || (!taskActive && info.ModTime().Before(cutoff))) {
 			_ = os.Remove(filepath.Join(s.dir, entry.Name()))
 		}
 	}
 }
 
 func (s *ImageTaskService) SetLocalStorage(storage *LocalImageStorage) { s.localStorage = storage }
+
+func (s *ImageTaskService) Stop() {
+	if s != nil && s.localStorage != nil {
+		s.localStorage.StopCleanupWorker()
+	}
+}
 
 func (s *ImageTaskService) OpenLocalImage(ctx context.Context, owner ImageTaskOwner, id, filename string) (*os.File, error) {
 	task, err := s.Get(ctx, owner, id)

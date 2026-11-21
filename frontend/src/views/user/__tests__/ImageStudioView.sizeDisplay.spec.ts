@@ -131,7 +131,7 @@ describe('Image Studio actual size visibility', () => {
   it('automatically re-queries a completed async task after a temporary protected-image download failure', async () => {
     vi.useFakeTimers()
     const completedTask = { id: 'imgtask_download', status: 'completed', created_at: Date.now() / 1000,
-      expires_at: Date.now() / 1000 + 86400, result: { data: [{ url: '/v1/images/tasks/imgtask_download/images/0.png' }] } }
+      expires_at: Date.now() / 1000 + 3600, result: { data: [{ url: '/v1/images/tasks/imgtask_download/images/0.png' }] } }
     mocks.submitTask.mockResolvedValue({ ...completedTask, status: 'processing' })
     mocks.getTask.mockResolvedValue(completedTask)
     mocks.fetchTaskImage.mockRejectedValueOnce(new TypeError('temporary offline')).mockResolvedValue(imageBlob)
@@ -160,7 +160,7 @@ describe('Image Studio actual size visibility', () => {
 
   it('uses stable task image IDs so recovery after a failed pending-record deletion does not duplicate the gallery', async () => {
     const task = { operationId: 'recover-operation', apiKeyId: '1', apiKeyName: 'Image key', taskId: 'imgtask_saved',
-      createdAt: Date.now(), expiresAt: Date.now() + 86400000, submitAttempts: 1, state: 'paused',
+      createdAt: Date.now(), expiresAt: Date.now() + 3600000, submitAttempts: 1, state: 'paused',
       request: { model: 'gpt-image-2.5-sunburst', prompt: 'Saved prompt', count: 1, size: '1024x1024', outputFormat: 'png' } }
     mocks.listTasks.mockImplementation(async () => [{ ...task, request: { ...task.request } }])
     mocks.getTask.mockResolvedValue({ id: 'imgtask_saved', status: 'completed', result: { data: [{ b64_json: 'image-data' }] } })

@@ -18,13 +18,13 @@ const clone = (task: StoredStudioTask): StoredStudioTask => ({ ...task, request:
 const request = () => ({ model: 'gpt-image-2', prompt: 'A cat', count: 1, size: '1024x1024', outputFormat: 'png' })
 const response = (status: ImageStudioTask['status'] = 'processing'): ImageStudioTask => ({
   id: 'imgtask_one', task_id: 'imgtask_one', status, created_at: Date.now() / 1000,
-  expires_at: Date.now() / 1000 + 86400, execution_deadline: Date.now() / 1000 + 1800,
+  expires_at: Date.now() / 1000 + 3600, execution_deadline: Date.now() / 1000 + 1800,
   ...(status === 'completed' ? { result: { data: [{ b64_json: 'aW1hZ2U=' }] } } : {}),
 })
 
 function stored(overrides: Partial<StoredStudioTask> = {}): StoredStudioTask {
   return { operationId: 'operation-one', apiKeyId: '10', apiKeyName: 'Images', request: request(),
-    createdAt: Date.now(), expiresAt: Date.now() + 86400000, taskId: 'imgtask_one', submitAttempts: 1, state: 'paused', ...overrides }
+    createdAt: Date.now(), expiresAt: Date.now() + 3600000, taskId: 'imgtask_one', submitAttempts: 1, state: 'paused', ...overrides }
 }
 
 function harness() {
@@ -104,6 +104,17 @@ describe('recoverable Image Studio tasks', () => {
     expect(mocks.sync).not.toHaveBeenCalled()
     expect(completed).toHaveBeenCalledOnce()
     expect(mocks.save.mock.calls.every(([, task]) => !JSON.stringify(task).includes('secret-seven'))).toBe(true)
+  })
+
+  it('expires unconfirmed submissions after one hour', async () => {
+    mocks.submit.mockRejectedValue(new TypeError('lost response'))
+    const { runner } = harness()
+    await flushPromises()
+    await runner.submit(request())
+    expect(runner.tasks.value[0]).toMatchObject({
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      state: 'error',
+    })
   })
 
   it.each([new TypeError('offline'), Object.assign(new Error('bad gateway'), { status: 502 })])('keeps ambiguous submissions after bounded failures: %s', async (error) => {
@@ -262,7 +273,7 @@ describe('recoverable Image Studio tasks', () => {
 
   it('checks an existing task past the locally known expiry and updates server retention/deadline on every GET', async () => {
     storage.set('7:10', [stored({ expiresAt: Date.now() - 1 })])
-    const later = Date.now() / 1000 + 86400
+    const later = Date.now() / 1000 + 3600
     mocks.get.mockResolvedValueOnce({ ...response(), expires_at: later, execution_deadline: later - 80000 })
       .mockResolvedValueOnce({ ...response('completed'), expires_at: later + 60, execution_deadline: later - 79000 })
     const { runner, completed } = harness()

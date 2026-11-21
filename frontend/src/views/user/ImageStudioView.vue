@@ -172,16 +172,22 @@
               </div>
             </div>
 
-            <div v-if="pendingTasks.length" class="mb-4 space-y-2" data-test="image-studio-tasks">
-              <div v-for="task in pendingTasks" :key="task.operationId" class="rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-700">
-                <p class="font-medium">{{ task.request.model }} · {{ t(`imageStudio.taskStates.${task.state}`) }}</p>
-                <p class="mt-1 truncate text-gray-500 dark:text-dark-300">{{ task.request.prompt }}</p>
-                <p v-if="task.error" role="status" class="mt-1 break-words text-amber-700 dark:text-amber-300">{{ task.error }}</p>
-                <p v-if="task.state === 'unknown'" class="mt-1 text-xs text-amber-700 dark:text-amber-300">{{ t('imageStudio.unknownTaskHint') }}</p>
-                <p class="mt-1 text-xs text-gray-500">{{ t('imageStudio.taskExpires', { date: formatDate(task.expiresAt) }) }}</p>
-                <button v-if="task.state !== 'pending' && task.state !== 'expired'" type="button" class="btn btn-secondary btn-sm mt-2" :disabled="generating" @click="resumeTask(task)">{{ t('imageStudio.resumeTask') }}</button>
+            <details v-if="pendingTasks.length" class="group mb-4 rounded-xl border border-gray-200 dark:border-dark-700">
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 dark:text-dark-200 dark:hover:bg-dark-800 [&::-webkit-details-marker]:hidden">
+                {{ t('imageStudio.taskRecords', { count: pendingTasks.length }) }}
+                <Icon name="chevronDown" size="sm" class="shrink-0 text-gray-500 group-open:rotate-180" aria-hidden="true" />
+              </summary>
+              <div class="space-y-2 px-3 pb-3" data-test="image-studio-tasks">
+                <div v-for="task in pendingTasks" :key="task.operationId" class="rounded-xl border border-gray-200 p-3 text-sm dark:border-dark-700">
+                  <p class="font-medium">{{ task.request.model }} · {{ t(`imageStudio.taskStates.${task.state}`) }}</p>
+                  <p class="mt-1 truncate text-gray-500 dark:text-dark-300">{{ task.request.prompt }}</p>
+                  <p v-if="task.error" role="status" class="mt-1 break-words text-amber-700 dark:text-amber-300">{{ task.error }}</p>
+                  <p v-if="task.state === 'unknown'" class="mt-1 text-xs text-amber-700 dark:text-amber-300">{{ t('imageStudio.unknownTaskHint') }}</p>
+                  <p class="mt-1 text-xs text-gray-500">{{ t('imageStudio.taskExpires', { date: formatDate(task.expiresAt) }) }}</p>
+                  <button v-if="task.state !== 'pending' && task.state !== 'expired'" type="button" class="btn btn-secondary btn-sm mt-2" :disabled="generating" @click="resumeTask(task)">{{ t('imageStudio.resumeTask') }}</button>
+                </div>
               </div>
-            </div>
+            </details>
 
             <div v-if="loadingLibrary" class="flex min-h-72 items-center justify-center"><LoadingSpinner /></div>
             <div v-else-if="galleryItems.length === 0" class="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 px-6 text-center dark:border-dark-600">

@@ -128,6 +128,8 @@
         "backend/internal/service/batch_image_size.go",
         "backend/internal/service/batch_image_worker.go",
         "backend/internal/service/batch_image_worker_runtime.go",
+        "backend/internal/service/image_task.go",
+        "backend/internal/service/image_task_local.go",
         "backend/internal/repository/batch_image_download_limiter.go",
         "backend/internal/repository/batch_image_queue.go",
         "backend/internal/repository/batch_image_repo.go",
@@ -142,6 +144,7 @@
       "dependencies": [],
       "tests": [
         "backend-batch",
+        "backend-image-task-retention",
         "frontend-features"
       ]
     },
@@ -396,9 +399,29 @@
       "function": "initializeApplication",
       "call": "service.ProvideKeyRoutingService",
       "count": 1
+    },
+    {
+      "id": "image-task-cleanup-stop",
+      "file": "backend/cmd/server/wire.go",
+      "function": "provideCleanup",
+      "call": "imageTaskService.Stop",
+      "count": 1
     }
   ],
   "tests": {
+    "backend-image-task-retention": {
+      "cwd": "backend",
+      "argv": [
+        "go",
+        "test",
+        "-tags=unit",
+        "./internal/service",
+        "./cmd/server",
+        "-run",
+        "LocalImageStorage|LocalImageTask|ImageTask",
+        "-count=1"
+      ]
+    },
     "backend-pelican": {
       "cwd": "backend",
       "argv": [

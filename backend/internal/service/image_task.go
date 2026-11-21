@@ -22,7 +22,7 @@ const (
 	ImageTaskStatusCompleted  = "completed"
 	ImageTaskStatusFailed     = "failed"
 
-	defaultImageTaskTTL              = 24 * time.Hour
+	defaultImageTaskTTL              = time.Hour
 	defaultImageTaskExecutionTimeout = 30 * time.Minute
 	imageTaskPersistenceTimeout      = 5 * time.Minute
 	imageTaskPersistenceAttempts     = 3

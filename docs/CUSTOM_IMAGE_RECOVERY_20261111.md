@@ -50,3 +50,7 @@
 ## 发布前检查
 
 本候选已通过后端 `go test -tags=unit ./... -count=1`、`go test -p=1 -tags=integration ./... -count=1`、golangci-lint，以及前端 442 文件/3714 项测试、lint、typecheck 和 build；日志位于 `.tmp/full-unit-recovery-final.log`、`.tmp/full-integration-recovery-final.log` 及前端最终门禁日志。发布候选版本仍应检查三站 `DATA_DIR` 持久挂载和非 root 写权限，并用不产生真实付费模型请求的合成上游验证：相同键并发只创建一个任务、断 Redis 后 checkpoint 可取回、错误不会重复执行模型、关闭后台存储设置后既有任务仍可轮询。生产验收应明确区分健康/HTTP 路径验证与真实模型调用；本说明不把后者宣称为已完成。
+
+## 2026-11-21 保留期更新
+
+本地候选将任务完成后的可查询与图片下载时间统一为 1 小时，未确认提交恢复窗口也为 1 小时。图片按任务到期时间成组清理，文件清理 worker 启动时执行一次，之后每小时扫描。到期后工作台下载即失效，物理文件最迟在下一轮扫描删除，可能额外保留不足 1 小时。主站和 L1 生产仍为 `0.2.23-custom.2`，本更新尚未部署。

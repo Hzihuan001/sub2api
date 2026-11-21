@@ -37,6 +37,13 @@ protected_paths:
   - backend/internal/service/openai_images.go
   - backend/internal/service/openai_images_responses.go
   - backend/internal/service/openai_gateway_usage.go
+  - backend/internal/service/image_task.go
+  - backend/internal/service/image_task_local.go
+  - backend/internal/service/image_task_local_test.go
+  - backend/internal/service/wire.go
+  - backend/cmd/server/wire.go
+  - backend/cmd/server/wire_gen.go
+  - backend/cmd/server/wire_gen_test.go
   - deploy/config.example.yaml
   - frontend/src/authz
   - frontend/src/features/image-studio

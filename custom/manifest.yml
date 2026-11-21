@@ -110,6 +110,9 @@ features:
     owned_paths:
       - backend/internal/handler/batch_image_handler.go
       - backend/internal/service/batch_image_*.go
+      - backend/internal/service/image_task.go
+      - backend/internal/service/image_task_local.go
+      - backend/internal/service/image_task_local_test.go
       - backend/internal/repository/batch_image_*.go
       - backend/migrations/9000_custom_batch_image_no_discount.sql
       - backend/migrations/9009_custom_gpt_image_26_group_models.sql
@@ -117,8 +120,13 @@ features:
       - frontend/src/composables/useBatchImageAccess.ts
       - frontend/src/features/image-studio
       - frontend/src/views/user/BatchImageGuideView.vue
+    host_hooks:
+      - backend/cmd/server/wire.go
+      - backend/cmd/server/wire_gen.go
     tests:
       - backend/internal/service/batch_image_...
+      - backend/internal/service/image_task_local_test.go
+      - backend/cmd/server/wire_gen_test.go
       - frontend/src/features/image-studio
   - id: branding
     owner: custom/branding
