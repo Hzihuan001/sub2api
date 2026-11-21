@@ -1,13 +1,13 @@
 # Upstream upgrade PRs
 
-### 2026-11-21 — 0.2.23-custom.4 生图任务和本地图片保留期候选
+### 2026-11-21 — 0.2.23-custom.4 生图任务和本地图片保留期已部署
 
-- 生成完成后任务记录和工作台图片下载保留 1 小时，未确认提交恢复窗口为 1 小时。图片按任务到期时间成组清理，清理 worker 在启动时扫描，之后每小时运行，并在应用关闭时停止。任务到期后图片无法经工作台下载，文件物理删除最多延迟不足 1 小时。
-- 相关实现位于 `backend/internal/service/image_task.go`、`image_task_local.go` 和 `backend/cmd/server/wire.go`。文件系统访问使用任务目录根句柄约束路径。全量 lint 的 38 条既存诊断与生产 `.2` 基线一致，增量 lint 无新增。候选尚未发布或部署，生产仍为 `0.2.23-custom.2`。 [功能日志](CUSTOM_FEATURE_LOG.md)
+- 新完成的任务记录和工作台图片下载保留 1 小时，图片到期后由启动时扫描及每小时清理的 worker 删除。升级前任务保留其原有 `ExpiresAt`，本次未批量缩短既有任务的期限。
+- 实现位于 `backend/internal/service/image_task.go`、`image_task_local.go` 和 `backend/cmd/server/wire.go`。文件系统访问使用任务目录根句柄约束路径。主站和 L1 已部署版本 `0.2.23-custom.4`，digest `sha256:e9440f9e868ca25d939e9b868d91b7d023171a9f990486efd59a273a078eb54a`。全量 lint 的 38 条既存诊断与 `.2` 基线一致，增量 lint 无新增。 [功能日志](CUSTOM_FEATURE_LOG.md)；[生产发布记录](CUSTOM_RELEASE_0_2_23_CUSTOM4_20261121.md)
 
-### 2026-11-21 — 生图工作台界面候选
+### 2026-11-21 — 生图工作台界面已部署
 
-- 基线与远端 `custom/integration` 的 `6bfb19d29` 一致。工作台任务记录折叠位于 `ImageStudioView.vue` 和中英文 `imageStudio.ts`，后续同步时随工作台一起移植。 [功能日志](CUSTOM_FEATURE_LOG.md)
+- 基线与远端 `custom/integration` 的 `6bfb19d29` 一致。工作台任务记录折叠位于 `ImageStudioView.vue` 和中英文 `imageStudio.ts`，已随 `0.2.23-custom.4` 部署到主站和 L1。 [功能日志](CUSTOM_FEATURE_LOG.md)；[生产发布记录](CUSTOM_RELEASE_0_2_23_CUSTOM4_20261121.md)
 
 ### 2026-11-21 — v0.2.23 定制增量发布
 

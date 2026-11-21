@@ -6,11 +6,17 @@ The active production targets are **main** (`ai.moshu.cloud`) and **L1** (`api.t
 
 For current VPS disk usage and separate accounting for backups, Docker and live data, see the [2026-11-20 storage audit](../docs/CUSTOM_VPS_STORAGE_20261120.md). Treat release dumps and archives as recovery data; check restore coverage and verify an off-host copy before pruning old restore points.
 
-## Current production release 0.2.23-custom.2 (2026-11-21)
+## Current production release 0.2.23-custom.4 (2026-11-21)
 
-Main and L1 run `ghcr.io/hzihuan001/sub2api@sha256:594fe3566ce73ed6ea2ebaecaca7f175b6a1616b44304f10d215ba03bed4e315` from commit `95653e29d0adfa1313ad0840186b87e56286ae38` and tag `custom-0.2.23.2`. L1's paired production Images API route and same-key result retrieval passed real generation and independent ledger checks. The PostgreSQL migration counts are 342 for main and 351 for L1. The verified backup is `/opt/sub2api-backups/v0.2.23-custom.2-20261120T204041Z`. Restore the matching application configuration with the `.1` image below for application rollback and retain the live databases and relay data directories. [Release record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM2_20261121.md)
+Main and L1 run `ghcr.io/hzihuan001/sub2api@sha256:e9440f9e868ca25d939e9b868d91b7d023171a9f990486efd59a273a078eb54a` from commit `0c480893031841801e6cfc943676095a95707125` and tag `custom-0.2.23.4`. Both application containers are healthy with zero restarts. PostgreSQL migration counts remain 342 for main and 351 for L1; PostgreSQL and Redis containers were not recreated. The verified backup is `/opt/sub2api-backups/v0.2.23-custom.4-20261121T134059Z`. Application-only rollback target is `.2`, digest `sha256:594fe3566ce73ed6ea2ebaecaca7f175b6a1616b44304f10d215ba03bed4e315`; retain live databases, Redis and image data. COS remains paused. [Release record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM4_20261121.md)
 
 Main and L1 each have 18 active image slots, 48 waiting slots, a 1200-second queue timeout, and a 512 MiB request-body memory budget. Keep each main capacity setting for active or waiting image requests at least as high as its L1 counterpart. Direct requests and L1 forwards share the main site's active image slots. Drain both sites before restarting main because L1 forwards over the private network. [Queue change record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM2_20261121.md#当天后续调整生图排队位)
+
+Newly completed image tasks are available for one hour. Pre-upgrade completed tasks retain their stored expiry timestamps and were not retroactively shortened by `.4`.
+
+## Previous production release 0.2.23-custom.2 (2026-11-21)
+
+Main and L1 previously ran `ghcr.io/hzihuan001/sub2api@sha256:594fe3566ce73ed6ea2ebaecaca7f175b6a1616b44304f10d215ba03bed4e315` from commit `95653e29d0adfa1313ad0840186b87e56286ae38` and tag `custom-0.2.23.2`. L1's paired production Images API route and same-key result retrieval passed real generation and independent ledger checks. The verified `.2` backup was `/opt/sub2api-backups/v0.2.23-custom.2-20261120T204041Z`. See the [`.2` release record](../docs/CUSTOM_RELEASE_0_2_23_CUSTOM2_20261121.md).
 
 ## Previous production release 0.2.23-custom.1 (2026-11-18)
 
